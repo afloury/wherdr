@@ -198,6 +198,14 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
   const main = reviewerPlan(t, task)
   // A new reviewer, a fallback set: the review agent's account read first.
   if (!out && !live && worker && 'program' in main && prefOf(t, task, 'reviewFallbackAgent')) out = accountOut(await readAccounts(deps), main.program, worker.machine, Date.now())
+  // A live fallback reviewer: once the review agent has quota again, it ends and the review agent takes this round.
+  if (live && worker && 'program' in main && (live.program !== main.program || live.model !== main.model) && prefOf(t, task, 'reviewFallbackAgent')
+    && !accountOut(await readAccounts(deps), main.program, worker.machine, Date.now())) {
+    await killTerminal(deps, live.terminal!).catch(() => {})
+    await store.saveRun({ ...live, state: 'ended', endedBy: 'stopped' })
+    task = await store.logTask(task, 'engine', `review: ${programName(main.program)} has quota again, the fallback reviewer (${live.program} ${live.model}) ends`)
+    live = false
+  }
   const plan = out ? reviewerPlan(t, task, out) : main
   if (!worker || 'reason' in plan) return void (task.state !== 'waiting' && await waitFor(deps, task.id, worker ? (plan as { reason: string }).reason : 'No worktree: the task never started'))
   const files = runFiles(worker.instructions)
