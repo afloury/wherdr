@@ -2894,14 +2894,29 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .msg-quote:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); border-left-color: var(--accent); }
 .msg-quote-time { flex: none; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; color: var(--dim); }
 .msg-quote-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* A wake's sender (Autopilot, Step check, Engine, Health check), above its bubble. */
+/* A wake: not the user's. One compact row across the column (kind tag, first
+   line, time), the coordinator's answer under it, smaller and muted. */
+.wake, .wake-run { display: flex; flex-direction: column; min-width: 0; margin-top: 6px; color: var(--muted); }
+.wake-row, .wake-run { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; min-height: 28px; padding: 2px 0; text-align: left; cursor: pointer; }
+.wake-run { flex-direction: row; font: 500 10.5px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
+.wake-head { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.wake-run .wake-head { font-size: inherit; }
+.wake-time { flex: none; font: 400 10.5px/1 var(--mono); color: var(--dim); letter-spacing: .04em; }
+.wake-chev { flex: none; width: 13px; height: 13px; }
+.wake-row:hover .wake-head, .wake-run:hover, .wake-row:focus-visible .wake-head, .wake-run:focus-visible { color: var(--text-2); outline: none; }
+.wake-answer { padding-left: 10px; border-left: 1px solid var(--line); font-size: 12.5px; line-height: 1.45; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; }
+.wake-text { margin: 4px 0 2px; padding: 8px 10px; font: 400 12px/1.5 var(--mono); color: var(--text-2); white-space: pre-wrap; overflow-wrap: anywhere; background: var(--surface); border: 1px solid var(--line-soft); }
+/* An incident, or a wake whose answer asks the user: its stronger colour. */
+.wake.loud .wake-head { color: var(--text); }
+.wake.loud .msg-wake { color: var(--wake, var(--accent)); border-color: var(--wake, var(--accent)); }
 .msg-wake {
-  align-self: flex-end; padding: 2px 6px; font: 500 10px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  flex: none; padding: 1px 5px; font: 500 9.5px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase;
   color: var(--text-2); border: 1px solid var(--line); border-left: 2px solid var(--wake, var(--accent));
 }
 .msg-wake[data-kind="step"] { --wake: var(--working); }
 .msg-wake[data-kind="engine"] { --wake: var(--blocked); }
 .msg-wake[data-kind="health"] { --wake: var(--done); }
+.msg-wake[data-kind="incident"] { --wake: var(--danger); }
 /* Floating "Reply" button near a selected passage. */
 .sel-reply {
   position: fixed; z-index: 60; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;
