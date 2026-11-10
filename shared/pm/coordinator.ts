@@ -17,6 +17,8 @@ import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
 import { PUBLIC_RULE, isPublic } from './visibility'
 import { appLinkList } from '../appLinks'
+import { uiOpenArgs } from '../uiOpen'
+import { uiTargetList } from '../uiTargets'
 import { projectPlace } from './places'
 import { parseFiles } from './files'
 import { MERGE_METHODS, contributorPrsLine, type MergeMethod } from './contributorPr'
@@ -114,6 +116,7 @@ export type Command =
   | { name: 'report back' | 'report close', task: string, text: string }
   // Show a place beside the coordinator's conversation (shared/uiOpen.ts).
   | { name: 'ui open', link: string }
+  | { name: 'ui targets' }
 
 // One table for the parser, the skill and the role file.
 export const COMMANDS: { usage: string, does: string }[] = [
@@ -144,7 +147,8 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'report close <task> "<what you did>"', does: 'close a problem the user reported once handled (you told the agent, added a follow-up task, or it is fine); the merge it blocked is free again' },
   { usage: 'tell <task> "<text>" [--to worker|reviewer] [--spec] [--fix base|ci|machine|stall --reason "<one sentence>"]', does: `a message to one of the task\'s agents: the one that holds its current step, else (a step held by nobody or by you: pr, merge, a user step) its worker; --to picks it. The answer says which agent got it. --spec also records it as a spec note (task note), so that the reviewer reviews against it; only in a turn that comes from the user. In a wake, only to answer its question, or with --fix to unblock a mechanical block (${FIX_KINDS.map(k => `${k}: ${FIX_TEXT[k]}`).join('; ')}): a worker that was let go or has ended starts again with your message; with the autopilot on, a task of your project, at most ${FIXES_PER_STEP} times per task and step, written to its log with the reason; past that, tell the user. A permission request is always the user\'s` },
   { usage: 'read <task> [--to worker|reviewer] [--lines N]', does: 'what the task\'s agent last said (its question, its answer to your tell), on whichever machine it runs: the last message of its conversation, else the bottom of its screen; the agent tell reaches by default, --to picks it; --lines 1 to 200 (default 40)' },
-  { usage: 'ui open \'<in-app link>\'', does: 'show one of your project\'s places (its board, a task, its sheet) or a global Settings section in the user\'s open wherdr, beside your conversation (a card on a phone), quoted; only in a turn that comes from the user, only to the wherdr the user is on now (the answer says which: phone or computer). It changes nothing' },
+  { usage: 'ui open \'<in-app link>\' | --target <id>', does: 'show one of your project\'s places (its board, a task, its sheet) or a global Settings section (or one setting of it highlighted: --target) in the user\'s open wherdr, beside your conversation (a card on a phone), quoted; only in a turn that comes from the user, only to the wherdr the user is on now (the answer says which: phone or computer). It changes nothing' },
+  { usage: 'ui targets', does: 'the settings ui open --target can highlight: id and where it is' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
@@ -207,7 +211,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files'], 'task start': ['on'], 'incidents': ['since'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' ? w0 : verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files'], 'task start': ['on'], 'incidents': ['since'], 'ui open': ['target'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (w0 === 'incidents') {
@@ -238,7 +242,8 @@ function parseWords(argv: unknown): Command | { error: string } {
     const text = words.slice(3).join(' ').trim()
     return TASK_RE.test(task) && text && text.length <= 2000 ? { name: verb, task, text } : usage(verb)
   }
-  if (verb === 'ui open') return w2 && !w3 ? { name: verb, link: w2 } : usage(verb)
+  if (verb === 'ui open') return uiOpenArgs(w2, w3, flags.target, usage(verb))
+  if (verb === 'ui targets') return w2 ? usage(verb) : { name: verb }
   if (w0 === 'help' || w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')
   if (verb === 'template show' || verb === 'template edit') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
@@ -453,6 +458,7 @@ export function docsRule(docs: string | undefined, help: string, open: { cmd: st
     'Whenever you send the user somewhere in wherdr ("open Settings › Phone"), give the in-app link too, as inline code (`#/settings?section=phone`) or a Markdown link ([Phone settings](#/settings?section=phone)): the chat opens it in place. Only these addresses (KEY: a project key, TAG: a tag, ID: a task id):',
     ...appLinkList(),
     `To show the user ${open.places} at once, beside your conversation in their open wherdr (a card on a phone): \`${open.cmd} '#/settings?section=phone'\`, the address quoted (an unquoted # starts a shell comment). Only when the user asks to see it, in their turn (refused in a wake), and only to the wherdr the user is on now; otherwise give the link. The answer says where (\`opened on\`: phone or computer) and gives a block to end your reply with, so the card stays in the conversation. It opens the place and changes nothing.`,
+    `To point at one setting (the user asks where it is, or it would solve their problem): \`${open.cmd} --target <id>\`, with one line on why; it opens the setting's section and highlights the setting. The ids (\`${open.cmd.replace(/open$/, 'targets')}\` lists them too): ${uiTargetList().map(t => `${t.id} (${t.label})`).join(', ')}.`,
     'To show a task where it stands, write a fenced code block in the language `wherdr`, one line `task ID` per task: the chat shows each task\'s live card from the board (never what you wrote about it), and a tap opens its sheet.', '']
 }
 

@@ -2,6 +2,7 @@
 // projects, coordinators and settings. Pure: the parser, the command table
 // (also written in Alfred's AGENTS.md) and the "show, then do" text; the
 // server (server/utils/alfredCli.ts) reads and writes.
+import { uiOpenArgs } from '../uiOpen'
 import type { SyncedSetting } from '../settings'
 import { MERGE_BY, type MergeBy, type Template } from './workflow'
 import { sameGuards, type Turn } from './coordinator'
@@ -31,6 +32,7 @@ export type AlfredCommand =
   | { name: 'last', key: string }
   // Show a place of wherdr beside Alfred's conversation (shared/uiOpen.ts).
   | { name: 'ui open', link: string }
+  | { name: 'ui targets' }
   // Delegation: a message to the project's coordinator (started if needed).
   | { name: 'tell', key: string, text: string }
   // A proposal the user answers in wherdr (the workflow JSON comes as the call's input).
@@ -53,7 +55,8 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'machines', does: 'the machines herdr-core knows (key, label, status); the key "" is this machine' },
   { usage: 'coordinators', does: 'each coordinator: its agent and whether it runs' },
   { usage: 'coordinator open <KEY>', does: 'the link that opens a running project coordinator, to give the user' },
-  { usage: 'ui open \'<in-app link>\'', does: 'show that place in the user\'s open wherdr, beside this conversation (a card on a phone), quoted; only in a turn that comes from the user, only to the wherdr the user is on now (the answer says which: phone or computer). It changes nothing' },
+  { usage: 'ui open \'<in-app link>\' | --target <id>', does: 'show that place, or the setting of that target id highlighted, in the user\'s open wherdr, beside this conversation (a card on a phone), quoted; only in a turn that comes from the user, only to the wherdr the user is on now (the answer says which: phone or computer). It changes nothing' },
+  { usage: 'ui targets', does: 'the settings ui open --target can highlight: id and where it is' },
   { usage: 'tell <KEY> "<text>"', does: 'send a message to the project\'s coordinator, as from Alfred (started first when it does not run); written to the project\'s log' },
   { usage: 'last <KEY>', does: 'the last reply of the project\'s coordinator, and whether it is still working' },
   { usage: 'v2', does: 'when the user comes from wherdr v2: its projects the migration listed (suggested key, name, folder on this machine and whether it is there: here, base branch, v2 settings to redo, open tasks), each with the v3 project made from it, if any, and the migration report' },
@@ -75,6 +78,7 @@ const FLAGS: Record<string, string[]> = {
   'coordinator start': ['program'],
   'project guards': ['protect', 'merge-protected', 'merge-others', 'contributor-prs'],
   'project machine': ['clone'],
+  'ui open': ['target'],
 }
 
 export const CHANGES = ['project add', 'project template', 'project guards', 'project machine', 'coordinator start', 'setting set']
@@ -115,7 +119,8 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
     return { name: 'tell', key: key(w1), text }
   }
   if (w0 === 'project' && words.length === 2 && !['add', 'template', 'workflow', 'guards', 'machine'].includes(w1)) return key(w1) ? { name: 'project', key: key(w1) } : usage('project <KEY>')
-  if (verb === 'ui open') return w2 && !w3 ? { name: verb, link: w2 } : usage(verb)
+  if (verb === 'ui open') return uiOpenArgs(w2, w3, flags.target, usage(verb))
+  if (verb === 'ui targets') return w2 ? usage(verb) : { name: verb }
   if (verb === 'coordinator open') return key(w2) && !w3 ? { name: verb, key: key(w2) } : usage(verb)
   if (verb === 'project add') {
     const { machine, path, name, template } = flags
