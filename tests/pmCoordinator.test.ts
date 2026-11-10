@@ -30,7 +30,7 @@ company.taskTypes.feature!.steps.splice(-2, 1, { id: 'deploy', column: 'Deploy',
 // The quota readings the pace reads; none by default (quota unknown).
 const quotas = vi.hoisted(() => ({ q: null as Quotas | null }))
 vi.mock('../server/utils/quotas', async orig => ({ ...(await orig<object>()), readQuotas: async () => quotas.q ?? { claude: null, codex: null } }))
-afterEach(() => { quotas.q = null })
+afterEach(() => { quotas.q = null; vi.unstubAllEnvs() })
 
 let dir = '', store: ReturnType<typeof createPmStore>, token = ''
 const deps = () => ({ store, machines: () => [] }) as unknown as CoreAdminDeps & { store: typeof store }
@@ -134,6 +134,8 @@ describe('the main coordinator (WHR-398)', () => {
       return { address: `host/t${runs.length}` }
     }
     const home = path.join(dir, 'alfred')
+    // No v2 board here, whatever this machine has: Alfred reads it live.
+    vi.stubEnv('HERDR_PROJECTS_HOME', path.join(dir, 'no-herdr-projects'))
     const d = { store, call, machines: () => [], alfredHome: home } as never
     const r = await startCoordinator(d, MAIN, { program: 'claude', model: 'sonnet' }, { local: 'http://127.0.0.1:7690' })
     // A program only: its own default model, no --model (the model given is ignored).
@@ -257,6 +259,20 @@ describe('template edit', () => {
     expect(await store.workflowLog('CO')).toEqual(log)
     expect(await cli(['template', 'show'])).toMatchObject({ lastProposal: 'refused' })
     await refused(answerProposal(deps(), 'CO', true), 'No template change waits for you')
+  })
+
+  it('each answer sums up its own proposal only; one replaced before an answer says so', async () => {
+    // The user changed a reviewer pref in the interface before.
+    await store.saveWorkflow('CO', { ...structuredClone(company), prefs: { reviewModel: 'gpt-x' } })
+    await noteTurn(store, 'CO', 'user', 'add a v2 type')
+    const withV2 = (instructions?: string) => { const t = structuredClone(company); t.prefs = { reviewModel: 'gpt-x' }; t.taskTypes.v2 = { steps: [{ id: 'todo' }, { id: 'done' }] }; if (instructions) t.instructions = instructions; return JSON.stringify(t) }
+    await cli(['template', 'edit'], withV2('First try.'))
+    await cli(['template', 'edit'], withV2())
+    expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.answers).toEqual([expect.objectContaining({ outcome: 'replaced', by: 'coordinator CO', summary: ['all types: instructions edited', '+ type v2 (2 steps)'] })])
+    await answerProposal(deps(), 'CO', true)
+    const answers = (await coordinatorsView(store)).find(c => c.project === 'CO')!.answers!
+    expect(answers.map(a => a.outcome)).toEqual(['replaced', 'accepted'])
+    expect(answers[1]!.summary).toEqual(['+ type v2 (2 steps)'])
   })
 
   it('never changes a guard with the token, even in a user turn', async () => {
