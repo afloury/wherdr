@@ -4,7 +4,7 @@ import { archivedCards, cardById } from '../../utils/pmBoard'
 import { pmStore } from '../../utils/pmStore'
 import { coreAdminDeps } from '../../utils/coreAdminDeps'
 
-export default defineApi((event) => {
+export default defineApi(async (event): Promise<unknown> => {
   const q = getQuery(event)
   if (q.id !== undefined) return cardById(pmStore(), coreAdminDeps().machines(), String(q.id))
   const projects = String(q.projects ?? '').split(',').filter(Boolean)
