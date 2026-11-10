@@ -6,6 +6,7 @@ import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, Pan
 import { LOCAL, splitId } from '#shared/ids'
 import { isAppLink } from '#shared/appLinks'
 import type { UiOpenEvent } from '#shared/uiOpen'
+import { parseShowLine, type UiShowEvent } from '#shared/uiShow'
 import { clearOffline, readHome, saveHome, type SavedHome } from '~/utils/offlineCache'
 import { coreRouteAllowed } from '#shared/coreRoutes'
 import { leaseFromStatus, mayReadOffline, readOfflineAccess, setOfflineAccess, type OfflineAccess } from '~/utils/offlineAccess'
@@ -249,6 +250,10 @@ export const fullSettingsOnce = ref(false)
 // it (AgentView.vue); then who opened the Settings panel, on which section.
 export const uiOpenRequest = ref<UiOpenEvent | null>(null)
 export const uiOpenedBy = ref<{ by: string, section: string } | null>(null)
+// An agent's `ui show` (shared/uiShow.ts), until its conversation's view takes
+// it; then what is shown, beside the conversation or in a sheet (UiShowPanel.vue).
+export const uiShowRequest = ref<UiShowEvent | null>(null)
+export const uiShown = ref<UiShowEvent | null>(null)
 // Slim: the list opened over the agent (HomeView; backdrop in app.vue).
 export const listDrawer = ref(false)
 // Tablet (shortest side ≥ 700 px, or a touch tablet's screen while the
@@ -586,6 +591,7 @@ export function connectEvents() {
       if (data?.type === 'restarting') { noteRestart(); return }
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
       if (data?.type === 'ui-open') { if (typeof data.pane === 'string' && (data.show === undefined || data.show === 'card' || data.show === 'panel') && typeof data.by === 'string' && isAppLink(data.link)) uiOpenRequest.value = data; return }
+      if (data?.type === 'ui-show') { if (typeof data.pane === 'string' && typeof data.by === 'string' && typeof data.arg === 'string' && parseShowLine(`show ${data.what} ${data.arg}`)) uiShowRequest.value = data; return }
       // Lock turned off: the server dropped every push subscription, this device posts its own again.
       if (data?.type === 'push-resubscribe') { syncPushLanguage().catch(() => {}); return }
       const got = paneReuse.reuse(normalize(data) as HerdrState)

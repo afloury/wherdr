@@ -14,6 +14,7 @@ import { appRoute, isAppLink, linkedTask } from '#shared/appLinks'
 import type { StatusKind } from '#shared/statusBlock'
 import StatusCard from './StatusCard.vue'
 import UiOpenCard from './UiOpenCard.vue'
+import UiShowCard from './UiShowCard.vue'
 import ActionCard from './ActionCard.vue'
 import { h, render } from 'vue'
 
@@ -208,6 +209,14 @@ function mountCards() {
   // An agent's `ui open` card, kept in its reply: no ×, it opens the place.
   for (const slot of el.value?.querySelectorAll<HTMLElement>('.open-slot') ?? []) {
     const card = h(UiOpenCard, { event: { type: 'ui-open', pane: '', link: slot.dataset.link ?? '', by: '' }, kept: true })
+    card.appContext = app
+    slot.textContent = ''
+    render(card, slot)
+    slots.push(slot)
+  }
+  // What an agent showed with `ui show`: a tap shows it again.
+  for (const slot of el.value?.querySelectorAll<HTMLElement>('.show-slot') ?? []) {
+    const card = h(UiShowCard, { event: { type: 'ui-show', pane: '', what: slot.dataset.what === 'shots' ? 'shots' : 'file', arg: slot.dataset.arg ?? '', by: '' }, kept: true })
     card.appContext = app
     slot.textContent = ''
     render(card, slot)

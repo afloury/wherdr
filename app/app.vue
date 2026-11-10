@@ -114,6 +114,7 @@ onUnmounted(() => {
     <GlobalSearch v-model:open="searchOpen" />
     <NuxtPage />
     <SettingsView v-if="settingsPanel" panel />
+    <UiShowPanel />
     <TaskSheetHost />
     <NewAgentSheet />
     <MenuSheet />

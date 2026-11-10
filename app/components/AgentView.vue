@@ -28,6 +28,7 @@ import { interactionWindowFor } from '~/utils/interactionWindow'
 import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
 import { uiOpenPanel } from '~/utils/settingsPanel'
 import type { UiOpenEvent } from '#shared/uiOpen'
+import type { UiShowEvent } from '#shared/uiShow'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
 const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
@@ -48,6 +49,14 @@ watch(uiOpenRequest, (e) => {
   uiCard.value = null
   uiOpenedBy.value = { by: e.by, section: panel.query.section }
   router.push(panel)
+})
+// An agent's `ui show` (shared/uiShow.ts): beside the conversation when the
+// window has room, else a card that opens it in a sheet (UiShowPanel.vue).
+const showCard = ref<UiShowEvent | null>(null)
+watch(uiShowRequest, (e) => {
+  if (!e || e.pane !== props.paneId) return
+  uiShowRequest.value = null
+  if (sidePanelRoom.value) { showCard.value = null; uiShown.value = e } else showCard.value = e
 })
 
 // Pane being viewed (no notification for it, read as soon as it finishes): the active
@@ -657,6 +666,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     </div>
     <Keybar v-if="keybarShown" :id="keybarId" :ctl="ctl" :compact="compactPhone" :terminal="termShown" @keyboard="toggleComposerKeyboard" />
     <UiOpenCard v-if="uiCard" :event="uiCard" @close="uiCard = null" />
+    <UiShowCard v-if="showCard" :event="showCard" @close="showCard = null" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @pointerdown="takeTerminalControl" @keydown="onComposerKey" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
     </div>
