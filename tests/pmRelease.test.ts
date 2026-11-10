@@ -7,7 +7,7 @@ import { startTask, type PmLaunchDeps } from '../server/utils/pmLaunch'
 import { releaseIdle } from '../server/utils/pmRelease'
 import { advanceTick } from '../server/utils/pmAdvance'
 import { mechanicTick } from '../server/utils/pmMechanic'
-import { FIX_QUIET_MS, RELEASE_IDLE_MS, agentBack, agentsAtWork, fixWatch, handFix, handToAgent, idleSince, releaseDue, retriesAction } from '../shared/pm/release'
+import { FIX_QUIET_MS, RELEASE_IDLE_MS, ROOM_WAKE_MS, agentBack, agentWaits, roomWakeDue, agentsAtWork, fixWatch, handFix, handToAgent, idleSince, releaseDue, retriesAction } from '../shared/pm/release'
 import { cardStatus } from '../shared/pm/board'
 import { initialState, onEvent, type PlannedStep } from '../shared/pm/steps'
 import { wherdr } from '../shared/pm/examples'
@@ -20,6 +20,20 @@ const task = (over: Partial<Task> = {}): Task => ({
 const yourTurn = (t = task()) => ({ ...t, step: { ...t.step!, at: 4, yourTurn: { reason: 'action' as const, badge: 'Merge: guarded' } } })
 
 describe('the release rules', () => {
+  it('a fix waiting for room wakes the coordinator once, after 30 minutes of it', () => {
+    const room = (free: number) => `Waits for room (Heavy to the strongest): heavy (≈3.4 GB) fits nowhere — machine-a: ${free} GB free, needs 3.9 GB with its reserve`
+    const s = handToAgent(task().step!, 'ci-to-agent', 'abc', 0, 'fix smoke')
+    const first = agentWaits(s, room(3.1), undefined, 0)
+    // Its free memory changes: the same wait, since the start.
+    const later = agentWaits(first, room(3.0), undefined, ROOM_WAKE_MS - 1)
+    expect(later.agent!.waitsSince).toBe(0)
+    expect(roomWakeDue(later.agent!, ROOM_WAKE_MS - 1)).toBe(false)
+    expect(roomWakeDue(later.agent!, ROOM_WAKE_MS)).toBe(true)
+    // Woken once: never again.
+    expect(roomWakeDue(agentWaits(later, room(3.0), 'coordinator', ROOM_WAKE_MS).agent!, 2 * ROOM_WAKE_MS)).toBe(false)
+    // Its machine offline is another wait: no wake by time.
+    expect(roomWakeDue(agentWaits(first, 'Waits for its machine (offline)', undefined, 0).agent!, ROOM_WAKE_MS)).toBe(false)
+  })
   it('counts idle time only while the task waits for the user and no agent works', () => {
     expect(idleSince(undefined, task(), false, 10)).toBeUndefined() // under way
     expect(idleSince(undefined, yourTurn(), false, 10)).toBe(10)
