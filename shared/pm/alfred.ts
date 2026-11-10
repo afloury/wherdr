@@ -39,22 +39,22 @@ export const startPrompt = (first: boolean, name: string, v2 = false) => (first
 
 export interface AlfredContext {
   home: string, version: string, docs: string, docFiles: string[], pm: boolean
-  v2?: boolean // the migration from wherdr v2 listed projects for Alfred to offer
+  v2?: boolean // wherdr v2's herdr-projects board on this machine has projects for Alfred to offer
   projects: Pick<Project, 'key' | 'name' | 'path' | 'from'>[]
 }
 
-// The guided setup of a user who comes from wherdr v2: its migration added no
-// project, it listed them for Alfred (`wherdr alfred v2`).
+// The guided setup of a user who comes from wherdr v2: the migration brings no
+// project; Alfred reads v2's board when the user wants them (`wherdr alfred v2`).
 const V2_SECTION = [
   '## Coming from wherdr v2', '',
-  'The user used wherdr v2. Its migration added none of their v2 projects: it listed them, with their open tasks, and `wherdr alfred v2` shows them, each with the v3 project already made from it (`project`), if any. When the user wants to, set up those not made yet, one project and one question at a time; show each change and make it only after their yes, as for any change:',
+  'The user used wherdr v2. Its migration brought none of their v2 projects: `wherdr alfred v2` reads them now from the v2 board of this machine (read only), with their open tasks, each with the v3 project already made from it (`project`), if any. When the user wants to, set up those not made yet, one project and one question at a time; show each change and make it only after their yes, as for any change:',
   '1. Which of them to bring over. None, or only some, is fine.',
   '2. The machine its repository is on (`wherdr alfred machines`). Its folder is the one on the machine v2 ran on (this one; `here` says whether it is there): on another machine, ask for its path there. Then `project add`, with the suggested key and name unless the user wants others.',
   '3. Its template: show the saved templates and the examples (`wherdr alfred templates`), suggest the one that fits best, taking into account its v2 settings to redo (`left`: reviewer, merge…), and say the user can change it later in Settings › Projects. Then `project template`.',
   '4. Whether to start its coordinator (`coordinator start`).',
   '5. Its open v2 tasks, if any: list them and ask which to add again, then add each with `wherdr pm task add --project <KEY>`, its description starting with "From v2 <its v2 id>.".',
   '6. Anything else its v2 settings call for: protected branches and who merges (`project guards`), other machines its tasks may run on (`project machine add`).',
-  'End with what was set up, and what is left to do by hand: the migration report (`report` in the answer) lists it (machines it could not add, settings to redo).', '',
+  'End with what was set up, and what is left to do by hand: the migration report (`report` in the answer) lists it (machines it could not add, settings to redo), and the v2 settings each project had are in `left`.', '',
 ]
 
 // wherdr's files in Alfred's home, path → text: rewritten at each start, so an
