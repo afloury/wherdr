@@ -24,12 +24,18 @@ new project.
    follow the folder and can be changed. Once added, wherdr checks whether the
    repository is public; correct it if the check is wrong. With several
    projects, pick the one to set up, or add another.
+   **What a project needs:** a git repository (each task works in its own
+   worktree), and a remote named `origin` for a workflow that pushes, opens or
+   merges a PR, checks a merge or watches a pipeline. A repository without
+   `origin`, such as a folder you just ran `git init` in, works with `vibe`.
 3. **Choose its workflow.** The examples, each with its steps in one line, such
    as `vibe` (commit straight to a dev branch, no review). The one you choose is
    copied into the project: that copy is the project's own workflow, changed
    later in its [Workflow](#workflow) tab. Projects imported from v2
    ([Migrate from v2](migrate-from-v2.md)) have none, and their tasks cannot
-   start without it.
+   start without it. When the repository has no remote and the example you
+   pick needs one, this step says so and offers *Use vibe*, or add a remote
+   with `git remote add origin <url>`. **New › Project** warns the same way.
 4. **Check its guards.** The protected branches and who merges, as the
    workflow set them ([Guards](#guards)). Change and save them, or keep the
    defaults with Next.
@@ -192,6 +198,10 @@ or none), how it ends (a report, a verdict, you, or an action) and, for an
 action, what it does: land on a branch, push, open a PR, merge a GitHub or
 Bitbucket PR, check that a branch was merged, or watch a pipeline, with its
 branch, merge method and required checks.
+Landing merges the target into the task first (a conflict goes back to the
+agent), then pushes it to the target on `origin`. In a repository without
+`origin` it moves the local target branch instead (made when missing), unless
+that branch is checked out in a folder: switch that folder to another branch.
 
 A **pipeline watch** (`pipeline.watch`) has the engine follow CI or a deploy
 by itself, so no agent is woken only to read *still running*. It checks every

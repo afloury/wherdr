@@ -2,7 +2,7 @@
 import { describe, expect, it } from 'vitest'
 import { ALFRED, FIRST_MESSAGE, OWN_FILES, alfredFiles, alfredName, startPrompt, type AlfredContext } from '../shared/pm/alfred'
 
-const ctx: AlfredContext = { home: '/data/alfred', version: '3.0.0', docs: '/opt/wherdr/docs', docFiles: ['overview.md', 'quick-start.md'], pm: false, projects: [] }
+const ctx: AlfredContext = { home: '/data/alfred', version: '3.0.0', docs: '/opt/wherdr/docs', docFiles: ['overview.md', 'quick-start.md'], pm: false, projects: [], address: { local: 'http://127.0.0.1:7684' } }
 
 describe('alfredName', () => {
   it('reads the Name: line of identity.md, Alfred by default', () => {
@@ -28,6 +28,10 @@ describe('alfredFiles', () => {
     expect(a).toContain('Clean memory.md')
     expect(a).toContain('`/opt/wherdr/docs`')
     expect(a).toContain('overview.md, quick-start.md')
+    // The server's own address, and its commands given to copy, not run in Alfred's home.
+    expect(a).toContain('This wherdr answers at http://127.0.0.1:7684 on its machine.')
+    expect(alfredFiles({ ...ctx, address: { local: 'http://127.0.0.1:7684', remote: 'https://wherdr.example.ts.net' } }, [])['AGENTS.md']).toContain('and at https://wherdr.example.ts.net from the user\'s other devices')
+    expect(a).toContain('never in a shell block (its *Run* button would run it here)')
     expect(a).toContain('only after the user\'s yes')
     expect(a).toContain('`wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>] [--apply|--propose]`')
     expect(a).toContain('with `--apply` only after their yes in this chat')

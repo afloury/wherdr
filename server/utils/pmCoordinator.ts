@@ -49,6 +49,7 @@ import { sameFilesText } from '../../shared/pm/files'
 import type { CoordinatorRecord, PmStore } from './pmStore'
 import { ALFRED, OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
 import { APP_URL_FILE, DATA_DIR, ENV_APP_URL, HOME } from './env'
+import { findDocsDir } from './wherdrDocs'
 import { projectsHome } from '../../bin/lib/userpath.mjs'
 import { readV2Projects, type V2Candidate } from './v2Board'
 import pkg from '../../package.json'
@@ -607,8 +608,8 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   return { p, local: !!m.local, on, folder, first: false, v2: false, none: false }
 }
 
-// wherdr's docs on its own machine: the install's, so an update brings new ones.
-const docsDir = () => path.join(process.env.WHERDR_ROOT || process.cwd(), 'docs')
+// wherdr's docs on its own machine: the running build's, so an update brings new ones.
+const docsDir = () => findDocsDir()
 
 // At wherdr's start (an update included): every running coordinator's role
 // files rewritten, Alfred's home too. Nothing else: no message, no wake; each
@@ -646,7 +647,7 @@ export async function writeAlfredHome(deps: Deps) {
   const docFiles = (await fs.readdir(docs).catch(() => [] as string[])).filter(n => n.endsWith('.md')).sort()
   const main = mainRoleFiles(projects)
   const v2 = (await v2Projects(deps.store)).length > 0
-  const files = { ...main, ...alfredFiles({ home: folder, version: wherdrVersion(), docs, docFiles, pm: await deps.store.enabled(), projects, v2 }, main['AGENTS.md']!.split('\n')) }
+  const files = { ...main, ...alfredFiles({ home: folder, version: wherdrVersion(), docs, docFiles, address: coordinatorUrls(new URL('http://127.0.0.1')), pm: await deps.store.enabled(), projects, v2 }, main['AGENTS.md']!.split('\n')) }
   for (const [file, text] of Object.entries(files)) {
     await fs.mkdir(path.dirname(path.join(folder, file)), { recursive: true, mode: 0o700 })
     await fs.writeFile(path.join(folder, file), text, { mode: 0o600 })
@@ -672,8 +673,12 @@ export async function alfredView(deps: { store: PmStore, alfredHome?: string }) 
 export interface CoordinatorUrls { local: string, remote?: string }
 const LOOPBACK = /^(localhost|127\.|\[::1\])/
 // here: the address the request came to (used when wherdr has no published one).
+// The port this server listens on, as Nitro's node server picks it: 3000
+// when nothing sets it (.output/server/index.mjs started directly; the
+// wherdr command and npm start always set PORT).
+export const serverPort = (env: NodeJS.ProcessEnv = process.env) => env.NITRO_PORT || env.PORT || '3000'
 export function coordinatorUrls(here: URL): CoordinatorUrls {
-  const port = process.env.NITRO_PORT || process.env.PORT || '7683'
+  const port = serverPort()
   let published = ''
   try { published = JSON.parse(fsSync.readFileSync(APP_URL_FILE, 'utf8'))?.url || '' } catch {}
   const remote = published || ENV_APP_URL || (LOOPBACK.test(here.hostname) ? '' : here.origin)
