@@ -19,31 +19,43 @@ const MARK = 'CLAUDE_CODE_TMPDIR='
 // $1 = env `e<its CLAUDE_CODE_TMPDIR>` for the processes that have one (ps -E
 // on macOS, /proc/<pid>/environ on Linux, where every process of the user's
 // is read); on macOS, `u` for an environment not shown (no HOME or PATH) and
-// `n<folder>` (lsof -F, as peaks.ts); `w<task>` per worktree in the root $2.
+// `n<folder>` (lsof -F, as peaks.ts); on Linux, `n<folder>` of the processes
+// working under the root $2 (/proc/<pid>/cwd). `W` once that root is read,
+// then `w<task>` per worktree in it.
 export const PROCS_SCRIPT = `ps -A -o pid=,ppid=,pgid=,etime=,%cpu=,comm= | awk '{c=$6; for(i=7;i<=NF;i++) c=c" "$i; print "p"$1; print "P"$2; print "g"$3; print "t"$4; print "x"$5; print "c"c}'
 [ "$1" = env ] || exit 0
-for d in "$2"/*/; do [ -n "$2" ] && [ -d "$d" ] && d=\${d%/} && echo "w\${d##*/}"; done
+if [ -n "$2" ] && [ -d "$2" ]; then echo W; for d in "$2"/*/; do [ -d "$d" ] && d=\${d%/} && echo "w\${d##*/}"; done; fi
 if [ "$(uname -s)" = Darwin ]; then ps -A -wwE -o pid=,command= 2>/dev/null | awk '{v=""; r=0; for(i=2;i<=NF;i++) {if (index($i,"${MARK}")==1) v=substr($i,${MARK.length + 1}); if (index($i,"HOME=")==1 || index($i,"PATH=")==1) r=1}; print "p"$1; if (v!="") print "e"v; if (!r) print "u"}'
   lsof -a -d cwd -Fpn 2>/dev/null || true
-else grep -a -z -o -m1 '^${MARK}.*' /proc/[0-9]*/environ 2>/dev/null | tr '\\0' '\\n' | awk '{f=$0; sub(":.*","",f); gsub("[^0-9]","",f); print "p"f; print "e"substr($0, index($0,"=")+1)}'; fi`
+else grep -a -z -o -m1 '^${MARK}.*' /proc/[0-9]*/environ 2>/dev/null | tr '\\0' '\\n' | awk '{f=$0; sub(":.*","",f); gsub("[^0-9]","",f); print "p"f; print "e"substr($0, index($0,"=")+1)}'
+  [ -n "$2" ] && for c in /proc/[0-9]*/cwd; do t=$(readlink "$c" 2>/dev/null) || continue; case "$t" in "$2"/*) c=\${c#/proc/}; printf 'p%s\\nn%s\\n' "\${c%/cwd}" "\${t% (deleted)}" ;; esac; done; fi`
 
-// TERM, then KILL for those still there after 3 s.
-const KILL_FN = `kill_all() {
+// TERM, then KILL for those still there after 3 s; fails when one is still
+// there after that (by ps: kill -0 fails on another user's; a zombie is gone).
+const KILL_FN = `alive() { s=$(ps -o stat= -p "$1" 2>/dev/null) || return 1; case "$s" in ''|*Z*) return 1 ;; esac; }
+kill_all() {
 kill -TERM "$@" 2>/dev/null
-for i in 1 2 3 4 5 6; do a=; for p; do kill -0 "$p" 2>/dev/null && a=1; done; [ -z "$a" ] && return 0; sleep 0.5; done
-kill -KILL "$@" 2>/dev/null; return 0
+for i in 1 2 3 4 5 6; do a=; for p; do alive "$p" && a=1; done; [ -z "$a" ] && return 0; sleep 0.5; done
+kill -KILL "$@" 2>/dev/null; sleep 0.5
+for p; do alive "$p" && return 1; done; return 0
 }`
 export const KILL_SCRIPT = `${KILL_FN}
-kill_all "$@"; exit 0`
+kill_all "$@"`
 
 // Every process whose working folder is $dir or under it (a removed one
-// too), marked or not, never this shell: killed, \`killed <n>\` printed.
+// too), marked or not, never this shell: killed, then \`killed <n>\` printed.
+// Exit 3 when the folders could not be read or one is still running.
 export const KILL_UNDER = `${KILL_FN}
 d=$(cd "$dir" 2>/dev/null && pwd -P) || d=$dir
-pids=$({ if [ "$(uname -s)" = Darwin ]; then lsof -a -d cwd -Fpn 2>/dev/null
-  else for c in /proc/[0-9]*/cwd; do t=$(readlink "$c" 2>/dev/null) && c=\${c#/proc/} && printf 'p%s\\nn%s\\n' "\${c%/cwd}" "$t"; done; fi; } |
-  awk -v d="$d" -v me=$$ '/^p/ {p=substr($0,2)} /^n/ {n=substr($0,2); sub(/ \\(deleted\\)$/,"",n); if ((n==d || index(n,d"/")==1) && p!=me) print p}')
-if [ -n "$pids" ]; then echo "killed $(echo $pids | wc -w | tr -d ' ')"; kill_all $pids; fi`
+if [ "$(uname -s)" = Darwin ]; then cwds=$(lsof -a -d cwd -Fpn 2>/dev/null)
+else cwds=$(for c in /proc/[0-9]*/cwd; do t=$(readlink "$c" 2>/dev/null) && c=\${c#/proc/} && printf 'p%s\\nn%s\\n' "\${c%/cwd}" "$t"; done); fi
+# This shell's own folder is always there: none read, nothing known.
+[ -n "$cwds" ] || { echo "the processes working in it could not be listed"; exit 3; }
+pids=$(printf '%s\\n' "$cwds" | awk -v d="$d" -v me=$$ '/^p/ {p=substr($0,2)} /^n/ {n=substr($0,2); sub(/ \\(deleted\\)$/,"",n); if ((n==d || index(n,d"/")==1) && p!=me) print p}')
+if [ -n "$pids" ]; then
+  kill_all $pids || { echo "a process working in it could not be killed"; exit 3; }
+  echo "killed $(echo $pids | wc -w | tr -d ' ')"
+fi`
 
 // ps's elapsed time, [[dd-]hh:]mm:ss → seconds.
 export function seconds(etime: string) {
@@ -101,10 +113,10 @@ export function groupTargets(procs: Proc[], root: number): number[] {
 
 export interface Leftovers { task: string, pids: number[], age: number, cpu: number }
 
-// The task worktrees that exist (PROCS_SCRIPT's `w` lines; none read: undefined).
+// The task worktrees that exist (PROCS_SCRIPT's `w` lines; the root not read: undefined).
 export function worktreesIn(text: string): Set<string> | undefined {
-  const ids = text.split('\n').filter(l => l[0] === 'w').map(l => l.slice(1))
-  return ids.length ? new Set(ids) : undefined
+  const lines = text.split('\n')
+  return lines.includes('W') ? new Set(lines.filter(l => l[0] === 'w').map(l => l.slice(1))) : undefined
 }
 
 const INIT = new Set(['launchd', 'systemd', 'init'])
@@ -157,18 +169,20 @@ export function hotProcs(procs: Proc[], root: string, keep: number[] = []) {
 }
 
 // Hot since when, per `<pid> <command>`: those not hot now are forgotten, a
-// task whose agent started or ended starts again.
+// task whose agent started or ended starts again. `told`: set by the caller
+// once a coordinator was woken (offered again at each sweep until then).
 export type HotSeen = Map<string, { since: number, live: boolean, told?: true }>
+export const hotKey = (p: Proc) => `${p.pid} ${p.comm}`
 export function hotTargets(seen: HotSeen, hot: { task: string, proc: Proc }[], live: (task: string) => boolean, now: number) {
-  const keys = new Set<string>(), kill: typeof hot = [], tell: typeof hot = []
+  const keys = new Set<string>(), kill: typeof hot = [], tell: (typeof hot[number] & { key: string })[] = []
   for (const h of hot) {
-    const key = `${h.proc.pid} ${h.proc.comm}`, on = live(h.task)
+    const key = hotKey(h.proc), on = live(h.task)
     keys.add(key)
     const s = seen.get(key)?.live === on ? seen.get(key)! : { since: now, live: on }
     seen.set(key, s)
     if (now - s.since < HOT.ms) continue
     if (!on) { kill.push(h); seen.delete(key) }
-    else if (!s.told) { tell.push(h); s.told = true }
+    else if (!s.told) tell.push({ ...h, key })
   }
   for (const k of [...seen.keys()]) if (!keys.has(k)) seen.delete(k)
   return { kill, tell }

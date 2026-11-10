@@ -59,12 +59,14 @@ export async function sweepOrphans(deps: PmLaunchDeps, now = Date.now()) {
     for (const f of orphanTargets(procs, root, isLive, keep, worktreesIn(ps.out)))
       await kill(f.task, f.pids, `killed ${plural(f.pids.length)}, ${ageText(f.age)} old${f.cpu >= 10 ? `, ${Math.round(f.cpu)} % CPU` : ''}`)
     if (!hotSeen.has(machine)) hotSeen.set(machine, new Map())
-    const hot = hotTargets(hotSeen.get(machine)!, hotProcs(procs, root, keep).filter(h => !gone.has(h.proc.pid)), isLive, now)
+    const seen = hotSeen.get(machine)!
+    const hot = hotTargets(seen, hotProcs(procs, root, keep).filter(h => !gone.has(h.proc.pid)), isLive, now)
     const facts = (h: (typeof hot.kill)[number]) => `${h.proc.comm.split('/').pop()} (pid ${h.proc.pid}) at ${Math.round(h.proc.cpu ?? 0)} % CPU for over ${HOT.ms / 60_000} min, ${ageText(h.proc.age)} old`
     for (const h of hot.kill) await kill(h.task, [h.proc.pid], `killed ${facts(h)}, after its agent ended`)
     for (const h of hot.tell) {
       const task = await store.task(h.task)
-      if (task) await wakeCoordinators(deps, task, `${h.task}: ${facts(h)}, in its folder on ${deps.machines().find(m => m.key === machine)?.label ?? 'its machine'}. Kill it if it is stuck.`, now)
+      // Told once a coordinator gets it: none now (autopilot off, out of hours), the next sweep tries again.
+      if (task && (await wakeCoordinators(deps, task, `${h.task}: ${facts(h)}, in its folder on ${deps.machines().find(m => m.key === machine)?.label ?? 'its machine'}. Kill it if it is stuck.`, now)).length) seen.get(h.key)!.told = true
     }
   }
 }

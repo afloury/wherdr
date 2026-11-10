@@ -85,6 +85,7 @@ async function clean(deps: Deps, id: string) {
   const r = await exec(deps, on, WORKTREE_REMOVE_SCRIPT, [repo, run.worktree, run.branch, branch ? '1' : '0'])
   const n = Number(/^killed (\d+)$/m.exec(r.out)?.[1] ?? 0)
   if (n) countKilled(run.machine, n)
+  if (r.code === 3) return keep(r.out.split('\n').pop()!)
   if (r.code !== 0) return keep(`git could not remove it: ${r.out.split('\n').pop()?.slice(0, 200) || 'timeout'}`)
   const what = (n ? `killed ${n} process${n === 1 ? '' : 'es'} working in it, then ` : '') + (facts.exists ? 'removed its worktree' : 'its worktree was already gone')
   return finish(branch ? `${what} and its local branch ${run.branch}` : `${what}; its branch ${run.branch} stays`)

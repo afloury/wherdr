@@ -1,5 +1,9 @@
+import { execFileSync, spawn } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { HOT, KILL_SCRIPT, PROCS_SCRIPT, groupTargets, hotProcs, hotTargets, orphanTargets, parseProcs, seconds, worktreesIn, type HotSeen, type Proc } from '../shared/pm/procs'
+import { HOT, KILL_SCRIPT, KILL_UNDER, PROCS_SCRIPT, groupTargets, hotProcs, hotTargets, orphanTargets, parseProcs, seconds, worktreesIn, type HotSeen, type Proc } from '../shared/pm/procs'
 import { killTerminal, leftoversKilled, sweepOrphans } from '../server/utils/pmProcs'
 import type { PmLaunchDeps } from '../server/utils/pmLaunch'
 
@@ -88,7 +92,7 @@ describe('the orphan sweep', () => {
     const out = [
       rec(1, 0, '0.0', '/sbin/launchd'), rec(701, 1, '90.1', 'sh'), rec(702, 1, '89.7', 'sh'),
       rec(703, 1, '0.0', 'sh'), rec(704, 1, '50.0', 'sh'), rec(705, 1, '0.0', 'sh'),
-      'wWH-2', 'wWH-3',
+      'W', 'wWH-2', 'wWH-3',
       'p1', 'p701\nu', 'p702\nu', 'p703\nu', 'p704\nu', 'p705\nu',
       `p701\nfcwd\nn${ROOT}/WH-204`, `p702\nfcwd\nn${ROOT}/WH-204/src`,
       'p703\nfcwd\nn/home/user/project', // the user's own sh
@@ -100,6 +104,17 @@ describe('the orphan sweep', () => {
       { task: 'WH-5', pids: [705], age: 12_600, cpu: 0 },
     ])
   })
+  it('the last worktree removed: an empty root read is no worktree at all, an unread one is unknown', () => {
+    const procs = [p(1, 0, 1, '/sbin/launchd'), { ...p(701, 1, 701, 'sh'), unread: true as const, cwd: `${ROOT}/WH-5` }]
+    expect(orphanTargets(procs, ROOT, () => true, [], worktreesIn('p1\nW')).map(f => f.pids)).toEqual([[701]])
+    expect(orphanTargets(procs, ROOT, () => true, [], worktreesIn('p1'))).toEqual([])
+  })
+  // Recorded on Linux: no mark on a process the agent's tools started with a
+  // clean environment; its folder from /proc/<pid>/cwd.
+  it('Linux: a hot unmarked process is known by its folder', () => {
+    const out = `p900\nP1\ng900\nt25:00\nx97.0\ncnode\nW\nwWH-2\np900\nn${ROOT}/WH-2/web`
+    expect(hotProcs(parseProcs(out), ROOT).map(h => [h.task, h.proc.pid])).toEqual([['WH-2', 900]])
+  })
   it('the CPU guard: hot 20 min after its agent ended, killed; while it runs, its coordinator told once', () => {
     const hot = (cpu: number, tmp?: string, cwd?: string): Proc => ({ ...p(800, 1, 800, 'node', tmp), cpu, ...(cwd ? { cwd } : {}) })
     expect(hotProcs([hot(95, mark('WH-1')), { ...hot(95, undefined, `${ROOT}/WH-2/web`), pid: 801 }, { ...hot(95, undefined, '/home/user/x'), pid: 802 }, { ...hot(30, mark('WH-1')), pid: 803 }], ROOT, [])
@@ -108,7 +123,10 @@ describe('the orphan sweep', () => {
     const sweep = (at: number, live: boolean, cpu = 95) => hotTargets(seen, hotProcs([hot(cpu, mark('WH-1'))], ROOT), () => live, at * min)
     expect(sweep(0, true)).toEqual({ kill: [], tell: [] })
     expect(sweep(HOT.ms / min, true).tell.map(h => h.proc.pid)).toEqual([800])
-    expect(sweep(HOT.ms / min + 5, true).tell).toEqual([]) // once
+    // No coordinator took it (autopilot off): offered again, until one does.
+    const [again] = sweep(HOT.ms / min + 5, true).tell
+    seen.get(again!.key)!.told = true
+    expect(sweep(HOT.ms / min + 10, true).tell).toEqual([]) // once
     expect(sweep(30, false).kill).toEqual([]) // its agent just ended: 20 min from now
     expect(sweep(45, false, 10).kill).toEqual([]) // cooled down: forgotten
     expect(sweep(50, false).kill).toEqual([])
@@ -135,5 +153,27 @@ describe('the orphan sweep', () => {
     expect(kills.map(k => k.join(' '))).toEqual(['100 101 110 600', '120'])
     expect(logs).toEqual(['killed 4 leftover processes, 6 h old'])
     expect(leftoversKilled('')).toBe(5)
+  })
+})
+
+// Before a worktree goes: macOS's lsof stood in for (uname, lsof on PATH).
+describe('the kill before a worktree is removed', () => {
+  const run = (lsof: string, prelude = '') => {
+    const bin = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-kill-'))
+    fs.writeFileSync(path.join(bin, 'uname'), '#!/bin/sh\necho Darwin\n', { mode: 0o755 })
+    fs.writeFileSync(path.join(bin, 'lsof'), `#!/bin/sh\nprintf '%s' '${lsof}'\n`, { mode: 0o755 })
+    try {
+      execFileSync('sh', ['-c', `${prelude}dir=/x/WH-1\n${KILL_UNDER}`], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` }, encoding: 'utf8', timeout: 10_000 })
+      return { code: 0 }
+    } catch (e) { return { code: (e as { status: number }).status, out: String((e as { stdout: string }).stdout) } }
+    finally { fs.rmSync(bin, { recursive: true, force: true }) }
+  }
+  it('stops when the folders cannot be read, or a process there survives', () => {
+    expect(run('')).toEqual({ code: 3, out: 'the processes working in it could not be listed\n' })
+    const stuck = spawn('sleep', ['30'], { stdio: 'ignore' })
+    try {
+      // kill does nothing: the process survives, nothing counted as killed.
+      expect(run(`p${stuck.pid}\nfcwd\nn/x/WH-1/src\n`, 'kill() { :; }\n')).toEqual({ code: 3, out: 'a process working in it could not be killed\n' })
+    } finally { stuck.kill('SIGKILL') }
   })
 })
