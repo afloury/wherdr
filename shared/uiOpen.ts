@@ -36,6 +36,14 @@ export function uiTarget<C extends UiClient>(clients: C[], pane: string, now: nu
   return best
 }
 
+// When the user last used the app, from its `viewing` message: `idle`, the
+// ms since its last input (a heartbeat of a focused window left alone keeps
+// its old time). null: nothing new (hidden, or no input reported).
+export function usedAt(m: { visible?: unknown, idle?: unknown }, now: number): number | null {
+  if (m.visible !== true || typeof m.idle !== 'number' || !Number.isFinite(m.idle) || m.idle < 0) return null
+  return now - m.idle
+}
+
 // A computer opens Settings in its side panel; anything else is a card.
 export function uiShow(device: UiDevice | undefined, link: string): UiShow {
   return device === 'computer' && link.startsWith('#/settings?') ? 'panel' : 'card'

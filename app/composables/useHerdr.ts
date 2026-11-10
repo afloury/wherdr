@@ -629,7 +629,7 @@ export function sendViewing() {
   notificationLastSentAt = Date.now()
   const visible = pageVisible.value && document.hasFocus() && Date.now() - notificationActivityAt < 120_000
   notificationLastVisible = visible
-  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible, device: desk.value ? 'computer' : 'phone' }))
+  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible, device: desk.value ? 'computer' : 'phone', idle: Date.now() - notificationActivityAt }))
 }
 watch(curPane, sendViewing)
 

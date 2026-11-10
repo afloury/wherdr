@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { openUi, type UiOpenDeps } from '../server/utils/uiOpen'
 import { parseAlfredCommand } from '../shared/pm/alfredCli'
 import { parseCommand } from '../shared/pm/coordinator'
-import { parseOpenLine, uiPlaceLabel, type UiDevice } from '../shared/uiOpen'
+import { parseOpenLine, uiPlaceLabel, usedAt, type UiDevice } from '../shared/uiOpen'
 import type { Pane } from '../shared/types'
 
 // Alfred (_main) runs in pane p1, the WEB coordinator in p2.
@@ -46,6 +46,15 @@ describe('ui open', () => {
     const idle = setup([{ pane: 'p2', device: 'phone', ago: 60 }])
     await expect(openUi(idle.deps, { ...web, raw: link, turn: 'user' })).rejects.toThrow(/No open wherdr is in use/)
     expect(idle.got[0]!.msgs).toEqual([])
+  })
+
+  it('dates the last use from the last input, not from the heartbeat', () => {
+    // A focused computer left alone 90 s ago still heartbeats: its time stays 90 s back,
+    // behind the phone the user wrote from 5 s ago.
+    expect(usedAt({ visible: true, idle: 90_000 }, 1_000_000)).toBe(910_000)
+    expect(usedAt({ visible: true, idle: 5_000 }, 1_000_000)).toBe(995_000)
+    expect(usedAt({ visible: false, idle: 0 }, 1_000_000)).toBeNull()
+    expect(usedAt({ visible: true }, 1_000_000)).toBeNull()
   })
 
   it('is refused in a wake turn or with no known turn', async () => {

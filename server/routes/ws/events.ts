@@ -1,5 +1,6 @@
 import { notificationPresence } from '../../utils/notificationRules'
 import { eventSendOptions } from '../../utils/wsCompression'
+import { usedAt } from '../../../shared/uiOpen'
 // WS /ws/events: the agents' state, pushed on every change. The app says
 // which agent is on screen: no notification for that one.
 export default defineWebSocketHandler({
@@ -25,7 +26,8 @@ export default defineWebSocketHandler({
       c.pane = PANE_RE.test(m.pane || '') ? m.pane : null
       c.visible = m.visible === true
       if (m.device === 'phone' || m.device === 'computer') c.device = m.device
-      if (c.visible) c.activeAt = Date.now()
+      const used = usedAt(m, Date.now())
+      if (used !== null) c.activeAt = used
       notificationPresence.heartbeat(peer.id, c.pane, c.visible)
     }
   },
