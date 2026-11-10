@@ -66,10 +66,11 @@ export async function updateProject(store: PmStore, key: unknown, body: Record<s
   return { project: await store.updateProject(key, update) }
 }
 
-// The workflow's worktree block, from the General tab: empty fields dropped, none left removes it.
+// The workflow's worktree block, from the General tab: empty fields dropped
+// (but `share: []`, which shares no folder), none left removes it.
 async function saveWorktreeSetup(store: PmStore, key: unknown, raw: unknown) {
   const { p, t } = await workflowOf(store, key)
-  const w = Object.fromEntries(Object.entries(raw && typeof raw === 'object' ? raw : {}).filter(([, v]) => (Array.isArray(v) ? v.length : v !== '' && v !== undefined)))
+  const w = Object.fromEntries(Object.entries(raw && typeof raw === 'object' ? raw : {}).filter(([k, v]) => (Array.isArray(v) ? v.length || k === 'share' : v !== '' && v !== undefined && v !== null)))
   const { worktree: _old, ...rest } = t
   const next = Object.keys(w).length ? { ...rest, worktree: w as WorktreeSetup } : rest
   await store.saveWorkflow(p.key, next) // checked there

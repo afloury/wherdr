@@ -45,11 +45,12 @@ async function load() {
   loaded.value = true
 }
 const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
-// The worktree setup: paths one per line (or comma separated).
-const setup = reactive({ copy: '', share: '', lockfile: '', command: '', timeout: '' })
-const fillSetup = (w: WorktreeSetup = {}) => Object.assign(setup, { copy: (w.copy ?? []).join('\n'), share: (w.share ?? []).join('\n'), lockfile: w.lockfile ?? '', command: w.command ?? '', timeout: w.timeout ?? '' })
+// The worktree setup: paths one per line (or comma separated). Folders to
+// share: empty is node_modules (no `share`), noShare is none (`share: []`).
+const setup = reactive({ copy: '', share: '', noShare: false, lockfile: '', command: '', timeout: '' })
+const fillSetup = (w: WorktreeSetup = {}) => Object.assign(setup, { copy: (w.copy ?? []).join('\n'), share: (w.share ?? []).join('\n'), noShare: !!w.share && !w.share.length, lockfile: w.lockfile ?? '', command: w.command ?? '', timeout: w.timeout ?? '' })
 const paths = (v: string) => v.split(/[\n,]/).map(x => x.trim()).filter(Boolean)
-const setupBody = () => ({ copy: paths(setup.copy), share: paths(setup.share), lockfile: setup.lockfile.trim(), command: setup.command.trim(), timeout: setup.timeout.trim() })
+const setupBody = () => ({ copy: paths(setup.copy), share: setup.noShare ? [] : paths(setup.share).length ? paths(setup.share) : undefined, lockfile: setup.lockfile.trim(), command: setup.command.trim(), timeout: setup.timeout.trim() })
 onMounted(() => { load().catch((e) => { error.value = (e as Error).message }); loadCoordinators() })
 
 async function run(what: string, fn: () => Promise<unknown>) {
@@ -210,7 +211,11 @@ async function remove() {
               </span>
               <span class="pm-col pm-agent">
                 <label class="field-label" for="pmShare">{{ tl('Folders to share') }}</label>
-                <UTextarea id="pmShare" v-model="setup.share" :rows="2" autoresize size="lg" class="w-full mono" placeholder="node_modules" maxlength="4000" data-testid="pm-setup-share" />
+                <UTextarea id="pmShare" v-model="setup.share" :rows="2" autoresize size="lg" class="w-full mono" placeholder="node_modules" maxlength="4000" :disabled="setup.noShare" data-testid="pm-setup-share" />
+                <label class="toggle-row">
+                  <span><b>{{ tl('Share no folder') }}</b><small>{{ tl('The setup command always runs') }}</small></span>
+                  <USwitch v-model="setup.noShare" color="success" size="xl" data-testid="pm-setup-no-share" />
+                </label>
               </span>
             </div>
             <div class="pm-cols">
@@ -225,7 +230,7 @@ async function remove() {
                 <UInput id="pmTimeout" v-model="setup.timeout" size="lg" class="w-full mono" :placeholder="SETUP_TIMEOUT" maxlength="4" />
               </span>
             </div>
-            <small class="muted">{{ tl('Before a task\'s first worker. Files to copy: ignored files taken from the project\'s clone (a tracked or missing one is skipped). Folders to share: taken from the clone while the lockfile is the same in both; otherwise the setup command runs, at most 10m. Folders to share empty: node_modules.') }}</small>
+            <small class="muted">{{ tl('Before a task\'s first worker. Files to copy: ignored files taken from the project\'s clone (a tracked or missing one is skipped). Folders to share: taken from the clone while the lockfile is the same in both; otherwise the setup command runs, at most 10m. Folders to share empty: node_modules; Share no folder: none.') }}</small>
           </template>
           <p v-else-if="loaded" class="muted settings-hint">{{ tl('No workflow yet: tasks cannot start until the project starts from a template.') }}</p>
           <UButton type="submit" size="xl" color="primary" variant="solid" class="hw-cta" :loading="busy === 'save'" :disabled="!loaded || busy !== ''" data-testid="pm-save">{{ tl('Save') }}</UButton>

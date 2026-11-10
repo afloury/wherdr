@@ -88,7 +88,9 @@ describe('project settings', () => {
     expect((await store.workflow('CO'))!.prefs).toEqual({ agent: 'codex' })
     // The worktree setup: empty fields dropped, all empty removes it, a bad path refused.
     await updateProject(store, 'CO', { worktree: { copy: ['.env'], share: [], command: 'npm ci', timeout: '' } })
-    expect((await store.workflow('CO'))!.worktree).toEqual({ copy: ['.env'], command: 'npm ci' })
+    expect((await store.workflow('CO'))!.worktree).toEqual({ copy: ['.env'], share: [], command: 'npm ci' }) // share [] kept: none
+    await updateProject(store, 'CO', { worktree: { copy: [], command: 'npm ci' } })
+    expect((await store.workflow('CO'))!.worktree).toEqual({ command: 'npm ci' }) // no share: node_modules
     await expect(updateProject(store, 'CO', { worktree: { copy: ['../secret'] } })).rejects.toThrow(/worktree\.copy/)
     await updateProject(store, 'CO', { worktree: { copy: [], command: '' } })
     expect((await store.workflow('CO'))!.worktree).toBeUndefined()

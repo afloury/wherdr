@@ -106,7 +106,8 @@ its folder, branches and task worktrees stay on the machine.
     disk allows it, so the task's own changes never reach the clone) only when
     the *Lockfile* (default `package-lock.json`) is the same in the worktree
     and the clone, and the clone's install is up to date with it. Empty:
-    `node_modules`.
+    `node_modules`. *Share no folder* shares none (`"share": []`): the setup
+    command then runs for every new task.
   - *Setup command*: run in the worktree, such as `npm ci --prefer-offline`,
     when a folder could not be shared (the task's branch changed the lockfile,
     or the clone has no install) or when no folder is listed. Once it succeeds
