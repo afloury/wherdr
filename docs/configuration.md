@@ -50,3 +50,9 @@ conversation, on the linked section; the conversation stays readable and you can
 typing. Escape or the close button shuts the panel, **Open full page** shows today's full
 page. Narrower windows and phones keep the full page.
 
+Drag the panel's left edge to make it wider or narrower: it stays at least 400 px wide, and the
+conversation keeps at least 480 px. With the edge focused, the left and right arrows resize it
+(Shift for bigger steps); a double-click, Home or Enter goes back to the default width. The width
+is kept on this device and comes back the next time the panel opens; places an agent opens beside
+its conversation use the same panel and width.
+

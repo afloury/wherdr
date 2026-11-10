@@ -36,7 +36,7 @@
 - [Security](docs/security.md#security): who may reach wherdr, the passkey lock and remote-shell risks.
 - [Network access](docs/security.md#network-access): which networks wherdr answers, and `WHERDR_TRUSTED_NETWORKS`.
 - [Configuration](docs/configuration.md#configuration): environment variables and the data folder.
-- [Settings beside the conversation](docs/configuration.md#configuration): on a computer window at least 1280 px wide, Settings opened from a conversation show as a side panel on the linked section; Escape closes it, Open full page keeps the full page.
+- [Settings beside the conversation](docs/configuration.md#configuration): on a computer window at least 1280 px wide, Settings opened from a conversation show as a side panel on the linked section, resizable from its left edge (drag, arrows, double-click for the default; width kept on the device); Escape closes it, Open full page keeps the full page.
 
 ## Agent list
 
@@ -59,6 +59,8 @@
 - [Conversations on hc](docs/core.md#conversations): which agents open on their transcript and how it is read, and text left unsent in Claude's input box (never shown as read, never glued to the next message).
 - [Terminal](docs/terminal.md): the real terminal, shared viewers and taking control.
 - [Files](docs/files.md): browse an agent's folder, preview text, Markdown, images, PDFs and videos, download; which files a path in a conversation may open.
+- [On a computer](docs/devices.md#on-a-computer): layout and keyboard shortcuts.
+- [On a phone](docs/devices.md#on-a-phone): touch controls and the phone keybar (order and hidden keys in Settings › Terminal).
 - [On a computer](docs/devices.md#on-a-computer): layout, terminal key bar and keyboard shortcuts.
 - [On a phone](docs/devices.md#on-a-phone): touch controls and the phone keybar.
 - [On an iPad](docs/devices.md#on-an-ipad): the iPad layout.
