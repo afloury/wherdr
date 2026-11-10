@@ -2,7 +2,8 @@
 // A step's proofs in the task sheet's Plan tab. Texts (the worker's report,
 // its proposed tasks) in Markdown, folded past a few lines, as in History; a
 // text equal to an earlier one is shown once. A commit is a short sha chip,
-// linked to its page on the Git host when the task has a PR link; a link is
+// linked to its page on the Git host from the first PR link in `links` (the
+// step's own first, TaskSheet.vue); a link is
 // a chip with a readable label (PR #12, else its address).
 import { commitUrl, linkLabel } from '#shared/pm/board'
 
