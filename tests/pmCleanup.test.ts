@@ -74,8 +74,11 @@ describe('the agents\' temp folder', () => {
       fs.writeFileSync(path.join(wt, TMP_DIR, 'cache.bin'), 'x')
       expect(fs.readFileSync(path.join(repo, '.git/info/exclude'), 'utf8').split('\n').filter(l => l === `/${TMP_DIR}/`)).toHaveLength(1)
       expect(parseFacts(sh(WORKTREE_PROBE_SCRIPT, repo, wt, 'task/WH-1'))).toMatchObject({ exists: true, listed: true, dirty: 0 })
-      sh(WORKTREE_REMOVE_SCRIPT, repo, wt, 'task/WH-1', '0')
+      // A shell left looping in it, re-parented to init, is killed first.
+      const loop = Number(sh('cd "$1" || exit 1; sh -c "while :; do sleep 1; done" >/dev/null 2>&1 & echo $!', path.join(wt, TMP_DIR)))
+      expect(sh(WORKTREE_REMOVE_SCRIPT, repo, wt, 'task/WH-1', '0')).toMatch(/^killed [12]$/m)
       expect(fs.existsSync(wt)).toBe(false)
+      expect(() => process.kill(loop, 0)).toThrow()
     } finally { fs.rmSync(root, { recursive: true, force: true }) }
   })
 })

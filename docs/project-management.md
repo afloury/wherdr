@@ -989,12 +989,23 @@ inherited from the agent (`CLAUDE_CODE_TMPDIR`, set to the task's
 `.wherdr-tmp`), wherever they run, never by their folder alone. macOS hides
 that from its own programs (`sh`, `zsh`, `sleep`): those go with the marked
 process they run under or share a process group with, or, once re-parented to
-`launchd` with their folder in that task's worktree, on their own. It kills
-them and says so in the task's log (*killed 7 leftover processes, 6 h old*). Your
-own shell, editor, apps and daemons are never touched, even when they run in a
-worktree, nor the processes of a task whose agent runs. The machine's line in
-Settings › Machines then says *n leftover processes killed*
-(since wherdr started).
+`launchd` with their folder in that task's worktree (or in a worktree removed
+since), on their own. It kills them and says so in the task's log (*killed 2
+leftover processes, 4 h old, 90 % CPU*). Your own shell, editor, apps and
+daemons are left alone by this sweep, even when they run in a worktree, and so
+are the processes of a task whose agent runs.
+
+Before removing a task's worktree, wherdr kills every process still working in
+it, yours included, so nothing runs on in a deleted folder; the task's log
+says how many.
+
+A CPU guard watches the processes of a task (marked, or working in its
+worktree): one above 80 % CPU for more than 20 minutes after the task's agent
+ended is killed and logged on the task; while the agent runs, its coordinator
+is told once instead.
+
+The machine's line in Settings › Machines says *n leftover processes killed*
+(since wherdr started), all three counted.
 
 The wherdr template tells its workers to run a test command that could hang
 with a timeout (`timeout 600 …`) and to leave no background job running when

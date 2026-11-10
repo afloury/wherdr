@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { KILL_SCRIPT, PROCS_SCRIPT, groupTargets, orphanTargets, parseProcs, seconds, type Proc } from '../shared/pm/procs'
+import { HOT, KILL_SCRIPT, PROCS_SCRIPT, groupTargets, hotProcs, hotTargets, orphanTargets, parseProcs, seconds, worktreesIn, type HotSeen, type Proc } from '../shared/pm/procs'
 import { killTerminal, leftoversKilled, sweepOrphans } from '../server/utils/pmProcs'
 import type { PmLaunchDeps } from '../server/utils/pmLaunch'
 
@@ -12,8 +12,8 @@ describe('reading ps', () => {
   it('reads each field, ps\'s elapsed time and the agent mark', () => {
     expect(seconds('05:03')).toBe(303)
     expect(seconds('1-06:00:00')).toBe(108_000)
-    const out = 'p7\nP1\ng7\nt06:00:01\nc/bin/sh\np7\ne/home/user/x\np8\nP7\ng7\nt01\ncCode Helper'
-    expect(parseProcs(out)).toEqual([p(7, 1, 7, '/bin/sh', '/home/user/x', 21_601), p(8, 7, 7, 'Code Helper', undefined, 1)])
+    const out = 'p7\nP1\ng7\nt06:00:01\nx12.5\nc/bin/sh\np7\ne/home/user/x\np8\nP7\ng7\nt01\ncCode Helper'
+    expect(parseProcs(out)).toEqual([{ ...p(7, 1, 7, '/bin/sh', '/home/user/x', 21_601), cpu: 12.5 }, p(8, 7, 7, 'Code Helper', undefined, 1)])
   })
 })
 
@@ -58,8 +58,8 @@ describe('the orphan sweep', () => {
   ]
   it('kills every process marked with a finished or removed task\'s temp folder, nothing else', () => {
     expect(orphanTargets(procs, ROOT, id => id === 'WH-2', [600])).toEqual([
-      { task: 'WH-1', pids: [100, 101, 110], age: 21_600 },
-      { task: 'WH-9', pids: [120], age: 60 },
+      { task: 'WH-1', pids: [100, 101, 110], age: 21_600, cpu: 0 },
+      { task: 'WH-9', pids: [120], age: 60, cpu: 0 },
     ])
   })
   // macOS hides the environment of its own binaries: no mark on sh, zsh, sleep.
@@ -78,7 +78,41 @@ describe('the orphan sweep', () => {
       hidden(p(500, 1, 500, '/bin/sh'), '/home/user/project'), // elsewhere
       hidden(p(600, 1, 600, '/Applications/Some.app/Contents/MacOS/Some'), `${ROOT}/WH-1`), // an app whose environment is hidden: not a system binary
     ]
-    expect(orphanTargets(mac, ROOT, id => id === 'WH-2')).toEqual([{ task: 'WH-1', pids: [100, 101, 102, 105, 110, 111], age: 21_600 }])
+    expect(orphanTargets(mac, ROOT, id => id === 'WH-2')).toEqual([{ task: 'WH-1', pids: [100, 101, 102, 105, 110, 111], age: 21_600, cpu: 0 }])
+  })
+  // Recorded on macOS: two `sh -c` (ps shows `sh`) of a test, re-parented to
+  // launchd, at 90 % CPU for 3 h 30 in a worktree removed since (lsof still
+  // shows its path; no `w` line for it).
+  it('macOS: a bare `sh` re-parented to launchd in a removed worktree goes, a user\'s `sh` elsewhere stays', () => {
+    const rec = (pid: number, ppid: number, cpu: string, comm: string) => `p${pid}\nP${ppid}\ng${pid}\nt03:30:00\nx${cpu}\nc${comm}`
+    const out = [
+      rec(1, 0, '0.0', '/sbin/launchd'), rec(701, 1, '90.1', 'sh'), rec(702, 1, '89.7', 'sh'),
+      rec(703, 1, '0.0', 'sh'), rec(704, 1, '50.0', 'sh'), rec(705, 1, '0.0', 'sh'),
+      'wWH-2', 'wWH-3',
+      'p1', 'p701\nu', 'p702\nu', 'p703\nu', 'p704\nu', 'p705\nu',
+      `p701\nfcwd\nn${ROOT}/WH-204`, `p702\nfcwd\nn${ROOT}/WH-204/src`,
+      'p703\nfcwd\nn/home/user/project', // the user's own sh
+      `p704\nfcwd\nn${ROOT}/WH-2`, // a live task's, its worktree there
+      `p705\nfcwd\nn${ROOT}/WH-5`, // its run still says live, its worktree removed
+    ].join('\n')
+    expect(orphanTargets(parseProcs(out), ROOT, id => id === 'WH-2' || id === 'WH-5', [], worktreesIn(out))).toEqual([
+      { task: 'WH-204', pids: [701, 702], age: 12_600, cpu: 90.1 },
+      { task: 'WH-5', pids: [705], age: 12_600, cpu: 0 },
+    ])
+  })
+  it('the CPU guard: hot 20 min after its agent ended, killed; while it runs, its coordinator told once', () => {
+    const hot = (cpu: number, tmp?: string, cwd?: string): Proc => ({ ...p(800, 1, 800, 'node', tmp), cpu, ...(cwd ? { cwd } : {}) })
+    expect(hotProcs([hot(95, mark('WH-1')), { ...hot(95, undefined, `${ROOT}/WH-2/web`), pid: 801 }, { ...hot(95, undefined, '/home/user/x'), pid: 802 }, { ...hot(30, mark('WH-1')), pid: 803 }], ROOT, [])
+      .map(h => [h.task, h.proc.pid])).toEqual([['WH-1', 800], ['WH-2', 801]])
+    const seen: HotSeen = new Map(), min = 60_000
+    const sweep = (at: number, live: boolean, cpu = 95) => hotTargets(seen, hotProcs([hot(cpu, mark('WH-1'))], ROOT), () => live, at * min)
+    expect(sweep(0, true)).toEqual({ kill: [], tell: [] })
+    expect(sweep(HOT.ms / min, true).tell.map(h => h.proc.pid)).toEqual([800])
+    expect(sweep(HOT.ms / min + 5, true).tell).toEqual([]) // once
+    expect(sweep(30, false).kill).toEqual([]) // its agent just ended: 20 min from now
+    expect(sweep(45, false, 10).kill).toEqual([]) // cooled down: forgotten
+    expect(sweep(50, false).kill).toEqual([])
+    expect(sweep(70, false).kill.map(h => h.proc.pid)).toEqual([800])
   })
   it('logs the kill on the task and counts it for the machine', async () => {
     const logs: string[] = [], kills: string[][] = []
