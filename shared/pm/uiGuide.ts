@@ -48,24 +48,27 @@ export function uiGuideRows(role: UiRole, o: { pm?: boolean, key?: string } = {}
 }
 
 const quoted = (w: string) => (/^[\w.:/@=-]+$/.test(w) ? w : `'${w.replace(/'/g, '\'\\\'\'')}'`)
+// A block's example goes below the table, as a fenced block to copy as is: in a
+// table cell its | would need escaping (choices), and the copy would not parse.
+const kind = (b: string) => b.split(' ')[0]
 const useText = (u: UiExample) => ('block' in u
-  ? `a \`wherdr\` block with the line \`${u.block}\``
+  ? `a \`${kind(u.block)}\` line in a \`wherdr\` block (example below)`
   : `\`wherdr ${u.cli} ${u.argv.map(quoted).join(' ')}\``)
-const cell = (s: string) => s.replace(/\|/g, '\\|')
 
 export function uiGuide(role: UiRole, o: { pm?: boolean, key?: string } = {}): string[] {
   const rows = uiGuideRows(role, o)
-  const table = ['| When | Use | Not |', '|---|---|---|', ...rows.map(r => `| ${cell(r.when)} | ${cell(useText(r.use))} | ${cell(r.not)} |`)]
-  const block = ['```wherdr', `task ${o.key || 'ABC'}-12`, '```']
+  const table = ['| When | Use | Not |', '|---|---|---|', ...rows.map(r => `| ${r.when} | ${useText(r.use)} | ${r.not} |`)]
+  const blocks = rows.flatMap(r => ('block' in r.use ? ['```wherdr', r.use.block, '```', ''] : []))
+  const examples = ['Examples, one block each:', '', ...blocks]
   if (role === 'task') {
     return ['## Showing instead of telling', '',
       'When you ask the user something, the chat can draw it: a fenced code block in the language `wherdr`, one line per element. You have no `ui` command: these blocks only show.', '',
-      ...table, '', 'For example:', '', ...block, '',
+      ...table, '', ...examples,
       'Choices only in a question you are blocked on. One block per message, after the sentence that explains it.', '']
   }
   return ['## Showing instead of telling', '',
-    'Show the user what you mean instead of describing it. A `wherdr` block is a fenced code block in the language `wherdr`, one line per element, one kind per block: the chat draws it with live data (never what you wrote about it), for example:', '',
-    ...block, '', ...table, '',
+    'Show the user what you mean instead of describing it. A `wherdr` block is a fenced code block in the language `wherdr`, one line per element, one kind per block: the chat draws it with live data (never what you wrote about it).', '',
+    ...table, '', ...examples,
     '- At most one card or button group per message, after the sentence that explains it; never a card with no sentence.',
     '- In a wake: `wherdr` blocks only. A `ui` command or `--propose` is refused there: tell the user what you would show instead of trying.',
     '- A refusal (no open wherdr: `not_found`, or not in the user\'s turn) → give the in-app link in text. Never retry in a loop.',

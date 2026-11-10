@@ -10,10 +10,16 @@ import { parseWherdrBlock } from '../app/utils/markdown'
 const cases: [UiRole, { pm?: boolean, key?: string }][] = [['task', {}], ['coordinator', { key: 'WEB' }], ['alfred', {}], ['alfred', { pm: true }]]
 
 describe('uiGuide', () => {
-  it.each(cases)('every %s example parses', (role, o) => {
-    for (const { use } of uiGuideRows(role, o)) {
-      if ('block' in use) expect(parseWherdrBlock(use.block) ?? parseStatusBlock(use.block), use.block).toBeTruthy()
-      else expect('error' in (use.cli === 'pm' ? parseCommand(use.argv) : parseAlfredCommand(use.argv)), use.argv.join(' ')).toBe(false)
+  // The text the agent reads: each fenced block and each command in it, copied as is.
+  it.each(cases)('every %s example parses as written in the text', (role, o) => {
+    const text = uiGuide(role, o).join('\n')
+    const blocks = [...text.matchAll(/```wherdr\n([\s\S]*?)\n```/g)].map(m => m[1]!)
+    const cmds = [...text.matchAll(/`wherdr (alfred|pm) ([^`]+)`/g)]
+    expect(blocks.length + cmds.length).toBe(uiGuideRows(role, o).length)
+    for (const b of blocks) expect(parseWherdrBlock(b) ?? parseStatusBlock(b), b).toBeTruthy()
+    for (const [, cli, rest] of cmds) {
+      const argv = rest!.split(' ')
+      expect('error' in (cli === 'pm' ? parseCommand(argv) : parseAlfredCommand(argv)), rest).toBe(false)
     }
   })
 
