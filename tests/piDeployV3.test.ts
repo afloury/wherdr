@@ -200,6 +200,9 @@ describe.skipIf(!hasCommands('bash', 'git', 'tar', 'sha256sum', 'flock'))('v3-bu
     fs.mkdirSync(path.join(repo, 'scripts'), { recursive: true })
     fs.mkdirSync(bin)
     fs.copyFileSync(PACKAGE, path.join(repo, 'scripts', 'pi-v3-package.sh'))
+    // The package ships the checkout's docs inside .output.
+    fs.mkdirSync(path.join(repo, 'docs'))
+    for (const f of ['llms.txt', 'overview.md']) fs.writeFileSync(path.join(repo, 'docs', f), '')
     const git = (...a: string[]) => execFileSync('git', ['-C', repo, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...a], { encoding: 'utf8' }).trim()
     git('init', '-q', '-b', 'v3')
     git('add', '.')
