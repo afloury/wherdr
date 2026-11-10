@@ -84,6 +84,13 @@ export async function archivedCards(store: PmStore, known: MachineInfo[], q: { p
   return { cards: found.slice(at, at + ARCHIVED_PAGE), total: found.length }
 }
 
+// One task's card by any key it had, archived or not: a link, a notification or
+// a chat's task card opens an archived task, which the board leaves out. null: unknown.
+export async function cardById(store: PmStore, known: MachineInfo[], id: unknown) {
+  const task = await store.task(id)
+  return { card: task ? (await cardsOf(store, [task], known))[0]! : null }
+}
+
 // Brings an archived task back to Done; its delay runs again from now.
 export async function unarchiveTask(store: PmStore, id: unknown) {
   const task = await store.task(id)

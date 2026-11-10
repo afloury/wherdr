@@ -3,6 +3,7 @@
 // board keeps its own sheet.
 import { expect, it } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
+import { getQuery } from 'h3'
 import { useRouter } from '#app'
 import TaskSheetHost from '~/components/TaskSheetHost.vue'
 import { initialState } from '#shared/pm/steps'
@@ -38,5 +39,17 @@ it('leaves the board to its own sheet', async () => {
   await new Promise(r => setTimeout(r, 50))
   expect(w.html()).not.toContain('task-sheet')
   expect(sheet()).toBeNull()
+  w.unmount()
+})
+
+// WHR-230: the board leaves archived tasks out; a link to one reads its card on its own.
+it('opens an archived task from a link, with Unarchive', async () => {
+  registerEndpoint('/api/pm/archived', (e): { card: Card | null } => ({ card: getQuery(e).id === 'CO-7' ? { ...card, id: 'CO-7', title: 'Old login fix', phase: 'done', archived: 1 } : null }))
+  const w = await mountSuspended(TaskSheetHost, { route: '/settings?section=phone&task=CO-7' })
+  await expect.poll(sheet).not.toBeNull()
+  expect(document.body.textContent).toContain('Old login fix')
+  expect(document.querySelector('[data-testid="task-unarchive"]')).not.toBeNull()
+  closeTaskSheet()
+  await expect.poll(sheet).toBeNull()
   w.unmount()
 })

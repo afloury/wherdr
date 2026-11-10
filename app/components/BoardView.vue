@@ -121,15 +121,16 @@ function added(task: Task, refused?: string) {
 // By any key its project had, in any case (a link may name a former key: /board?task=WHR-5 after WHR became WD).
 const openId = computed(() => storedTaskId(data.value?.projects ?? [], open.value) ?? open.value)
 const isOpen = (c: Card) => c.id === openId.value
-// An archived task opened from the archived sheet: not among the board's cards.
-const fromArchive = ref<Card | null>(null)
-const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.find(isOpen) ?? (fromArchive.value && isOpen(fromArchive.value) ? fromArchive.value : null))
+const onBoard = computed(() => cards.value.find(isOpen) ?? data.value?.cards.find(isOpen) ?? null)
+// An archived task (the archived sheet, a link /board?task=ID): not among the board's cards, read on its own.
+const archived = useArchivedCard(() => open.value, () => !!data.value && !onBoard.value)
+const selected = computed(() => onBoard.value ?? archived.value)
 // The Done column's footer: how many tasks of the shown projects are archived; it opens their list.
 const doneLane = computed(() => (columns.value ? columns.value.at(-1) : 'done'))
 const shownKeys = computed(() => (data.value?.projects ?? []).map(p => p.key).filter(shownProject))
 const archivedCount = computed(() => shownKeys.value.reduce((n, k) => n + (data.value?.archived?.[k] ?? 0), 0))
 const archiveOpen = ref(false)
-const openArchived = (c: Card) => { fromArchive.value = c; show(c.id) }
+const openArchived = (c: Card) => { keepArchivedCard(c); show(c.id) }
 </script>
 
 <template>

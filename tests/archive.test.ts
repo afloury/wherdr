@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
-import { archiveDone, board, unarchiveTask } from '../server/utils/pmBoard'
+import { archiveDone, board, cardById, unarchiveTask } from '../server/utils/pmBoard'
 import { issueToken, runCommand } from '../server/utils/pmCoordinator'
 import { updateProject } from '../server/utils/pmProject'
 import { common } from '../shared/pm/examples'
@@ -47,6 +47,8 @@ describe('auto-archive', () => {
     const b = await board(store)
     expect(b.cards.map(c => c.id)).toEqual([open.id, recent.id])
     expect(b.archived).toEqual({ CO: 1 })
+    // A link to it still finds its card.
+    expect((await cardById(store, [], old.id)).card).toMatchObject({ id: old.id, archived: expect.any(Number) })
   })
 
   it('lists done tasks newest done first', async () => {
