@@ -28,6 +28,7 @@ import { interactionWindowFor } from '~/utils/interactionWindow'
 import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
 import { appRoute } from '#shared/appLinks'
 import type { UiOpenEvent } from '#shared/uiOpen'
+import type { UiShowEvent } from '#shared/uiShow'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
 const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
@@ -35,18 +36,27 @@ const core = useRuntimeConfig().public.core
 const paneChat = (p: Pane | null | undefined) => hasChat(p)
 const route = useRoute()
 const router = useRouter()
-// An agent's `ui open` for this conversation (shared/uiOpen.ts): Settings
-// beside it on a wide computer, else a card above the message field. It never
+// An agent's `ui open` for this conversation (shared/uiOpen.ts), sent to this
+// device only when the user uses it: Settings beside it on a computer
+// (`show: 'panel'`, when the window has room), else a card above the message field. It never
 // moves the user away: the card waits for their tap.
 const uiCard = ref<UiOpenEvent | null>(null)
 watch(uiOpenRequest, (e) => {
   if (!e || e.pane !== props.paneId) return
   uiOpenRequest.value = null
   const to = appRoute(e.link)
-  if (!sidePanelRoom.value || !to.startsWith('/settings?')) { uiCard.value = e; return }
+  if (e.show === 'card' || !sidePanelRoom.value || !to.startsWith('/settings?')) { uiCard.value = e; return }
   uiCard.value = null
   uiOpenedBy.value = { by: e.by, section: new URLSearchParams(to.split('?')[1]).get('section') ?? '' }
   router.push(to)
+})
+// An agent's `ui show` (shared/uiShow.ts): beside the conversation when the
+// window has room, else a card that opens it in a sheet (UiShowPanel.vue).
+const showCard = ref<UiShowEvent | null>(null)
+watch(uiShowRequest, (e) => {
+  if (!e || e.pane !== props.paneId) return
+  uiShowRequest.value = null
+  if (sidePanelRoom.value) { showCard.value = null; uiShown.value = e } else showCard.value = e
 })
 
 // Pane being viewed (no notification for it, read as soon as it finishes): the active
@@ -145,7 +155,7 @@ const ctl = createTerminal(props.paneId, {
 const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void, focusSearch: () => void, gotoUnanswered: () => void } | null>(null)
 // Questions of the agent's last message the draft does not answer yet (ChatView): the composer's reminder.
 const unanswered = ref(0)
-const composer = ref<{ focus: () => void, focusEnd: () => void, focusAnswer: (at: number) => void, blur: () => void, addImages: (files: File[]) => Promise<void>, addFiles: (files: File[]) => Promise<number>, stop: () => boolean } | null>(null)
+const composer = ref<{ focus: () => void, focusEnd: () => void, focusAnswer: (at: number) => void, blur: () => void, addImages: (files: File[]) => Promise<void>, addFiles: (files: File[]) => Promise<number>, stop: () => boolean, sendText: (text: string) => Promise<void> } | null>(null)
 const searchOpen = ref(typeof route.query.q === 'string' && typeof route.query.hit === 'string')
 
 // Pane closed while being viewed. A pane just created may be missing
@@ -632,7 +642,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     >
       <ChatView
         ref="chatRef" v-model:search="searchOpen" :pane="pane" :local-queued="localQueued"
-        @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @answered="composer?.focusAnswer($event)" @unanswered="unanswered = $event" @sent="onSent"
+        @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @answered="composer?.focusAnswer($event)" @choose="composer?.sendText($event)" @unanswered="unanswered = $event" @sent="onSent"
       />
     </div>
     <div v-else-if="mode === 'term' && (!linkShown || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
@@ -656,6 +666,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     </div>
     <Keybar v-if="keybarShown" :id="keybarId" :ctl="ctl" :compact="compactPhone" :terminal="termShown" @keyboard="toggleComposerKeyboard" />
     <UiOpenCard v-if="uiCard" :event="uiCard" @close="uiCard = null" />
+    <UiShowCard v-if="showCard" :event="showCard" @close="showCard = null" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @pointerdown="takeTerminalControl" @keydown="onComposerKey" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
     </div>

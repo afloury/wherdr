@@ -89,6 +89,18 @@ The gesture implementation is `dragStart` / `dragMove` / `dragEnd`, with the
 `screen` views disable sheet dragging, so retain an explicit navigation action
 when using that mode.
 
+Sheets and settings pages never scroll sideways, and have **one vertical
+scroll**, the sheet's body: a tab's content takes its natural height, with no
+inner scroll box. What could overflow shrinks, wraps or is ellipsized: grid
+and flex children get `min-width: 0` (`minmax(0, 1fr)` tracks), long names and
+paths wrap with `overflow-wrap: anywhere`, fields are `w-full` or
+`min(100%, …)`. The one exception is a row meant to be swiped (the phone's row
+of screenshots in a task's To do). Scrollbars are the app's, set once in
+[main.css](../app/assets/css/main.css): thin, in the theme's line color, never
+the browser default; a strip of chips may hide its bar instead. On a computer
+the project and task sheets are 920 px wide. The check is
+[core-sheets.spec.ts](../tests/e2e/core-sheets.spec.ts).
+
 Reuse [MenuSheet.vue](../app/components/MenuSheet.vue), `.menu`, `.menu-group`,
 `.menu-sep` and `.menu-note` for action lists and grouped menus. Use
 [SpaceMenu.vue](../app/components/SpaceMenu.vue) as the example of a menu that
@@ -111,3 +123,12 @@ dismissal, scrolling, keyboard and safe areas. Use the existing responsive
 [device guide](devices.md) and the [iOS convention](../CONTRIBUTING.md#conventions);
 use the isolated demo screenshot workflow in
 [Contributing](../CONTRIBUTING.md#the-browser-demo) for visual evidence.
+
+**Nothing scrolls sideways: a sheet's or a page's content never exceeds its
+width.** Use no negative horizontal margin (`margin-left`, `margin-right`, a
+shorthand's sides, Tailwind `-mx-*`): to align an icon or a swatch inside a
+larger touch target, place it inside with padding or `justify-items: start`.
+One stays only when its parent clips (`overflow: hidden`) or has at least that
+much padding, and its line then says why: `/* overflow-safe: <why> */`.
+[tests/negativeMargins.test.ts](../tests/negativeMargins.test.ts) fails on any
+other in `app/`.

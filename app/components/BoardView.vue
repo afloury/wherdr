@@ -4,7 +4,7 @@
 // card's indicator is the live state of the agent holding its step.
 import { canCheckGithub } from '#shared/pm/ghCheck'
 import { turnText } from '#shared/pm/refusal'
-import { asker, boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, statusText, waitsFor, type Board, type BoardMachine, type Card } from '#shared/pm/board'
+import { asker, boardLanes, boardTags, canStart, canStop, cardStatus, linkLabel, mainLink, mergeWaits, statusText, waitsFor, type Board, type BoardMachine, type Card } from '#shared/pm/board'
 import type { Task } from '#shared/pm/run'
 import { RESUMES } from '#shared/pm/stop'
 import { cardTime } from '#shared/pm/times'
@@ -17,9 +17,21 @@ const error = ref('')
 // shared/appLinks.ts), read again when the board is already open.
 const route = useRoute()
 const queried = (v: unknown) => (typeof v === 'string' ? v : '')
-const project = ref(queried(route.query.project).toUpperCase()) // '' = all projects
+// The project picker: Follow machine tab (the projects the home tab picked
+// shows, projectOnBar), All projects, or one project. The user's pick follows
+// them across devices; never picked, it is Follow once machine groups exist.
+// A link's project shows without replacing it.
+const linked = ref(queried(route.query.project).toUpperCase())
+watch(() => queried(route.query.project), (p) => { linked.value = p.toUpperCase() })
+const known = (key: string) => !data.value || data.value.projects.some(p => p.key === key)
+const boardPick = computed(() => {
+  const saved = linked.value || boardProject.value
+  return saved && (saved === BOARD_FOLLOW || saved === BOARD_ALL || known(saved)) ? saved : machineGroups.value.length ? BOARD_FOLLOW : BOARD_ALL
+})
+const project = computed(() => (boardPick.value === BOARD_FOLLOW || boardPick.value === BOARD_ALL ? '' : boardPick.value)) // '' = several projects
+const shownProject = (key: string) => (project.value ? key === project.value : boardPick.value !== BOARD_FOLLOW || projectOnBar(key))
+const projectPick = computed({ get: () => boardPick.value, set: (v: string) => { linked.value = ''; boardProject.value = v } })
 const tag = ref(queried(route.query.tag)) // '' = every tag
-watch(() => queried(route.query.project), (p) => { project.value = p.toUpperCase() })
 watch(() => queried(route.query.tag), (g) => { tag.value = g })
 // The task to show, also from Decisions' "Open task" (/board?task=CO-1).
 const open = ref<string | null>(typeof route.query.task === 'string' ? route.query.task : null)
@@ -39,13 +51,12 @@ watch(taskSheetTick, load) // an action in a task's sheet, also read by Tasks to
 // An agent asking a question or a permission puts its card in Your turn too.
 const waitsForYou = (c: Card) => { const p = paneOf(c); return !!p && hasAgent(c) && statusKey(p) === 'blocked' }
 const cards = computed(() => (data.value?.cards ?? [])
-  .filter(c => (!project.value || c.project === project.value) && (!tag.value || c.tags.includes(tag.value)))
+  .filter(c => shownProject(c.project) && (!tag.value || c.tags.includes(tag.value)))
   .map(c => (!c.yourTurn && waitsForYou(c) ? { ...c, yourTurn: tl('Answer the agent', 'Réponds à l’agent') } : c)))
-const projectPick = noneModel(project)
 const tagPick = noneModel(tag)
-const projectItems = computed(() => [{ label: tl('All projects', 'Tous les projets'), value: NONE }, ...(data.value?.projects ?? []).map(p => ({ label: p.name, value: p.key }))])
+const projectItems = computed(() => [{ label: tl('Follow machine tab'), value: BOARD_FOLLOW }, { label: tl('All projects', 'Tous les projets'), value: BOARD_ALL }, ...(data.value?.projects ?? []).map(p => ({ label: p.name, value: p.key }))])
 const tagItems = computed(() => [{ label: tl('Tags', 'Étiquettes'), value: NONE }, ...tags.value.map(x => ({ label: x, value: x }))])
-const tags = computed(() => boardTags((data.value?.cards ?? []).filter(c => !project.value || c.project === project.value)))
+const tags = computed(() => boardTags((data.value?.cards ?? []).filter(c => shownProject(c.project))))
 // The header's coordinator button: the project's; none on All projects (Alfred has no autopilot).
 const coordinator = computed(() => (project.value ? coordinators.value.find(c => c.project === project.value) : undefined))
 const columns = computed(() => (project.value ? data.value?.projects.find(p => p.key === project.value)?.columns ?? [] : null))
@@ -145,6 +156,8 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
           <small class="mono-label board-card-id"><ProjectBadge :text="c.shown" :color="c.color" copy /><template v-if="c.machine"> · <span data-testid="board-machine">{{ c.machine }}</span></template><template v-if="timeOf(c)"> · <span data-testid="board-time">{{ timeOf(c) }}</span></template><template v-else-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
           <span v-if="turnText(c)" class="board-badge" data-testid="board-badge">{{ turnText(c) }}</span>
+          <!-- An approved merge on its way: Merge loading until it ends, what it waits for on the status line above. -->
+          <span v-else-if="mergeWaits(c) !== undefined" class="board-badge board-merging" role="status" :aria-label="`${c.userLabel || tl('Merge')}: ${mergeWaits(c)}`" data-testid="board-merging"><UIcon name="i-lucide-loader-circle" class="spin" aria-hidden="true" />{{ c.userLabel || tl('Merge') }}</span>
           <small v-if="c.report" class="board-status wait" :title="c.report.text" data-testid="board-report">{{ tl('Problem reported') }} {{ fmtTime(c.report.at) }}</small>
           <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).map(id => shownTaskId(data?.projects ?? [], id)).join(', ') }}</small>
           <!-- Stalled, the machine may still fix it: a warning only; after 30 min it is Your turn. -->
@@ -198,6 +211,8 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
 .board-card-head { display: flex; align-items: center; gap: 8px; }
 .board-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--muted); }
 .board-status.wait { color: var(--working); }
+.board-merging { display: inline-flex; align-items: center; gap: 4px; border-color: var(--working); color: var(--working); }
+.board-merging .spin { animation: spin .8s linear infinite; }
 .board-status.bad { color: var(--danger); }
 .board-status.ok { color: var(--done); }
 .board-stall { display: flex; align-items: center; gap: 4px; min-width: 0; font-size: 12px; color: var(--blocked); }

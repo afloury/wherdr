@@ -9,14 +9,15 @@
 // task at its merge step or archived with a PR (what it found said under the
 // buttons, with the PR and, for a PR closed unmerged, Archive), and Delete for
 // a task never started (confirmed). Those stay at the top; below, tabs (the app's
-// segmented style) for the rest, only the open one scrolling: Description (the
+// segmented style) for the rest, in the sheet's one scroll: Description (the
 // text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR among them), Plan (each step with its
-// screenshots), Log.
-import { canStart, canStop, cardStatus, linkLabel, statusText, type Card } from '#shared/pm/board'
+// screenshots), History (the hand-offs between its agents and the user,
+// TaskHistory), Log (the raw lines).
+import { canStart, canStop, cardStatus, linkLabel, mergeWaits, statusText, type Card } from '#shared/pm/board'
 import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
 import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
-import type { Task } from '#shared/pm/run'
+import { reviewSwitch, type Task } from '#shared/pm/run'
 import { shotMode } from '#shared/pm/shots'
 import { timesText } from '#shared/pm/times'
 import type { Choice } from '#shared/pm/verdict'
@@ -38,6 +39,9 @@ const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
 const shots = (id: string) => props.card.state?.shots?.[id] ?? []
 // The sets a rework after the review replaced.
 const earlier = (id: string) => props.card.state?.earlierShots?.[id] ?? []
+// The fallback took the last review (the review agent out of quota): said on the review step it holds now or held last.
+const switched = computed(() => reviewSwitch(props.card.log))
+const switchAt = computed(() => props.card.plan.findLastIndex((s, i) => s.holder === 'reviewer' && (done.value || i <= at.value)))
 // Where its PR and merge stand (the card's line), with the full time and the approval's date.
 const status = computed(() => { const s = cardStatus(props.card); return s && { ...s, text: statusText(s, fmtDateTime, true) } })
 
@@ -51,13 +55,13 @@ function onDescClick(e: MouseEvent) {
   const text = btn?.closest('.code-block')?.querySelector('pre')?.textContent
   if (btn && text != null) copyCodeBlock(btn, text)
 }
-type Tab = 'todo' | 'description' | 'plan' | 'log'
-const TAB_LABEL: Record<Tab, [string, string]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], log: ['Log', 'Journal'] }
+type Tab = 'todo' | 'description' | 'plan' | 'history' | 'log'
+const TAB_LABEL: Record<Tab, [string, string?]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], history: ['History'], log: ['Log', 'Journal'] }
 const tabs = computed<Tab[]>(() => [
   ...(todo.value ? ['todo' as const] : []),
-  ...(props.card.description || props.card.tags.length || props.card.links.length ? ['description' as const] : []),
+  ...(props.card.description || props.card.specNotes?.length || props.card.tags.length || props.card.links.length ? ['description' as const] : []),
   'plan',
-  ...(props.card.log.length ? ['log' as const] : []),
+  ...(props.card.log.length ? ['history' as const, 'log' as const] : []),
 ])
 const picked = ref<Tab>()
 // The tab picked while it is still there (the task read again), else the first.
@@ -94,7 +98,8 @@ const sendBack = (note: string) => run(() => api('/api/pm/step-back', { id: prop
 // A problem reported to the coordinator: open on the card until it acts or the user withdraws it.
 const reportOpen = ref(!!props.reporting)
 // An action step that failed (a merge refused): the user runs it again.
-const failedAction = computed(() => { const s = props.card.state; return !props.card.stopped && !!s && !s.acting && s.yourTurn?.reason === 'action' && !!props.card.plan[s.at]?.action })
+// Not an approved merge on its way: a refusal the queue tries again is not the user's (mergeWaits).
+const failedAction = computed(() => { const s = props.card.state; return !props.card.stopped && !!s && !s.acting && s.yourTurn?.reason === 'action' && !!props.card.plan[s.at]?.action && mergeWaits(props.card) === undefined })
 const canReport = computed(() => !!props.card.yourTurn && !props.card.state?.done && !props.card.report)
 const report = (r: { text: string, shots: string[], block: boolean }) => run(async () => { await api('/api/pm/report', { id: props.card.id, ...r }); reportOpen.value = false })
 const withdraw = () => run(() => api('/api/pm/report', { id: props.card.id, withdraw: true }))
@@ -162,6 +167,10 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
         <template v-else-if="tab === 'description'">
           <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
           <div v-if="descHtml" class="md-body task-md" data-testid="task-description" @click="onDescClick" v-html="descHtml" />
+          <section v-if="card.specNotes?.length" class="task-spec-notes" data-testid="task-spec-notes">
+            <span class="mono-label">{{ tl('Spec changes · the latest overrides the description') }}</span>
+            <p v-for="n in card.specNotes" :key="n.at" class="task-spec-note"><span class="mono-label">{{ fmtDateTime(n.at) }}</span> {{ n.text }}</p>
+          </section>
           <div v-if="card.tags.length || card.links.length" class="board-tags">
             <span v-for="tag in card.tags" :key="tag" class="board-chip">{{ tag }}</span>
             <a v-for="l in card.links" :key="l.url" :href="l.url" target="_blank" rel="noopener" class="board-chip">{{ linkLabel(l) }}</a>
@@ -175,6 +184,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
               <summary>{{ tl('Instructions', 'Consignes') }}</summary>
               <p class="task-desc">{{ s.text }}</p>
             </details>
+            <small v-if="switched && i === switchAt" class="muted" data-testid="review-switch">{{ switched }}</small>
             <small v-for="[k, v] in proofs(s.id)" :key="k" class="muted">{{ k }}: <a v-if="/^https?:\/\//.test(v)" :href="v" target="_blank" rel="noopener">{{ v }}</a><template v-else>{{ v }}</template></small>
             <TaskShots v-if="shots(s.id).length" :task="card.id" :shots="shots(s.id)" :mode="shotMode(s)" />
             <details v-if="earlier(s.id).length" data-testid="shots-earlier">
@@ -183,6 +193,8 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
             </details>
           </li>
         </ol>
+
+        <TaskHistory v-else-if="tab === 'history'" :card="card" />
 
         <ol v-else class="task-log" data-testid="task-log">
           <li v-for="(e, i) in [...card.log].reverse()" :key="i">
@@ -196,8 +208,9 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 </template>
 
 <style scoped>
-/* The whole sheet's body (a flex column, main.css): the top stays, only the tab's panel scrolls. */
-.task-sheet { display: flex; flex-direction: column; gap: 12px; flex: 1; min-height: 0; padding: 0 16px 16px; }
+/* One scroll, the sheet's body (a flex column, main.css): the sheet fills it
+   and grows with its tab, whose panel takes its natural height. */
+.task-sheet { display: flex; flex-direction: column; gap: 12px; flex: 1 0 auto; padding: 0 16px 16px; }
 .task-sheet-top { display: flex; flex-direction: column; gap: 10px; flex: none; }
 .task-sheet p { margin: 0; }
 .task-tabs { flex: none; }
@@ -207,12 +220,14 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-status.ok { color: var(--done); }
 .task-check { display: grid; gap: 4px; }
 .task-times { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.task-panel { display: flex; flex-direction: column; gap: 10px; flex: 1; min-height: 120px; overflow-y: auto; overscroll-behavior: contain; }
+.task-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
 .task-desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
 /* Headings shown small: a description is not a document. */
 .task-md { flex: none; overflow-wrap: anywhere; color: var(--text-2); }
 .task-md :deep(:is(h1, h2, h3, h4, h5, h6)) { font-size: 15px; margin: 1em 0 .4em; }
 .task-sheet .task-md :deep(p) { margin: 0 0 .75em; }
+.task-spec-notes { display: grid; gap: 6px; }
+.task-spec-note { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text-2); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-sheet-actions:empty { display: none; }
 .task-report-open { display: grid; gap: 6px; justify-items: start; padding: 10px 12px; border: 1px solid var(--working); }

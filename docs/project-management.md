@@ -62,7 +62,8 @@ the name (with a **Public** badge for a public repository), the key, the machine
 and the folder. *Add project* opens the setup window on a new project; *Open the
 board* goes to the board. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
-Autopilot. Its ⋯ menu removes the project from wherdr, after a confirmation:
+Autopilot; on a computer it is a wide window, and its General fields pair up
+side by side (name and key, worker and reviewer). Its ⋯ menu removes the project from wherdr, after a confirmation:
 its folder, branches and task worktrees stay on the machine.
 
 ### General
@@ -70,7 +71,7 @@ its folder, branches and task worktrees stay on the machine.
 - **Name**, **Key** and **Color**. Task ids start with the key. Change it and every task,
   old ones too, shows the new key: on the board, and in what wherdr writes for you
   and its agents (wakes, notifications, task logs, PR titles, `wherdr pm` outputs,
-  branches of tasks started from then on). Links and commands with a former key still work.
+  branches of tasks started from then on); texts written before the change read the new key too. Links and commands with a former key still work.
   The color, picked from a small palette, is the project's key badge everywhere:
   its coordinator row and conversation header, board cards, the task sheet, its
   task agents' headers and *Tasks to handle*.
@@ -91,7 +92,8 @@ its folder, branches and task worktrees stay on the machine.
   request link), wherdr follows that branch: its pushes, PR and merge checks
   use it, never the old one.
 - **Agents**: the worker and the reviewer its tasks start with, each with an
-  optional model (empty: the agent's default).
+  optional model (empty: the agent's default), and the reviewer's optional
+  **Fallback** (see [Reviewer fallback](#reviewer-fallback)).
 - **Repository**: public or private, as wherdr found it (*Check again*) or as
   you set it. A public repository gets the coordinator's public-repository rules.
 - **Based on**: the template the workflow was copied from and its version, for
@@ -103,7 +105,8 @@ its folder, branches and task worktrees stay on the machine.
   saved, wherdr runs that machine's readiness check (see *Start on…* under
   [Board](#board)) and shows *Ready* or what is missing. Each machine shows its
   last check (*Not checked yet* before the first); ↻ runs it again. ✕ removes a machine:
-  new tasks no longer start there, tasks already there stay. Alfred does the
+  new tasks no longer start there, tasks already there stay. Its switch off pauses it
+  for the project instead, its clone kept ([Pause a machine for a project](machines.md#pause-a-machine-for-a-project)). Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
   **Placement** chooses how new tasks spread over these machines: *Heavy to the
   strongest* (the default: light and standard work at home when it fits, heavy
@@ -111,7 +114,10 @@ its folder, branches and task worktrees stay on the machine.
   machine with the largest share of memory and cores left after it) or *Home
   first* (other machines only once home is full). A machine fits a task when
   its free memory covers the task's estimate plus the machine's reserve
-  (Settings › Machines). A task that waits for room names it, and so does the
+  (Settings › Machines). An idle machine (no wherdr agent at work there) always
+  takes one task its RAM can hold, even with less free memory than that: the
+  reserve only holds its second task and beyond; on macOS a *critical* memory
+  pressure still holds every task. A task that waits for room names it, and so does the
   coordinator's `autopilot show`. A task too big for every machine it may use
   (their RAM less the reserve is under its estimate) runs on the best one
   instead of waiting forever, and its log says so once. A worker started
@@ -121,12 +127,19 @@ its folder, branches and task worktrees stay on the machine.
 - **Shown in**: the home tab that shows the project's coordinator and its tasks
   to handle, saved at once. *Automatic* (the default, with the groups it means
   in brackets): every tab holding one of its machines, so a project whose
-  machines are in several groups shows on each of them. Or one machine group,
+  machines are in several groups shows on each of them. A machine paused for
+  the project is left out, unless one of its tasks still runs there. Or one machine group,
   or *All tabs*. Without a machine group the sheet points to Settings ›
   Appearance › Machine tabs; deleting a group puts the projects shown in it
   back to Automatic ([Machines as tabs](home.md#machines-as-tabs)).
 
 ### Workflow
+
+The **Workflow** is *how each task runs, step by step*; the
+[Autopilot](#autopilot) is *when the project works without you*. The tab
+starts with that line and a link to the Autopilot tab (who starts tasks and
+when), then draws the first task type's steps as a row of linked boxes (for
+example work → pr → review → merge), each with who holds it.
 
 The project's own workflow: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator
@@ -195,15 +208,48 @@ or *Accept*. The review opens on *Readable*: per task type, its steps with the o
 removed or changed marked, and each changed field before → after (holder, ends,
 action, merge rule, guards; instructions as a text diff). *JSON* shows the raw
 diff. A proposal made before the workflow changed again is refused, and the
-review says so: ask the coordinator to propose again. The coordinator's window
-and the *Decisions* view link to this review. [Alfred](alfred.md) can propose
+review says so: ask the coordinator to propose again. The *Decisions* view links to this review. [Alfred](alfred.md) can propose
 a change too, on your request in its chat: you answer it in the same review.
 
-In the coordinator's conversation, a card follows the message that made the
-proposal: what changes in one line, who proposed it, your request with its
+In the coordinator's conversation, a *Workflow change* card follows the message
+that made the proposal: what changes in one line, the steps of the first
+changed task type before and after (the steps added or handed to someone else
+are outlined), who proposed it, your request with its
 time and *Go to message* (back to it in the conversation), *Accept*, *Refuse*
 and *See all changes* (the review). Once answered, the card shows the outcome, by whom and
 when.
+
+#### Reviewer fallback
+
+The workflow's `prefs` (template, task type or task, the nearest wins) say
+which agents a task uses: `agent` and `model` for the worker, `reviewAgent`
+and `reviewModel` for the reviewer (another model than the worker's, or
+`"same"`: a fresh session of the worker's model, with the worker's agent).
+`reviewFallbackAgent` and `reviewFallbackModel`, always set together, name the
+reviewer to start instead when the review agent's account is out of quota on
+the task's machine. Any pair works, and nothing is picked for you:
+
+```json
+{ "agent": "claude", "model": "claude-opus-5-5",
+  "reviewAgent": "codex", "reviewModel": "gpt-6.1-sol",
+  "reviewFallbackAgent": "claude", "reviewFallbackModel": "same" }
+```
+
+or a Claude reviewer with a Codex fallback:
+`"reviewModel": "claude-sonnet-5-5", "reviewFallbackAgent": "codex", "reviewFallbackModel": "gpt-6.1-sol"`.
+The fallback follows the reviewer's rules; *Save* refuses one that breaks them,
+or one of the two prefs without the other.
+
+Before it starts a reviewer, wherdr reads the review agent's account (the
+reading of the home screen and pacing): at its limit and not yet reset, the
+fallback reviews instead. A reviewer that hits its limit during a review (an
+*account limit* [incident](#why-agents-are-gone)) is replaced at once by the
+fallback, which reviews from the start. Each switch is in the task's log
+(*review: Codex out of quota until 14:52, reviewed by claude claude-opus-5-5*)
+and on the review step of the task sheet's Plan. The next review uses the
+review agent again once its quota is back. Leave both out (as in the example
+templates) for no fallback: nothing changes, the review waits for the review
+agent.
 
 ### Guards
 
@@ -252,8 +298,10 @@ task's description), its task type, a switch, its last firings and *Run now*.
 
 ### Autopilot tab
 
-The project coordinator's [autopilot](#autopilot), as in its window, and a link
-to the [pace](quotas.md#pace) of every account.
+The project coordinator's [autopilot](#autopilot), as in its window, under its
+line (*when the project works without you*) and a link to the Workflow tab
+(the tasks it starts follow it), and a link to the [pace](quotas.md#pace) of
+every account.
 
 ### Template library
 
@@ -271,9 +319,12 @@ template*.
 Each project has its own autopilot, run by its coordinator; Alfred has none and
 acts only when you ask it (in Alfred's conversation, the header's **Agent**
 button only picks its agent). On the board with a project picked, and in a
-project coordinator's conversation, the **Autopilot** button in the header shows the autopilot's state (green square: on; hollow: asleep) and a
-count of what waits for you: a workflow change the coordinator proposed, or a
-kept conversation that ran with another agent. A tap opens its window:
+project coordinator's conversation, the **Autopilot** button in the header (a
+clock) shows the autopilot's state (green square: on; hollow: asleep) and a
+count when the kept conversation ran with another agent. It is only about the
+autopilot: a workflow change the coordinator proposed is a *Workflow change*
+card in its conversation (see [Workflow](#workflow)). A tap opens its window,
+under the autopilot's line and a link to the project's Workflow tab:
 
 - the agent that answers the coordinator (Alfred's too), and a warning when its conversation
   ran with another one: *New conversation* with the default, or *Resume* the one kept (for
@@ -281,8 +332,7 @@ kept conversation that ran with another agent. A tap opens its window:
   conversation stopped (its terminal ended, for example when its machine
   restarted), *Resume the conversation* takes it up again with the agent that
   ran it, and *New conversation* starts a new one;
-- the proposed workflow change: *Review* opens it in the project's [Workflow](#workflow) tab;
-- the autopilot: a switch, a **goal**, how often it wakes (*Every*, *At*), its
+- the autopilot: its state and next wake, a switch, a **goal**, how often it wakes (*Every*, *At*), its
   limits (*Tasks / day*: up to 1000, empty for no daily limit; *At once*: empty is *Auto*, as many as the project's
   machines have room for; both empty for a new project, while a project that
   kept the older defaults (10 a day, 2 at once) keeps them, with the hint *Older
@@ -312,7 +362,7 @@ for goes at once, with a word when it goes past one (*started; past the
 autopilot's limit of 3 at once*), and still counts in them.
 
 **Keep the board busy** (on by default while the autopilot is on): the engine
-itself starts the next task to do, oldest first, whenever a machine the project
+itself starts the next task to do, in [board order](#board-order), whenever a machine the project
 allows has room, within the autopilot's limits, hours and pace. It never starts
 a task that waits for its *after* tasks (those start once they are done), nor
 one already under way, and each start goes in the task's log (*started by the
@@ -336,7 +386,18 @@ weight that differs from the task type's.
 ### Who sends a wake
 
 A wake is a message wherdr sends the coordinator; its first line names who
-sends it, and the conversation shows a small label of that kind above it:
+sends it. The conversation shows it apart from your messages, as a compact
+muted row across the column: the kind as a small coloured tag, its first
+reason (*Scheduled wake*, *WHR-9: stuck: …*) and its time; a tap opens the
+full text and the coordinator's whole turn. That turn ends at its own end,
+or at your next message or `!`/`/` command, which show as usual below it.
+Once that turn is over, the coordinator's last answer in it sits under the row, smaller and muted, two lines at
+most. Consecutive routine wakes (no incident, nothing changed: no file edit
+nor `wherdr pm` command beyond `ack`, `read`, `list`, `show`, `incidents`,
+`help`; an answer that asks nothing) fold into one row, *3 routine checks,
+08:00–11:00*, that opens on tap. An incident, or a wake whose answer asks you
+something, keeps its row (in its stronger colour); an answer that asks you
+stays a full reply, with its answer buttons:
 
 - **Autopilot**: the autopilot's scheduled wakes, what needs judgment (an
   agent's question that is not a permission request, the choice after N review
@@ -351,6 +412,7 @@ sends it, and the conversation shows a small label of that kind above it:
   tasks waiting for you, tasks stalled for over an hour, and machines idle
   while to-do tasks wait. When nothing is wrong the coordinator acks it with no
   further work; with nothing at all to report, no wake is sent.
+- **Incident**: [the incident wake](#the-incident-wake).
 
 Waking the coordinator costs a turn with its whole context, so with the
 autopilot on and its events left off, it wakes only for these: an agent's
@@ -361,6 +423,24 @@ in *Tasks to handle*.
 
 Each kind is its own wake, sent one after the other. Every wake ends with
 `wherdr pm ack <id>`, whatever its kind.
+
+**Wakes that would change nothing are not sent:**
+
+- a **scheduled wake** while nothing the coordinator could act on changed since
+  its last wake: every task where it stood then, no task it could start now
+  (each to-do one waits for its *after* tasks, its files, room or a machine),
+  no new block, no answer, no message of yours. It counts in the day's skipped
+  wakes, as one with nothing to do;
+- an **Engine** wake for a block whose only cause is an offline or paused
+  machine: the incident already said so, and the engine goes on once the machine
+  is back. It wakes the coordinator only if that resume fails;
+- a second wake for an agent's **question** the coordinator already answered
+  with `tell`, while the agent's question is still showing;
+- a **health check** whose lines are all in the last one sent; it comes again
+  after 12 hours at most.
+
+Each one skipped is listed by `wherdr pm autopilot show` (*skippedWakes*: when,
+what and why), never in the conversation.
 
 ### What a task's agent said
 
@@ -375,8 +455,13 @@ wake (*question*) carry the question itself, and `wherdr pm tell` answers it.
 ## Board
 
 The header has **Decisions** (with a count when some wait), **Add task**, the
-project picker (*All projects* or one), a tag filter when tasks have tags, and,
-with one project picked, its [Autopilot](#autopilot) button. The first column is **Your turn**, then the
+project picker, a tag filter when tasks have tags, and,
+with one project picked, its [Autopilot](#autopilot) button. The picker offers
+*Follow machine tab* (the projects the [home tab](home.md#machines-as-tabs) picked
+shows; **All** shows every one, and changing the tab updates the board in place),
+*All projects*, or one project. Your pick is kept and follows you across devices;
+until you pick, it is *Follow machine tab* once machine groups exist, else *All
+projects*. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects. A done
 or archived task is never under Your turn.
 
@@ -426,6 +511,54 @@ asks for screenshots, light when the type lands no code (no commit, link or git
 action), standard otherwise. The coordinator does the same with `task add
 --weight`, and `show <task>` gives it.
 
+### Board order
+
+Each column lists its cards in board order: the tasks the coordinator put
+first, in the order it gave, then the others, oldest first. Ask the
+coordinator (or Alfred) to order them, for example the tasks waiting for a
+merge in the order they should merge: it runs `wherdr pm task order <task>
+[<task>…]`, which puts these tasks first in their column, in this order, and
+leaves the others in their order after them. A done task is refused. The order
+is the same for everyone and survives a restart; the project's log says who
+ordered what. In a wake, the coordinator orders the board only with the
+autopilot on.
+
+Keep the board busy starts to-do tasks in this order, the merge queue takes
+approved merges in it when several are ready at once, and `wherdr pm list`
+returns tasks in it.
+
+### Spec changes
+
+When you change your mind about a task while it runs, the coordinator records
+the change in the task's spec, so the reviewer reviews against what you want
+now, not the first description:
+
+- `wherdr pm task edit <task> [--title "<text>"] [--description "<text>"]
+  --reason "<one sentence>"` rewrites the title or the description. The
+  task's log keeps the reason and a short diff of the old and new text.
+- `wherdr pm task note <task> "<text>"` adds a dated spec change under the
+  description.
+- `wherdr pm tell <task> "<text>" --spec` tells the agent and records the same
+  text as a spec change.
+
+The worker's and the reviewer's instructions give the description, then every
+spec change, newest last, with the rule *the latest note overrides the
+description where they disagree*. A running agent of the task is told at once;
+the next ones read it from their step or review round. The task sheet's
+Description tab shows the spec changes under the description. The coordinator
+makes these changes only in a turn that comes from you, never in a wake.
+
+When a review still fails after several send-backs on findings that
+contradict a spec change, the coordinator may pass it, even in a wake and even
+when the engine does not offer *pass*: `wherdr pm task decide <task> pass
+--reason "<one sentence>"`, the reason citing the spec change (its date,
+`YYYY-MM-DD`, or its words). wherdr refuses it when the task has no spec
+change or the reason cites none, and then the choice stays yours. It only ends
+the review loop: a merge only you may do still waits for you, and a critical
+finding with proof stays yours. The pass is
+written to the task's log, the coordinator tells you in its next message, and
+*Decisions* shows it for a day under *Passed on a spec change*.
+
 ### Tasks that touch the same files
 
 Tasks that change the same files do not run at the same time. At the start of
@@ -458,7 +591,27 @@ waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
 *Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
 with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
-and screenshots) and **Log**. A refused merge says why under its button.
+and screenshots), **History** and **Log**, all in the sheet's one scroll. A refused merge says why under its button.
+
+**History** reads the task as a conversation, oldest first: the worker's *Done*
+(its closing report on its last one), the reviewer's *Sent back* (the findings,
+with their weight) or *Passed* (what it left as minor), the worker's *Fixed*
+(and the findings it contested), wherdr's catch-ups and CI fixes, the
+coordinator's and your actions. Each entry says who, when and, for an agent,
+its program and model; its text is Markdown, folded past a few lines with
+*Show more*. Only the worker's last report is kept, so an earlier *Done* says
+just that. **Log** keeps the raw lines, newest first.
+
+At the top of **History**, and of the worker's note in **To do**, a
+**Summary** says in 3 to 6 lines how the task went: what was built, the main
+review findings and how they were solved, what is left. Claude Haiku writes it
+through the `claude` CLI on the wherdr machine (`claude -p`, safe mode, no
+tools), from the task's title, the worker's reports and the reviewer's
+findings only: no description, no proof, no file contents, and home paths,
+e-mail addresses and tokens masked. It is made once per round, again when a
+new report or verdict arrives, one task a minute, and skipped while the pace
+of this machine's Claude account holds automatic work. A task whose last
+report is more than a day old keeps its summary as it is.
 
 **Check on GitHub** shows on a task with a PR at its merge step, or archived:
 wherdr reads the PR now, for a merge stuck after a guard refusal, a PR merged
@@ -485,9 +638,11 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 - **A visual change to merge**: the **Worker's note** (its closing report: what
   was done, why it is done, what was tested) and the **Reviewer's note** (the
   verdict, what it sent back and was fixed during the rounds, what it left as
-  minor), each in Markdown, folded to a few lines with *Show more*, side by
-  side on a wide screen; then its screenshots large (swipe between them, tap
-  one to zoom; each is labelled phone or desktop), then
+  minor), each in Markdown, folded to a few lines with *Show more* (the
+  task's [summary](#task-sheet) above the worker's note), full
+  width, one above the other (on a phone, *Worker* / *Reviewer* tabs above
+  one note); then its screenshots large (swipe between them on
+  the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop), then
   *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
   A step you end (*Deployed*, …) shows the same two notes under its badge.
   When the agent reworks the task after its review (new commits since the
@@ -518,7 +673,7 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   refused) has *Try again* at the top of the sheet, which runs it again.
 
 On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
-*Start*, *Open the agent*) stay pinned at the bottom of the tab while its
+*Start*, *Open the agent*) stay pinned at the bottom of the sheet while its
 content scrolls, so they are always in reach above the home bar.
 
 ### Report a problem
@@ -555,14 +710,23 @@ task's own changes to interface files (`components`, `assets`, `pages` and
 `layouts` folders) differ from those you approved; what a merge of the base
 brought does not count.
 
+Until the merge ends, *Merge* stays loading, on the card in *Your turn* and in
+the task sheet, with what it waits for under it: its place in the merge queue,
+its checks running, an update with its base, or its machine coming back
+online. This comes from the approval wherdr keeps, so it is the same after a
+reload and on every device. Once merged, the task leaves *Your turn*; if the
+merge fails or is refused, *Try again* comes back with the reason in plain
+words.
+
 #### The merge queue
 
 Each project has a **merge queue**: every task whose merge may go on without
 you (a merge the guards give to wherdr, or one you approved) enters it. Only
 PRs ready to merge now stand in line: no conflict, no update required, the
 task's last commit on the PR and its checks green. The first in line merges,
-then the next one, a minute apart; PRs that touch no file another queued PR
-touches come first, then smaller changes.
+then the next one, a minute apart; the tasks the coordinator put first on the
+board come first, in [board order](#board-order), then PRs that touch no file
+another queued PR touches, then smaller changes.
 
 A PR that needs work steps out of line until it is ready again, so it never
 holds up the others: a conflict with its base, checks still running or red,
@@ -643,6 +807,88 @@ from then, so the task comes back if its agent stops again. The Log says
 *back to work* and who sent it back. What only you can do (a merge, an answer,
 a permission, a decision) stays until you do it.
 
+### Why agents are gone
+
+When a task's agents are gone (after a restart, or while wherdr runs), the
+engine decides the cause from facts it reads, never a guess:
+
+- **machine offline or unreachable**: its herdr-core does not answer;
+- **herdr-core or wherdr restarted** (or the machine rebooted): every agent's
+  terminal of a machine gone at once (none still running there), herdr-core
+  started after the agents, or
+  herdr-core ended them itself (a stop, a restart, the host shutting down);
+- **agent killed or crashed**: its terminal ended with an exit code or a
+  signal; **out of memory** when its last output says so;
+- **account limit reached**: only when the account's reading at that time
+  says it was at its limit ([Quotas](quotas.md));
+- **unknown**, said as such, when the facts do not decide (an agent that
+  exited with 0, a terminal missing on a core older than it).
+
+Each one is recorded as an **incident**, per machine: when, the cause, the
+facts used, the tasks and agents hit. The task waits with the cause (*The
+agent's terminal is gone: …*), after a restart as while wherdr runs, and its
+Log names the incident; wherdr then resumes it by itself
+([The engine resumes the work](#the-engine-resumes-the-work)). An incident is open until its tasks run again (started
+again, a new agent): what they wait for later is not this incident.
+
+The coordinator lists them with `wherdr pm incidents [--since 2h|3d|<date>]`
+(the last 7 days by default), and `wherdr pm autopilot show` gives the last
+open one, so it tells you the cause the engine found.
+
+### The engine resumes the work
+
+A task an incident stopped waits for wherdr, not for you: it is not in Your
+turn, the coordinator sees it as working (never stuck, nor waiting for you in
+its health check), its card says why it waits (*… wherdr resumes it once host-b is back*).
+Once the cause is gone, the engine resumes it by itself, every minute:
+
+- **when**: a restart, a crash or an unknown cause at once; a machine offline
+  once it is back (still offline, its tasks keep waiting); an account limit
+  once the account's reading says it reset;
+- **how**: its worker starts again in its worktree. A Claude worker takes its
+  conversation up again (`--resume`, its session id kept from its start) with
+  *You were interrupted (…): check git status and continue*; Codex, or a
+  conversation that cannot be resumed, gets a new agent that reads its
+  instructions with a handover note saying the same. A task stopped at the
+  review gets its reviewer again;
+- **in order**: the tasks before it (`after`) first. A task that starts after
+  one being resumed stays to do and *Waits for WEB-1 to resume*, never
+  *stopped*; it starts once that one is done;
+- **within the rules**: on its own machine when that machine has room and its
+  account's pace lets it ([Machines](machines.md#manage-machines)), one start per machine and
+  minute, never a second worker on the task;
+- **once in a row**: stopped again for the same cause within an hour of the
+  engine's resume, it is not resumed again: the incident's wake says so, and
+  the task waits in Your turn until it is started again.
+
+Its Log says *resumed after incident …*, and a stall or a step past its time
+limit from the outage leaves Tasks to handle once the task works again.
+
+### The incident wake
+
+Once the engine's resumes after an incident are done (none still under way),
+the coordinators get **one wake per incident**, never one per task, headed
+*Incident: <incident>, wake <id>*, even with the autopilot off. It gives the
+engine's facts:
+
+- the cause and the evidence it read (machine, times, exit codes, the
+  account's reading);
+- **Resumed**: the tasks working again;
+- **Still waits**: those the engine resumes by itself, and why (*host-b still
+  offline*, *the account's limit until <time>*, *waits for WEB-1 to resume
+  first*, no room on the machine);
+- **Needs you**: a task stopped again right after its resume, for the
+  coordinator to start once the cause is fixed;
+- **Needs the user**: a permission, a question, a sign-in, a merge or another
+  Your turn.
+
+Each project's coordinator gets its own tasks; the main coordinator (Alfred)
+gets every project's, so he can say what happened for all of them. Both
+follow one rule: **never state a cause they did not read**. Before explaining
+a stop they run `wherdr pm incidents`, `wherdr pm autopilot show` and
+`wherdr pm read <task>`; when those facts do not decide, they say the cause is
+unknown and what they checked.
+
 ### A task's temporary files
 
 A task's worker and reviewer keep their temporary files in the task's
@@ -658,6 +904,32 @@ Before it starts an agent, wherdr checks the machine's `/tmp`: with less than
 500 MB free, the agent is not started and the task waits with the reason
 (free some space, then start it again).
 
+### Processes an agent leaves behind
+
+When wherdr ends an agent (the task is done, stopped, released or restarted),
+it ends every process the agent started, not only its terminal: the
+terminal's process tree and each process group in it (a test runner's shells
+keep their group even once re-parented), with TERM, then KILL after 3 seconds,
+on Linux and macOS alike.
+
+At start and every 5 minutes, wherdr also looks on each machine for the
+processes an agent started that are still there while their task has no live
+agent, or no longer exists. It knows them by the temporary folder they
+inherited from the agent (`CLAUDE_CODE_TMPDIR`, set to the task's
+`.wherdr-tmp`), wherever they run, never by their folder alone. macOS hides
+that from its own programs (`sh`, `zsh`, `sleep`): those go with the marked
+process they run under or share a process group with, or, once re-parented to
+`launchd` with their folder in that task's worktree, on their own. It kills
+them and says so in the task's log (*killed 7 leftover processes, 6 h old*). Your
+own shell, editor, apps and daemons are never touched, even when they run in a
+worktree, nor the processes of a task whose agent runs. The machine's line in
+Settings › Machines then says *n leftover processes killed*
+(since wherdr started).
+
+The wherdr template tells its workers to run a test command that could hang
+with a timeout (`timeout 600 …`) and to leave no background job running when
+they report done.
+
 ### Agents of a task that waits for you
 
 Needs: [A task waiting for you](#a-task-waiting-for-you).
@@ -671,10 +943,31 @@ commits need a review), wherdr starts the worker or the reviewer again in the
 same worktree, with a note on where the work stands. The task's log says when
 its agents were ended and started again.
 
+The same goes when you answer and the task moves on: a review decision (*pass*,
+say), *Send back*, *Try again* or a merge you confirm hands the next step to
+its worker or reviewer, which wherdr starts again at once. As a safety net,
+wherdr also watches every task under way: when the agent that holds its
+current step has not been running for 3 minutes (released, ended on its own,
+or gone in a wherdr restart), wherdr starts it again in its worktree, with a
+note on where the work stands, and the log says so. When it cannot, the card's
+status says why (*Waits for its machine (offline)*, *Waits for its machine
+(paused)*, no room on the machine), wherdr tries again every 3 minutes, and at
+the second failure the project's coordinator is woken once (its autopilot on).
+A start wherdr refuses (the agent's program missing, say) puts the task in
+*Your turn* with the reason.
+
 When wherdr hands the worker work of its own (a catch-up with the base branch,
 a CI fix), the task leaves *Your turn* and its card says *the agent is
 updating the PR*: its agents are never ended while wherdr waits for that work.
-The task is yours again once the worker pushes or says it is done. Before it
+The task is yours again once the worker pushes or says it is done. If the
+worker has ended when wherdr hands it that work, or ends before it pushes,
+wherdr starts it again in its worktree with the same message, once. When it
+cannot (its machine is offline, paused for the project or has no room, or the
+worker ended again), the card says why it waits instead, for example *Waits
+for its machine (offline)*, *Waits for its machine (paused)* or *Waits for its agent: it ended. The coordinator, or Stop then Resume,
+continues it*, and the project's coordinator is woken once with that reason
+(its autopilot on); with no coordinator to wake, the task goes to *Your turn*.
+Once the machine is back (online, or switched on again), wherdr starts the worker again by itself. Before it
 ends a task's agents, wherdr pushes the commits the branch has not pushed yet;
 if the push fails, the agents stay and the log says why.
 

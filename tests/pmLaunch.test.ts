@@ -119,7 +119,7 @@ describe('startTask', () => {
       cwd: '/home/u/.wherdr/pm/worktrees/WEB-1', env: { DISABLE_AUTOUPDATER: '1', TMPDIR: '/home/u/.wherdr/pm/worktrees/WEB-1/.wherdr-tmp' }, no_parent: true,
       labels: { 'wherdr.install': install, 'wherdr.task': 'WEB-1', 'wherdr.run': t.run, 'wherdr.role': 'worker' },
     })
-    expect(runs[0]!.line).toContain(`exec claude '--model' 'opus' 'Read /home/u/.wherdr/pm/tasks/WEB-1/instructions.md and follow it.'`)
+    expect(runs[0]!.line).toContain(`exec claude '--model' 'opus' '--session-id' '${(await store.runs())[0]!.session}' 'Read /home/u/.wherdr/pm/tasks/WEB-1/instructions.md and follow it.'`)
     expect(files['/home/u/.wherdr/pm/tasks/WEB-1/instructions.md']).toMatch(/# WEB-1: Fix it[\s\S]*Small commits\.\nRun the tests\./)
     expect((await store.runs())[0]).toMatchObject({ id: t.run, state: 'running', terminal: expect.stringMatching(/\/t1$/) })
     await expect(startTask(deps, 'WEB-1')).rejects.toMatchObject({ code: 'busy' })
@@ -258,5 +258,7 @@ describe('reconcileRuns after a restart', () => {
     await reconcileRuns(list([]))
     expect(await restarted.task('WEB-1')).toMatchObject({ state: 'waiting', waiting: expect.stringContaining('gone') })
     expect((await restarted.runs())[0]).toMatchObject({ state: 'ended', endedBy: 'lost' })
+    // Recorded as an incident, with the facts it used.
+    expect(await restarted.incidents()).toMatchObject([{ tasks: ['WEB-1'], runs: [t.run], evidence: [expect.stringContaining('terminal not found')] }])
   })
 })

@@ -20,7 +20,7 @@ describe('placing a task', () => {
     expect(place('light', [a, b])).toEqual({ machine: 'machine-a' })
     expect(place('standard', [a, b])).toEqual({ machine: 'machine-a' })
     // Home full: light work goes where there is room.
-    expect(place('light', [machine('machine-a', 16, 2.2, 4), b])).toEqual({ machine: 'machine-b' })
+    expect(place('light', [machine('machine-a', 16, 2.2, 4, ['light']), b])).toEqual({ machine: 'machine-b' })
     // Heavy work waits on a busy CPU; light work ignores the load.
     const loaded = machine('machine-b', 64, 40, 16, [], { capacity: { ...b.capacity!, load1: 14 } })
     expect(place('heavy', [a, loaded])).toEqual({ machine: 'machine-a' })
@@ -28,7 +28,7 @@ describe('placing a task', () => {
 
   it('holds with each machine\'s reason, and names where a start that must go goes', () => {
     const r = place('heavy', [
-      machine('machine-a', 16, 5, 8),
+      machine('machine-a', 16, 5, 8, ['light']),
       machine('machine-b', 32, 30, 8, [], { wait: 'not ready (gh login: logged out)' }),
       machine('machine-c', 16, 12, 8, [], { online: false }),
     ])
@@ -61,21 +61,34 @@ describe('placing a task', () => {
     expect(new Set(fill('balance')).size).toBeGreaterThan(1)
     expect(fill('home').slice(0, 2)).toEqual(['machine-a', 'machine-a'])
     // A hold names the strategy.
-    expect(on('balance', 'heavy', [machine('machine-a', 8, 2, 4)])).toMatchObject({ hold: expect.stringContaining('Waits for room (Balance the load): heavy') })
+    expect(on('balance', 'heavy', [machine('machine-a', 8, 2, 4, ['light'])])).toMatchObject({ hold: expect.stringContaining('Waits for room (Balance the load): heavy') })
   })
 
   it('fits heavy work where free memory covers its estimate and the reserve; past every machine\'s size it goes anyway', () => {
     expect(place('heavy', [machine('machine-a', 16, 6, 8)])).toEqual({ machine: 'machine-a' })
-    // 5.5 GB of RAM less the 2 GB reserve: never room for ≈3.9 GB, so it runs on the best one instead of waiting.
-    const small = [machine('machine-a', 5.5, 4.4, 4), machine('machine-b', 5, 4.8, 4)]
+    // Busy, with 5.5 GB of RAM less the 2 GB reserve: never room for ≈3.9 GB, so it runs on the best one instead of waiting.
+    const small = [machine('machine-a', 5.5, 4, 4, ['light']), machine('machine-b', 5, 4.8, 4, ['light'])]
     expect(place('heavy', small)).toEqual({ machine: 'machine-b', anyway: 'heavy (≈3.9 GB) is more than any allowed machine can take: runs on machine-b (5.0 GB) instead of waiting' })
     expect(place('heavy', small, 'machine-a')).toMatchObject({ machine: 'machine-a', anyway: expect.any(String) })
     // A machine big enough, only busy: it waits.
-    expect(place('heavy', [small[0]!, machine('machine-c', 32, 3, 8)])).toMatchObject({ hold: expect.any(String) })
+    expect(place('heavy', [small[0]!, machine('machine-c', 32, 3, 8, ['light'])])).toMatchObject({ hold: expect.any(String) })
+  })
+
+  it('lets an idle machine take one task its RAM holds, whatever the reserve; the next one waits', () => {
+    // 6.7 GB, 4.8 GB free, Auto reserve (1.0 GB): a ≈4.1 GB task needs 5.1 GB with it.
+    const estimate = { mb: 4.1 * GB, cores: 1 }
+    const small = (running: Weight[] = [], pressure?: 'critical') => {
+      const c = machine('machine-a', 6.7, 4.8, 4, running, { settings: {} })
+      return { ...c, running: c.running.map(() => estimate), capacity: { ...c.capacity!, pressure } }
+    }
+    const go = (c: Candidate) => placeTask({ weight: 'standard', estimate, home: 'machine-a', candidates: [c] })
+    expect(go(small())).toEqual({ machine: 'machine-a' })
+    expect(go(small(['standard']))).toMatchObject({ hold: expect.stringContaining('machine-a: 4.8 GB free, needs 5.1 GB with its reserve') })
+    expect(go(small([], 'critical'))).toMatchObject({ hold: expect.stringContaining('machine-a: memory pressure critical') })
   })
 
   it('never moves a task from its machine', () => {
-    const a = machine('machine-a', 16, 2.5, 4), b = machine('machine-b', 64, 40, 16)
+    const a = machine('machine-a', 16, 2.5, 4, ['light']), b = machine('machine-b', 64, 40, 16)
     expect(place('light', [b], 'machine-b')).toEqual({ machine: 'machine-b' })
     // Its machine is full or offline: it waits there, though another has room.
     expect(place('standard', [a], 'machine-a')).toMatchObject({ hold: expect.stringContaining('machine-a: 2.5 GB free'), best: 'machine-a' })
@@ -86,7 +99,7 @@ describe('placing a task', () => {
     const a = machine('machine-a', 16, 8, 4), b = machine('machine-b', 64, 40, 16, [], { online: false })
     const prefer = (candidates: Candidate[]) => placeTask({ weight: 'standard', home: 'machine-a', prefer: 'machine-b', candidates })
     expect(prefer([a, b])).toEqual({ machine: 'machine-a' })
-    expect(prefer([machine('machine-a', 16, 2.5, 4), b])).toEqual({ hold: 'Waits for machine-b (offline)', best: 'machine-a' })
+    expect(prefer([machine('machine-a', 16, 2.5, 4, ['light']), b])).toEqual({ hold: 'Waits for machine-b (offline)', best: 'machine-a' })
     // Online again: it goes there.
     expect(prefer([a, { ...b, online: true }])).toEqual({ machine: 'machine-b' })
   })
@@ -133,10 +146,11 @@ describe('the coordinator\'s view of machines', () => {
   it('gives each machine\'s reading, its agents by weight and the heaviest weight it takes now, or why none', () => {
     const view = (c: Candidate, more = {}) => machineLine({ home: false, ...c, running: c.running as never, ...more })
     expect(view(machine('machine-a', 32, 9.1, 8, ['heavy', 'light']), { home: true })).toBe('machine-a (home): 9.1 GB free of 32.0 GB · 8 cores, load 0.0 · 2 of 21 agents · running 1 heavy, 1 light · fits heavy')
-    expect(view(machine('machine-b', 8, 4.5, 4), { unchecked: true })).toBe('machine-b: 4.5 GB free of 8.0 GB · 4 cores, load 0.0 · 0 of 5 agents · fits standard (readiness checked before its first task)')
+    expect(view(machine('machine-b', 8, 4.5, 4), { unchecked: true })).toBe('machine-b: 4.5 GB free of 8.0 GB · 4 cores, load 0.0 · 0 of 5 agents · fits heavy (readiness checked before its first task)')
     expect(view(machine('machine-b', 16, 12, 8, [], { wait: 'not ready (node missing)' }))).toBe('machine-b: 12.0 GB free of 16.0 GB · 8 cores, load 0.0 · 0 of 10 agents · takes nothing now: not ready (node missing)')
-    expect(view(machine('machine-b', 16, 2, 8))).toMatch(/ · takes nothing now: 2\.0 GB free, needs 2\.7 GB with its reserve$/)
+    expect(view(machine('machine-b', 16, 2, 8, ['light']))).toMatch(/ · takes nothing now: 2\.0 GB free, needs 2\.7 GB with its reserve$/)
     expect(view(machine('machine-c', 16, 12, 8, [], { online: false }))).toBe('machine-c: offline')
+    expect(view(machine('machine-c', 16, 12, 8, ['light']), { paused: true })).toBe('machine-c: paused for this project · 1 agents at work')
     // macOS: the memory pressure decides, not the swap (it grows on demand).
     const mac = (pressure: 'normal' | 'warn' | 'critical') => { const c = machine('machine-m', 18, 5, 8, ['standard']); return view({ ...c, capacity: { ...c.capacity!, pressure } }) }
     expect(mac('normal')).toBe('machine-m: 5.0 GB free of 18.0 GB · 8 cores, load 0.0 · pressure normal · 1 of 12 agents · running 1 standard · fits standard')

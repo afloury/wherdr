@@ -4,7 +4,7 @@
 //
 // A wake waits until the coordinator is idle and the user has not written for
 // a minute; its pending reasons go as one message whose first line names its
-// kind (Autopilot, Step check, Engine, Health check). Delivered, it
+// kind (Autopilot, Step check, Engine, Health check, Incident). Delivered, it
 // is open until the coordinator acks it, stays idle 2 min, quits, or 1 h
 // passes; no other wake goes while one is open, except the user's "run now".
 // Not acked within 15 min (and its turn over): delivered once more, then the user is told.
@@ -12,9 +12,10 @@ import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, inHours, type Autopilot } from './
 
 // Who sends it: the autopilot (its schedule, events, the user's "run now"), a
 // step the coordinator holds (its start, recheck or timeout), the engine giving
-// up on a block, or the health check. Old wakes without one: the autopilot.
-export type WakeKind = 'autopilot' | 'step' | 'engine' | 'health'
-export const WAKE_LABEL: Record<WakeKind, string> = { autopilot: 'Autopilot', step: 'Step check', engine: 'Engine', health: 'Health check' }
+// up on a block, the health check, or an incident (incidentWake.ts, about: its
+// id). Old wakes without one: the autopilot.
+export type WakeKind = 'autopilot' | 'step' | 'engine' | 'health' | 'incident'
+export const WAKE_LABEL: Record<WakeKind, string> = { autopilot: 'Autopilot', step: 'Step check', engine: 'Engine', health: 'Health check', incident: 'Incident' }
 
 export interface Wake {
   id: string
@@ -133,6 +134,15 @@ export function ackWakes(q: Wake[], coordinator: string, ids: string[], now: num
   }
   return { changed, unknown }
 }
+
+// A wake the engine did not send, and why: the coordinator's last SKIPS_KEPT,
+// newest last, shown by `wherdr pm autopilot show`, never in its chat.
+export interface WakeSkip { at: number, what: WakeKind | 'question', why: string }
+export const SKIPS_KEPT = 20
+const SKIP_AGAIN_MS = 12 * 3_600_000
+// The list with this skip, unless the same one is noted within 12 h (a block seen every tick).
+export const addSkip = (skips: WakeSkip[] | undefined, s: WakeSkip): WakeSkip[] | undefined =>
+  skips?.some(x => x.what === s.what && x.why === s.why && s.at - x.at < SKIP_AGAIN_MS) ? undefined : [...(skips ?? []), s].slice(-SKIPS_KEPT)
 
 // Is the coordinator's current turn a wake? Only while a delivered wake is open.
 export const inWake = (q: Wake[], coordinator: string) => mine(q, coordinator).some(isOpen)

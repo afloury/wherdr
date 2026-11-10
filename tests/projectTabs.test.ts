@@ -10,7 +10,7 @@ const groups: MachineGroup[] = [
 const home = { machines: [''] }
 const mix = { machines: ['', 'devbox'] } // home in Personal, an allowed machine in Work
 const loose = { machines: ['spare'] } // in no group
-const on = (p: { machines: string[] }, pick: string, override?: string, gs = groups) =>
+const on = (p: { machines: string[], paused?: string[], busy?: string[] }, pick: string, override?: string, gs = groups) =>
   projectOnTab(projectTabMachines(p, override, gs), barMachineSelection(pick, gs))
 
 describe('project tabs', () => {
@@ -35,6 +35,14 @@ describe('project tabs', () => {
     expect(projectTabMachines(home, BAR_ALL, groups)).toBeNull()
     expect(on(loose, '*group:work', BAR_ALL)).toBe(true)
     expect(on(loose, 'laptop', BAR_ALL)).toBe(true)
+  })
+
+  it('automatic: a machine paused for the project counts only while one of its tasks runs there', () => {
+    const paused = { machines: ['', 'devbox'], paused: ['devbox'] }
+    expect(projectTabMachines(paused, undefined, groups)).toEqual([''])
+    expect(on(paused, '*group:work')).toBe(false)
+    expect(on({ ...paused, busy: ['devbox'] }, '*group:work')).toBe(true)
+    expect(on(paused, '*group:work', '*group:work')).toBe(true) // a group picked still holds it
   })
 
   it('deleted group: back to automatic', () => {

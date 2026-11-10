@@ -25,9 +25,9 @@ onBeforeUnmount(() => clearInterval(timer))
 const answered = (d: Decision) => d.kind === 'permission' && !!paneOf(d) && paneOf(d)!.status !== 'blocked'
 const shown = computed(() => list.value?.filter(d => !answered(d)))
 const groups = computed(() => decisionGroups(shown.value ?? []))
-const GROUP_LABEL: Record<DecisionGroup, [string, string]> = {
+const GROUP_LABEL: Record<DecisionGroup, [string, string?]> = {
   agent: ['Agents waiting', 'Agents en attente'], stopped: ['Stopped tasks', 'Tâches arrêtées'], arbitrate: ['Reviews to settle', 'Relectures à trancher'], proposal: ['Coordinator proposals', 'Propositions du coordinateur'],
-  step: ['Your steps', 'Tes étapes'], overdue: ['Overdue steps', 'Étapes en retard'], coordinator: ['Coordinator not answering', 'Coordinateur sans réponse'],
+  step: ['Your steps', 'Tes étapes'], overdue: ['Overdue steps', 'Étapes en retard'], coordinator: ['Coordinator not answering', 'Coordinateur sans réponse'], passed: ['Passed on a spec change'],
 }
 const paneOf = (d: Decision) => (d.terminal ? herdrState.value?.panes.find(p => p.coreAddress === d.terminal) : undefined)
 // The agent's prompt, when herdr-core reads one on its screen.
@@ -93,7 +93,7 @@ const stop = (d: Decision) => act(d, async () => {
                 :loading="busy === d.id && how === 'continue'" :disabled="!!busy" :data-resume="how" @click="resume(d, how)">{{ tl(...RESUME_LABEL[how]) }}</UButton>
             </template>
             <UButton v-else-if="g.group === 'coordinator'" color="primary" size="lg" icon="i-lucide-play" :loading="busy === d.id" :disabled="!!busy" data-testid="decision-run-now" @click="runNow(d)">{{ tl('Run now', 'Lancer maintenant') }}</UButton>
-            <UButton v-else-if="g.group === 'overdue' && d.task" color="neutral" variant="outline" size="lg" icon="i-lucide-square-arrow-out-up-right" data-testid="decision-task" @click="openTaskSheet(d.task)">{{ tl('Open task', 'Ouvrir la tâche') }}</UButton>
+            <UButton v-else-if="(g.group === 'overdue' || g.group === 'passed') && d.task" color="neutral" variant="outline" size="lg" icon="i-lucide-square-arrow-out-up-right" data-testid="decision-task" @click="openTaskSheet(d.task)">{{ tl('Open task', 'Ouvrir la tâche') }}</UButton>
             <UButton v-if="g.group === 'agent' && paneOf(d)" :color="promptOf(d) ? 'neutral' : 'primary'" :variant="promptOf(d) ? 'ghost' : 'solid'" size="lg" icon="i-lucide-terminal" :to="panePath(paneOf(d)!.id)" data-testid="decision-open">
               {{ tl('Open the agent', 'Ouvrir l’agent') }}
             </UButton>

@@ -9,12 +9,14 @@ import { DEFAULT_MEMORY, agentCap, autoReserve, availabilityLine, mergeMemory, m
 import { CAPACITY_SCRIPT, parseCapacity, type MachineCapacity } from '../../shared/pm/capacity'
 import { machineOn, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
+import { leftoversKilled } from './pmProcs'
 import type { PmStore } from './pmStore'
 import { DATA_DIR } from './env'
 import { agentsAtWork } from '../../shared/pm/release'
 import { taskPlan } from '../../shared/pm/run'
 import { weightOf, type Weight } from '../../shared/pm/weight'
 import { learnedEstimates } from '../../shared/pm/peaks'
+import { pausedEverywhere } from '../../shared/pm/project'
 import type { Estimate } from '../../shared/pm/placement'
 
 export const MEMORY_FILE = path.join(DATA_DIR, 'machine-memory.json')
@@ -75,8 +77,14 @@ export async function atWork(store: PmStore, machine: string): Promise<(Estimate
   return agentsAtWork(runs, tasks, machine, t => known.get(t.id)?.holder).map(r => known.get(r.task)!.estimate)
 }
 
+// The orphan sweep's work (pmProcs.ts), when it acted.
+const leftovers = (machine: string) => {
+  const n = leftoversKilled(machine)
+  return n ? ` · ${n} leftover process${n === 1 ? '' : 'es'} killed` : ''
+}
+
 // Where a machine stands: online or not and its hours, its reading (none
-// while offline), its settings, its agents at work.
+// while offline), its settings, its agents at work, the leftovers killed.
 export async function memoryState(deps: CoreAdminDeps & { store: PmStore }, machine: string): Promise<MemoryState> {
   const m = deps.machines().find(x => x.key === machine)
   const label = m?.label ?? machine, online = !!m && (m.local || m.status === 'online')
@@ -86,9 +94,12 @@ export async function memoryState(deps: CoreAdminDeps & { store: PmStore }, mach
   const short = memoryShort(mem, settings, agents)
   const cap = agentCap(settings, mem)
   const there = availabilityLine(online, settings.hours)
-  return { key: machine, label, online, mem, settings, agents, ...(cap !== undefined ? { cap } : {}), ...(mem ? { autoReserve: autoReserve(mem.total) } : {}), line: online ? `${there} · ${memoryLine(mem, settings, agents)}` : there, ...(short ? { short } : {}) }
+  return { key: machine, label, online, mem, settings, agents, ...(cap !== undefined ? { cap } : {}), ...(mem ? { autoReserve: autoReserve(mem.total) } : {}), line: (online ? `${there} · ${memoryLine(mem, settings, agents)}` : there) + leftovers(machine), ...(short ? { short } : {}) }
 }
 
 // Settings › Machines and › Pace: every machine wherdr knows, offline ones too (their hours can be set).
-export const memoryView = async (deps: CoreAdminDeps & { store: PmStore }) =>
-  ({ machines: await Promise.all(deps.machines().map(m => memoryState(deps, m.key))) })
+// pausedAll: some project allows it, and every one that does has it paused.
+export async function memoryView(deps: CoreAdminDeps & { store: PmStore }) {
+  const projects = await deps.store.projects()
+  return { machines: await Promise.all(deps.machines().map(async m => ({ ...(await memoryState(deps, m.key)), ...(pausedEverywhere(projects, m.key) ? { pausedAll: true } : {}) }))) }
+}

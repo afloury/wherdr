@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // A note on a task waiting for the user (the worker's report, the review):
 // its label, then its Markdown (the chat's safe renderer, no raw HTML),
-// folded to a few lines with Show more.
-const props = defineProps<{ label: string, text: string }>()
+// folded to a few lines with Show more. `summary`: the task's few lines on how
+// it went (pmSummary.ts), above the worker's note.
+const props = defineProps<{ label: string, text: string, summary?: string }>()
 const html = computed(() => md(props.text, { plain: true }))
+const sum = computed(() => (props.summary ? md(props.summary, { plain: true }) : ''))
 function onClick(e: MouseEvent) {
   const btn = (e.target as HTMLElement).closest?.('.code-copy') as HTMLElement | null
   const text = btn?.closest('.code-block')?.querySelector('pre')?.textContent
@@ -14,6 +16,8 @@ function onClick(e: MouseEvent) {
 <template>
   <section class="task-note">
     <span class="mono-label muted">{{ label }}</span>
+    <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
+    <div v-if="sum" class="md-body task-note-md task-note-summary" data-testid="task-summary" v-html="sum" />
     <FoldText :lines="4">
       <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
       <div class="md-body task-note-md" @click="onClick" v-html="html" />
@@ -28,4 +32,5 @@ function onClick(e: MouseEvent) {
 .task-note-md :deep(:is(h1, h2, h3, h4, h5, h6)) { font-size: 15px; margin: .6em 0 .3em; }
 .task-note-md :deep(:is(p, ul, ol)) { margin: 0 0 .5em; }
 .task-note-md :deep(:last-child) { margin-bottom: 0; }
+.task-note-summary { padding-bottom: 6px; border-bottom: 1px solid var(--line-soft); }
 </style>

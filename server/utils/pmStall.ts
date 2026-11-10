@@ -15,6 +15,7 @@ import { pushSend } from './push'
 import { reviveWorker } from './pmRelease'
 import { noteFix } from '../../shared/pm/selfFix'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
+import { killTerminal } from './pmProcs'
 
 // shown: the task id as the user sees it (CMP-9, not its fixed CP-9).
 export type StallNotify = (task: Task, s: Stall, shown: string) => Promise<number>
@@ -71,7 +72,7 @@ export async function noteStall(deps: PmLaunchDeps, task: Task, plan: PlannedSte
 async function restart(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], agent: Run | undefined, s: Stall, tests: () => Promise<string[]>): Promise<Task> {
   const { store } = deps
   if (agent) {
-    await deps.call('terminal.kill', { terminal: agent.terminal }, 15000).catch(() => {})
+    if (agent.terminal) await killTerminal(deps, agent.terminal).catch(() => {})
     await store.saveRun({ ...agent, state: 'ended', endedBy: 'released' })
   }
   const role = agent?.role ?? (s.cause.startsWith('red:') ? 'worker' : plan[task.step!.at]?.holder)

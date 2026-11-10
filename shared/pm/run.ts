@@ -1,13 +1,15 @@
 // Tasks and the agent runs that work on them. A run's terminal carries
 // wherdr.* labels on herdr-core, so the engine finds it again after a restart.
 import type { Project } from './project'
-import type { Prefs, Step, Template, Weight } from './workflow'
+import { MODEL_RE, PROGRAMS, reviewerCheck, type Prefs, type Step, type Template, type Weight } from './workflow'
 import { fillBase, planSteps, type StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
 import type { Report } from './report'
+import type { TaskSummary } from './summary'
 import type { Mark } from './times'
 import { isPublic, publicWorkerSection } from './visibility'
+import type { Recovery } from './incident'
 
 // Who made a task: the user (the board, their turn), the coordinator in a
 // wake, an automation, a mission.
@@ -22,10 +24,12 @@ export interface Task {
   state: 'todo' | 'working' | 'waiting'
   waiting?: string // why it waits for the user
   waitKind?: 'question' | 'permission' | 'auth' // what it waits for
+  answered?: number // when a coordinator's tell answered its question; cleared once the agent's question is gone (no second wake: autopilot.ts)
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
   ci?: { head: string, red: boolean } // its PR's CI at the task's commit, as the engine last read it
   queue?: number // its place in its project's merge queue (mergeQueue.ts), 1: merging now
   queueOut?: string // why it stepped out of the queue's line (a conflict, its checks, its agent's work)
+  order?: number // its place on the board, set by the coordinator's `task order` (boardOrder.ts): lower first
   idle?: number // since when the agent holding its step sits idle, its report still due (blocked.ts)
   stall?: { cause: string, reason: string, since: number } // its stall as the engine last saw it (blocked.ts)
   stalls?: Record<string, { since: number, nudged?: number, restarted?: number, handled?: number, back?: number }> // each cause seen: when it began, its one nudge, restart and hand-over, when its agent went back to work
@@ -43,6 +47,8 @@ export interface Task {
   links?: { label: string, url: string }[] // the PR, the ticket…
   shotToken?: string // the agent's key for POST /api/pm/shot (never sent to the browser)
   log?: TaskLogEntry[] // who changed what, newest last
+  specNotes?: SpecNote[] // spec changes added after its description (task note, tell --spec), newest last
+  specPass?: { at: number, step: string, reason: string } // the coordinator's last pass on a spec change, shown in Decisions for a day
   marks?: Mark[] // when its step or turn changed, added by the store (times.ts)
   after?: string // tasks of the same project, comma-separated: this one starts once they are done
   stopped?: Stopped // who stopped it and why (stop.ts): it waits for the user
@@ -56,6 +62,8 @@ export interface Task {
   sameFiles?: string // the started task its start waits behind: same files (files.ts)
   cleanup?: { done?: true, skipped?: string } // its worktree removed, or why it stays (cleanup.ts)
   report?: Report // a problem the user reported, open until the coordinator acts (report.ts)
+  summary?: TaskSummary // a cheap model's few lines on how it went, per round (summary.ts)
+  recovery?: Recovery // its agent gone with an incident: the engine resumes it (recovery.ts)
   createdAt: number
 }
 
@@ -63,6 +71,18 @@ export interface Task {
 export const publicTask = ({ shotToken: _, ...t }: Task): Task => t
 
 export interface TaskLogEntry { at: number, by: string, text: string }
+export type SpecNote = TaskLogEntry
+
+// The rule the worker and the reviewer follow when the spec changed.
+export const SPEC_RULE = 'The latest note overrides the description where they disagree.'
+// The task's description, then its spec changes, newest last, as the worker's
+// and the reviewer's instructions give them.
+export function specText(task: Pick<Task, 'description' | 'specNotes'>) {
+  const notes = task.specNotes ?? []
+  return [task.description.trim() || '(no description)', ...(notes.length
+    ? ['', '## Spec changes', '', SPEC_RULE, '', ...notes.map(n => `- Spec change (${new Date(n.at).toISOString().slice(0, 10)}): ${n.text}`)]
+    : [])].join('\n')
+}
 
 export interface Run {
   id: string
@@ -80,6 +100,7 @@ export interface Run {
   endedBy?: 'exit' | 'lost' | 'stopped' | 'released' // released: idle while its task waited for the user (release.ts)
   startedAt: number
   peakMb?: number // the most its worktree's processes took, sampled each tick (peaks.ts)
+  session?: string // Claude's conversation id, pinned at launch: a resume takes it up again
 }
 
 export const LABEL = { install: 'wherdr.install', task: 'wherdr.task', run: 'wherdr.run', role: 'wherdr.role', report: 'wherdr.report' } as const
@@ -99,11 +120,7 @@ export const trustPrompt = (screen: string, worktree: string) =>
   /Yes, I trust this folder/.test(screen) && screen.includes(worktree)
 // An agent that stopped because it is not logged in.
 export const isAuthFailure = (text: string) => /not logged in|log ?in again|please (run )?\/?login|authenticat|unauthori[sz]ed|invalid api key|\b401\b/i.test(text)
-// Agents the engine knows how to start with a pinned model and a first message.
-export const PROGRAMS = ['claude', 'codex'] as const
-// reviewModel: the worker's own model, in a new session.
-export const SAME_MODEL = 'same'
-const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/
+export { PROGRAMS, SAME_MODEL } from './workflow'
 
 export const runLabels = (install: string, run: Run) =>
   ({ [LABEL.install]: install, [LABEL.task]: run.task, [LABEL.run]: run.id, [LABEL.role]: run.role })
@@ -134,8 +151,12 @@ export function tmpRefusal(out: string) {
 
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 // The shell line that starts the agent: model pinned, first message points at the file.
-export function agentLine(program: string, model: string, instructions: string) {
-  return ['exec', program, '--model', model, `Read ${instructions} and follow it.`].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
+// session (Claude only): the conversation's id, new (--session-id), or taken
+// up again (--resume) with `resume` as its first message.
+export function agentLine(program: string, model: string, instructions: string, session?: { id: string, resume?: string }) {
+  const own = program === 'claude' && session ? (session.resume ? ['--resume', session.id] : ['--session-id', session.id]) : []
+  const first = own[0] === '--resume' ? session!.resume! : `Read ${instructions} and follow it.`
+  return ['exec', program, '--model', model, ...own, first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
 }
 
 // A task's working branch: the one it started with, else its project's now.
@@ -165,19 +186,34 @@ export function workerPlan(t: Template, task: Task): { program: string, model: s
 // Program and model of the reviewer: reviewAgent and reviewModel, nearest
 // level first. The reviewer is of another model than the worker, unless the
 // template says reviewModel "same": a fresh session of the worker's model.
-export function reviewerPlan(t: Template, task: Task): { program: string, model: string } | { reason: string } {
+// out: why the review agent cannot take this review now (its account at its
+// limit). With reviewFallbackAgent and reviewFallbackModel set, the fallback
+// takes it (`switched` says why); without, nothing changes.
+export function reviewerPlan(t: Template, task: Task, out?: string): { program: string, model: string, switched?: string } | { reason: string } {
   const worker = workerPlan(t, task)
   if ('reason' in worker) return worker
   if (!typeSteps(t, task.type).some(s => s.holder === 'reviewer')) return { reason: `Task type "${task.type}" has no reviewer step` }
-  const tt = t.taskTypes[task.type]
-  const pick = (k: 'reviewAgent' | 'reviewModel') => task.prefs?.[k] || tt?.prefs?.[k] || t.prefs?.[k] || ''
-  const program = pick('reviewAgent') || worker.program, asked = pick('reviewModel')
-  const same = asked === SAME_MODEL, model = same ? worker.model : asked
-  if (!(PROGRAMS as readonly string[]).includes(program)) return { reason: `The engine cannot start "${program}": claude or codex` }
-  if (same && program !== worker.program) return { reason: `reviewModel "${SAME_MODEL}" needs the worker's agent (${worker.program})` }
-  if (!MODEL_RE.test(model)) return { reason: model ? `Invalid review model "${model}"` : 'No review model set: add prefs.reviewModel to the template' }
-  if (!same && model === worker.model) return { reason: `The reviewer must use another model than the worker (${model}), or set reviewModel to "${SAME_MODEL}"` }
-  return { program, model }
+  const pick = (k: keyof Prefs) => prefOf(t, task, k)
+  const main = reviewerCheck(worker, pick('reviewAgent') || worker.program, pick('reviewModel'), 'reviewModel')
+  const agent = pick('reviewFallbackAgent'), model = pick('reviewFallbackModel')
+  if (!out || (!agent && !model) || 'reason' in main) return main
+  if (!agent || !model) return { reason: 'reviewFallbackAgent and reviewFallbackModel go together' }
+  const fallback = reviewerCheck(worker, agent, model, 'reviewFallbackModel')
+  return 'reason' in fallback ? fallback : { ...fallback, switched: out }
+}
+
+// A pref of a task: the nearest level that sets it (task, task type, template).
+export const prefOf = (t: Template, task: Pick<Task, 'type' | 'prefs'>, k: keyof Prefs) =>
+  task.prefs?.[k] || t.taskTypes[task.type]?.prefs?.[k] || t.prefs?.[k] || ''
+
+// Why the review agent cannot take a review: its account at its limit until `until` (local time).
+export const programName = (program: string) => `${program.charAt(0).toUpperCase()}${program.slice(1)}`
+export const quotaOut = (program: string, until: number) => `${programName(program)} out of quota until ${new Date(until).toTimeString().slice(0, 5)}`
+
+// The last reviewer start in a task's log, when the fallback took it: why, and by whom.
+export function reviewSwitch(log: { text: string }[]) {
+  const last = [...log].reverse().find(e => /^review: (started the reviewer|.+, reviewed by )/.test(e.text))
+  return last && !last.text.startsWith('review: started') ? last.text.slice('review: '.length) : undefined
 }
 
 // The worker's step that asks for screenshots, if any.
@@ -207,7 +243,7 @@ export function instructionsText(p: Project, t: Template, task: Task, run: Pick<
   const parts = [t.instructions, t.taskTypes[task.type]?.instructions, step?.instructions].map(s => s?.trim()).filter(Boolean).map(s => fillBase(s!, taskBase(task, p)))
   const visual = shotStep(t, task.type)
   return [
-    `# ${task.id}: ${task.title}`, '', task.description.trim() || '(no description)', '',
+    `# ${task.id}: ${task.title}`, '', specText(task), '',
     '## Instructions', '', ...(parts.length ? parts : ['(none)']), '',
     ...(visual && shots ? shotsSection(visual, task, shots) : []),
     ...(isPublic(p) ? publicWorkerSection(leakCheck) : []),

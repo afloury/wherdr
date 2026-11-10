@@ -80,6 +80,15 @@ describe('the machine bar on the home list', () => {
     expect(navigate).toHaveBeenCalledWith('/', { replace: true })
   })
 
+  it('stays on the board when a desktop tab changes (the board follows the tab itself)', async () => {
+    desk.value = true
+    localStorage.setItem('machineConversations', JSON.stringify({ laptop: { pane: panes[2]!.id } }))
+    const w = track(await mountSuspended(HomeView, { route: '/board', global: { stubs: { UContextMenu: pass, UTooltip: pass } } }))
+    await w.find('[data-bar-id="laptop"]').trigger('click')
+    await w.find('[data-bar-id=""]').trigger('click')
+    expect(navigate).not.toHaveBeenCalled()
+  })
+
   it('keeps the phone list first while retaining the per-tab history', async () => {
     localStorage.setItem('machineConversations', JSON.stringify({ laptop: { pane: panes[2]!.id } }))
     const w = await mountHome()

@@ -3,8 +3,8 @@
 // that holds that step (none for holder: none); anything waiting for the user
 // puts it in Your turn, whatever its step, with a badge saying what to do.
 import type { Holder } from './workflow'
-import { stepLabels, type PlannedStep, type StepState } from './steps'
-import type { Run, Task, WaitKind } from './run'
+import { stepLabels, waitsToMerge, type PlannedStep, type StepState } from './steps'
+import type { Run, SpecNote, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
 import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
 import { afterIds } from './advance'
@@ -15,6 +15,8 @@ import { sameFilesText } from './files'
 import { MERGE_REFUSED, ordinal } from './mergeQueue'
 import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
 import { retriesAction } from './release'
+import { recovering } from './incident'
+import { showIds } from './projectKey'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -26,6 +28,7 @@ export interface Card {
   project: string
   title: string
   description: string
+  specNotes?: SpecNote[] // spec changes after the description, newest last
   column: string // the step's column in its project's view
   phase: Phase // the column in the all-projects view
   step?: string // the current step's id, once started
@@ -50,6 +53,7 @@ export interface Card {
   queueOut?: string // why it stepped out of the queue's line
   asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
   report?: Report // a problem the user reported, open (report.ts)
+  summary?: string // how it went, in a few lines (summary.ts)
   times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
 }
 
@@ -96,10 +100,13 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
   const queueOut = queue ? task.queueOut : undefined
   // A refused merge out of line is the user's: the engine does not try it again at that commit.
   const queued = (queue ?? 0) > 1 || (!!queueOut && !queueOut.startsWith(MERGE_REFUSED))
-  const yourTurn = s?.done ? undefined : (queued && s?.yourTurn?.reason === 'action' ? undefined : s?.yourTurn?.badge) || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
+  const yourTurn = s?.done ? undefined : (queued && s?.yourTurn?.reason === 'action' ? undefined : s?.yourTurn?.badge) || (task.state === 'waiting' && !recovering(task) ? task.waiting || 'Waiting' : undefined)
     || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
+    // Work handed to an agent that cannot do it, no coordinator woken for it: the user's.
+    || (s?.agent?.waits && s.agent.told === 'user' && !s.done ? s.agent.waits : undefined)
   return {
     id: task.id, shown: task.id, project: task.project, title: task.title, description: task.description,
+    ...(task.specNotes?.length ? { specNotes: task.specNotes } : {}),
     column: plan.length ? columnOf((s?.done ? plan.at(-1) : step) ?? plan[0]!) : 'To do',
     phase: s?.done ? 'done' : started || running ? 'working' : 'todo',
     ...(step ? { step: step.id } : {}),
@@ -119,9 +126,11 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(s ? { state: s } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
     ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
-    ...(task.held && task.state === 'todo' ? { held: task.held } : {}),
+    // Waiting for the engine to resume it after an incident, or for its agent to start again (watchdog.ts): shown as a wait, not the user's turn.
+    ...(task.held && (task.state === 'todo' || task.state === 'working') ? { held: task.held } : recovering(task) ? { held: task.held || task.waiting || 'Waiting' } : {}),
     ...(task.sameFiles && task.state === 'todo' ? { sameFiles: task.sameFiles } : {}),
     ...(task.report ? { report: task.report } : {}),
+    ...(task.summary?.text ? { summary: task.summary.text } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
     ...(s?.started ? { times: timesOf(task, plan, runs, now) } : {}),
@@ -142,6 +151,18 @@ export function handleLabel(c: Pick<Card, 'stopped' | 'asks' | 'state' | 'stall'
 
 // A task waiting for the user, as the sidebar's Tasks to handle lists it (GET /api/pm/handle).
 // project: the task's project (its fixed key); terminal: the agent that asks (a question, a permission, a login), whose conversation a tap opens.
+// The card's texts for people with each stored task id in its shown form
+// (CP-16 → CMP-16), texts stored before a key change too; its ids stay stored.
+export function shownTexts(projects: Parameters<typeof showIds>[0], c: Card): Card {
+  const show = <T>(v: T) => showIds(projects, v)
+  return {
+    ...c, description: show(c.description), ...(c.specNotes ? { specNotes: c.specNotes.map(n => ({ ...n, text: show(n.text) })) } : {}), log: c.log.map(e => ({ ...e, text: show(e.text) })),
+    ...(c.yourTurn ? { yourTurn: show(c.yourTurn) } : {}), ...(c.stall ? { stall: { ...c.stall, reason: show(c.stall.reason) } } : {}),
+    ...(c.stopped ? { stopped: { ...c.stopped, why: show(c.stopped.why) } } : {}), ...(c.asks ? { asks: { ...c.asks, text: show(c.asks.text) } } : {}),
+    ...(c.queueOut ? { queueOut: show(c.queueOut) } : {}), ...(c.held ? { held: show(c.held) } : {}), ...(c.summary ? { summary: show(c.summary) } : {}),
+  }
+}
+
 export interface ToHandle { id: string, shown: string, project: string, color?: string, title: string, action: string, label: string, terminal?: string }
 export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn)
   .map(c => ({ id: c.id, shown: c.shown, project: c.project, ...(c.color ? { color: c.color } : {}), title: c.title, action: c.yourTurn!.split('\n')[0]!, label: handleLabel(c), ...(asker(c) ? { terminal: asker(c) } : {}) }))
@@ -178,10 +199,11 @@ export const boardTags = (cards: Pick<Card, 'tags'>[]) => [...new Set(cards.flat
 // The columns shown: Your turn first, then the project's columns (or To do /
 // Working / Done for all projects). A card in Your turn is in no other column.
 export function boardLanes(cards: Card[], columns: string[] | null): { id: string, cards: Card[] }[] {
+  const mine = (c: Card) => !!turnText(c) || mergeWaits(c) !== undefined
   const lane = (c: Card) => (columns ? c.column : c.phase)
   return [
-    { id: 'your-turn', cards: cards.filter(c => turnText(c)) },
-    ...(columns ?? PHASES).map(id => ({ id, cards: cards.filter(c => !turnText(c) && lane(c) === id) })),
+    { id: 'your-turn', cards: cards.filter(mine) },
+    ...(columns ?? PHASES).map(id => ({ id, cards: cards.filter(c => !mine(c) && lane(c) === id) })),
   ]
 }
 
@@ -235,6 +257,7 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
     const merged = c.plan.some(p => p.action && MERGES.includes(p.action.kind) && s.proofs[p.id] && Object.keys(s.proofs[p.id]!).length)
     return merged ? { text: 'merged', tone: 'ok', ...(s.since ? { at: s.since } : {}) } : undefined
   }
+  if (s.agent?.waits) return { text: s.agent.waits, tone: 'bad' }
   // In the merge queue: its place in line, or why it stepped out.
   if (c.queueOut) return { text: `in merge queue, out of line: ${c.queueOut}`, tone: c.queueOut === 'checks failed' ? 'bad' : 'wait', ...(s.approved && !s.acting ? { approved: s.approved.at } : {}) }
   if (s.agent) return { text: retriesAction(c.plan, s) ? 'the agent is fixing it' : 'the agent is updating the PR', tone: 'wait' }
@@ -248,8 +271,19 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   if (failed !== undefined) return pr?.startsWith('checks failed') ? ofPr(pr) : refused(failed, agentCatchingUp(c))
   // A merge waiting for the user, updated with its base; once approved, it merges by itself.
   if (s.catchUp) return { text: `updating with ${s.catchUp.base}`, tone: 'wait', ...approval }
-  if (s.approved && !s.acting) return { text: pr?.startsWith('checks failed') ? pr : '', tone: 'wait', ...approval }
+  if (s.approved && !s.acting) return { text: pr && pr !== 'ready to merge' ? pr : '', tone: 'wait', ...approval }
   // The merge runs: it waits for the checks, then merges.
   if (s.acting && kind && MERGES.includes(kind)) return pr && pr !== 'ready to merge' && kind === 'github.merge' ? ofPr(pr) : { text: 'merging', tone: 'wait' }
   return pr ? ofPr(pr) : undefined
+}
+
+// An approved merge on its way: what it waits for, in a few words (its place
+// in the merge queue, its checks, its machine back online…), from the task's
+// approval kept on the server. undefined once it merged, failed or was
+// refused (the user's turn again), or when no merge was approved.
+export function mergeWaits(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'yourTurn' | 'prNow' | 'held' | 'queue' | 'queueOut' | 'sameFiles'>): string | undefined {
+  const s = c.state
+  if (!s?.approved || s.done || c.stopped || c.yourTurn || !waitsToMerge(c.plan[s.at])) return
+  const pr = c.prNow && c.prNow !== 'ready to merge' && c.prNow !== 'merged' ? c.prNow : undefined
+  return cardStatus(c)?.text || pr || 'waiting for its turn to merge'
 }

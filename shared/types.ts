@@ -131,6 +131,8 @@ export interface Pane {
   label: string | null
   // herdr-core: the task this agent works on (its stored id, WHR-52), from its wherdr.task label.
   task?: string
+  // Its role on that task ('worker', 'reviewer'), from its wherdr.role label.
+  role?: string
   // Agent name shown by Herdr (`display_agent`), if it says more than the agent kind.
   displayAgent?: string
   // Pane without an agent: foreground command ("pnpm dev"), missing at the shell prompt.
@@ -389,7 +391,10 @@ export interface QuotaWindow {
 }
 // `limited`: the account hit its usage limit (Codex writes no numbers then);
 // both windows are null and `resetsAt` (ms) is the reset time if known.
-export interface Quota { five: QuotaWindow | null, week: QuotaWindow | null, at: number, limited?: { resetsAt: number | null } }
+// Whether it still holds: shared/quotaLimit.ts. `credits`: the account has
+// credits (Codex): `balance` null when Codex gives no number.
+export interface QuotaCredits { unlimited: boolean, balance: number | null }
+export interface Quota { five: QuotaWindow | null, week: QuotaWindow | null, at: number, limited?: { resetsAt: number | null }, credits?: QuotaCredits }
 // Quotas of an account and machines using it (key '' = local, displayed name).
 // `key`: stable account key (shared/quotaAccount.ts), `name`: the user's name for it.
 export interface AccountQuota extends Quota { machines: { key: string, label: string }[], key: string, name?: string }

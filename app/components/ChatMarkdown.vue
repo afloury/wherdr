@@ -11,6 +11,12 @@ import type { TypingSpeed } from '~/utils/typewriter'
 import { SVG_THEME_VARS, svgPreview } from '~/utils/svgPreview'
 import type { SvgColors } from '~/utils/svgPreview'
 import { appRoute, isAppLink, linkedTask } from '#shared/appLinks'
+import type { StatusKind } from '#shared/statusBlock'
+import StatusCard from './StatusCard.vue'
+import UiOpenCard from './UiOpenCard.vue'
+import UiShowCard from './UiShowCard.vue'
+import ActionCard from './ActionCard.vue'
+import { h, render } from 'vue'
 
 // `cipher` must default to undefined, not false: Vue casts a missing Boolean
 // prop to false, which would switch the encrypted text off everywhere.
@@ -20,10 +26,10 @@ const el = ref<HTMLElement | null>(null)
 
 let plan: RevealPlan | null = null
 let raf = 0
-// Reveal the SVG card atomically so typing never rewrites its source or controls.
+// Reveal the SVG card and the choice buttons atomically so typing never rewrites their source or controls.
 const atomic = (n: RevealNode) => {
   const classes = (n as unknown as Element).classList
-  return Boolean(classes?.contains('code-head') || classes?.contains('svg-block'))
+  return Boolean(classes?.contains('code-head') || classes?.contains('svg-block') || classes?.contains('w-choices') || classes?.contains('wherdr-block'))
 }
 const keep = (n: RevealNode) => /^T[DH]$/.test((n as unknown as Element).tagName || '')
 
@@ -183,8 +189,52 @@ function onClick() {
   }
 }
 
+// Live status cards (utils/markdown.ts `status-slot`): each slot gets its own
+// StatusCard, with the app's context; unmounted when the HTML is replaced.
+const app = getCurrentInstance()!.appContext
+let slots: HTMLElement[] = []
+function dropCards() {
+  for (const slot of slots) render(null, slot)
+  slots = []
+}
+function mountCards() {
+  dropCards()
+  for (const slot of el.value?.querySelectorAll<HTMLElement>('.status-slot') ?? []) {
+    const card = h(StatusCard, { kind: slot.dataset.statusKind as StatusKind, arg: slot.dataset.statusArg ?? '' })
+    card.appContext = app
+    slot.textContent = ''
+    render(card, slot)
+    slots.push(slot)
+  }
+  // An agent's `ui open` card, kept in its reply: no ×, it opens the place.
+  for (const slot of el.value?.querySelectorAll<HTMLElement>('.open-slot') ?? []) {
+    const card = h(UiOpenCard, { event: { type: 'ui-open', pane: '', link: slot.dataset.link ?? '', by: '' }, kept: true })
+    card.appContext = app
+    slot.textContent = ''
+    render(card, slot)
+    slots.push(slot)
+  }
+  // What an agent showed with `ui show`: a tap shows it again.
+  for (const slot of el.value?.querySelectorAll<HTMLElement>('.show-slot') ?? []) {
+    const card = h(UiShowCard, { event: { type: 'ui-show', pane: '', what: slot.dataset.what === 'shots' ? 'shots' : 'file', arg: slot.dataset.arg ?? '', by: '' }, kept: true })
+    card.appContext = app
+    slot.textContent = ''
+    render(card, slot)
+    slots.push(slot)
+  }
+  // An agent's `ui action` button: only the user's click runs it.
+  for (const slot of el.value?.querySelectorAll<HTMLElement>('.action-slot') ?? []) {
+    const card = h(ActionCard, { id: slot.dataset.action ?? '' })
+    card.appContext = app
+    slot.textContent = ''
+    render(card, slot)
+    slots.push(slot)
+  }
+}
+
 // First state applied before display: no flash of the full text.
 onMounted(() => {
+  mountCards()
   syncSvgTheme(true)
   if (props.typing !== null) start(props.typing)
 })
@@ -200,8 +250,9 @@ watch(() => props.html, () => {
   plan = null
   emit('done')
 }, { flush: 'pre' })
-watch(() => props.html, () => syncSvgTheme(true), { flush: 'post' })
+watch(() => props.html, () => { mountCards(); syncSvgTheme(true) }, { flush: 'post' })
 onBeforeUnmount(() => {
+  dropCards()
   themeObserver?.disconnect()
   cancelAnimationFrame(raf)
   dropBands()
@@ -216,6 +267,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .md-body :deep(.svg-block) { background: transparent; }
+.md-body :deep(.wherdr-block .ui-open-card) { margin: 0; }
+.md-body :deep(.wherdr-block) { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px; margin: 8px 0; }
 .md-body :deep(img.svg-preview) {
   display: block; width: 100%; max-width: 100%; max-height: 65dvh;
   object-fit: contain; margin: 0; padding: 12px; border: 0;

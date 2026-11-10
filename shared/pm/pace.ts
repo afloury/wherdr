@@ -1,8 +1,10 @@
 // The pace of automatic work (WHR-376 § 4.2, § 5): which starts are held by
 // the verdict of the worker's account (shared/pm/pacing.ts), the account's
 // quota among the readings, and the words the coordinator and the firings get.
-import type { Quota, QuotaAccount, Quotas } from '../types'
-import type { Task, TaskOrigin } from './run'
+import type { Quota, QuotaAccount, QuotaCredits, Quotas } from '../types'
+import { limitEnds, limitState, type LimitState } from '../quotaLimit'
+import { accountFor } from '../quotaAccount'
+import { quotaOut, type Task, type TaskOrigin } from './run'
 import { DEFAULT_PACE, burning, current, paceVerdict, targetLine, type PacePolicy, type PaceReason, type PaceVerdict } from './pacing'
 
 // Tasks made before `origin` existed: from their other marks.
@@ -26,6 +28,16 @@ export function accountQuota(q: Quotas, account: QuotaAccount): Quota | null {
   const blocks = account.program === 'claude' ? q.claudeAccounts : q.codexAccounts
   if (blocks?.length) return blocks.find(b => b.key === account.key) ?? null
   return q[account.program]
+}
+
+// An agent's account on a machine at its limit now (an expired reading does
+// not count): why, for its reviewer's fallback. A machine with no account of
+// its own: the program's latest reading.
+export function accountOut(q: Quotas | null, program: string, machine: string, now: number) {
+  if (program !== 'claude' && program !== 'codex') return
+  const account = q && accountFor(q.accounts, machine, program)
+  const quota = q && (account ? accountQuota(q, account) : q[program])
+  return quota && limitState(quota, now) === 'reached' ? quotaOut(program, limitEnds(quota)!) : undefined
 }
 
 const REASONS: Record<PaceReason, string> = {
@@ -98,6 +110,8 @@ export interface PaceRow {
   at: number | null // time of the reading
   today: number | null
   verdict: PaceVerdict
+  limit?: LimitState // the reading says "limit reached" (shared/quotaLimit.ts)
+  credits?: QuotaCredits
 }
 
 export function paceRows(q: Quotas | null, policyOf: (key: string) => PacePolicy, today: Record<string, number | null>, now: number): PaceRow[] {
@@ -111,7 +125,11 @@ export function paceRows(q: Quotas | null, policyOf: (key: string) => PacePolicy
       const w = quota && current(quota.week, now), f = quota && current(quota.five, now)
       const l = w?.resetsAt ? weekLimit(policy, w.resetsAt, now) : null
       const week = w?.resetsAt && l ? { used: w.used, resetsAt: w.resetsAt, limit: l.value, label: l.label } : null
-      return { program, account, policy, week, five: f ?? null, at: quota?.at ?? null, today: today[account.key] ?? null, verdict: paceVerdict(policy, quota, now) }
+      const limit = quota && limitState(quota, now)
+      return {
+        program, account, policy, week, five: f ?? null, at: quota?.at ?? null, today: today[account.key] ?? null, verdict: paceVerdict(policy, quota, now),
+        ...(limit ? { limit } : {}), ...(quota?.credits ? { credits: quota.credits } : {}),
+      }
     })
   })
 }

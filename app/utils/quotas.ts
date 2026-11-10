@@ -3,7 +3,7 @@
 //    account): once at the top, as before.
 //  - Different accounts (Claude or Codex): each machine has the table of its
 //    account under its header (collapsed with it), nothing left of that agent at the top.
-import type { ClaudeSetup, Quota, QuotaWindow, Quotas } from '../../shared/types'
+import type { ClaudeSetup, Quota, QuotaCredits, QuotaWindow, Quotas } from '../../shared/types'
 import { defaultAccountName } from '../../shared/quotaAccount'
 import installer from '../../scripts/install-claude-statusline.sh?raw'
 
@@ -128,6 +128,12 @@ export const quotaLevel = (w: QuotaWindow, now: number) => {
 
 // Reading older than an hour: numbers to take with caution.
 export const STALE_MS = 3600000
+// Older than 6 hours: the row also says how to get a new one.
+export const OLD_MS = 6 * 3600000
+
+// "120 credits", "unlimited credits", "credits" (no balance given).
+export const creditsText = (c: QuotaCredits) =>
+  c.unlimited ? 'unlimited credits' : c.balance === null ? 'credits' : `${c.balance.toLocaleString('en-US', { maximumFractionDigits: 2 })} credits`
 
 // Reset time: the time alone within the next 24 h (even the
 // next day: "00:00" and not "Sun 00:00", which looks like the weekly one),

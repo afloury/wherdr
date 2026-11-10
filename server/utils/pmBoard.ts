@@ -1,11 +1,12 @@
 // The board's data, and the user's button on a step that waits for them.
-import { boardColumns, cardOf, type Board, type BoardMachine, type Card } from '../../shared/pm/board'
+import { boardColumns, cardOf, shownTexts, type Board, type BoardMachine, type Card } from '../../shared/pm/board'
 import { initialState, onEvent, planSteps, reviewedCommit, reworkSince, waitsToMerge, type StepEvent } from '../../shared/pm/steps'
 import { taskGuards, type ActionResult } from '../../shared/pm/actions'
 import type { MergeBy, Template } from '../../shared/pm/workflow'
 import { addShot, isImage, needsShots, SHOT_TYPES, type Shot } from '../../shared/pm/shots'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { taskPlan, type Task } from '../../shared/pm/run'
+import { boardOrder } from '../../shared/pm/boardOrder'
 import { weightOf, weightText } from '../../shared/pm/weight'
 import { allowedMachines, type Project } from '../../shared/pm/project'
 import type { MachineInfo } from '../../shared/types'
@@ -43,7 +44,7 @@ const machinesOf = (p: Project, known: MachineInfo[]): BoardMachine[] | undefine
 
 // known: the machines wherdr knows, to name those a project allows.
 export async function board(store: PmStore, known: MachineInfo[] = []): Promise<Board> {
-  const [projects, templates, tasks, runs] = [await store.projects(), await templatesOf(store), await store.tasks(), await store.runs()]
+  const [projects, templates, tasks, runs] = [await store.projects(), await templatesOf(store), boardOrder(await store.tasks()), await store.runs()]
   return {
     projects: projects.map((p) => {
       const t = templates.get(p.key), machines = machinesOf(p, known)
@@ -54,7 +55,7 @@ export async function board(store: PmStore, known: MachineInfo[] = []): Promise<
       const p = projects.find(x => x.key === task.project)
       // A project with several machines: the card names the one its task went to.
       const on = task.machine !== undefined && p && allowedMachines(p).length > 1 ? known.find(m => m.key === task.machine)?.label ?? (task.machine || 'Local') : undefined
-      return withPr({ ...cardOf(task, planOf(templates.get(task.project) ?? null, task, p), runs), shown: shownTaskId(projects, task.id), ...(p?.color ? { color: p.color } : {}), ...(on ? { machine: on } : {}), ...(task.sameFiles && task.state === 'todo' ? { sameFiles: shownTaskId(projects, task.sameFiles) } : {}) })
+      return withPr({ ...shownTexts(projects, cardOf(task, planOf(templates.get(task.project) ?? null, task, p), runs)), shown: shownTaskId(projects, task.id), ...(p?.color ? { color: p.color } : {}), ...(on ? { machine: on } : {}), ...(task.sameFiles && task.state === 'todo' ? { sameFiles: shownTaskId(projects, task.sameFiles) } : {}) })
     }),
   }
 }

@@ -3,7 +3,7 @@
 // A change is only described unless the call says --apply; Alfred applies it
 // after the user's yes. Nothing here removes data.
 import path from 'node:path'
-import { CHANGES, SETTING_VALUES, alfredCommandList, dryRun, parseAlfredCommand, workflowEditRefusal, type AlfredPlan } from '../../shared/pm/alfredCli'
+import { CHANGES, SETTING_TARGETS, SETTING_VALUES, alfredCommandList, dryRun, parseAlfredCommand, workflowEditRefusal, type AlfredPlan } from '../../shared/pm/alfredCli'
 import { GUARDED_PROGRAMS, MAIN, templateDiff, type CoordinatorAgent } from '../../shared/pm/coordinator'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges } from '../../shared/pm/templateText'
@@ -16,13 +16,15 @@ import { alfredTokenOk, coordinatorsView, noteTurn, readV2Projects, startCoordin
 import { sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { lastWords } from './pmRead'
 import type { FolderCheck, PmStore } from './pmStore'
-import { patchSettings, readSettings } from './settings'
+import { readSettings } from './settings'
+import { addSettingCard } from './uiActions'
+import { UI_TARGETS } from '../../shared/uiTargets'
 import { saveProjectGuards } from './pmProject'
 import { checkMachine } from './pmReady'
 import { projectPlace } from '../../shared/pm/places'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DATA_DIR } from './env'
-import { openUi, type UiOpenDeps } from './uiOpen'
+import { openUi, uiTargetsList, type UiOpenDeps } from './uiOpen'
 
 type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, dataDir?: string, clients?: UiOpenDeps['clients'] }
 
@@ -106,13 +108,16 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       if (!pane) throw new HerdrError('not_found', `The coordinator of ${cmd.key} is not running: start it with wherdr alfred coordinator start ${cmd.key}`)
       return { link: `${deps.urls.remote ?? deps.urls.local}/#/a/${encodeURIComponent(pane.id)}`, note: 'Give the user this link; the sidebar shows it too' }
     }
+    case 'ui targets': return uiTargetsList()
     case 'ui open': return openUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope: MAIN, main: true, raw: cmd.link, turn: (await alfredTurn())?.kind ?? 'none', by: ALFRED })
     case 'settings': return { settings: await readSettings(deps.settingsFile), values: SETTING_VALUES, note: 'Alfred changes only the settings listed in values, to one of their values (1 = on, 0 = off)' }
     case 'setting set': {
       const old = (await readSettings(deps.settingsFile))[cmd.key]
       if (old === cmd.value) return { unchanged: true, [cmd.key]: old }
-      return change({ change: [`setting ${cmd.key}: ${old === undefined ? '(default)' : JSON.stringify(old)} → ${JSON.stringify(cmd.value)}`] },
-        async () => ({ [cmd.key]: (await patchSettings({ [cmd.key]: cmd.value }, { file: deps.settingsFile }))[cmd.key] }))
+      const line = `setting ${cmd.key}: ${old === undefined ? '(default)' : JSON.stringify(old)} → ${JSON.stringify(cmd.value)}`
+      if (!cmd.propose) return { dryRun: true, change: [line], next: `To propose it, run the same command with --propose: the user applies it from the card in your reply` }
+      const turn = await alfredTurn(), target = SETTING_TARGETS[cmd.key]
+      return addSettingCard(store, { turn: turn?.kind ?? 'none', by: ALFRED, label: target ? UI_TARGETS[target].label : cmd.key, change: { key: cmd.key, ...(old === undefined ? {} : { before: old }), after: cmd.value, ...(turn?.said ? { said: turn.said } : {}), ...(target ? { target } : {}) } })
     }
     case 'project add': {
       await needPm()

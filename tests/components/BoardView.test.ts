@@ -6,12 +6,14 @@ import { herdrState } from '~/composables/useHerdr'
 import { answerConfirm, confirmState, menuState } from '~/composables/useUi'
 import { boardColumns, cardOf, type Board } from '#shared/pm/board'
 import { initialState, planSteps, type StepState } from '#shared/pm/steps'
-import { company, vibe } from '#shared/pm/examples'
+import { company, vibe, wherdr } from '#shared/pm/examples'
 import type { Run, Task } from '#shared/pm/run'
 import type { Template } from '#shared/pm/workflow'
 import type { Pane } from '#shared/types'
 import { nextTick } from 'vue'
 import { pick, select, selectLabels, selectValue } from '../helpers/select'
+import { boardProject } from '~/composables/useBoardProject'
+import { machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
@@ -44,7 +46,8 @@ const reset = (co1: Partial<StepState> = {}) => {
 reset()
 registerEndpoint('/api/pm/board', () => board)
 // Alfred has no autopilot: only a project's coordinator gets the header button.
-registerEndpoint('/api/pm/coordinators', () => [{ project: '_main', name: 'Alfred', main: true }, { project: 'VIB', name: 'Vibe', autopilot: { on: true, goal: '', events: [], perDay: 1, atOnce: 1 } }])
+// Vibe works on host-a, Company on host-b: the home tabs that show each (projectOnBar).
+registerEndpoint('/api/pm/coordinators', () => [{ project: '_main', name: 'Alfred', main: true }, { project: 'VIB', name: 'Vibe', machines: ['host-a'], autopilot: { on: true, goal: '', events: [], perDay: 1, atOnce: 1 } }, { project: 'CO', name: 'Company', machines: ['host-b'] }])
 const posts: { url: string, body: Record<string, unknown> }[] = []
 // task: the new task, added to the board; task-start: refused (a limit) when `refuse` is set.
 let refuse = ''
@@ -62,7 +65,7 @@ const pane = (coreAddress: string, status: Pane['status']) => ({ id: coreAddress
 herdrState.value = { ok: true, workspaces: [], panes: [pane('host-a/t1', 'working'), pane('host-a/t2', 'idle'), pane('host-a/t3', 'working')] }
 
 let mounted: { unmount: () => void } | null = null
-afterEach(() => { mounted?.unmount(); mounted = null; reset(); refuse = ''; posts.length = 0 })
+afterEach(() => { mounted?.unmount(); mounted = null; reset(); refuse = ''; posts.length = 0; boardProject.value = null; machineGroups.value = []; machineBarSaved.value = null })
 const mount = async () => {
   const w = await mountSuspended(BoardView)
   mounted = w
@@ -84,6 +87,32 @@ it('shows the columns of a template without review, and of all projects', async 
   expect(laneOf(w, 'VIB-1')).toBe('Working')
   await pick(w, 'board-project', 'CO')
   expect(lanes(w)).toEqual(['your-turn', 'To do', 'Working', 'Review', 'Deploy', 'Done'])
+})
+
+const shown = (w: Awaited<ReturnType<typeof mount>>) => w.findAll('[data-testid="board-card"]').map(c => c.attributes('data-task')).sort()
+
+it('the project picker: All projects without groups; Follow machine tab once groups exist, in step with the home tab; the pick is kept', async () => {
+  let w = await mount()
+  expect(selectLabels(w, 'board-project')).toEqual(['Follow machine tab', 'All projects', 'Vibe', 'Company'])
+  expect(selectValue(w, 'board-project')).toBe('all')
+  w.unmount()
+  machineGroups.value = [{ id: 'g1', name: 'Group A', machines: ['host-a'] }, { id: 'g2', name: 'Group B', machines: ['host-b'] }]
+  machineBarSaved.value = 'g1'
+  w = mounted = await mountSuspended(BoardView)
+  await vi.waitFor(() => expect(shown(w)).toEqual(['VIB-1']))
+  expect(selectValue(w, 'board-project')).toBe('follow')
+  machineBarSaved.value = 'g2' // the home tab changes: the board follows, in place
+  await vi.waitFor(() => expect(shown(w)).toEqual(['CO-1', 'CO-2']))
+  machineBarSaved.value = '*'
+  await vi.waitFor(() => expect(shown(w)).toEqual(['CO-1', 'CO-2', 'VIB-1']))
+  expect(navigate).not.toHaveBeenCalled()
+  await pick(w, 'board-project', 'all')
+  expect(boardProject.value).toBe('all') // the synced setting, kept on the server
+  w.unmount()
+  w = mounted = await mountSuspended(BoardView) // a reload keeps All projects, groups or not
+  machineBarSaved.value = 'g1'
+  await vi.waitFor(() => expect(shown(w)).toEqual(['CO-1', 'CO-2', 'VIB-1']))
+  expect(selectValue(w, 'board-project')).toBe('all')
 })
 
 it('shows the reviewer\'s state in review, and no indicator on a holder: none card', async () => {
@@ -148,11 +177,11 @@ it('splits the task\'s sheet in tabs, Description first, one open at a time; the
   await card(w, 'CO-1').trigger('click')
   const q = (sel: string) => document.querySelector<HTMLElement>(sel)
   const tabs = () => [...document.querySelectorAll<HTMLElement>('[role="tab"]')].map(t => `${t.dataset.tab}${t.getAttribute('aria-selected') === 'true' ? '*' : ''}`)
-  await vi.waitFor(() => expect(tabs()).toEqual(['description*', 'plan', 'log']))
+  await vi.waitFor(() => expect(tabs()).toEqual(['description*', 'plan', 'history', 'log']))
   expect(q('[data-testid="task-panel"] a[href="https://example.com/pr/1"]')).not.toBeNull()
   expect(q('[data-testid="task-plan"]')).toBeNull()
   q('[data-tab="log"]')!.click()
-  await vi.waitFor(() => expect(tabs()).toEqual(['description', 'plan', 'log*']))
+  await vi.waitFor(() => expect(tabs()).toEqual(['description', 'plan', 'history', 'log*']))
   expect(q('[data-testid="task-log"]')!.textContent).toContain('coordinator CO')
   expect(q('[data-testid="task-log"]')!.textContent).toContain('chose pass (advice: pass, nothing above minor). Only a naming nit is left.')
   expect(q('[data-testid="task-panel"] a[href="https://example.com/pr/1"]')).toBeNull()
@@ -315,4 +344,31 @@ it('Start on… lists the machines a project allows, starts on the one picked an
   menuState.items[1]!.run!()
   await vi.waitFor(() => expect(w.find('.error').text()).toBe(refuse))
   expect(posts).toEqual([{ url: '/api/pm/task-start', body: { id: 'VIB-1', machine: 'b' } }])
+})
+
+it('a task the engine resumes after an incident shows why it waits, not Your turn; its follower waits for it to resume', async () => {
+  const why = 'The agent\'s terminal is gone: the machine is offline or unreachable (its herdr-core does not answer) (host-b): wherdr resumes it once host-b is back'
+  board.cards[1] = coTask(task('CO-1', at(2), { state: 'waiting', waiting: why, run: 'r1', recovery: { incident: 'i1', cause: 'offline', machine: 'b', label: 'host-b', run: 'r1', at: 1, n: 1, waits: true } }))
+  board.cards.push(coTask(task('CO-3', initialState(), { state: 'todo', after: 'CO-1', held: 'Waits for CO-1 to resume' })))
+  const w = await mountSuspended(BoardView)
+  mounted = w
+  await vi.waitFor(() => expect(w.findAll('[data-testid="board-card"]')).toHaveLength(4))
+  expect(laneOf(w, 'CO-1')).not.toBe('your-turn')
+  expect(card(w, 'CO-1').find('[data-testid="board-status"]').text()).toBe(why)
+  expect(card(w, 'CO-3').find('[data-testid="board-status"]').text()).toBe('Waits for CO-1 to resume')
+})
+
+it('an approved merge stays in Your turn with Merge loading and what it waits for, until it merges', async () => {
+  // A merge step the user approves (github.merge): the engine merges it once ready.
+  const merge = (step: Partial<StepState>, more: Partial<Task> = {}) => cardOf(task('CO-2', at(4, { approved: { by: 'user', at: 1 }, ...step }), { type: 'visual', ...more }), planSteps(wherdr, { type: 'visual' }), runs)
+  board.cards[2] = merge({}, { queue: 2 })
+  let w = await mount()
+  expect(laneOf(w, 'CO-2')).toBe('your-turn')
+  expect(card(w, 'CO-2').get('[data-testid="board-merging"]').text()).toBe('Merge')
+  expect(card(w, 'CO-2').get('[data-testid="board-status"]').text()).toBe('Approved, merges by itself · 2nd in merge queue')
+  w.unmount()
+  board.cards[2] = merge({ done: true })
+  w = await mount()
+  expect(laneOf(w, 'CO-2')).not.toBe('your-turn')
+  expect(card(w, 'CO-2').find('[data-testid="board-merging"]').exists()).toBe(false)
 })

@@ -3,7 +3,7 @@
 // the server (server/utils/pmCoordinator.ts) reads and writes.
 import type { Project } from './project'
 import { WEIGHTS, isWeight, type Holder, type Template, type Weight } from './workflow'
-import type { Run } from './run'
+import { SPEC_RULE, type Run, type Task } from './run'
 import { wasReleased } from './release'
 
 type AgentRole = Run['role']
@@ -11,10 +11,16 @@ import type { WorkflowChanges } from './workflowChanges'
 import type { ProjectColor } from './projectKey'
 import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, type Autopilot, type FixKind, type limitsLeft } from './autopilot'
 import type { Wake } from './wakes'
+import type { ProposalFlow } from './flow'
+import { CAUSE_RULE } from './incidentWake'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
 import { PUBLIC_RULE, isPublic } from './visibility'
 import { appLinkList } from '../appLinks'
+import { uiOpenArgs } from '../uiOpen'
+import { isUiAction, type UiAction } from '../uiActions'
+import { uiShowArgs, type UiShowCommand } from '../uiShow'
+import { uiTargetList } from '../uiTargets'
 import { projectPlace } from './places'
 import { parseFiles } from './files'
 import { MERGE_METHODS, contributorPrsLine, type MergeMethod } from './contributorPr'
@@ -70,14 +76,18 @@ export interface CoordinatorView {
   // agent: the default the user set for it, if any (else the first of their agents).
   // git: false: a folder without git, its coordinator works in it (no template needed).
   // label, color: the project's shown key and its badge's color.
-  // machines: the project's allowed machines, home first (none for the main coordinator).
-  project: string, machines?: string[], name: string, label?: string, color?: ProjectColor, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
-  // proposal: the change waiting for the user, as a person reads it too; answered: the last answer.
-  proposal?: Omit<Proposal, 'template' | 'base'> & { changes?: WorkflowChanges }, answered?: ProposalAnswer
+  // machines: the project's allowed machines, home first (none for the main coordinator);
+  // paused: those paused for it; busy: the paused ones where one of its tasks still runs.
+  project: string, machines?: string[], paused?: string[], busy?: string[], name: string, label?: string, color?: ProjectColor, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
+  // proposal: the change waiting for the user, as a person reads it too (flow: the steps of
+  // the first changed task type, before and after); answered: the last answer.
+  proposal?: Omit<Proposal, 'template' | 'base'> & { changes?: WorkflowChanges, flow?: ProposalFlow }, answered?: ProposalAnswer
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
   autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
   // Nothing to do: its scheduled wakes are skipped (asleep), since its last wake.
   asleep?: 'idle' | 'limit', wokeAt?: number, skippedToday?: number
+  // When its autopilot wakes next (interval or fixed times), if on.
+  nextWake?: number
 }
 
 // Where the coordinator's current turn comes from: a message the user sent
@@ -86,7 +96,7 @@ export type Turn = 'user' | 'wake' | 'none'
 
 export type Command =
   | { name: 'help' } | { name: 'list' } | { name: 'plan' } | { name: 'template show' } | { name: 'autopilot show' }
-  | { name: 'automation list' }
+  | { name: 'automation list' } | { name: 'incidents', since?: number }
   | { name: 'show', task: string }
   | { name: 'template edit' } // the new template comes as the call's input (JSON)
   | { name: 'task tag', task: string, text: string }
@@ -94,17 +104,25 @@ export type Command =
   | { name: 'step done', task: string, userSaid?: string, link?: string }
   | { name: 'task decide', task: string, choice: Choice, reason: string }
   | { name: 'ack', wakes: string[] } | { name: 'automation show', id: string }
-  | { name: 'tell', task: string, text: string, to?: AgentRole, fix?: FixKind, reason?: string }
+  | { name: 'tell', task: string, text: string, to?: AgentRole, fix?: FixKind, reason?: string, spec?: true }
+  | { name: 'task edit', task: string, title?: string, description?: string, reason: string }
+  | { name: 'task note', task: string, text: string }
   | { name: 'read', task: string, to?: AgentRole, lines?: number }
   | { name: 'task start', task: string, on?: string }
   | { name: 'task check', task: string }
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
+  | { name: 'task order', task: string, tasks: string[] } // task: the first, for its project
   | { name: 'task add', title: string, type: string, after?: string, description?: string, weight?: Weight, files?: string[] }
   | { name: 'pr merge', pr: number, userSaid: string, method?: MergeMethod }
   | { name: 'report back' | 'report close', task: string, text: string }
   // Show a place beside the coordinator's conversation (shared/uiOpen.ts).
   | { name: 'ui open', link: string }
+  | { name: 'ui targets' }
+  // A button in the reply that only the user's click runs (shared/uiActions.ts).
+  | { name: 'ui action', action: UiAction, task: string }
+  // A file of its folder or a task's screenshots beside it (shared/uiShow.ts).
+  | UiShowCommand
 
 // One table for the parser, the skill and the role file.
 export const COMMANDS: { usage: string, does: string }[] = [
@@ -117,21 +135,28 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task link <task> <url> --label <label>', does: 'a link on the card (PR, ticket, pipeline)' },
   { usage: 'step done <task> [--link <url>]', does: 'end the task\'s current step when you hold it (holder: coordinator)' },
   { usage: 'step done <task> --user-said "<their words>"', does: 'end a step that waits for the user, with the user\'s own words; only in a turn that comes from the user' },
-  { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options' },
+  { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options. Also pass when each remaining finding contradicts a spec change recorded on the task (task edit, task note, tell --spec), the reason citing it (its date YYYY-MM-DD or its words); never before a merge only the user may do nor on a critical finding with proof. Written to the task\'s log and shown in the user\'s Decisions: tell the user in your next message' },
   { usage: 'ack <wake> [<wake>…]', does: 'say you handled a wake (each wake ends with its id); unacked, it comes back once, then the user is told' },
-  { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, the pacing of your worker\'s account (go, or what automatic work waits for), each machine the project allows (online or offline, its available hours, memory, cores and load, its agents at work by weight, the heaviest weight it takes now or why none) and the weights (what each counts, the weight of each task type)' },
+  { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, the pacing of your worker\'s account (go, or what automatic work waits for), each machine the project allows (online or offline, its available hours, memory, cores and load, its agents at work by weight, the heaviest weight it takes now or why none) the weights (what each counts, the weight of each task type) and the last open incident (why agents were gone, see incidents)' },
+  { usage: 'incidents [--since 2h|3d|<ISO date>]', does: 'why agents were gone, as the engine diagnosed it from facts (machine offline or unreachable, herdr-core or wherdr restarted, agent killed or crashed, out of memory, account limit, or unknown): when, the machine, the cause, the facts it used, the tasks and agents hit, open until those tasks run again; newest first, the last 7 days by default. Tell the user this cause, never a guess' },
   { usage: 'automation list', does: 'the project\'s automations: on or off, schedule or event, last firing' },
   { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings; only the user adds or changes them, in wherdr' },
   { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, past the autopilot\'s limits and hours (the output says when: "started; past the autopilot\'s limit of 3 at once"; the start still counts in them), in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there; while it is offline the task goes to another allowed machine that fits, else waits for it. A started task always goes back to its own machine' },
   { usage: 'task check <task>', does: 'read the task\'s PR on GitHub now, for a task at its merge step or archived with a PR: merged, its merge step ends as merged and the task goes on; open, why it waits; closed without a merge, said (the user may archive it). At any time, when the user asks to unblock a task' },
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
+  { usage: 'task order <task> [<task>…]', does: 'put these tasks first in their column (To do, Your turn…), in this order; the others keep their order after them. Keep the board busy starts to-do tasks in board order, and the merge queue takes approved merges in it. A done task is refused. In a turn of the user at any time, in a wake only with the autopilot on; written to the project\'s log' },
+  { usage: 'task edit <task> [--title "<text>"] [--description "<text>"] --reason "<one sentence>"', does: 'change the task\'s title or description when the user changes direction; only in a turn that comes from the user. Written to the task\'s log with the reason and a short diff; its running agent is told at once, and the worker and the reviewer read the new spec from their next step or round' },
+  { usage: 'task note <task> "<text>"', does: `add a dated spec change to the task, under its description; only in a turn that comes from the user. The worker\'s and the reviewer\'s instructions give every note, newest last, with the rule "${SPEC_RULE}"; its running agent is told at once` },
   { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy] [--files <path>,<path>]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it). --files: the files or folders it will change, so that its start waits behind a started task that touches them' },
   { usage: 'report back <task> "<what to fix>"', does: 'on a problem the user reported: send their step back to the worker with precise fixes, and close the report' },
   { usage: 'report close <task> "<what you did>"', does: 'close a problem the user reported once handled (you told the agent, added a follow-up task, or it is fine); the merge it blocked is free again' },
-  { usage: 'tell <task> "<text>" [--to worker|reviewer] [--fix base|ci|machine|stall --reason "<one sentence>"]', does: `a message to one of the task\'s agents: the one that holds its current step, else (a step held by nobody or by you: pr, merge, a user step) its worker; --to picks it. The answer says which agent got it. In a wake, only to answer its question, or with --fix to unblock a mechanical block (${FIX_KINDS.map(k => `${k}: ${FIX_TEXT[k]}`).join('; ')}): a worker that was let go or has ended starts again with your message; with the autopilot on, a task of your project, at most ${FIXES_PER_STEP} times per task and step, written to its log with the reason; past that, tell the user. A permission request is always the user\'s` },
+  { usage: 'tell <task> "<text>" [--to worker|reviewer] [--spec] [--fix base|ci|machine|stall --reason "<one sentence>"]', does: `a message to one of the task\'s agents: the one that holds its current step, else (a step held by nobody or by you: pr, merge, a user step) its worker; --to picks it. The answer says which agent got it. --spec also records it as a spec note (task note), so that the reviewer reviews against it; only in a turn that comes from the user. In a wake, only to answer its question, or with --fix to unblock a mechanical block (${FIX_KINDS.map(k => `${k}: ${FIX_TEXT[k]}`).join('; ')}): a worker that was let go or has ended starts again with your message; with the autopilot on, a task of your project, at most ${FIXES_PER_STEP} times per task and step, written to its log with the reason; past that, tell the user. A permission request is always the user\'s` },
   { usage: 'read <task> [--to worker|reviewer] [--lines N]', does: 'what the task\'s agent last said (its question, its answer to your tell), on whichever machine it runs: the last message of its conversation, else the bottom of its screen; the agent tell reaches by default, --to picks it; --lines 1 to 200 (default 40)' },
-  { usage: 'ui open \'<in-app link>\'', does: 'show one of your project\'s places (its board, a task, its sheet) or a global Settings section in the user\'s open wherdr, beside your conversation (a card on a phone), quoted; only in a turn that comes from the user, only to an app showing your conversation. It changes nothing' },
+  { usage: 'ui open \'<in-app link>\' | --target <id>', does: 'show one of your project\'s places (its board, a task, its sheet) or a global Settings section (or one setting of it highlighted: --target) in the user\'s open wherdr, beside your conversation (a card on a phone), quoted; only in a turn that comes from the user, only to the wherdr the user is on now (the answer says which: phone or computer). It changes nothing' },
+  { usage: 'ui targets', does: 'the settings ui open --target can highlight: id and where it is' },
+  { usage: 'ui action resume|step|open <task>', does: 'a button in your reply that the user clicks: resume (continue a stopped task), step (the button of the step that waits for the user: "Merge", "Approve screenshots"), open (its sheet); only in a turn that comes from the user. Only their click runs it, through the task sheet\'s own action, and only if the task still waits the same way; end your reply with the block the answer gives, and never say it is done before the card shows it' },
+  { usage: 'ui show file <path> | shots <task>', does: 'show a file of your folder (a path relative to it), or a task\'s screenshots (before and after side by side, toggled on a phone), beside your conversation (a card on a phone); only in a turn that comes from the user. It only shows: for the user\'s approval, add ui action step <task>; end your reply with the block the answer gives' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
@@ -157,7 +182,7 @@ export function tellTarget(runs: Run[], task: string, holder: Holder | undefined
 const TASK_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 // The main coordinator names the project with --project <KEY>; a task names its own.
-const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'automation list', 'automation show', 'task add']
+const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'incidents', 'automation list', 'automation show', 'task add']
 const URL_RE = /^https?:\/\/\S{1,2000}$/
 
 // argv after `wherdr pm` → a command, or the reason it is not one.
@@ -170,12 +195,21 @@ export function parseCommand(argv: unknown): (Command & { project?: string }) | 
   return KEY_RE.test(project) ? { ...r, project } : { error: '--project is a project key: 2 to 10 letters or digits' }
 }
 
+// "2h", "3d", "30m" before now, or a date.
+export function sinceTime(v: string, now: number): number | null {
+  const m = /^(\d{1,4})([mhd])$/.exec(v.trim())
+  if (m) return now - Number(m[1]) * { m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2] as 'm' | 'h' | 'd']
+  const t = /^\d{4}-\d{2}-\d{2}/.test(v) ? Date.parse(v) : NaN
+  return Number.isFinite(t) ? t : null
+}
+
 function parseWords(argv: unknown): Command | { error: string } {
   if (!Array.isArray(argv) || !argv.every(a => typeof a === 'string')) return { error: 'argv must be a list of words' }
   const words: string[] = [], flags: Record<string, string> = {}
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] as string
     if (!a.startsWith('--')) { words.push(a); continue }
+    if (a === '--spec') { flags.spec = 'yes'; continue } // the one option without a value
     const v = argv[i + 1] as string | undefined
     if (v === undefined) return { error: `${a} needs a value` }
     flags[a.slice(2)] = v
@@ -185,9 +219,15 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files'], 'task start': ['on'] }[w0 === 'tell' || w0 === 'read' ? w0 : verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files'], 'task start': ['on'], 'incidents': ['since'], 'ui open': ['target'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
+  if (w0 === 'incidents') {
+    if (w1) return { error: `unexpected argument: ${w1}` }
+    if (flags.since === undefined) return { name: w0 }
+    const since = sinceTime(flags.since, Date.now())
+    return since === null ? { error: '--since is a duration (30m, 2h, 3d) or a date (2026-01-31)' } : { name: w0, since }
+  }
   if (verb === 'autopilot show' || verb === 'automation list') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
   if (verb === 'automation show') return w2 && /^[a-z0-9][a-z0-9-]{0,39}$/.test(w2) && !w3 ? { name: verb, id: w2 } : usage(verb)
   if (w0 === 'tell') {
@@ -197,7 +237,7 @@ function parseWords(argv: unknown): Command | { error: string } {
     const { fix, reason } = flags
     if (fix !== undefined && !FIX_KINDS.includes(fix as FixKind)) return { error: `--fix is one of ${FIX_KINDS.join(', ')}` }
     if ((fix === undefined) !== (reason === undefined) || (reason !== undefined && !reason.trim())) return { error: '--fix and --reason "<one sentence>" go together' }
-    return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text, ...(to ? { to: to as AgentRole } : {}), ...(fix ? { fix: fix as FixKind, reason: reason!.trim().slice(0, 500) } : {}) } : usage('tell')
+    return w1 && TASK_RE.test(w1) && text && text.length <= 4000 ? { name: 'tell', task: w1, text, ...(to ? { to: to as AgentRole } : {}), ...(fix ? { fix: fix as FixKind, reason: reason!.trim().slice(0, 500) } : {}), ...(flags.spec ? { spec: true as const } : {}) } : usage('tell')
   }
   if (w0 === 'read') {
     const to = flags.to as AgentRole | undefined, lines = flags.lines === undefined ? undefined : Number(flags.lines)
@@ -210,7 +250,10 @@ function parseWords(argv: unknown): Command | { error: string } {
     const text = words.slice(3).join(' ').trim()
     return TASK_RE.test(task) && text && text.length <= 2000 ? { name: verb, task, text } : usage(verb)
   }
-  if (verb === 'ui open') return w2 && !w3 ? { name: verb, link: w2 } : usage(verb)
+  if (verb === 'ui open') return uiOpenArgs(w2, w3, flags.target, usage(verb))
+  if (verb === 'ui targets') return w2 ? usage(verb) : { name: verb }
+  if (verb === 'ui show') return uiShowArgs(w2, w3 === undefined ? [] : [w3, ...rest], TASK_RE, usage(verb))
+  if (verb === 'ui action') return isUiAction(w2) && w3 && TASK_RE.test(w3) && !rest.length ? { name: verb, action: w2, task: w3 } : usage(verb)
   if (w0 === 'help' || w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0 }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')
   if (verb === 'template show' || verb === 'template edit') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
@@ -236,6 +279,22 @@ function parseWords(argv: unknown): Command | { error: string } {
     const on = flags.on?.trim()
     if (flags.on !== undefined && !on) return { error: '--on needs a machine\'s name' }
     return TASK_RE.test(task) && !w3 ? { name: verb, task, ...(on ? { on } : {}) } : usage(verb)
+  }
+  if (verb === 'task order') {
+    const tasks = words.slice(2)
+    return tasks.length && tasks.length <= 100 && tasks.every(x => TASK_RE.test(x)) ? { name: verb, task: tasks[0]!, tasks } : usage(verb)
+  }
+  if (verb === 'task edit') {
+    const title = flags.title?.trim(), description = flags.description?.trim(), reason = (flags.reason ?? '').trim()
+    if (!TASK_RE.test(task) || w3 || !reason || (title === undefined && description === undefined)) return usage(verb)
+    if (title !== undefined && (!title || title.length > 200)) return { error: '--title is 1 to 200 characters' }
+    if (description !== undefined && description.length > 20000) return { error: '--description is 20000 characters at most' }
+    if (reason.length > 300 || reason.includes('\n')) return { error: '--reason is one sentence (300 characters at most)' }
+    return { name: verb, task, ...(title !== undefined ? { title } : {}), ...(description !== undefined ? { description } : {}), reason }
+  }
+  if (verb === 'task note') {
+    const text = words.slice(3).join(' ').trim()
+    return TASK_RE.test(task) && text && text.length <= 4000 ? { name: verb, task, text } : usage(verb)
   }
   if (verb === 'task check') return TASK_RE.test(task) && !w3 ? { name: verb, task } : usage(verb)
   if (verb === 'task stop' || verb === 'task remove') {
@@ -301,6 +360,53 @@ export function stepDoneEvent(step: PlannedStep | undefined, cmd: { userSaid?: s
   return { kind: 'report', from: 'coordinator', ...(cmd.link ? { evidence: { link: cmd.link } } : {}) }
 }
 
+// task edit, task note and tell --spec change what the task asks: the user's
+// change of direction only, never a wake's.
+export const specChangeRefusal = (turn: Turn) => turn === 'user' ? undefined
+  : 'A spec change (task edit, task note, tell --spec) is only for a turn that comes from the user, never a wake: tell the user what you would change'
+
+// task edit's short diff for the log: the title's old and new text, the
+// description's removed and added lines (a few, each cut short).
+export function specDiff(old: Pick<Task, 'title' | 'description'>, next: Pick<Task, 'title' | 'description'>) {
+  const cut = (x: string) => (x.length > 200 ? `${x.slice(0, 200)}…` : x)
+  const lines = (x: string) => x.split('\n').map(l => l.trim()).filter(Boolean)
+  const a = lines(old.description), b = lines(next.description)
+  const out = [
+    ...(old.title !== next.title ? [`title: "${cut(old.title)}" → "${cut(next.title)}"`] : []),
+    ...a.filter(l => !b.includes(l)).slice(0, 10).map(l => `- ${cut(l)}`),
+    ...b.filter(l => !a.includes(l)).slice(0, 10).map(l => `+ ${cut(l)}`),
+  ]
+  return out.join('\n') || '(no change)'
+}
+
+// The task's spec changes, oldest first: its notes (task note, tell --spec)
+// and its description edits (task edit, kept in its log with reason and diff).
+export function specChanges(task: Pick<Task, 'specNotes' | 'log'>) {
+  const edits = (task.log ?? []).filter(e => e.text.startsWith('edited the spec (')).map(e => ({ at: e.at, text: e.text.slice('edited the spec '.length) }))
+  return [...(task.specNotes ?? []), ...edits].sort((a, b) => a.at - b.at)
+}
+
+// A pass after N send-backs outside the engine's options: only when the reason
+// cites one of the task's spec changes, by its date (YYYY-MM-DD) or its words
+// (the whole text, or 20 characters of it in a row). The cited change, or why
+// not; none when the task has no spec change (the engine's refusal, as before).
+export function citedSpecChange(task: Pick<Task, 'specNotes' | 'log'>, reason: string): { at: number, text: string } | { refused: string } | undefined {
+  const changes = specChanges(task)
+  if (!changes.length) return undefined
+  const norm = (x: string) => x.toLowerCase().replace(/\s+/g, ' ').trim()
+  const r = norm(reason)
+  const cites = (c: { at: number, text: string }) => {
+    const t = norm(c.text), n = Math.min(20, t.length)
+    if (r.includes(new Date(c.at).toISOString().slice(0, 10))) return true
+    for (let i = 0; i + n <= t.length; i++) if (r.includes(t.slice(i, i + n))) return true
+    return false
+  }
+  return changes.findLast(cites) ?? { refused: 'A pass outside the engine\'s options needs a --reason that cites the spec change each remaining finding contradicts: its date (YYYY-MM-DD) or its words' }
+}
+
+// What a running agent of the task reads at once when its spec changed.
+export const specChangedText = (what: string) => `The task's spec changed: ${what}\n\n${SPEC_RULE} Follow the new spec from now on.`
+
 // How the coordinator starts, in its own folder, with its harness's default
 // model. Claude: the repo added with --add-dir, its edits denied in the
 // folder's .claude/settings.json. Codex: its --add-dir makes a folder
@@ -361,7 +467,8 @@ export function docsRule(docs: string | undefined, help: string, open: { cmd: st
     '## Links into wherdr', '',
     'Whenever you send the user somewhere in wherdr ("open Settings › Phone"), give the in-app link too, as inline code (`#/settings?section=phone`) or a Markdown link ([Phone settings](#/settings?section=phone)): the chat opens it in place. Only these addresses (KEY: a project key, TAG: a tag, ID: a task id):',
     ...appLinkList(),
-    `To show the user ${open.places} at once, beside your conversation in their open wherdr (a card on a phone): \`${open.cmd} '#/settings?section=phone'\`, the address quoted (an unquoted # starts a shell comment). Only when the user asks to see it, in their turn (refused in a wake), and only to an app showing your conversation; otherwise give the link. It opens the place and changes nothing.`, '']
+    `To show the user ${open.places} at once, beside your conversation in their open wherdr (a card on a phone): \`${open.cmd} '#/settings?section=phone'\`, the address quoted (an unquoted # starts a shell comment). Only when the user asks to see it, in their turn (refused in a wake), and only to the wherdr the user is on now; otherwise give the link. The answer says where (\`opened on\`: phone or computer) and gives a block to end your reply with, so the card stays in the conversation. It opens the place and changes nothing.`,
+    `To point at one setting (the user asks where it is, or it would solve their problem): \`${open.cmd} --target <id>\`, with one line on why; it opens the setting's section and highlights the setting. The ids (\`${open.cmd.replace(/open$/, 'targets')}\` lists them too): ${uiTargetList().map(t => `${t.id} (${t.label})`).join(', ')}.`, '']
 }
 
 // The line a coordinator's next command starts with once wherdr was updated
@@ -437,14 +544,17 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '- "Autopilot:": your autopilot (its schedule, an agent\'s question, a choice after N send-backs, the routine events the user turned on, the user\'s "run now");',
     '- "Step check: <task> (<step>)": a step you hold, at its start, recheck or timeout; it comes even with the autopilot off;',
     '- "Engine:": the engine gave up on a block after failed fixes, with what it tried;',
+    '- "Incident: <incident>, wake <id>": agents were gone (a restart, a machine offline, a crash, an account limit): once per incident, the engine\'s facts: the cause and its evidence, what it resumed, what still waits and why, what needs you or the user. It comes even with the autopilot off. The engine resumes the rest by itself: tell the user what needs them, start again what needs you, then ack;',
     '- "Health check:": every few hours, a short summary of your project (tasks done since the last check, waiting for the user, stuck for long, machines idle while to-do tasks wait). When nothing in it is wrong, ack at once with no further work: look into a line only when it needs you.',
     'The engine runs the board on its own: it starts to-do tasks while machines have room and moves them through their steps. By default no wake comes for a task done, ready or started, nor for a block the engine fixed itself; you wake only for what needs judgment, and for the health check.', '',
     '## Your memory', '',
     `\`memory.md\` in your folder is yours: wherdr creates it once and never rewrites it, so it outlives a restart and a change of program. Read it first, at each start, and follow it: the user's decisions and preferences there come before your defaults. Note there, as you go, each decision or preference the user gives you, one fact per line; nothing a command or the board already says. Keep it clean: merge duplicates, drop stale lines, stay under ${MEMORY_CAP} characters.`, '',
     '## Commands (your token: this project only)', '', ...commandList(t), '',
+    'When the user changes direction mid-task, record it as a spec change (`task edit`, `task note`, or `tell --spec`), not only a `tell`: the reviewer reviews against the spec.',
     'Every change you make is written to the task\'s or the workflow\'s log with your name.',
     `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',
     ...docsRule(docs, '`wherdr pm help`', { cmd: 'wherdr pm ui open', places: `one of your project's places (its board, a task, its sheet: KEY ${p.key}) or a global Settings section` }),
+    '## Why a task stopped', '', CAUSE_RULE, '',
     '## What you never do', '',
     `- change a guard (protected branches, who merges): the user does it in ${projectPlace(p.key, 'guards', true)};`,
     '- end a step that waits for the user unless they just told you so (`--user-said` with their words);',
@@ -470,7 +580,8 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '## A problem the user reports', '',
     'A message that starts with "The user reports a problem on task" comes from the user, from the task\'s sheet: their text, the screenshots concerned (open them), the PR and the review. Decide yourself: `tell` the agent precise fixes, `report back` to send the step back to the worker, or add a follow-up task; then `report close` with what you did. Never ask the user to pass it on to the agent: you act on it. While it is open, the task stays in Your turn, and its merge is blocked when the user said so.', '',
     '## After N send-backs', '',
-    'The engine sorts what is left and gives options. Pick one with `task decide` and one sentence of reason. When it gives no option, the choice is the user\'s: tell them.', '',
+    'The engine sorts what is left and gives options. Pick one with `task decide` and one sentence of reason. When it gives no option, the choice is the user\'s: tell them.',
+    'One exception: when each remaining finding contradicts a spec change recorded on the task (the reviewer missed the new direction), `task decide <task> pass` with a reason that cites that change (its date or its words) ends the review loop. A merge only the user may do, or a critical finding with proof, still waits for them. Tell the user in your next message: the task, the change you cited and why.', '',
     '## The user\'s instructions', '', ...(own.length ? own : ['(none yet)']), '',
   ].join('\n')
   const skill = ['---', 'name: wherdr-pm', `description: Act on project ${p.key}'s board with the wherdr pm command (tasks, steps, tags, links, workflow).`, '---', '',
@@ -500,6 +611,9 @@ export function mainRoleFiles(projects: Pick<Project, 'key' | 'name' | 'path' | 
     'Every change you make is written to the task\'s log as the main coordinator\'s.', '',
     '### Project coordinators', '',
     'Each project may have its own coordinator. You reach it only through the board: add a task, a tag or a link it will see. There is no other channel, and you never type into its terminal.', '',
+    '### Why a task stopped', '',
+    'An "Incident: <incident>, wake <id>" message comes from wherdr, once per incident (agents gone after a restart, a machine offline, a crash, an account limit), with the engine\'s facts for every project it hit: the cause and its evidence, what it resumed, what still waits and why, what needs the user. Use it to answer "what happened?" for all projects; the engine resumes the rest by itself. Ack it once read.',
+    CAUSE_RULE, '',
     '### What you never do', '',
     '- approve, merge, change an autopilot; answer a permission request: those are the user\'s;',
     '- change guards other than through `wherdr alfred project guards`, after the user\'s yes;',

@@ -5,12 +5,14 @@
 // shots/<KEY>-<n>/<file> (a task's screenshots),
 // coordinators/<KEY>.json (the hash of the coordinator's token, its current turn, its autopilot),
 // wakes.jsonl (the coordinators' wake queue, append-only: the last line of an id wins),
-// automations/<KEY>.json (the project's automations and where its tasks stood at the last tick).
+// automations/<KEY>.json (the project's automations and where its tasks stood at the last tick),
+// incidents.json (why agents were gone, newest last: shared/pm/incident.ts).
 // Atomic writes (temp file + rename), one at a time. Switched off, every
 // write is refused except turning it back on.
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
+import type { UiCard } from '../../shared/uiActions'
 import { cleanProjectInput, isBranch, machinesOf, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
 import { defaultColor, keyClash, projectOf, renamed, showIds, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
@@ -25,8 +27,10 @@ import { withMark } from '../../shared/pm/times'
 import { HerdrError } from './herdr'
 import type { FolderOptions } from '../../shared/pm/newProject'
 import { MAIN, type CoordinatorAgent, type Proposal, type ProposalAnswer } from '../../shared/pm/coordinator'
+import type { Incident } from '../../shared/pm/incident'
 import { NEW_AUTOPILOT, type Autopilot, type DayCount, type LastWake, type TaskStatus } from '../../shared/pm/autopilot'
-import { readQueue, type Wake } from '../../shared/pm/wakes'
+import { readQueue, type Wake, type WakeSkip } from '../../shared/pm/wakes'
+import type { HealthSent } from '../../shared/pm/health'
 import type { Automation, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DATA_DIR } from './env'
@@ -44,11 +48,13 @@ export interface CoordinatorRecord {
   atRan?: number // the last scheduled wake at fixed times (autopilot.at), or when it was set
   woke?: LastWake // the last wake the engine queued, and where tasks stood then
   quiet?: true // its saved autopilot's old default events dropped, once (quietEvents)
-  health?: { at: number, seen: Record<string, TaskStatus> } // the last health check (health.ts), and where tasks stood then
+  health?: { at: number, seen: Record<string, TaskStatus>, sent?: HealthSent } // the last health check (health.ts), where tasks stood then, the last one sent
+  skips?: WakeSkip[] // wakes not sent, and why (autopilot show)
   skipped?: DayCount // scheduled wakes skipped that day: nothing to do (or the new work limit reached)
   lookAdded?: DayCount // tasks added that day in the turns of look-for-new-work wakes
   // version: wherdr's when this session started; told: the newer version it was told of.
   version?: string, told?: string
+  cards?: UiCard[] // the action buttons it put in its replies (shared/uiActions.ts), newest first
 }
 
 export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark> }
@@ -92,6 +98,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'), receipts: path.join(dir, 'receipts'), shots: path.join(dir, 'shots'),
     workflows: path.join(dir, 'workflows'), workflowLog: path.join(dir, 'workflow-log'),
     coordinators: path.join(dir, 'coordinators'), wakes: path.join(dir, 'wakes.jsonl'), automations: path.join(dir, 'automations'),
+    incidents: path.join(dir, 'incidents.json'),
   }
   let queue: Promise<unknown> = Promise.resolve()
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -294,6 +301,19 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await fs.writeFile(temp, keep.map(w => JSON.stringify(w) + '\n').join(''), { mode: 0o600 })
       await fs.rename(temp, files.wakes)
     }),
+    incidents: async () => (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? [],
+    addIncidents: (list: Omit<Incident, 'id'>[]) => write(async () => {
+      if (!list.length) return []
+      const added = list.map(i => ({ id: randomUUID().slice(0, 8), ...i }))
+      const old = (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? []
+      await writeJson(files.incidents, { v: 1, incidents: [...old, ...added].slice(-200) })
+      return added
+    }),
+    // Their Incident wake queued: never again.
+    toldIncidents: (ids: string[], at: number) => write(async () => {
+      const old = (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? []
+      await writeJson(files.incidents, { v: 1, incidents: old.map(i => (ids.includes(i.id) ? { ...i, told: at } : i)) })
+    }),
     automations: async (key: string): Promise<AutomationsFile> =>
       ({ automations: [], ...(TASK_ID_RE.test(`${key}-1`) ? await readJson<AutomationsFile>(path.join(files.automations, `${key}.json`)) : null) }),
     // `change` gets the file as it is now, inside the write: no firing is lost to a concurrent save.
@@ -382,11 +402,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const next = update.key ?? shownKey(list[i]!)
       const clash = keyClash(list, next, rest.key)
       if (clash) throw new HerdrError('exists', `Project ${clash.name} already has the key ${next}`)
-      const { machines: _m, clones: _c, placement: _s, ...kept } = rest
+      const { machines: _m, clones: _c, paused: _p, placement: _s, ...kept } = rest
       const placement = update.placement ?? rest.placement
       const allowed = machinesOf(rest, update)
       if (allowed.errors.length) throw badInput(allowed.errors)
-      list[i] = { ...kept, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}) }
+      list[i] = { ...kept, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(allowed.paused ? { paused: allowed.paused } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}) }
       await saveProjects(list)
       return list[i]!
     }),

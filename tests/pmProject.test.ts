@@ -10,7 +10,7 @@ import { guardsAuthor, saveProjectGuards, saveProjectWorkflow, templateFromProje
 import { common, company, vibe } from '../shared/pm/examples'
 import { templateDiff } from '../shared/pm/coordinator'
 import { startOverFrom } from '../shared/pm/workflow'
-import { machineNamed } from '../shared/pm/project'
+import { machineNamed, machinesOf, pausedEverywhere, taskMachine } from '../shared/pm/project'
 
 let dir = '', store: ReturnType<typeof createPmStore>
 const guards = { protected: ['main', 'release'], merge: { protected: 'user' as const, others: 'user' as const } }
@@ -30,6 +30,22 @@ describe('machineNamed', () => {
     const p = { machine: '', machines: ['b'] }, known = [{ key: '', label: 'machine-a' }, { key: 'b', label: 'machine-b' }, { key: 'c', label: 'machine-c' }]
     expect([machineNamed(p, known, 'Machine-B'), machineNamed(p, known, 'b')]).toEqual([{ machine: 'b' }, { machine: 'b' }])
     expect(machineNamed(p, known, 'machine-c')).toEqual({ refused: 'No machine named machine-c among the project\'s: machine-a, machine-b' })
+  })
+})
+
+describe('a machine paused for a project', () => {
+  const p = { machine: '', machines: ['b', 'c'], paused: ['', 'b'] }
+  it('takes no new task: placement skips it, a start on it is refused with why, a task started there goes on', () => {
+    expect(taskMachine({}, p)).toEqual({ machine: 'c' })
+    expect(taskMachine({}, p, 'b')).toEqual({ refused: 'This machine is paused for this project: switch it on in the project\'s settings' })
+    expect(taskMachine({ machine: 'b' }, p)).toEqual({ machine: 'b' })
+    expect(taskMachine({}, { ...p, paused: ['', 'b', 'c'] })).toEqual({ refused: 'Every machine of the project is paused for this project: switch one on in the project\'s settings' })
+  })
+  it('stays paused while allowed, and shows as paused everywhere only when every project allowing it has it paused', () => {
+    expect(machinesOf({ ...p, clones: { b: '~/b', c: '~/c' } }, { machines: ['c'] }).paused).toEqual([''])
+    expect(pausedEverywhere([p, { machine: 'x' }], 'b')).toBe(true)
+    expect(pausedEverywhere([p, { machine: 'x', machines: ['b'] }], 'b')).toBe(false)
+    expect(pausedEverywhere([p], 'z')).toBe(false)
   })
 })
 

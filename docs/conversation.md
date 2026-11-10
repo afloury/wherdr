@@ -11,6 +11,11 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   timestamps, search and infinite scroll back to the first message. Reading a conversation never
   touches the terminal, so it never resizes it. A command the agent proposes (shell code block,
   or inline `! command`) can be copied without its prompt.
+- **Following new messages**: a new or growing reply (typed in as it arrives, or shown at once)
+  keeps the view at the bottom only if you were at the bottom. Scroll up (wheel, touch, keyboard
+  or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the
+  **↓** button; content above that changes height (images, folding) does not move it. A
+  conversation still opens at its last message.
 - **SVG diagrams**: complete code fences labelled `svg` render as isolated, theme-aware images.
   **Source / Preview**, beside **Copy** in the card header, switches the same card between the
   diagram and its original markup; **Copy** always copies that markup. Click or use Enter/Space
@@ -19,9 +24,22 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   reference instances. Incomplete, unsupported or unsafe diagrams stay readable code. Scripts,
   foreign HTML, animation and external resources are rejected; raw inline SVG is not inserted
   into the page. Other fence languages and file-explorer document fences remain code.
+- **Live status cards**: a code fence labelled `wherdr` whose lines are all `status …` shows one
+  card per line, read from wherdr's own data, never from what the agent wrote:
+  `status machine:<key or name>` (online or offline, free memory, load, agents),
+  `status quota:claude` or `status quota:codex` (5-hour and week windows left),
+  `status pr:<KEY>#<n>` (the PR of a task of project KEY, as the engine last read it) and
+  `status op:<task id>` (the step the task's engine runs now, such as a watched pipeline, and
+  since when). Up to 8 lines. Cards refresh every 15 s while they are on screen; a source that
+  is gone (machine removed, no quota read, unknown task or PR) shows **unavailable**. A PR or
+  operation card opens its task. On a phone the cards stack, one per line. A block with any
+  other line stays code; file documents never show cards.
 - **Links into wherdr**: an agent sending you somewhere in wherdr gives its in-app address, as a
   Markdown link (`[Phone](#/settings?section=phone)`) or as inline code that is only the address
-  (`` `#/board?task=KEY-12` ``). Either opens the place in the app, on a computer and a phone,
+  (`` `#/board?task=KEY-12` ``). Either shows as an action button with an icon and a readable
+  label instead of the address: the link's text, or the place's name for inline code (*Open
+  Settings › Projects › KEY › Guards*, *Open Task KEY-12*, *Open Board › KEY › ui*). A tap opens
+  the place in the app, on a computer and a phone,
   without reloading; Back returns to the conversation. Other links open in a new tab, other
   inline code stays plain. The addresses: `#/`, `#/decisions`, `#/board` (with `?project=KEY`,
   `?tag=TAG` or `?task=ID`), `#/settings?section=<section>`, a tab of Settings › Conversation
@@ -29,14 +47,58 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   project's sheet `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in
   their instructions.
 - **Places an agent opens for you**: when you ask Alfred or a project's coordinator to show you
-  a place, it can open it in the wherdr that shows its conversation (`wherdr alfred ui open
-  '#/settings?section=phone'`, `wherdr pm ui open '…'`). On a computer window at least 1280 px
+  a place, it can open it in the wherdr you are on (`wherdr alfred ui open
+  '#/settings?section=phone'`, `wherdr pm ui open '…'`): of the apps showing its conversation,
+  the one you last used (within 15 minutes), and no other, so a computer left open on the same
+  conversation stays as it is while you are on your phone. On a computer window at least 1280 px
   wide, a Settings place opens in the side panel beside the conversation; elsewhere, and for
   the board, a task or Decisions, a card above the message field names the place, and a tap
   opens it. Either says who opened it ("Opened by Alfred"); close the panel or dismiss the card
-  with ×. Opening is all it does: it changes no setting. It works only in a turn that follows
-  your message (never in an Autopilot wake), only on apps showing that agent's conversation, and
-  a coordinator opens its own project's places and global Settings sections only.
+  with ×. The agent is told where it went (phone or computer), and ends its reply with the same
+  card (a ```wherdr block of `open <in-app link>` lines), so it stays in the conversation for
+  later. With no app in use on the conversation, it gives you the link instead. Opening is all it
+  does: it changes no setting. It works only in a turn that follows your message (never in an
+  Autopilot wake), and a coordinator opens its own project's places and global Settings sections
+  only. To show you where a setting is, the agent points at it (`wherdr alfred ui open --target
+  terminal.key-order`; `ui targets` lists the settings it can point at): on a wide computer the
+  side panel opens on its section and highlights it; on a phone the card names the setting with a
+  crosshair, and a tap opens the page and highlights it.
+- **Buttons an agent puts in its reply**: Alfred or a project's coordinator can give you the
+  button for a task instead of telling you to go and find it (`wherdr pm ui action resume|step|open
+  <task>`): *Resume WHR-12* for a stopped task, the step's own button (*Merge*, *Approve
+  screenshots*) for a step that waits for you, or *Open WHR-12*. The card says who suggests it and
+  sits in the reply (a ```wherdr block of `action <id>` lines). Only your click runs it, through
+  the same action as the task sheet, and only if the task still waits the same way: if it moved
+  on since, the card says *This changed since* and runs nothing, with a button to open the task.
+  After the click it shows the outcome (*Merge: done by you · 14:02*, or *approved by you, merges
+  once ready* for an approved merge whose PR is not ready yet); a refused step action (a PR in conflict, red
+  checks) keeps the button, with the reason under it, as the task sheet does. The agent can add one only
+  in a turn that follows your message, never in an Autopilot wake, and a coordinator only for its
+  own project's tasks. A button lasts a day, and a new one for the same task and action replaces
+  the older one. An agent's token cannot click (`/api/ui/act` refuses it); without a passkey,
+  though, any program on this computer reaches the app's API, as the task sheet's buttons do.
+- **Setting changes Alfred proposes**: Alfred never changes a setting itself, even after a yes in
+  text. It proposes one (`wherdr alfred setting set <key> <value> --propose`) and its reply carries
+  a card: *Setting change proposed · by Alfred*, the setting (*Conversation › Reply style*), before
+  → after (*default → list*) and the message of yours it answers. *Show me* opens Settings on that
+  setting and highlights it; *Apply* changes it from your session (never a token); *Cancel* drops
+  it. The card then says *Applied by you · 14:02* or *Cancelled by you*. If the setting changed
+  since (in Settings, on another device), it says so and applies nothing. Only in a turn that
+  follows your message, never in a wake; a new proposal for the same setting replaces the older.
+- **Files and screenshots beside the conversation**: an agent can show you a file of its own
+  folder (`wherdr pm ui show file docs/plan.md`, a path relative to its folder: never `~`, `..`
+  or a path outside it) or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task
+  has some). On a wide computer they open in the side panel, in place of Settings: the file
+  read-only as in Files, the screenshots by step, before and after side by side, with a button
+  to open the task. On a phone a card shows above the message field, and a tap opens a sheet
+  (before and after toggled). The card also stays in the reply (a ```wherdr block of
+  `show file|shots …` lines), and a tap shows it again. Showing approves nothing: the agent adds
+  the step's button (*Approve screenshots*) with `ui action step`. Only in a turn that follows
+  your message, and a coordinator shows its own project's tasks only.
+- **Wakes**: in a coordinator's conversation, a wake (Autopilot, Health check, Engine, Incident,
+  Step check) is a compact muted row, not one of your bubbles, with the coordinator's answer under
+  it; routine runs fold into one row. See
+  [Who sends a wake](project-management.md#who-sends-a-wake).
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the
   question changed meanwhile. A free answer selects its option, waits for the field, then types
@@ -142,6 +204,23 @@ number column (a header `#`, `N°`, `No`, `Num`, `ID` or `Q` over short numbers,
 question column, known by its header (`Question`, `Decision`, `Choix`…), by cells that all end
 with `?`, or by an advice column next to it (`Avis`, `Recommendation`, `Suggestion`…). Any other
 table is left as it is.
+
+**Choice buttons.** An agent can offer 2 to 4 answers as buttons with a `wherdr` code block, one
+element per line:
+
+````md
+Which one should lead the release notes?
+
+```wherdr
+choices "Rate limits" | "CSV export" | "Both"
+```
+````
+
+A tap sends that option at once as your reply, quoted to the last question written before the
+block (to the whole message when there is none), the same as typing it. Only the choices of the
+agent's last message are live; once a sent message answers them, and in older messages, they are
+greyed, the answer given marked. A `wherdr` block with a line wherdr does not understand (a
+missing quote, one option or more than four) shows as ordinary code.
 
 Above the field, **N questions unanswered** counts the questions of the agent's last message
 (and the rows of its decision tables) that your draft does not answer yet; tap it to scroll to

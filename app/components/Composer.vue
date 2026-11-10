@@ -296,6 +296,24 @@ async function submit() {
   }
 }
 
+// A message sent without the field (a choice tapped in the conversation,
+// ChatView.vue): the same route as a typed one; the draft stays as it is.
+async function sendText(msg: string) {
+  if (readOnly.value) return toast(t('Sending unavailable offline'), true)
+  if (!claimSend(props.paneId, msg)) return toast(t('Already sent'))
+  const p = props.pane
+  if (p?.status === 'working') sentWhileWorking.value = true
+  haptic()
+  if (viaPrompt(p)) {
+    emit('sent', null)
+    return outboxSend(p, props.paneId, msg).then(() => emit('sent', null), (err: Error) => toast(err.message, true))
+  }
+  try { emit('sent', await sendMessage(p, props.paneId, msg)) } catch (err) {
+    releaseSend(props.paneId, msg)
+    toast((err as Error).message, true)
+  }
+}
+
 // ------------------------------------------------------------ Stop
 // The server sends Escape, sends it again if the agent is still working, stops
 // Claude's background tasks then says whether the agent
@@ -569,7 +587,7 @@ defineExpose({
   focusEnd,
   focusAnswer,
   blur: () => ta.value?.blur(),
-  addImages, addFiles, stop,
+  addImages, addFiles, stop, sendText,
 })
 </script>
 

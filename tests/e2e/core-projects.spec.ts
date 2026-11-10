@@ -20,6 +20,13 @@ const api = (page: Page, url: string, body?: unknown) => page.evaluate(async ([u
   return r.json()
 }, [url, body] as const)
 
+// No sheet scrolls sideways (docs/design.md): every open sheet and its body
+// is exactly as wide as its content, on the phone and on a computer.
+const sizes = [{ width: 390, height: 664 }, { width: 1440, height: 900 }]
+const sideScroll = (page: Page) => page.locator('.hw-sheet').evaluateAll(sheets => sheets
+  .flatMap(s => [s, ...s.querySelectorAll('[data-slot="body"]')])
+  .map(e => e.scrollWidth - e.clientWidth).filter(d => d > 0))
+
 test('project settings: added from an example, a branch protected, a proposal accepted', async ({ page }) => {
   let data = ''
   const core = await startCore(call => (call.method === 'machine.exec' ? exec(call) : undefined), async (dir) => {
@@ -39,6 +46,13 @@ test('project settings: added from an example, a branch protected, a proposal ac
       .toMatchObject({ project: { key: 'WEB', from: { template: 'vibe' } } })
     await sheet('general')
     await expect(page.getByTestId('pm-from')).toContainText('Based on: vibe v1')
+    await mkdir('.shots', { recursive: true })
+    for (const size of sizes) {
+      await page.setViewportSize(size)
+      await expect.poll(() => sideScroll(page)).toEqual([])
+      await page.screenshot({ path: `.shots/project-general-${size.width}.png` })
+    }
+    await page.setViewportSize(sizes[0]!)
 
     await page.locator('[data-tab="guards"]').click()
     await page.getByLabel('Branch to protect').fill('release')
@@ -47,7 +61,6 @@ test('project settings: added from an example, a branch protected, a proposal ac
     await expect(page.getByTestId('guard-chip').filter({ hasText: 'release' })).toBeVisible()
     const { workflow } = await api(page, '/api/pm/project?key=WEB')
     expect(workflow.guards.protected).toEqual(['main', 'release'])
-    await mkdir('.shots', { recursive: true })
     await page.screenshot({ path: `.shots/project-guards-${test.info().project.name}.png` })
 
     // The coordinator's `template edit`, as it is stored: the diff against this version.
@@ -56,6 +69,11 @@ test('project settings: added from an example, a branch protected, a proposal ac
     await writeFile(join(data, 'projects', 'coordinators', 'WEB.json'), JSON.stringify({ project: 'WEB', tokenHash: '', proposal }))
     await sheet('workflow')
     await page.getByTestId('workflow-proposal').click()
+    await expect(page.getByTestId('proposal-review')).toBeVisible()
+    for (const size of sizes) {
+      await page.setViewportSize(size)
+      await expect.poll(() => sideScroll(page)).toEqual([])
+    }
     await page.getByTestId('proposal-accept').click()
     await expect(page.getByTestId('workflow-proposal')).toHaveCount(0)
     const after = (await api(page, '/api/pm/project?key=WEB')).workflow
