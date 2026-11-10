@@ -26,7 +26,7 @@ function machineWait(deps: PmLaunchDeps, p: Project, machine: string) {
   return isPaused(p, machine) ? MACHINE_PAUSED : undefined
 }
 
-// wake: the task's coordinators woken with why; returns who was (pmMechanic's wakeCoordinators).
+// wake: the task's coordinators woken with why; returns who was (pmWakes's wakeCoordinators).
 export async function watchAgents(deps: PmLaunchDeps, wake: (task: Task, why: string) => Promise<string[]>, now = Date.now()) {
   const { store } = deps
   const { terminals } = await deps.call<{ terminals: LabelledTerminal[] }>('terminal.list', { all: true, labels: { [LABEL.install]: await store.install() } }, 8000)

@@ -136,7 +136,9 @@ under "$f" || { echo "outside" >&2; exit 5; }
 [ "$5" = 1 ] || ! protected_path "$f" || { echo "protected" >&2; exit 9; }
 [ -f "$f" ] || { echo "not a file" >&2; exit 6; }
 [ -r "$f" ] || { echo "permission denied" >&2; exit 7; }
-command exec 3< "$f" || { echo "permission denied" >&2; exit 7; }
+# \`command exec\` keeps dash alive when the open fails; macOS's bash 3.2 (its
+# sh) then spins at 100 % CPU on any later \`exit\`, and never exits on it anyway.
+if [ -n "\${BASH_VERSION-}" ]; then exec 3< "$f"; else command exec 3< "$f"; fi 2>/dev/null || { echo "permission denied" >&2; exit 7; }
 # "<inode> <size> <mtime> <version>" of the opened file, from its metadata:
 # never a read (BusyBox's wc -c reads every byte). <version>: modification
 # and change times to the nanosecond (GNU/BusyBox, then BSD). Without the

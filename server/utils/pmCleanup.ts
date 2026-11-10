@@ -1,6 +1,6 @@
 // Removes the worktree of a done task (and its local branch once merged), on
 // the machine its worker ran on, with git worktree remove: never a forced removal,
-// never rm. Each removal, and each worktree kept with why, goes to the task's
+// never rm, once every process working in it is killed. Each removal, and each worktree kept with why, goes to the task's
 // log (shared/pm/cleanup.ts decides). Runs once a done task's agents have
 // ended (pmAdvance.ts), on Archive, and in
 // a sweep at start and every few hours for leftovers.
@@ -9,6 +9,8 @@ import { homeOf } from './coreCreate'
 import { taskPaths } from '../../shared/pm/run'
 import { cloneOn } from '../../shared/pm/project'
 import { cleanupOf, cleanupRefusal, factsRefusal, parseFacts } from '../../shared/pm/cleanup'
+import { KILL_UNDER } from '../../shared/pm/procs'
+import { countKilled } from './pmProcs'
 
 // Prints `exists listed dirty unique` (see Facts).
 export const WORKTREE_PROBE_SCRIPT = `repo=$1 dir=$2 branch=$3
@@ -26,8 +28,10 @@ u=0
 if [ -n "$refs" ]; then u=$(git -C "$repo" rev-list --count $refs --not --exclude="$branch" --branches --remotes) || exit 1; fi
 echo "$e $l $d $u"`
 
-// $4 = 1: the local branch goes too.
+// $4 = 1: the local branch goes too. The processes working in it go first
+// (\`killed <n>\`), so none runs on in a removed folder.
 export const WORKTREE_REMOVE_SCRIPT = `repo=$1 dir=$2 branch=$3
+${KILL_UNDER}
 if [ -d "$dir" ]; then git -C "$repo" worktree remove "$dir" 2>&1 || exit 1; fi
 git -C "$repo" worktree prune 2>&1
 [ "$4" = 1 ] || exit 0
@@ -79,8 +83,11 @@ async function clean(deps: Deps, id: string) {
   if (why) return keep(why)
   const branch = kind === 'worktree+branch'
   const r = await exec(deps, on, WORKTREE_REMOVE_SCRIPT, [repo, run.worktree, run.branch, branch ? '1' : '0'])
+  const n = Number(/^killed (\d+)$/m.exec(r.out)?.[1] ?? 0)
+  if (n) countKilled(run.machine, n)
+  if (r.code === 3) return keep(r.out.split('\n').pop()!)
   if (r.code !== 0) return keep(`git could not remove it: ${r.out.split('\n').pop()?.slice(0, 200) || 'timeout'}`)
-  const what = facts.exists ? 'removed its worktree' : 'its worktree was already gone'
+  const what = (n ? `killed ${n} process${n === 1 ? '' : 'es'} working in it, then ` : '') + (facts.exists ? 'removed its worktree' : 'its worktree was already gone')
   return finish(branch ? `${what} and its local branch ${run.branch}` : `${what}; its branch ${run.branch} stays`)
 }
 
