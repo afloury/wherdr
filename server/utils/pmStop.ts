@@ -5,8 +5,9 @@ import { HerdrError } from './herdr'
 import { startTask, type PmLaunchDeps } from './pmLaunch'
 import { cleanTask } from './pmCleanup'
 import { onEvent } from '../../shared/pm/steps'
-import { handoverText, removeRefusal, resumeRefusal, stopRefusal, stoppedTask, type Resume, type Stopper } from '../../shared/pm/stop'
+import { archivedStep, doneTurnRepair, handoverText, removeRefusal, resumeRefusal, stopRefusal, stoppedTask, type Resume, type Stopper } from '../../shared/pm/stop'
 import { taskPlan, type Task } from '../../shared/pm/run'
+import { killTerminal } from './pmProcs'
 
 export async function load(deps: PmLaunchDeps, id: unknown) {
   const task = await deps.store.task(id)
@@ -34,11 +35,20 @@ export async function endAgents(deps: Pick<PmLaunchDeps, 'store' | 'call'>, task
   const { store } = deps
   let saved = task
   for (const r of (await store.runs()).filter(x => x.task === task.id && x.state !== 'ended')) {
-    const err = r.terminal ? await deps.call('terminal.kill', { terminal: r.terminal }, 15000).then(() => '', (e: Error) => e.message) : ''
+    const err = r.terminal ? await killTerminal(deps, r.terminal).then(() => '', (e: Error) => e.message) : ''
     await store.saveRun({ ...r, state: 'ended', endedBy })
     saved = await store.logTask(saved, 'engine', err ? `could not end the ${r.role} (${err}): close its terminal by hand` : `ended the ${r.role} (${r.program} ${r.model})${why}; its worktree stays`)
   }
   return saved
+}
+
+// Once at start: done tasks archived while their step waited for the user
+// leave Your turn.
+export async function repairDoneTasks(store: Pick<PmLaunchDeps['store'], 'tasks' | 'saveTask'>) {
+  for (const task of await store.tasks()) {
+    const fixed = doneTurnRepair(task)
+    if (fixed) await store.saveTask(fixed)
+  }
 }
 
 // A task never started, removed from the board; the project's log keeps who and why.
@@ -60,7 +70,7 @@ export async function resumeTask(deps: PmLaunchDeps, id: unknown, how: Resume, b
   if (refused) throw new HerdrError('refused', refused)
   const going = { ...task, stopped: undefined, waiting: undefined, waitKind: undefined }
   if (how === 'archive') {
-    const archived = await store.logTask({ ...going, state: 'working', step: { ...s, done: true, abandoned: true } }, logBy, 'archived; its worktree goes, its branch stays')
+    const archived = await store.logTask({ ...going, state: 'working', step: archivedStep(s) }, logBy, 'archived; its worktree goes, its branch stays')
     void cleanTask(deps, task.id).catch(() => {})
     return archived
   }
@@ -73,7 +83,7 @@ export async function resumeTask(deps: PmLaunchDeps, id: unknown, how: Resume, b
   // Continue: a new agent for the step, in the same worktree; a worker reads a handover note first.
   const worker = (await store.runs()).filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
   const handover = plan[s.at]?.holder === 'worker' && worker ? handoverText(task, plan, worker.branch) : undefined
-  let started = await startTask(deps, task.id, { handover })
+  let started = await startTask(deps, task.id, { handover, by: logBy })
   // It could not start: now a failure of its own, no longer the stop.
   if (started.stopped) started = await store.saveTask({ ...started, stopped: undefined })
   return store.logTask(started, logBy, started.state === 'working' ? `${plan[s.at]?.id ?? 'step'}: continued` : `could not continue: ${started.waiting ?? ''}`)

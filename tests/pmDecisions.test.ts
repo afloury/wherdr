@@ -50,6 +50,14 @@ it('groups what waits for the user, the recommended answer first', () => {
   expect(ds.find(d => d.group === 'proposal')!.text).toBe('After your message: “add a deploy step”')
 })
 
+it('shows a pass on a spec change for a day, without a push', () => {
+  const specPass = { at: 1000, step: 'review', reason: 'Per the spec change of 2026-11-09.' }
+  const at = (now: number) => decisionsOf(input({ cards: [card('CO-8', {})], tasks: [{ id: 'CO-8', state: 'working', specPass }], coordinators: [], wakes: [], now }))
+  expect(at(2000)).toEqual([expect.objectContaining({ group: 'passed', text: 'The coordinator passed review on a spec change: Per the spec change of 2026-11-09.' })])
+  expect(decisionsPush(at(2000), new Set())).toBeNull()
+  expect(at(1000 + 24 * 3600_000)).toEqual([])
+})
+
 it('drops an unanswered wake once the coordinator acked a later one', () => {
   const wakes = [wake('aaaaaaa1', 1, { ended: 'unanswered' }), wake('aaaaaaa2', 2, { ackedAt: 3, ended: 'ack' })]
   expect(decisionsOf(input({ wakes })).some(d => d.group === 'coordinator')).toBe(false)

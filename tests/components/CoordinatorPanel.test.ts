@@ -32,19 +32,38 @@ it('says which agent answers, and changes the default in one gesture', async () 
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: 'CO', program: 'codex' } }]))
 })
 
-it('in Alfred\'s conversation: no agent select (its row\'s "Restart with…" changes it)', async () => {
-  const b = await mount(view({ project: '_main', name: 'Jarvis', main: true }))
-  expect(b.find('[data-testid="coordinator-agent"]').exists()).toBe(false)
+const alfred = (more: Partial<CoordinatorView> = {}) => view({ project: '_main', name: 'Alfred', main: true, ...more })
+
+it('Alfred: its agent picked in its window, and kept when no longer offered (said, never replaced)', async () => {
+  const b = await mount(alfred())
+  expect(b.text()).toContain('Alfred’s agent')
+  expect(b.find('[data-testid="coordinator-autopilot"]').exists()).toBe(false) // Alfred has no autopilot
+  await pick(b, 'coordinator-agent', 'codex')
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: '_main', program: 'codex' } }]))
+  hiddenAgents.value = ['claude']
+  await b.setProps({ c: alfred() })
+  expect(b.find('[data-testid="coordinator-unoffered"]').text()).toContain('Claude is no longer offered on this machine')
 })
 
-it('header button: the autopilot\'s state, a count of what waits for the user, and a tap opens the window', async () => {
-  w = await mountSuspended(CoordinatorButton, { attachTo: document.body, props: { c: view({ autopilot: { on: true, goal: '', events: [], perDay: 1, atOnce: 1 }, asleep: 'idle', proposal: { diff: '+ x', at: 1 } }) } })
+it('Alfred: "Resume with" makes the resumed agent its default, so the warning does not come back', async () => {
+  const b = await mount(alfred({ agent: { program: 'codex' }, ran: { program: 'claude' }, terminal: 'host/t1' }))
+  expect(b.find('[data-testid="coordinator-other-agent"]').text()).toContain('The previous conversation used Claude. The default is Codex.')
+  await b.find('[data-testid="coordinator-resume"]').trigger('click')
+  await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: '_main', program: 'claude' } }]))
+  resumedCoordinators.value = []
+  globalThis.localStorage?.removeItem('wherdr.coordinatorsResumed')
+})
+
+it('header button: a clock, the autopilot\'s state, and a tap opens the autopilot only (no workflow proposal)', async () => {
+  w = await mountSuspended(CoordinatorButton, { attachTo: document.body, props: { c: view({ autopilot: { on: true, goal: '', events: [], perDay: 1, atOnce: 1 }, asleep: 'idle', nextWake: new Date().setHours(23, 30, 0, 0), proposal: { diff: '+ x', at: 1 } }) } })
   const btn = w.get('[data-testid="coordinator-button"]')
   expect(btn.attributes('data-state')).toBe('idle')
-  expect(btn.attributes('aria-label')).toBe('Autopilot: Asleep · 1 to review')
+  expect(btn.attributes('aria-label')).toBe('Autopilot: Asleep')
+  expect(btn.find('.coord-btn-icon').classes()).toContain('i-lucide-clock')
   await btn.trigger('click')
-  await vi.waitFor(() => expect(document.querySelector('[data-testid="template-proposal"]')).not.toBeNull())
-  expect(document.querySelector('[data-testid="coordinator-autopilot"]')).not.toBeNull()
+  await vi.waitFor(() => expect(document.querySelector('[data-testid="coordinator-autopilot"]')).not.toBeNull())
+  expect(document.querySelector('[data-testid="autopilot-next-wake"]')?.textContent).toMatch(/^Next wake (23:30|11:30)/i)
+  expect(document.querySelector('[data-testid="workflow-change"]')).toBeNull()
 })
 
 it('with no default set, or its default unchecked in Settings › Agents, offers the user\'s first agent', async () => {
@@ -89,9 +108,11 @@ it('shows no warning when the kept conversation is the default agent\'s', async 
   expect(b.find('[data-testid="coordinator-open"]').text()).toBe('Open')
 })
 
-it('a proposed workflow change: one line, no diff, its Review opens the project\'s Workflow tab', async () => {
-  const b = await mount(view({ proposal: { diff: '+ x', at: 1, said: 'Use b' } }))
-  expect(b.find('[data-testid="template-proposal"]').text()).toContain('Workflow change proposed')
-  expect(b.find('[data-testid="proposal-diff"]').exists()).toBe(false)
-  expect(b.find('[data-testid="proposal-review-link"]').attributes('href')).toBe('#/settings?section=projects&project=CO&tab=workflow&review=1')
+it('names the autopilot with its subtitle and links a project\'s to its Workflow tab', async () => {
+  const b = await mount(view({ proposal: { diff: '+ x', at: 1 } }))
+  expect(b.find('[data-testid="part-subtitle"]').text()).toBe('When the project works without you')
+  const link = b.find('[data-testid="part-link"]')
+  expect(link.text()).toBe('Tasks it starts follow the Workflow tab')
+  expect(link.attributes('href')).toBe('#/settings?section=projects&project=CO&tab=workflow')
+  expect(b.find('[data-testid="workflow-change"]').exists()).toBe(false)
 })

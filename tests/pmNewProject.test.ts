@@ -6,7 +6,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { draftBody, folderKind, proposeKey, proposeName, type ProjectDraft } from '../shared/pm/newProject'
+import { draftBody, folderKind, proposeKey, proposeName, shortHome, type ProjectDraft } from '../shared/pm/newProject'
 import { findRepos, parseRepos } from '../server/utils/pmRepos'
 import { pmFolderCheck, probeFolder } from '../server/utils/pmFolder'
 import { createPmStore } from '../server/utils/pmStore'
@@ -20,6 +20,12 @@ describe('name and key proposal', () => {
     expect(proposeName('')).toBe('')
   })
 
+  it('shows a folder under the home as ~/…, any other as it is', () => {
+    expect(shortHome('/home/user/projects/demo-app', '/home/user')).toBe('~/projects/demo-app')
+    expect(shortHome('/home/user', '/home/user/')).toBe('~')
+    expect(shortHome('/home/username/app', '/home/user')).toBe('/home/username/app')
+    expect(shortHome('/srv/app', '')).toBe('/srv/app')
+  })
   it('proposes initials, or a word\'s consonants, free among the taken keys', () => {
     expect(proposeKey('my-web-app')).toBe('MWA')
     expect(proposeKey('myWebApp')).toBe('MWA')

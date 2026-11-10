@@ -13,8 +13,8 @@ or [Development and tests](development.md) for repository changes.
 - [First launch](quick-start.md) — Build, start and open wherdr v3.
 - [Installation and updates](installation.md) — Requirements, running as a service, updating.
 - [Install with an agent](install-with-an-agent.md) — Ready-to-paste agent prompts: new install, v3 beside v2 with import, update.
-- [Migrate from v2](migrate-from-v2.md) — Install v3 next to a running v2, import projects, machines and settings, auto-deploy from a build machine, fall back, uninstall.
-- [Project management](project-management.md) — Getting started, project settings (workflow, guards, automations), autopilot, the board and the task sheet.
+- [Migrate from v2](migrate-from-v2.md) — Install v3 next to a running v2, import machines and settings, set up v2 projects with Alfred, auto-deploy from a build machine, fall back, uninstall.
+- [Project management](project-management.md) — Getting started, project settings (workflow, guards, automations), autopilot, the board, the task sheet and reporting a problem on a task.
 - [Home and agent list](home.md) — Machine tabs, spaces and tabs, states, new agents and search.
 - [Alfred's command](alfred.md) — `wherdr alfred`: what Alfred reads and changes, shown before it is done.
 - [Conversation and replies](conversation.md) — Read transcripts, answer questions, attach files and quote replies.
@@ -29,6 +29,7 @@ or [Development and tests](development.md) for repository changes.
 - [Install as an app](phone.md) — Add wherdr to your home screen on a phone or install it in a desktop browser.
 - [Plugins](plugins.md) — [wherdr plugins](plugins.md#wherdr-plugins): optional page plugins and `data-wherdr` markers.
 - [Security](security.md) — Remote-shell access, passkeys and network restrictions. Read this before enabling remote access.
+- [Read aloud: the voice of wherdr](read-aloud.md) — The on-device neural voices, their licences and attributions, the espeak-ng note, and their measured (for now estimated) phone figures.
 - [Dictation design](dictation.md) — For contributors: the engine interface, capture pipeline, OpenRouter relay, on-device models and how to add one.
 - [Design rules](design.md) — The single reference for interface styling, state indicators, controls and responsive checks.
 - [Development and tests](development.md) — Run from source and test the core build.
