@@ -39,5 +39,5 @@ const unfolded = ref(false)
 .origin-said { display: grid; gap: 4px; }
 .origin-text { margin: 0; padding-left: 8px; border-left: 2px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
 .origin-text.folded { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
-.origin-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-left: -10px; }
+.origin-actions { display: flex; flex-wrap: wrap; gap: 4px; }
 </style>

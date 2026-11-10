@@ -76,11 +76,12 @@ work (the autopilot, automations) waits while an account is ahead of its pace; y
 never wait. An account with no quota reading is held by task-count limits only. Each machine's
 memory state shows below ([Machines](machines.md#manage-machines)).
 
-**End-of-week burn** (under **Mode settings**, per account, in every mode but Free): from a chosen number of hours
-before the weekly reset (24 by default) until the reset, automatic work ignores the mode and
-may use the week up to the burn's cap (up to 100 %), with its own 5-hour reserve (down to 0 %)
-and number of tasks at once (it replaces the autopilot's own limit while burning). **Every week** starts again before each new reset; **This week
-only** ends at the current reset. The row shows when the burn starts, or that it is burning.
+**End-of-week burn** (under **Mode settings**, per account, in every mode but Free): one switch. On, from now until the
+account's weekly reset, automatic work runs with no pace limit: no line or weekly reserve, no
+5-hour reserve, and tasks at once are Auto (the machines' room decides). The account's own
+limit still stops it (**Limit reached**), and so does a machine with no room. The line under the
+switch, and the row, say until when it burns (**Burning until Sun 19:00**); it turns itself off at the
+reset. It needs a quota reading, which gives the reset.
 
 ## v2 only: Codex updates and restarts
 

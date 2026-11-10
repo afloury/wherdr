@@ -10,7 +10,7 @@ import { CREATE_SCRIPT } from '../server/utils/pmLaunch'
 import { execFileSync } from 'node:child_process'
 import { MAIN, parseCommand, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
-import { EXAMPLES, common, company, github } from '../shared/pm/examples'
+import { EXAMPLES, common, company as example, github } from '../shared/pm/examples'
 import { DONE_CMD } from '../shared/pm/advance'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import type { Finding } from '../shared/pm/verdict'
@@ -21,6 +21,11 @@ import { WAKE } from '../shared/pm/wakes'
 import { DEFAULT_AUTOPILOT } from '../shared/pm/autopilot'
 // @ts-expect-error plain JavaScript module
 import { pm } from '../bin/lib/pm.mjs'
+
+// The example with a coordinator-held deploy step, rechecked (the example's own is an engine watch).
+const company: Template = structuredClone(example)
+company.taskTypes.feature!.steps.splice(-2, 1, { id: 'deploy', column: 'Deploy', holder: 'coordinator', ends: 'report', recheck: '5m', timeout: '90m',
+  instructions: 'Watch the develop pipeline and the deploy. Deployed: say so and finish. Failed: say which test failed and investigate.' })
 
 // The quota readings the pace reads; none by default (quota unknown).
 const quotas = vi.hoisted(() => ({ q: null as Quotas | null }))
@@ -580,15 +585,15 @@ it('an update notice only when the session started on another version, and only 
 
 describe('wakes', () => {
   const deliver = (status: string, now: number) => {
-    const sent: { terminal: string, text: string }[] = [], pushed: string[] = []
+    const sent: { terminal: string, text: string }[] = [], pushed: string[] = [], bodies: string[] = []
     const call = async (method: string, params: Record<string, string>) => {
       if (method === 'terminal.get') return { status }
       if (method === 'terminal.send') sent.push({ terminal: params.terminal!, text: params.text! })
       return {}
     }
-    const notify = async (title: string) => { pushed.push(title) }
-    const d = { store, call, notify } as unknown as Parameters<typeof wakeTick>[0]
-    return { sent, pushed, d, run: () => wakeTick(d, now) }
+    const notify = async (title: string, body: string) => { pushed.push(title); bodies.push(body) }
+    const d = { store, call, notify, machines: () => [] } as unknown as Parameters<typeof wakeTick>[0]
+    return { sent, pushed, bodies, d, run: () => wakeTick(d, now) }
   }
   const atDeploy = async (since: number) => {
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9' })
@@ -598,11 +603,11 @@ describe('wakes', () => {
   }
   const wakeId = (text: string) => /wherdr pm ack ([0-9a-f]{8})/.exec(text)![1]!
 
-  it('tells the coordinator its step once, then each recheck, as an Autopilot wake turn', async () => {
+  it('tells the coordinator its step once, then each recheck, as a Step check wake turn', async () => {
     const id = await atDeploy(1000)
     const first = deliver('idle', 2000)
     expect(await first.run()).toEqual(['CO'])
-    expect(first.sent).toEqual([{ terminal: 'host/t9', text: expect.stringMatching(/^Autopilot: wake [0-9a-f]{8}\n\nCO-1 \(Fix\): Base branch is develop\.[\s\S]*Watch the develop pipeline/) }])
+    expect(first.sent).toEqual([{ terminal: 'host/t9', text: expect.stringMatching(/^Step check: CO-1 \([\w-]+\), wake [0-9a-f]{8}\n\nCO-1 \(Fix\): Base branch is develop\.[\s\S]*Watch the develop pipeline/) }])
     expect((await store.coordinator('CO'))!.turn).toMatchObject({ kind: 'wake' })
     // A wake turn: the user's words cannot be claimed.
     await store.saveTask({ ...(await store.task(id))!, step: { ...(await store.task(id))!.step!, at: 4, yourTurn: { reason: 'user', badge: 'Merge the PR' } } })
@@ -613,6 +618,29 @@ describe('wakes', () => {
     const recheck = deliver('idle', 1000 + 300_000)
     await recheck.run()
     expect(recheck.sent[0]!.text).toContain('Check again: ')
+  })
+
+  it('names tasks by the shown key of a renamed project: wakes, the push, pm list, logs, refusals', async () => {
+    await store.updateProject('CO', { key: 'ABC' })
+    const id = await atDeploy(1000)
+    expect(id).toBe('CO-1') // stored ids keep the fixed key
+    const first = deliver('idle', 2000)
+    await first.run()
+    expect(first.sent[0]!.text).toContain('ABC-1 (Fix): ')
+    expect(first.sent[0]!.text).not.toMatch(/\bCO-1\b/)
+    await deliver('idle', 3000).run()
+    await deliver('idle', 2000 + WAKE.ACK_MS + WAKE.IDLE_MS).run()
+    await deliver('idle', 3000 + WAKE.ACK_MS + WAKE.IDLE_MS).run()
+    const last = deliver('idle', 3000 + 2 * (WAKE.ACK_MS + WAKE.IDLE_MS))
+    await last.run()
+    expect(last.pushed).toEqual(['ABC: the coordinator is not answering'])
+    expect(last.bodies[0]).toContain('ABC-1 (Fix)')
+    // Both keys still name the task; the output reads the shown one.
+    expect((await cli(['list']) as { tasks: { id: string }[] }).tasks.map(t => t.id)).toEqual(['ABC-1'])
+    for (const k of ['CO-1', 'ABC-1']) expect((await cli(['show', k]) as { task: { id: string } }).task.id).toBe('ABC-1')
+    await store.logTask((await store.task(id))!, 'engine', `after CO-1, in ~/.wherdr/pm/worktrees/CO-1 on task/CO-1`)
+    expect((await store.task(id))!.log!.at(-1)!.text).toBe('after ABC-1, in ~/.wherdr/pm/worktrees/CO-1 on task/CO-1')
+    await refused(cli(['task', 'remove', id, '--reason', 'not needed']), 'ABC-1 has started')
   })
 
   it('waits while the coordinator works or the user just wrote; the queue keeps the reason', async () => {

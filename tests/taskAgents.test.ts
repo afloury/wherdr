@@ -27,10 +27,15 @@ it('the role says what the agent does in its task', () => {
   expect(agentRole(task(at(1, { backFrom: 'review' })), plan, reviewer)).toEqual({ role: 'review', reserve: true })
 })
 
-it('only running agents with a terminal are listed, by address, with the shown key', () => {
+it('running agents are listed by address, and each role a task ran by its labels, with the shown key', () => {
   const run = (id: string, extra: Partial<Run>): Run => ({ id, task: 'CO-1', role: 'worker', program: 'claude', model: 'm', machine: '', worktree: '~/project', branch: 'b', instructions: 'i', attempt: 1, state: 'running', startedAt: 1, ...extra })
   const runs = [run('a', { terminal: 't1' }), run('b', { terminal: 't2', state: 'ended' }), run('c', {}), run('d', { terminal: 't3', task: 'CO-9' })]
-  expect(taskAgents([task(at(1))], runs, () => plan, id => id.replace('CO', 'AC'))).toEqual({ t1: { task: 'CO-1', shown: 'AC-1', title: 'Fix the login', role: 'dev' } })
+  const dev = { task: 'CO-1', shown: 'AC-1', title: 'Fix the login', role: 'dev' }
+  expect(taskAgents([task(at(1))], runs, () => plan, id => id.replace('CO', 'AC'))).toEqual({ 't1': dev, 'CO-1#worker': dev })
+  // Its run ended (resumed under a new one, lost at a restart): its labels still name it.
+  expect(taskAgents([task(at(2))], [run('e', { role: 'reviewer', state: 'ended', terminal: 't4' })], () => plan, id => id)).toEqual({ 'CO-1#reviewer': { ...dev, shown: 'CO-1', role: 'review' } })
+  // A done task whose agents ended: none.
+  expect(taskAgents([task(at(6, { done: true }))], [run('f', { state: 'ended' })], () => plan, id => id)).toEqual({})
 })
 
 it('a task agent is titled after its task unless the user renamed it', () => {

@@ -11,7 +11,8 @@
 // a task never started (confirmed). Those stay at the top; below, tabs (the app's
 // segmented style) for the rest, only the open one scrolling: Description (the
 // text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR among them), Plan (each step with its
-// screenshots), Log.
+// screenshots), History (the hand-offs between its agents and the user,
+// TaskHistory), Log (the raw lines).
 import { canStart, canStop, cardStatus, linkLabel, statusText, type Card } from '#shared/pm/board'
 import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
 import type { Resume } from '#shared/pm/stop'
@@ -51,13 +52,13 @@ function onDescClick(e: MouseEvent) {
   const text = btn?.closest('.code-block')?.querySelector('pre')?.textContent
   if (btn && text != null) copyCodeBlock(btn, text)
 }
-type Tab = 'todo' | 'description' | 'plan' | 'log'
-const TAB_LABEL: Record<Tab, [string, string]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], log: ['Log', 'Journal'] }
+type Tab = 'todo' | 'description' | 'plan' | 'history' | 'log'
+const TAB_LABEL: Record<Tab, [string, string?]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], history: ['History'], log: ['Log', 'Journal'] }
 const tabs = computed<Tab[]>(() => [
   ...(todo.value ? ['todo' as const] : []),
   ...(props.card.description || props.card.tags.length || props.card.links.length ? ['description' as const] : []),
   'plan',
-  ...(props.card.log.length ? ['log' as const] : []),
+  ...(props.card.log.length ? ['history' as const, 'log' as const] : []),
 ])
 const picked = ref<Tab>()
 // The tab picked while it is still there (the task read again), else the first.
@@ -87,7 +88,7 @@ watch(() => props.card.yourTurn, (b) => { if (b !== refused.value) refused.value
 const confirmStop = ref(!!props.stopping)
 const why = ref('')
 const stop = () => run(async () => { await stopTaskApi(props.card.id, why.value); confirmStop.value = false })
-const start = () => run(() => startTaskApi(props.card.id))
+const start = () => run(() => startTaskApi(props.card.id, undefined, props.card.sameFiles ? true : undefined))
 const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
 const decide = (choice: Choice) => run(() => api('/api/pm/decide', { id: props.card.id, choice }))
 const sendBack = (note: string) => run(() => api('/api/pm/step-back', { id: props.card.id, note }))
@@ -115,7 +116,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
         <p v-if="times" class="task-times" data-testid="task-times">{{ times }}</p>
         <div class="task-sheet-actions">
-          <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ tl('Start', 'Lancer') }}</UButton>
+          <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ card.sameFiles ? tl('Start anyway') : tl('Start', 'Lancer') }}</UButton>
           <UButton v-if="!todo && pane" color="neutral" variant="outline" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)">
             {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}
           </UButton>
@@ -183,6 +184,8 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
             </details>
           </li>
         </ol>
+
+        <TaskHistory v-else-if="tab === 'history'" :card="card" />
 
         <ol v-else class="task-log" data-testid="task-log">
           <li v-for="(e, i) in [...card.log].reverse()" :key="i">

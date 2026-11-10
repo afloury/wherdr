@@ -57,11 +57,11 @@ describe('blocks the engine fixes itself', () => {
     expect(nextMove(facts(back, { pr: undefined }))).toEqual({ key: 'sync:pr:1', move: { kind: 'sync-push', step: 'pr' } })
   })
 
-  it('a give-up wakes the project\'s coordinator and the main one, each that wakes for stuck tasks', () => {
-    const on = { terminal: 't1', autopilot: ap && { ...ap, on: true } }
+  it('a give-up wakes the project\'s coordinator and the main one, whatever their events', () => {
+    const on = { terminal: 't1', autopilot: { ...DEFAULT_AUTOPILOT, on: true } }
     expect(wakesFor(['CO', MAIN], () => on, 0)).toEqual(['CO', MAIN])
     expect(wakesFor(['CO', MAIN], k => (k === MAIN ? on : undefined), 0)).toEqual([MAIN])
-    expect(wakesFor(['CO', MAIN], k => (k === MAIN ? { ...on, autopilot: { ...on.autopilot, events: ['done' as const] } } : { ...on, terminal: undefined }), 0)).toEqual([])
+    expect(wakesFor(['CO', MAIN], k => (k === MAIN ? { ...on, autopilot: DEFAULT_AUTOPILOT } : { ...on, terminal: undefined }), 0)).toEqual([])
   })
 
   it('fixed alone: the block gone, nothing to escalate and no wake', () => {

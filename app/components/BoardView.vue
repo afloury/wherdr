@@ -34,6 +34,7 @@ async function load() {
 let timer: ReturnType<typeof setInterval> | undefined
 onMounted(() => { load(); timer = setInterval(load, 10_000) })
 onBeforeUnmount(() => clearInterval(timer))
+watch(taskSheetTick, load) // an action in a task's sheet, also read by Tasks to handle
 
 // An agent asking a question or a permission puts its card in Your turn too.
 const waitsForYou = (c: Card) => { const p = paneOf(c); return !!p && hasAgent(c) && statusKey(p) === 'blocked' }
@@ -84,7 +85,7 @@ const act = (fn: () => Promise<unknown>) => fn().then(load, (e: Error) => { erro
 const menuOf = (c: Card): MenuItem[] => [
   ...(askingPane(c) ? [{ label: c.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent'), icon: 'i-lucide-terminal', run: () => navigateTo(panePath(askingPane(c)!.id)) }] : []),
   { label: askingPane(c) ? tl('Open the task') : tl('Open', 'Ouvrir'), icon: 'i-lucide-panel-right-open', run: () => show(c.id) },
-  ...(canStart(c) && !waiting(c).length ? [{ label: tl('Start', 'Lancer'), icon: 'i-lucide-play', run: () => act(() => startTaskApi(c.id)) }] : []),
+  ...(canStart(c) && !waiting(c).length ? [{ label: c.sameFiles ? tl('Start anyway') : tl('Start', 'Lancer'), icon: 'i-lucide-play', run: () => act(() => startTaskApi(c.id, undefined, c.sameFiles ? true : undefined)) }] : []),
   ...(canStart(c) && !waiting(c).length && machinesOf(c) ? [{ label: tl('Start on…'), icon: 'i-lucide-server', run: () => openMenu(startOn(c), tl('Start on')) }] : []),
   ...(c.yourTurn && !c.state?.done && !c.report ? [{ label: tl('Report a problem…'), icon: 'i-lucide-flag', run: () => show(c.id, false, false, true) }] : []),
   ...(canStop(c) ? [{ label: tl('Stop…', 'Arrêter…'), icon: 'i-lucide-square', danger: true, run: () => show(c.id, true) }] : []),
@@ -96,7 +97,7 @@ const menuOf = (c: Card): MenuItem[] => [
 const machinesOf = (c: Card) => data.value?.projects.find(p => p.key === c.project)?.machines
 const machineNote = (m: BoardMachine, home: boolean) => (!m.online ? tl('Offline') : home ? tl('The project\'s own machine') : m.unready ? `${tl('Not ready')}: ${m.unready}` : m.unready === '' ? tl('Ready') : tl('Checked when the task starts'))
 const startOn = (c: Card): MenuItem[] => (machinesOf(c) ?? []).map((m, i) => ({
-  label: m.label, desc: machineNote(m, i === 0), disabled: !m.online, run: () => act(() => startTaskApi(c.id, m.key)),
+  label: m.label, desc: machineNote(m, i === 0), disabled: !m.online, run: () => act(() => startTaskApi(c.id, m.key, c.sameFiles ? true : undefined)),
 }))
 const waiting = (c: Card) => (c.phase === 'todo' ? waitsFor(c, data.value?.cards ?? []) : [])
 
@@ -166,7 +167,7 @@ const selected = computed(() => cards.value.find(isOpen) ?? data.value?.cards.fi
     </div>
     </div>
     <AddTaskSheet v-if="adding && data" v-model:open="adding" :projects="data.projects" :cards="data.cards" :project="project" @added="added" />
-    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}:${checking}:${reporting}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" :checking="checking" :reporting="reporting" @closed="open = null; stopping = false; checking = false; reporting = false" @changed="load" />
+    <TaskSheet v-if="selected" :key="`${selected.id}:${stopping}:${checking}:${reporting}`" :card="selected" :waits-for="waiting(selected)" :pane="paneOf(selected)" :stopping="stopping" :checking="checking" :reporting="reporting" @closed="open = null; stopping = false; checking = false; reporting = false; closeTaskSheet()" @changed="taskChanged" />
   </section>
 </template>
 

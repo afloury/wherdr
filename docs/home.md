@@ -36,7 +36,9 @@
   the base branch). Only an agent other than Claude keeps its small icon. Several agents of the
   same task (the worker and its reviewer) share one row, in the group of the most urgent: the
   title line, then one line per agent with its own state, which opens that agent; the row's menu
-  lists each agent's actions under its role. A reviewer kept between rounds shows dimmed.
+  lists each agent's actions under its role. A reviewer kept between rounds shows dimmed. A
+  row keeps its task look after a restart of wherdr or herdr-core: an agent is found by its
+  task and role, even when it was resumed or its terminal re-attached.
 - **Order**: the header (logo, version, Search, Board, Settings), the counters, the quotas (a
   machine's own quotas under them), Alfred, the [coordinators](#coordinators), then the agents of
   the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,
@@ -47,7 +49,10 @@
 ### Alfred
 
 Alfred, wherdr's assistant, is always the first row of the agent list, even
-with no agent and projects off. It helps you get started and, with projects
+with no agent and projects off. Its row is a card of its own: its emblem (the
+wherdr ram in a bow tie, also in its conversation's header), *Your assistant ·
+all projects*, and its state (*Not started*, *Ready*, *Working*…) with its
+agent. A tap on it opens its conversation. It helps you get started and, with projects
 on, coordinates all of them when you ask it: it has no autopilot, each
 project's coordinator runs its own. The first *Start* asks which agent (Claude,
 Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept, and wherdr
@@ -111,7 +116,8 @@ devices; deleting a group puts the projects shown in it back to Automatic.
 Machines themselves are managed in [Settings › Machines](machines.md#manage-machines).
 
 A project's coordinator and its tasks to handle show on the tabs holding one of its machines
-(**All** shows every project). The project sheet's **Shown in** (General tab) keeps it on one
+(**All** shows every project); a machine paused for the project counts only while one of its
+tasks still runs there. The project sheet's **Shown in** (General tab) keeps it on one
 group or on all tabs instead ([General](project-management.md#general)). Push notifications are
 not filtered by tab, and the board stays the same on every tab.
 

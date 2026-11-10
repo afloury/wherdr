@@ -3,7 +3,7 @@
 import type { Hours, MemorySettings } from '#shared/pm/memory'
 import type { MachineCapacity } from '#shared/pm/capacity'
 
-export interface MemoryRow { key: string, label: string, mem: MachineCapacity | null, settings: MemorySettings, agents: number, cap?: number, autoReserve?: number, line: string, short?: string }
+export interface MemoryRow { key: string, label: string, mem: MachineCapacity | null, settings: MemorySettings, agents: number, cap?: number, autoReserve?: number, line: string, short?: string, pausedAll?: true }
 export const memoryRows = ref<MemoryRow[] | null>(null)
 export const memoryError = ref('')
 

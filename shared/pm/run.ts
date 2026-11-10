@@ -6,8 +6,10 @@ import { fillBase, planSteps, type StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
 import type { Report } from './report'
+import type { TaskSummary } from './summary'
 import type { Mark } from './times'
 import { isPublic, publicWorkerSection } from './visibility'
+import type { Recovery } from './incident'
 
 // Who made a task: the user (the board, their turn), the coordinator in a
 // wake, an automation, a mission.
@@ -25,6 +27,8 @@ export interface Task {
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
   ci?: { head: string, red: boolean } // its PR's CI at the task's commit, as the engine last read it
   queue?: number // its place in its project's merge queue (mergeQueue.ts), 1: merging now
+  queueOut?: string // why it stepped out of the queue's line (a conflict, its checks, its agent's work)
+  order?: number // its place on the board, set by the coordinator's `task order` (boardOrder.ts): lower first
   idle?: number // since when the agent holding its step sits idle, its report still due (blocked.ts)
   stall?: { cause: string, reason: string, since: number } // its stall as the engine last saw it (blocked.ts)
   stalls?: Record<string, { since: number, nudged?: number, restarted?: number, handled?: number, back?: number }> // each cause seen: when it began, its one nudge, restart and hand-over, when its agent went back to work
@@ -50,8 +54,13 @@ export interface Task {
   origin?: TaskOrigin // who made it: only automatic work is held by the pace (pace.ts)
   addedBy?: string // who added it: 'user', 'automation', or a coordinator's key (MAIN for the main one)
   held?: string // an automatic start waits for memory on its machine (memory.ts): the engine starts it once memory is back
+  files?: string[] // the files or folders it plans to change (files.ts)
+  changed?: string[] // what it changed since its branch started, as the engine last read it
+  sameFiles?: string // the started task its start waits behind: same files (files.ts)
   cleanup?: { done?: true, skipped?: string } // its worktree removed, or why it stays (cleanup.ts)
   report?: Report // a problem the user reported, open until the coordinator acts (report.ts)
+  summary?: TaskSummary // a cheap model's few lines on how it went, per round (summary.ts)
+  recovery?: Recovery // its agent gone with an incident: the engine resumes it (recovery.ts)
   createdAt: number
 }
 
@@ -75,6 +84,8 @@ export interface Run {
   state: 'starting' | 'running' | 'ended'
   endedBy?: 'exit' | 'lost' | 'stopped' | 'released' // released: idle while its task waited for the user (release.ts)
   startedAt: number
+  peakMb?: number // the most its worktree's processes took, sampled each tick (peaks.ts)
+  session?: string // Claude's conversation id, pinned at launch: a resume takes it up again
 }
 
 export const LABEL = { install: 'wherdr.install', task: 'wherdr.task', run: 'wherdr.run', role: 'wherdr.role', report: 'wherdr.report' } as const
@@ -129,8 +140,12 @@ export function tmpRefusal(out: string) {
 
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 // The shell line that starts the agent: model pinned, first message points at the file.
-export function agentLine(program: string, model: string, instructions: string) {
-  return ['exec', program, '--model', model, `Read ${instructions} and follow it.`].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
+// session (Claude only): the conversation's id, new (--session-id), or taken
+// up again (--resume) with `resume` as its first message.
+export function agentLine(program: string, model: string, instructions: string, session?: { id: string, resume?: string }) {
+  const own = program === 'claude' && session ? (session.resume ? ['--resume', session.id] : ['--session-id', session.id]) : []
+  const first = own[0] === '--resume' ? session!.resume! : `Read ${instructions} and follow it.`
+  return ['exec', program, '--model', model, ...own, first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
 }
 
 // A task's working branch: the one it started with, else its project's now.

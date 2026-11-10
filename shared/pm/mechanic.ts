@@ -23,8 +23,8 @@ export interface MechFacts {
   head?: string // the task's commit
   pr?: PrState // its open PR, else its merged one (merged: true)
   loggedIn?: boolean // the agent's program answers its login status again
-  queue?: number // its place in the merge queue (mergeQueue.ts): past the first, it waits its turn
-  behind?: boolean // the first in the queue lacks its base's last commits
+  queue?: number // its place in the merge queue (mergeQueue.ts): only the first merges
+  queueOut?: string // why it stepped out of the queue's line: it does not merge, its own updates go on
   infra?: boolean // the failed jobs' log shows an infrastructure error (infraLog)
   now?: number
 }
@@ -106,8 +106,8 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   // A merge step waiting for the user: watched while it waits; once the user
   // approved it, the engine merges it when ready, under the user's approval.
   const waits = waitsToMerge(step) && !s.acting
-  // In the merge queue past the first: neither updated nor merged until its turn.
-  const held = (f.queue ?? 1) > 1
+  // In the merge queue: only the first in line merges, one per tick; updates go on whatever the place.
+  const held = (f.queue ?? 1) > 1 || !!f.queueOut
   const engineMerges = mergeGoesOn(step, s, guards, pr.baseRefName) && !(waits && s.catchUp) && !held
   // One per commit and merge attempt: a head reviewed again is merged on the step's next attempt.
   const mergeKey = `merge:${head}${n > 1 ? `:${n}` : ''}`
@@ -126,7 +126,8 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   if (pr.headRefOid !== head) return engineMerges && !f.agentBusy ? pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
   if (pr.baseRefName !== base) return pick(`base:${head}`, { kind: 'fix-base', base })
   if (f.agentBusy) return
-  if (!held && (['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '') || f.behind) && !isProtected(guards, f.branch)) {
+  // Updated with its base only when GitHub reports a conflict or requires it (BEHIND: the branch rules want it up to date).
+  if (['BEHIND', 'DIRTY'].includes(pr.mergeStateStatus ?? '') && !isProtected(guards, f.branch)) {
     const tries = catchUps(task, head)
     if (!tries.length) return pick(`catch-up:${head}`, { kind: 'catch-up', base })
     // Tried already at this commit: again unless its agent holds a conflict, spaced out.

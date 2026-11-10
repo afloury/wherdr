@@ -2,7 +2,7 @@
 // machine read now (capacity, settings, agents at work, readiness, pace),
 // then placeTask picks one or holds the start with each machine's reason.
 import { HerdrError } from './herdr'
-import { allowedMachines, taskMachine, type Project } from '../../shared/pm/project'
+import { PAUSED, allowedMachines, isPaused, taskMachine, type Project } from '../../shared/pm/project'
 import { machineLine, placeTask, type Candidate, type Placement } from '../../shared/pm/placement'
 import { DEFAULT_MEMORY } from '../../shared/pm/memory'
 import { weightOf, type Weight } from '../../shared/pm/weight'
@@ -14,6 +14,7 @@ import type { PmStore } from './pmStore'
 import { atWork, machineCapacity, readMemorySettings } from './pmMemory'
 import { lastReadiness, readiness } from './pmReady'
 import { projectPace } from './pmPace'
+import { projectEstimates } from './pmPeaks'
 import type { PmLaunchDeps } from './pmLaunch'
 import type { CoreMachine } from '../../shared/coreState'
 
@@ -34,13 +35,14 @@ const anywayLogged = new Set<string>()
 // project does not allow it, or the task started elsewhere); offline, a new task goes elsewhere. waits: machines
 // that take nothing now (paceOf). weight: what this start does, when it is not
 // the task's (a worker started again: reviveWeight). A started task only ever
-// goes back to its own. A task too big for every machine goes anyway, said
+// goes back to its own; a new one never goes to a machine paused for the project. A task too big for every machine goes anyway, said
 // once in its log.
 export async function placeFor(deps: PmLaunchDeps, task: Task, { asked, waits = {}, weight }: { asked?: string, waits?: Record<string, string>, weight?: Weight } = {}): Promise<Placement> {
   const p = (await deps.store.projects()).find(x => x.key === task.project)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   const fixed = taskMachine(task, p, asked)
-  if ('refused' in fixed) throw new HerdrError('refused', fixed.refused)
+  // Nothing asked: only every machine paused refuses, and an automatic start waits for one to be switched on.
+  if ('refused' in fixed) { if (asked === undefined) return { hold: `Waits: ${fixed.refused}` }; throw new HerdrError('refused', fixed.refused) }
   const fresh = task.machine === undefined && !task.run
   const pinned = fresh ? undefined : fixed.machine
   const t = await deps.store.workflow(p.key)
@@ -51,16 +53,20 @@ export async function placeFor(deps: PmLaunchDeps, task: Task, { asked, waits = 
   const candidates = await Promise.all((pinned === undefined ? allowedMachines(p) : [pinned]).map(async (key): Promise<Candidate> => {
     const m = deps.machines().find(x => x.key === key)
     const online = !!m && (m.local || (listed ? listed.some(x => x.name === m.label && x.state === 'connected') : m.status === 'online'))
+    // A new task skips a machine paused for the project (a started one goes back to its own).
+    const paused = fresh && isPaused(p, key)
     // Another machine than home, before the task's first start there: ready for the project?
-    const notReady = online && fresh && key !== p.machine ? await readiness(deps, p, t, task, key).catch((e: Error) => e.message) : ''
-    const wait = waits[key] ?? (notReady ? `not ready (${notReady})` : undefined)
+    const notReady = online && fresh && !paused && key !== p.machine ? await readiness(deps, p, t, task, key).catch((e: Error) => e.message) : ''
+    const wait = paused ? PAUSED : waits[key] ?? (notReady ? `not ready (${notReady})` : undefined)
     return {
       key, label: m?.label ?? key, online, ...(wait ? { wait } : {}), settings: settings[key] ?? DEFAULT_MEMORY,
       capacity: online ? await machineCapacity(deps, key) : null, running: online ? await atWork(deps.store, key) : [],
     }
   })).catch(() => null)
   if (!candidates) return { machine: fixed.machine }
-  const placed = placeTask({ weight: weight ?? weightOf(t, task).weight, home: p.machine, pinned, ...(fresh && asked !== undefined ? { prefer: asked } : {}), candidates, strategy: p.placement })
+  const w = weight ?? weightOf(t, task).weight
+  const estimate = (await projectEstimates(deps.store, p.key))[w]
+  const placed = placeTask({ weight: w, estimate, home: p.machine, pinned, ...(fresh && asked !== undefined ? { prefer: asked } : {}), candidates, strategy: p.placement })
   if ('anyway' in placed && placed.anyway && !anywayLogged.has(task.id)) {
     anywayLogged.add(task.id)
     await deps.store.logTask((await deps.store.task(task.id)) ?? task, 'engine', placed.anyway)
@@ -82,7 +88,7 @@ export async function machineLines(deps: PmLaunchDeps, p: Project, now = Date.no
     const online = !!m && (m.local || m.status === 'online')
     const home = key === p.machine, ready = home ? '' : lastReadiness(p.key, key)
     return machineLine({
-      key, label: m?.label ?? key, online, home, ...(waits[key] ? { wait: waits[key] } : ready ? { wait: `not ready (${ready})` } : {}), ...(ready === undefined ? { unchecked: true } : {}),
+      key, label: m?.label ?? key, online, home, ...(isPaused(p, key) ? { paused: true } : waits[key] ? { wait: waits[key] } : ready ? { wait: `not ready (${ready})` } : {}), ...(ready === undefined ? { unchecked: true } : {}),
       settings: settings[key] ?? DEFAULT_MEMORY, capacity: online ? await machineCapacity(deps, key) : null, running: online ? await atWork(deps.store, key) : [],
     })
   }))

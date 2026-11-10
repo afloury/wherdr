@@ -7,6 +7,7 @@ import { LABEL, type Run, type Task } from './run'
 import { parseFindings, reviewText, sendBackText } from './verdict'
 import { rereviewText } from './steps'
 import { publicReviewSection } from './visibility'
+import { recovering } from './incident'
 import type { PlannedStep, StepEvent, StepState } from './steps'
 
 // The agent's own end signal, typed in its terminal (hc sets HC_TERMINAL_ID).
@@ -16,7 +17,7 @@ const ASK_CMD = `hc label "$HC_TERMINAL_ID" ${LABEL.report}=blocked:question`
 // The files of a task's run, beside its instructions file.
 export const runFiles = (instructions: string) => {
   const dir = instructions.replace(/\/[^/]+$/, '')
-  return { note: `${dir}/report.md`, review: `${dir}/review.md`, verdict: `${dir}/verdict.json` }
+  return { note: `${dir}/report.md`, review: `${dir}/review.md`, verdict: `${dir}/verdict.json`, files: `${dir}/files.txt` }
 }
 
 // How a worker ends its step: the last section of its instructions file.
@@ -82,9 +83,10 @@ export function dueText(plan: PlannedStep[], s: StepState | undefined): { holder
 
 // An engine action the advance pass runs at once. A merge the engine may do
 // waits for its PR's checks (pmMechanic's merge move); a guarded one runs so
-// its guard refuses it and hands it to the user's step.
-export const runsNow = (step: PlannedStep | undefined, s: StepState | undefined) =>
-  !!step && !!s?.acting && step.ends === 'action' && !(step.action?.kind === 'github.merge' && !step.guarded)
+// its guard refuses it and hands it to the user's step. A watched pipeline is
+// polled once its next poll is due.
+export const runsNow = (step: PlannedStep | undefined, s: StepState | undefined, now = Date.now()) =>
+  !!step && !!s?.acting && step.ends === 'action' && !(step.action?.kind === 'github.merge' && !step.guarded) && !(s.watch && s.watch.next > now)
 
 // The tasks a task waits for: `after: A-1,A-2`.
 export const afterIds = (t: Pick<Task, 'after'>) => (t.after ?? '').split(',').map(s => s.trim()).filter(Boolean)
@@ -94,17 +96,19 @@ export const CHAIN_WAIT = 'which this task starts after'
 
 // Where a chained task stands: 'go' once all its tasks are done (merged, or
 // their report finished); a reason to wait for the user when one failed or
-// stopped; undefined while they still run.
-export function chainState(task: Task, tasks: Task[]): 'go' | { wait: string } | undefined {
-  let open = false
+// stopped; resumes: one the engine resumes after an incident (recovery.ts),
+// waited for quietly; undefined while they still run.
+export function chainState(task: Task, tasks: Task[]): 'go' | { wait: string } | { resumes: string } | undefined {
+  let open = false, resumes: string | undefined
   for (const id of afterIds(task)) {
     const t = tasks.find(x => x.id === id)
     if (!t) return { wait: `${id}, ${CHAIN_WAIT}, does not exist` }
     if (t.step?.abandoned) return { wait: `${id}, ${CHAIN_WAIT}, was abandoned` }
     if (t.step?.done) continue
+    if (recovering(t)) { resumes ??= id; continue }
     // Stopped: waiting, not on an agent's question but on a failure.
     if (t.state === 'waiting' && !t.waitKind) return { wait: `${id}, ${CHAIN_WAIT}, stopped: ${t.waiting?.split('\n')[0] ?? ''}` }
     open = true
   }
-  return open ? undefined : 'go'
+  return resumes ? { resumes } : open ? undefined : 'go'
 }

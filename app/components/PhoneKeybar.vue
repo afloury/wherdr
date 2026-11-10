@@ -64,5 +64,5 @@ const isOn = (k: PhoneKey) => isKbd(k) ? Boolean(props.terminal && props.ctl.kbd
 .virtual-keyboard button:active { background: var(--surface-3); }
 .virtual-keyboard button.danger { color: var(--rose); border-color: var(--rose); }
 .virtual-keyboard .vk-key-icon { width: 19px; height: 19px; flex: none; }
-.vk-announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+.vk-announcement { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; } /* overflow-safe: visually hidden: absolute, 1px, clipped */
 </style>
