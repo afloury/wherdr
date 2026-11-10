@@ -8,8 +8,8 @@ import { runAction, type ActionDeps, type ActionJob } from '../server/utils/pmAc
 import { WORKTREE_SCRIPT } from '../server/utils/pmLaunch'
 import { initialState, onEvent, planSteps, reviewedCommit } from '../shared/pm/steps'
 import { dueText } from '../shared/pm/advance'
-import { github } from '../shared/pm/examples'
-import type { Template } from '../shared/pm/workflow'
+import { github, vibe } from '../shared/pm/examples'
+import type { Step, Template } from '../shared/pm/workflow'
 
 const t: Template = {
   id: 'p', guards: { protected: ['main'], merge: { protected: 'user', others: 'engine' } },
@@ -177,6 +177,31 @@ describe('on a real repo', () => {
       .toMatchObject({ ok: true, alert: expect.stringMatching(/is on main without a step of yours/) })
     expect(await runAction(deps, at(7, { step: 'check', by: 'user', action: { kind: 'git.verify-merged', target: 'main' } })))
       .toEqual({ ok: true, commit: head })
+  })
+
+  it('lands vibe\'s step locally on a fresh git init folder, with no remote', async () => {
+    const repo = path.join(tmp, 'fresh'), wt = path.join(tmp, 'fresh-wt')
+    git(tmp, 'init', '-q', '-b', 'main', repo); git(repo, 'commit', '-q', '--allow-empty', '-m', 'init')
+    const land = vibe.taskTypes.simple!.steps.find((s): s is Step => typeof s !== 'string' && s.id === 'land')!.action!
+    expect((await localSh(WORKTREE_SCRIPT, [repo, wt, 'task/A-1', ''])).code).toBe(0)
+    const deps: ActionDeps = { store: { receipt: async () => null, saveReceipt: async () => {} }, sh: localSh }
+    const at = (n: number) => job({ worktree: wt, attempt: n, action: land })
+
+    fs.writeFileSync(path.join(wt, 'b.txt'), 'task\n'); git(wt, 'add', '.'); git(wt, 'commit', '-qm', 'task')
+    expect(await runAction(deps, at(1))).toEqual({ ok: true, commit: git(wt, 'rev-parse', 'HEAD') })
+    expect(git(repo, 'rev-parse', 'dev')).toBe(git(wt, 'rev-parse', 'HEAD')) // dev made at the task's commit
+
+    // dev moved meanwhile: merged into the task first; the same file changed is sent back.
+    git(repo, 'checkout', '-q', 'dev'); fs.writeFileSync(path.join(repo, 'c.txt'), 'theirs\n'); git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'theirs')
+    fs.writeFileSync(path.join(wt, 'b.txt'), 'mine\n'); git(wt, 'commit', '-qam', 'mine')
+    expect(await runAction(deps, at(2))).toMatchObject({ ok: false, error: expect.stringMatching(/^land: dev is checked out in .*: switch that folder/) })
+    git(repo, 'checkout', '-q', 'main')
+    expect(await runAction(deps, at(3))).toMatchObject({ ok: true })
+    expect(git(repo, 'show', 'dev:c.txt')).toBe('theirs')
+    expect(git(repo, 'show', 'dev:b.txt')).toBe('mine')
+    git(repo, 'update-ref', 'refs/heads/dev', git(repo, 'commit-tree', '-p', 'dev', '-m', 'x', git(repo, 'rev-parse', 'main^{tree}')))
+    fs.writeFileSync(path.join(wt, 'b.txt'), 'again\n'); git(wt, 'commit', '-qam', 'again')
+    expect(await runAction(deps, at(4))).toEqual({ ok: false, error: 'land: conflict in b.txt', toAgent: true })
   })
 
   it('sees a gh error printed on stderr even when only stdout comes back, and tries again', async () => {

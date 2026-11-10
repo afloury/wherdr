@@ -61,10 +61,10 @@
 
 ## Project management
 
-- [Getting started](docs/project-management.md#getting-started): the four steps to turn projects on and start a coordinator.
+- [Getting started](docs/project-management.md#getting-started): the four steps to turn projects on and start a coordinator, and what a project needs (git; a remote unless its workflow lands locally, like vibe).
 - [Projects](docs/project-management.md#projects): Settings › Projects, the project list and the project sheet's tabs.
 - [General tab](docs/project-management.md#general): name, key, base (working) branch, agents, repository visibility.
-- [Workflow tab](docs/project-management.md#workflow): task types and steps, Edit as JSON, Save as template, Start over, review of the coordinator's proposed change.
+- [Workflow tab](docs/project-management.md#workflow): task types and steps (landing without a remote merges locally), Edit as JSON, Save as template, Start over, review of the coordinator's proposed change.
 - [Guards](docs/project-management.md#guards): protected branches, who may merge (a waiting merge goes on once wherdr may do it), contributor PRs, the project sheet's in-app addresses.
 - [Automations](docs/project-management.md#automations): tasks added on a schedule or an event.
 - [Autopilot](docs/project-management.md#autopilot): the header button and its window, goal, wakes and limits.

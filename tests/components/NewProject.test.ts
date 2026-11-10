@@ -23,8 +23,8 @@ registerEndpoint('/api/pm/coordinator-start', { method: 'POST', handler: async (
   return { terminal: 'host/t9' }
 } })
 
-const folders: Record<string, { exists: boolean, git: boolean, empty: boolean }> = {
-  '/repos/web': { exists: true, git: true, empty: false },
+const folders: Record<string, { exists: boolean, git: boolean, remote?: boolean, empty: boolean }> = {
+  '/repos/web': { exists: true, git: true, remote: true, empty: false },
   '/repos/new-app': { exists: false, git: false, empty: false },
   '/repos/clients': { exists: true, git: false, empty: false },
 }
@@ -134,6 +134,7 @@ it('adds a project from a git repository, a new folder or a folder without git, 
   await vi.waitFor(() => expect(w.findAll('[data-repo]').map(b => b.text())).toEqual(['api~/api', 'web~/web']))
   await w.get('[data-repo="/repos/web"]').trigger('click')
   expect(await folder('git')).toBe(false)
+  expect(w.find('[data-testid="project-no-remote"]').exists()).toBe(false)
   expect((w.get('#projectName').element as HTMLInputElement).value).toBe('web')
   expect((w.get('#projectKey').element as HTMLInputElement).value).toBe('WEB')
   // A folder without git: taken as it is, no git option either.
@@ -149,6 +150,13 @@ it('adds a project from a git repository, a new folder or a folder without git, 
   expect(w.find('[data-testid="project-template"]').exists()).toBe(false)
   await w.get('[data-testid="project-git-init"]').trigger('click')
   await vi.waitFor(() => expect(w.find('[data-testid="project-template"]').exists()).toBe(true))
+  // git init makes a repository without a remote: github cannot finish a task there, vibe can.
+  w.findComponent({ name: 'USelect' }).vm.$emit('update:modelValue', 'example:github')
+  await flushPromises()
+  expect(w.get('[data-testid="project-no-remote"]').text()).toContain('git remote add origin <url>')
+  expect(w.get('[data-testid="project-needs-remote"]').text()).toContain('github pushes or opens pull requests')
+  await w.get('[data-testid="project-use-vibe"]').trigger('click')
+  expect(w.find('[data-testid="project-needs-remote"]').exists()).toBe(false)
   expect(w.get('[data-testid="project-template"]').text()).toContain('vibe (example)')
   expect(w.text()).toContain('Settings › Projects › Templates')
   await w.get('[data-testid="project-start"]').trigger('click')

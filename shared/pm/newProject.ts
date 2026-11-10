@@ -1,8 +1,10 @@
 // "New" sheet › Project › Add: what a chosen folder is, and the name and key
 // proposed from it.
+import type { Template } from './workflow'
 
-// GET /api/pm/folder: the folder as it stands on its machine.
-export interface FolderProbe { path: string, exists: boolean, git: boolean, empty: boolean }
+// GET /api/pm/folder: the folder as it stands on its machine. remote: its
+// repository has an origin.
+export interface FolderProbe { path: string, exists: boolean, git: boolean, remote?: boolean, empty: boolean }
 // POST /api/pm/project from the sheet: create a missing folder, git init a
 // new or empty one, take a folder without git as it is.
 export interface FolderOptions { create?: boolean, gitInit?: boolean, plain?: boolean }
@@ -53,6 +55,12 @@ export function draftGit(d: ProjectDraft) {
   const kind = d.probe ? folderKind(d.probe) : 'plain'
   return kind === 'git' || (canGitInit(kind) && d.gitInit)
 }
+
+// A workflow that pushes or opens pull requests needs an origin; git.land
+// alone merges into a local branch when there is none.
+export const needsRemote = (t: Pick<Template, 'steps' | 'taskTypes'>) =>
+  [...Object.values(t.steps ?? {}), ...Object.values(t.taskTypes).flatMap(tt => tt.steps)]
+    .some(s => typeof s !== 'string' && !!s?.action && s.action.kind !== 'git.land')
 
 // POST /api/pm/project for a draft whose folder was probed: git init only where
 // it is offered, the folder created when missing.

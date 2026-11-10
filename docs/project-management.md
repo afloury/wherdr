@@ -29,6 +29,14 @@ is done and has a button that takes you there.
    folder of several projects, for instance). A folder without git needs no
    template: it has no tasks (a task needs git for its own worktree), and its
    coordinator does the work in it directly.
+   **What a project needs:** a git repository (a task works in its own
+   worktree), and a remote named `origin` for any step that pushes, opens or
+   merges a PR, or checks a merge. A repository without `origin`, such as a
+   folder you just ran `git init` in, works with `vibe`: its land step merges
+   the task into the local `dev` branch (made when missing) instead of pushing.
+   The sheet says when the folder has no remote, and when the template you
+   picked cannot finish a task without one, with a link to use `vibe` instead;
+   or add a remote with `git remote add origin <url>`.
 4. **Open the board and start the project coordinator.** Pick the project on
    the Board and press *Start*: the coordinator is the agent you talk to about
    the project. It adds tasks and follows them on the board. Alfred, wherdr's
@@ -70,6 +78,10 @@ has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
 action, what it does: land on a branch, push, open a PR, merge a PR, or check
 that a branch was merged, with its branch, merge method and required checks.
+Landing merges the target into the task first (a conflict goes back to the
+agent), then pushes it to the target on `origin`; in a repository without
+`origin` it moves the local target branch instead, unless that branch is
+checked out in a folder.
 Under the form, the plan of the chosen task type. *Save* checks the workflow
 and shows each problem with its line.
 
