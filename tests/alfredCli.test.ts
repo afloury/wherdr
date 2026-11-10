@@ -162,6 +162,25 @@ describe('runAlfredCommand', () => {
     expect(Buffer.from(write.input!, 'base64').toString()).toBe('- Goal from v2\'s autopilot: Ship it\n- Squash merges only\n')
   })
 
+  it('Alfred\'s wherdr script sends the note on stdin with project memory, shown or applied', async () => {
+    const http = await import('node:http')
+    const { execFile } = await import('node:child_process')
+    const { WHERDR_SCRIPT } = await import('../shared/pm/coordinator')
+    const bodies: { argv64: string[], input64?: string }[] = []
+    const server = http.createServer((req, res) => { let raw = ''; req.on('data', (c) => { raw += c }); req.on('end', () => { bodies.push(JSON.parse(raw)); res.end('{}') }) })
+    await new Promise<void>(r => server.listen(0, '127.0.0.1', r))
+    await fs.mkdir(path.join(dir, 'bin'))
+    await fs.writeFile(path.join(dir, 'bin/wherdr'), WHERDR_SCRIPT, { mode: 0o755 })
+    const env = { PATH: process.env.PATH, WHERDR_URL: `http://127.0.0.1:${(server.address() as { port: number }).port}` }
+    const send = (...args: string[]) => new Promise<void>((resolve) => { execFile(path.join(dir, 'bin/wherdr'), ['alfred', ...args], { env }, () => resolve()).stdin!.end('- Squash merges only\n') })
+    try {
+      await send('project', 'memory', 'APP')
+      await send('project', 'memory', 'APP', '--apply')
+    }
+    finally { server.close() }
+    expect(bodies.map(b => Buffer.from(b.input64 ?? '', 'base64').toString())).toEqual(['- Squash merges only\n', '- Squash merges only\n'])
+  })
+
   it('shows the project\'s guards and changes them after its dry run', async () => {
     expect(parseAlfredCommand(['project', 'guards', 'WEB', '--merge-others', 'me'])).toEqual({ error: '--merge-protected and --merge-others are user or engine' })
     await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--template', 'common', '--apply')
