@@ -59,7 +59,28 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   later. With no app in use on the conversation, it gives you the link instead. Opening is all it
   does: it changes no setting. It works only in a turn that follows your message (never in an
   Autopilot wake), and a coordinator opens its own project's places and global Settings sections
-  only.
+  only. To show you where a setting is, the agent points at it (`wherdr alfred ui open --target
+  terminal.key-order`; `ui targets` lists the settings it can point at): on a wide computer the
+  side panel opens on its section and highlights it; on a phone the card names the setting with a
+  crosshair, and a tap opens the page and highlights it.
+- **Buttons an agent puts in its reply**: Alfred or a project's coordinator can give you the
+  button for a task instead of telling you to go and find it (`wherdr pm ui action resume|step|open
+  <task>`): *Resume WHR-12* for a stopped task, the step's own button (*Merge*, *Approve
+  screenshots*) for a step that waits for you, or *Open WHR-12*. The card says who suggests it and
+  sits in the reply (a ```wherdr block of `action <id>` lines). Only your click runs it, through
+  the same action as the task sheet, and only if the task still waits the same way: if it moved
+  on since, the card says *This changed since* and runs nothing, with a button to open the task.
+  After the click it shows the outcome (*Merge: done by you · 14:02*, or *approved by you, merges
+  once ready* for an approved merge whose PR is not ready yet); a refused step action (a PR in conflict, red
+  checks) keeps the button, with the reason under it, as the task sheet does. The agent can add one only
+  in a turn that follows your message, never in an Autopilot wake, and a coordinator only for its
+  own project's tasks. A button lasts a day, and a new one for the same task and action replaces
+  the older one. An agent's token cannot click (`/api/ui/act` refuses it); without a passkey,
+  though, any program on this computer reaches the app's API, as the task sheet's buttons do.
+- **Wakes**: in a coordinator's conversation, a wake (Autopilot, Health check, Engine, Incident,
+  Step check) is a compact muted row, not one of your bubbles, with the coordinator's answer under
+  it; routine runs fold into one row. See
+  [Who sends a wake](project-management.md#who-sends-a-wake).
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the
   question changed meanwhile. A free answer selects its option, waits for the field, then types
@@ -165,6 +186,23 @@ number column (a header `#`, `N°`, `No`, `Num`, `ID` or `Q` over short numbers,
 question column, known by its header (`Question`, `Decision`, `Choix`…), by cells that all end
 with `?`, or by an advice column next to it (`Avis`, `Recommendation`, `Suggestion`…). Any other
 table is left as it is.
+
+**Choice buttons.** An agent can offer 2 to 4 answers as buttons with a `wherdr` code block, one
+element per line:
+
+````md
+Which one should lead the release notes?
+
+```wherdr
+choices "Rate limits" | "CSV export" | "Both"
+```
+````
+
+A tap sends that option at once as your reply, quoted to the last question written before the
+block (to the whole message when there is none), the same as typing it. Only the choices of the
+agent's last message are live; once a sent message answers them, and in older messages, they are
+greyed, the answer given marked. A `wherdr` block with a line wherdr does not understand (a
+missing quote, one option or more than four) shows as ordinary code.
 
 Above the field, **N questions unanswered** counts the questions of the agent's last message
 (and the rows of its decision tables) that your draft does not answer yet; tap it to scroll to

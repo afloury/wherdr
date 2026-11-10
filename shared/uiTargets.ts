@@ -3,8 +3,8 @@
 // tab), so the target is rendered first; the element carries
 // `data-ui-target="<id>"` (a separate attribute from the plugins' frozen
 // `data-wherdr`), and Settings scrolls to it and highlights it (SettingsView.vue,
-// utils/uiHalo.ts). Internal for now: the agents' list of places
-// (appLinks.ts appLinkList) does not offer them yet.
+// utils/uiHalo.ts). Agents point at one with `ui open --target <id>` and list
+// them with `ui targets`. Internal for now: not a plugin contract.
 export const UI_TARGETS = {
   'appearance.theme': { link: '#/settings?section=appearance', label: 'Appearance › Theme' },
   'appearance.home-screen': { link: '#/settings?section=appearance', label: 'Appearance › Home screen' },
@@ -34,3 +34,18 @@ export const uiTargetLink = (id: UiTargetId) => `${UI_TARGETS[id].link}&target=$
 
 // The target's own name, without its section: "Theme".
 export const uiTargetName = (id: UiTargetId) => UI_TARGETS[id].label.split(' › ').pop()!
+
+// A Settings link's target: none, a known one, or `false` when the link names
+// one the registry does not hold (or holds elsewhere: another section or tab).
+export function linkTarget(link: string): UiTargetId | null | false {
+  const q = new URLSearchParams(link.split('?')[1] ?? '')
+  const raw = q.get('target')
+  if (raw === null) return null
+  const id = uiTarget(raw)
+  if (!id || !link.startsWith('#/settings?')) return false
+  const own = new URLSearchParams(UI_TARGETS[id].link.split('?')[1])
+  return [...own].every(([k, v]) => q.get(k) === v) ? id : false
+}
+
+// The agents' list: `id (Section › Setting)`, for their role text and `ui targets`.
+export const uiTargetList = () => (Object.keys(UI_TARGETS) as UiTargetId[]).map(id => ({ id, label: UI_TARGETS[id].label }))
