@@ -233,11 +233,14 @@ const visibleBlocks = computed(() => (hiddenBlocks.value ? blocks.value.slice(hi
 // last; its turn with no reply yet, the conversation's end (one not in view
 // shows nowhere). Keyed by that reply ('' for the end).
 const coord = computed(() => coordinatorOf(props.pane))
+const msOf = (it: { ts?: string | null }) => (it.ts ? { ms: new Date(it.ts).getTime() } : {})
 const turnOpens = (b: PlacedBlock) => fromUser(b as Block) || b.k === 'wake'
+// When a block was written (a thought's or a job's ms is its duration).
+const blockTime = (b: PlacedBlock) => (b.k === 'thinking' || b.k === 'job' ? undefined : b.ms)
 const proposalCards = computed(() => {
   const c = coord.value, cards = new Map<string, { key: string, answer?: ProposalAnswer }[]>()
   const place = (at: number | undefined, key: string, answer?: ProposalAnswer) => {
-    const spot = at === undefined ? null : proposalSpot(blocks.value, at, turnOpens)
+    const spot = at === undefined ? null : proposalSpot(blocks.value, at, turnOpens, blockTime)
     if (spot !== null) cards.set(spot, [...cards.get(spot) ?? [], { key, ...(answer ? { answer } : {}) }])
   }
   c?.answers?.forEach((a, i) => place(a.proposedAt, `a${i}:${a.proposedAt}`, a))
@@ -484,12 +487,12 @@ type Block = ({ k: 'day', key: string, label: string }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
   // `cmd`: a local '/' command the user ran.
-  | { k: 'system', key: string, text: string, full?: string, cmd?: boolean }
-  | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean }
+  | { k: 'system', key: string, text: string, full?: string, cmd?: boolean, ms?: number }
+  | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean, ms?: number }
   // The agent's turn failed (omp: usage limit, credit balance, stalled stream…).
   | { k: 'error', key: string, text: string, long: boolean }
-  | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
-  | { k: 'ompRun', key: string, tool: ChatItem & { omp: OmpToolView } }
+  | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean, ms?: number }
+  | { k: 'ompRun', key: string, tool: ChatItem & { omp: OmpToolView }, ms?: number }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
   | { k: 'turn', key: string, text: string, copy: string | null, reply: string | null }
   // A wake: one compact row, the coordinator's answer under it (see foldWakes).
@@ -679,7 +682,7 @@ const blocks = computed<Block[]>(() => {
       // Reply to a specific message: the marker becomes a quote linking to the original.
       const parsed = parseReply(text)
       const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
-      out.push({ k: 'user', key, text: parsed ? parsed.body : text, pasted: it.pasted, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin, wake: wakeKindOf(text), ...(it.ts ? { ms: new Date(it.ts).getTime() } : {}) })
+      out.push({ k: 'user', key, text: parsed ? parsed.body : text, pasted: it.pasted, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin, wake: wakeKindOf(text), ...msOf(it) })
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
@@ -691,19 +694,19 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'job' && it.job) {
       out.push({ k: 'job', key, id: it.job.id, tool: it.job.tool, out: it.job.out, ms: it.ms, error: Boolean(it.error) })
     } else if (it.role === 'bash' && it.omp) {
-      out.push({ k: 'ompRun', key: `s:${it.ts}:${it.text.slice(0, 40)}`, tool: { ...it, omp: it.omp } })
+      out.push({ k: 'ompRun', key: `s:${it.ts}:${it.text.slice(0, 40)}`, tool: { ...it, omp: it.omp }, ...msOf(it) })
     } else if (it.role === 'bash') {
       const o = it.out || ''
       const e = it.err || ''
       const lines = (o ? o.split('\n').length : 0) + (e ? e.split('\n').length : 0)
-      out.push({ k: 'shell', key: `s:${it.ts}:${it.text.slice(0, 40)}`, bash: it.role === 'bash', text: it.text, out: o, err: e, lines, long: lines > SHELL_LINES || o.length + e.length > 1500 })
+      out.push({ k: 'shell', key: `s:${it.ts}:${it.text.slice(0, 40)}`, bash: it.role === 'bash', text: it.text, out: o, err: e, lines, long: lines > SHELL_LINES || o.length + e.length > 1500, ...msOf(it) })
     } else if (it.role === 'notice' && it.name === 'error' && it.error) {
       // The provider's own message (often raw JSON): shown as plain text.
       out.push({ k: 'error', key, text: it.text, long: it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 })
     } else if (it.role === 'notice') {
       const [label, icon] = NOTICE[it.name || ''] || [it.name || 'Note', 'i-lucide-info']
       // A scheduled prompt starts folded: it is not what the user wrote.
-      out.push(lazyHtml({ k: 'notice' as const, key, label: t(label), icon, scheduled: it.name === 'scheduled', long: it.name === 'scheduled' || it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 }, () => md(it.text)))
+      out.push(lazyHtml({ k: 'notice' as const, key, label: t(label), icon, scheduled: it.name === 'scheduled', long: it.name === 'scheduled' || it.text.split('\n').length > SHELL_LINES || it.text.length > 1200, ...msOf(it) }, () => md(it.text)))
     } else {
       const effort = it.role === 'system' ? it.text.match(/^Effort : (low|medium|high|xhigh|max|ultracode) \(cette session\)$/) : null
       // Local "/" command: one-line system separator ("/cost → …"); a tap
@@ -711,7 +714,7 @@ const blocks = computed<Block[]>(() => {
       const full = it.role === 'cmd' ? [it.err, it.out].filter(Boolean).join('\n') : ''
       out.push({ k: 'system', key, text: effort
         ? tl(`Effort: ${effort[1]} (this session)`, `Effort : ${effort[1]} (cette session)`)
-        : it.role === 'system' ? t(it.text) : it.text, ...(full ? { full } : {}), ...(it.role === 'cmd' ? { cmd: true } : {}) })
+        : it.role === 'system' ? t(it.text) : it.text, ...(full ? { full } : {}), ...(it.role === 'cmd' ? { cmd: true, ...msOf(it) } : {}) })
     }
   })
   flush()

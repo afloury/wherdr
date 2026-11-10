@@ -6,10 +6,10 @@
 // reply yet and is the last); null when its turn is not in view.
 export interface PlacedBlock { k: string, key: string, ms?: number }
 
-export function proposalSpot(blocks: PlacedBlock[], at: number, opens: (b: PlacedBlock) => boolean): string | null {
-  // A block without a time (a "!" or "/" command…) takes the last time before it.
+// timeOf: when a block was written, if known; one without takes the last time before it.
+export function proposalSpot(blocks: PlacedBlock[], at: number, opens: (b: PlacedBlock) => boolean, timeOf = (b: PlacedBlock) => b.ms): string | null {
   let last = 0
-  const times = blocks.map(b => (last = b.ms ?? last))
+  const times = blocks.map(b => (last = timeOf(b) ?? last))
   const start = blocks.findLastIndex((b, i) => opens(b) && times[i]! <= at)
   // Its turn is older than the first one loaded.
   if (start < 0 && blocks.some(opens)) return null
