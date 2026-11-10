@@ -5,6 +5,7 @@ import { isGitBranch, type Project } from './project'
 import { WEIGHTS, isWeight, type Holder, type Template, type Weight } from './workflow'
 import { SPEC_RULE, type Run, type Task } from './run'
 import { wasReleased } from './release'
+import { CODEX_NO_UPDATE } from '../codexLaunch'
 
 type AgentRole = Run['role']
 import type { WorkflowChanges } from './workflowChanges'
@@ -428,7 +429,7 @@ export const specChangedText = (what: string) => `The task's spec changed: ${wha
 // (Claude and Codex only, see canResume), with the same options.
 export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false, resume = false): string[] {
   if (program === 'claude') return ['claude', ...(resume ? ['--continue'] : []), ...(repo ? ['--add-dir', repo] : [])]
-  if (program === 'codex') return ['codex', '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true', ...(resume ? ['resume', '--last'] : [])]
+  if (program === 'codex') return ['codex', ...CODEX_NO_UPDATE, '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true', ...(resume ? ['resume', '--last'] : [])]
   return [program]
 }
 export const canResume = (program: CoordinatorProgram) => program === 'claude' || program === 'codex'
@@ -453,7 +454,7 @@ b64() { base64 | tr -d '\\n'; }
 body='{"argv64":[' sep=
 for a in "$@"; do body="$body$sep\\"$(printf %s "$a" | b64)\\"" sep=,; done
 body="$body]"
-case "$route $1 $2 $3" in "pm/cli template edit"*|"alfred/cli project workflow edit") body="$body,\\"input64\\":\\"$(b64)\\"" ;; esac
+case "$route $1 $2 $3" in "pm/cli template edit"*|"alfred/cli project workflow edit"|"alfred/cli project memory "*) body="$body,\\"input64\\":\\"$(b64)\\"" ;; esac
 out=$(mktemp) hdr=$(mktemp) || exit 1
 code=$(printf '%s}' "$body" | curl -sS -D "$hdr" -o "$out" -w '%{http_code}' -X POST --data-binary @- \\
   -H 'content-type: application/json' -H "origin: $WHERDR_URL" -H "authorization: Bearer $tok" "$WHERDR_URL/api/$route")
