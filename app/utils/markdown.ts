@@ -13,6 +13,7 @@ import { blockCommand, inlineCommand } from './shellCommand'
 import { svgPreview } from './svgPreview'
 import { parseStatusBlock, STATUS_MAX } from '../../shared/statusBlock'
 import { parseOpenLine } from '../../shared/uiOpen'
+import { parseActionLine } from '../../shared/uiActions'
 
 let hooked = false
 // Budget of the cache, in characters of text + HTML: about 4 MB of strings
@@ -124,6 +125,11 @@ export function md(text: string, options: MdOptions = {}): string {
           const links = opens.length && opens.length <= STATUS_MAX ? opens.map(parseOpenLine) : []
           if (links.length && links.every(Boolean)) {
             return `<div class="wherdr-block">${links.map(k => `<div class="open-slot" data-link="${escHtml(k!)}">open ${escHtml(k!)}</div>`).join('')}</div>`
+          }
+          // `action <id>` lines: an agent's `ui action` buttons (shared/uiActions.ts).
+          const actions = opens.length && opens.length <= STATUS_MAX ? opens.map(parseActionLine) : []
+          if (actions.length && actions.every(Boolean)) {
+            return `<div class="wherdr-block">${actions.map(id => `<div class="action-slot" data-action="${id}">action ${id}</div>`).join('')}</div>`
           }
           if (!docNow && l.toLowerCase() === 'svg') {
             const src = svgPreview(text)

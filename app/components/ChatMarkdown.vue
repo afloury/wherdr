@@ -14,6 +14,7 @@ import { appRoute, isAppLink, linkedTask } from '#shared/appLinks'
 import type { StatusKind } from '#shared/statusBlock'
 import StatusCard from './StatusCard.vue'
 import UiOpenCard from './UiOpenCard.vue'
+import ActionCard from './ActionCard.vue'
 import { h, render } from 'vue'
 
 // `cipher` must default to undefined, not false: Vue casts a missing Boolean
@@ -207,6 +208,14 @@ function mountCards() {
   // An agent's `ui open` card, kept in its reply: no ×, it opens the place.
   for (const slot of el.value?.querySelectorAll<HTMLElement>('.open-slot') ?? []) {
     const card = h(UiOpenCard, { event: { type: 'ui-open', pane: '', link: slot.dataset.link ?? '', by: '' }, kept: true })
+    card.appContext = app
+    slot.textContent = ''
+    render(card, slot)
+    slots.push(slot)
+  }
+  // An agent's `ui action` button: only the user's click runs it.
+  for (const slot of el.value?.querySelectorAll<HTMLElement>('.action-slot') ?? []) {
+    const card = h(ActionCard, { id: slot.dataset.action ?? '' })
     card.appContext = app
     slot.textContent = ''
     render(card, slot)
