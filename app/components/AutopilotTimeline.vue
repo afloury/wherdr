@@ -88,18 +88,18 @@ const pct = (n: number | null) => `${Math.round(Math.min(100, Math.max(0, n ?? 0
 .tl-hours-text { color: var(--muted); }
 .tl-bar { position: relative; height: 28px; border: 1px solid var(--line); background: var(--surface); overflow: hidden; }
 .tl-shade { position: absolute; top: 0; bottom: 0; background: color-mix(in srgb, var(--accent) 12%, transparent); }
-.tl-mark { position: absolute; top: 9px; width: 8px; height: 8px; margin-left: -4px; background: var(--accent); }
+.tl-mark { position: absolute; top: 9px; width: 8px; height: 8px; transform: translateX(-50%); background: var(--accent); }
 .tl-mark.skipped { top: 18px; background: transparent; box-shadow: inset 0 0 0 1px var(--muted); }
 .tl-mark.started { top: 1px; background: var(--green); }
 .tl-mark.problem { background: var(--rose); }
-.tl-now, .tl-next { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--text); }
+.tl-now, .tl-next { position: absolute; top: 0; bottom: 0; width: 2px; transform: translateX(-50%); background: var(--text); }
 .tl-next { background: transparent; border-left: 2px dashed var(--accent); }
 .tl-ticks { display: flex; justify-content: space-between; color: var(--dim); }
 .tl-pace { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 4px 8px; padding: 8px 0; border-top: 1px solid var(--line-soft); }
 .tl-pace > .mono-label:first-child { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tl-gauge { position: relative; grid-column: 1 / -1; height: 8px; border: 1px solid var(--line); }
 .tl-gauge i { position: absolute; inset: 0 auto 0 0; background: var(--accent); }
-.tl-gauge b { position: absolute; top: -3px; bottom: -3px; width: 2px; margin-left: -1px; background: var(--text); }
+.tl-gauge b { position: absolute; top: -3px; bottom: -3px; width: 2px; transform: translateX(-50%); background: var(--text); }
 .tl-pace-text { color: var(--muted); }
 .tl-pace-text b { color: var(--ochre); }
 .tl-pace[data-go] .tl-pace-text b { color: var(--green); }
