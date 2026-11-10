@@ -16,7 +16,7 @@ import { doneSection, runFiles } from '../../shared/pm/advance'
 import { isPublic } from '../../shared/pm/visibility'
 import { cloneOn, taskMachine } from '../../shared/pm/project'
 import { ensureVisibility, readLeakCheck } from './pmVisibility'
-import { DEPS_SCRIPT, depsNote } from './pmDeps'
+import { prepareWorktree } from './pmDeps'
 import { ensureReady } from './pmReady'
 import { fileConflict, filesSection } from '../../shared/pm/files'
 import { branchFor } from '../../shared/pm/branchName'
@@ -184,8 +184,11 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   if (task.machine !== machine) task = await store.saveTask({ ...task, machine })
   const tmpWhy = await prepareTmp(deps, on, paths.worktree)
   if (tmpWhy) return wait(store, task, tmpWhy)
-  // A copy of a large node_modules on a cold disk can take minutes.
-  const depsLine = depsNote((await exec(deps, on, DEPS_SCRIPT, [repo, paths.worktree], undefined, 300).catch(() => ({ out: '' }))).out)
+  // The project's worktree setup (files copied, folders shared, its command); a failed command: the user's turn.
+  const setup = await prepareWorktree(deps, on, repo, paths.worktree, t)
+  if (setup.log) task = await store.logTask(task, 'engine', setup.log)
+  if (setup.failed) return wait(store, task, setup.failed)
+  const depsLine = setup.note
   // A visual task: the worker's key to upload its screenshots, kept with the task.
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
   const leakCheck = isPublic(p) ? (await readLeakCheck(deps, on, paths).catch(() => ({ check: undefined }))).check : undefined

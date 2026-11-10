@@ -28,7 +28,7 @@ const edit = (b: Record<string, unknown>, change: Partial<Project>) => {
   return { project: state.projects.find(p => p.key === b.key) }
 }
 registerEndpoint('/api/pm/overview', () => state)
-registerEndpoint('/api/pm/project', () => ({ project: state.projects[0], workflow: { id: 'web', steps: [], taskTypes: {}, guards: { protected: ['main'] }, prefs: { agent: 'claude', model: 'sonnet' } }, log: [] }))
+registerEndpoint('/api/pm/project', () => ({ project: state.projects[0], workflow: { id: 'web', steps: [], taskTypes: {}, guards: { protected: ['main'] }, prefs: { agent: 'claude', model: 'sonnet' }, worktree: { share: [] } }, log: [] }))
 post('/api/pm/enabled', (b) => { state = { ...state, enabled: b.enabled as boolean }; return state })
 post('/api/pm/project-update', b => edit(b, { name: b.name as string, base: b.base as string, ...(b.newKey ? { label: b.newKey as string } : {}) }))
 post('/api/pm/project-guards', () => ({}))
@@ -64,7 +64,7 @@ it('switches project management on; Add project opens the setup window on a new 
   await vi.waitFor(() => expect(inSheet('library-saved')?.dataset.id).toBe('vibe'))
 })
 
-it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name and base, and the visibility', async () => {
+it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name, base and worktree setup, and the visibility', async () => {
   state = { ...state, enabled: true, projects: [web()] }
   const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=guards' })
   mounted = w
@@ -84,8 +84,14 @@ it('opens the project sheet on the URL\'s tab; Guards saves a branch added; Gene
   const name = inSheet('pm-name')!.querySelector('input') ?? inSheet('pm-name') as HTMLInputElement
   ;(name as HTMLInputElement).value = 'Website'
   name.dispatchEvent(new Event('input'))
+  const copy = inSheet('pm-setup-copy')!.querySelector('textarea') ?? inSheet('pm-setup-copy') as HTMLTextAreaElement
+  ;(copy as HTMLTextAreaElement).value = '.env\n config/local.json '
+  copy.dispatchEvent(new Event('input'))
   inSheet('pm-save')!.closest('form')!.dispatchEvent(new Event('submit'))
-  await vi.waitFor(() => expect(calls[0]).toEqual({ url: '/api/pm/project-update', body: { key: 'WEB', name: 'Website', base: '', branchName: '', prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' } } }))
+  await vi.waitFor(() => expect(calls[0]).toEqual({ url: '/api/pm/project-update', body: {
+    key: 'WEB', name: 'Website', base: '', branchName: '', prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' },
+    worktree: { copy: ['.env', 'config/local.json'], share: [], lockfile: '', command: '', timeout: '' }, // share none kept
+  } }))
 
   await vi.waitFor(() => expect(inSheet('pm-save')!.hasAttribute('disabled')).toBe(false))
   await pick(w, 'pm-visibility', 'private')
