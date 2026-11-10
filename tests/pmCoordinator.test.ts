@@ -117,8 +117,8 @@ describe('the main coordinator (WHR-398)', () => {
     expect(alfred).toMatchObject({ main: true })
     expect(alfred).not.toHaveProperty('autopilot')
     await noteTurn(store, MAIN, 'wake')
-    await refused(cli(['task', 'start', st.id], undefined, main), 'its own autopilot')
-    await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST'], undefined, main), 'its own autopilot')
+    await refused(cli(['task', 'start', st.id], undefined, main), 'only on a request from the user, sent from wherdr')
+    await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST'], undefined, main), 'only on a request from the user, sent from wherdr')
     vi.stubGlobal('defineApi', (h: unknown) => h)
     const route = (await import('../server/api/pm/autopilot.post')).default as unknown as (e: unknown, b: unknown) => Promise<unknown>
     await refused(route({}, { project: MAIN, autopilot: { on: true } }), 'Alfred has no autopilot')
