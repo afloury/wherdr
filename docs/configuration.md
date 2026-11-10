@@ -12,7 +12,7 @@ unit: see [Installation](installation.md#keep-it-running)), read at each start.
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `HC_SOCKET` | *(none)* | Socket of the hc session to drive. Required: wherdr never guesses it, and the server stops at startup with a log line naming `HC_SOCKET` without it. `wherdr --hc-socket <path>` sets it. |
-| `PORT` | `7683` | Listening port. |
+| `PORT` | `7683` | Listening port (`wherdr` and `npm start` set it; `.output/server/index.mjs` started directly listens on `3000` without it). |
 | `HOST` | `127.0.0.1` (`npm start`) | Listening address: loopback, or this machine's tailnet address (`tailscale ip`, with Tailscale running). Any other address (`0.0.0.0`, a LAN address) stops wherdr at startup unless `WHERDR_TRUSTED_NETWORKS` covers it. |
 | `WHERDR_TRUSTED_NETWORKS` | *(empty)* | Other private networks wherdr accepts besides this computer and the tailnet, as comma-separated CIDR ranges or addresses (e.g. `10.147.17.0/24` for ZeroTier). `any` accepts every network, with a warning at startup and in the app: not recommended. See [Network access](security.md#network-access). |
 | `HOST_LABEL` | server hostname | Name of this machine in the app. |
@@ -26,6 +26,7 @@ unit: see [Installation](installation.md#keep-it-running)), read at each start.
 | `ATTACH_DIR` | `~/.cache/herdr-web/files` | Where other files attached to messages are stored, on the agent's machine (mode 600, deleted after 7 days). |
 | `OPENROUTER_API_KEY` | *(empty)* | OpenRouter key for online dictation (Settings › Conversation › Dictation › Online). Wins over the key saved from Settings in `DATA_DIR/openrouter.json`; see [Dictation](security.md#dictation). |
 | `TZ` | `UTC` | Time zone. |
+| `WHERDR_ROOT` | *(set by `wherdr`)* | Folder of the wherdr install (the one holding `.output`). The `wherdr` command sets it; set it yourself only when you start `.output/server/index.mjs` another way. Alfred reads the docs of the running build: `.output/docs` when the build ships them (auto-deploy packages do), else `WHERDR_ROOT/docs`, else the `docs/` next to `.output`, else the working folder's `docs/`. |
 
 **v2 only.** These variables configure wherdr v2 on Herdr and are ignored in core mode:
 

@@ -16,7 +16,7 @@ registerEndpoint('/api/pm/project', () => ({ workflow: vibe, log: [] }))
 registerEndpoint('/api/pm/enabled', { method: 'POST', handler: () => { overview = { ...overview, enabled: true }; return overview } })
 
 registerEndpoint('/api/pm/repos', () => ({ home: '/home/u', repos: ['/home/u/web'] }))
-registerEndpoint('/api/pm/folder', () => ({ path: '/home/u/web', exists: true, git: true, empty: false }))
+registerEndpoint('/api/pm/folder', () => ({ path: '/home/u/web', exists: true, git: true, remote: false, empty: false }))
 let added: Record<string, unknown> | null = null
 registerEndpoint('/api/pm/project', { method: 'POST', handler: async (e) => {
   added = await readBody(e)
@@ -74,6 +74,13 @@ it('opens on the project asked, past the last step once all are done', async () 
   mounted!.unmount()
   await wizard()
   await vi.waitFor(() => expect(stepShown()).toBe('workflow')) // API, the project with a step left
+  // Its repository has no remote: an example that pushes is warned against, vibe offered.
+  expect($('setup-no-remote')).toBeFalsy()
+  document.querySelector<HTMLElement>('[data-example="github"]')!.click()
+  await vi.waitFor(() => expect($('setup-no-remote')!.textContent).toContain('git remote add origin <url>'))
+  await click('setup-use-vibe')
+  await vi.waitFor(() => expect($('setup-no-remote')).toBeFalsy())
+  expect($('setup-apply')!.textContent).toContain('Use vibe')
 })
 
 it('adding: opens at step 2 on a new project, added in place with its color, then shows its visibility', async () => {

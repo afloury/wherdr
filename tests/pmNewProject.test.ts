@@ -6,11 +6,12 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { draftBody, folderKind, proposeKey, proposeName, shortHome, type ProjectDraft } from '../shared/pm/newProject'
+import { draftBody, folderKind, needsRemote, proposeKey, proposeName, shortHome, type ProjectDraft } from '../shared/pm/newProject'
 import { findRepos, parseRepos } from '../server/utils/pmRepos'
 import { pmFolderCheck, probeFolder } from '../server/utils/pmFolder'
 import { createPmStore } from '../server/utils/pmStore'
 import { coordinatorArgs, roleFiles } from '../shared/pm/coordinator'
+import { EXAMPLES } from '../shared/pm/examples'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 
 describe('name and key proposal', () => {
@@ -50,6 +51,10 @@ describe('folder kinds', () => {
     expect(draftBody({ ...d, probe: { ...probe, exists: false } }, 'vibe')).toMatchObject({ create: true, gitInit: true, template: 'vibe' })
     expect(draftBody({ ...d, gitInit: false, probe: { ...probe, empty: true } }, 'vibe')).toMatchObject({ gitInit: false, template: '' })
   })
+
+  it('tells the examples that need a remote from those that land locally', () => {
+    expect(EXAMPLES.filter(needsRemote).map(e => e.id)).toEqual(['company', 'github', 'wherdr'])
+  })
 })
 
 // A machine whose commands run here, with HOME set to the fake home folder.
@@ -88,11 +93,14 @@ describe('repository discovery', () => {
 
 describe('folder check', () => {
   it('probes a folder: missing, empty, plain or git', async () => {
-    await Promise.all([mk('empty'), mk('plain', 'one'), mk('repo', '.git')])
-    expect(await probeFolder('', '~/missing', deps)).toEqual({ path: path.join(home, 'missing'), exists: false, git: false, empty: false })
+    await Promise.all([mk('empty'), mk('plain', 'one'), mk('remote')])
+    spawnSync('git', ['init', '-q', path.join(home, 'repo')]); spawnSync('git', ['init', '-q', path.join(home, 'remote')])
+    spawnSync('git', ['-C', path.join(home, 'remote'), 'remote', 'add', 'origin', 'https://example.com/r.git'])
+    expect(await probeFolder('', '~/missing', deps)).toEqual({ path: path.join(home, 'missing'), exists: false, git: false, remote: false, empty: false })
     expect(await probeFolder('', '~/empty', deps)).toMatchObject({ exists: true, git: false, empty: true })
     expect(await probeFolder('', '~/plain', deps)).toMatchObject({ exists: true, git: false, empty: false })
-    expect(await probeFolder('', '~/repo', deps)).toMatchObject({ exists: true, git: true })
+    expect(await probeFolder('', '~/repo', deps)).toMatchObject({ exists: true, git: true, remote: false })
+    expect(await probeFolder('', '~/remote', deps)).toMatchObject({ git: true, remote: true })
     await expect(probeFolder('', '/etc', deps)).rejects.toMatchObject({ code: 'bad_input' })
   })
 

@@ -119,11 +119,14 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   question changed meanwhile. A free answer selects its option, waits for the field, then types
   the text. Unrecognized blocking screens offer the real terminal.
 - **Composer**: send messages while the agent works (queued: the agent's own queue when it takes
-  them, else held by wherdr and sent when the turn ends; never sent twice), attach or paste
+  them, else held by wherdr and sent when the turn ends; never sent twice; a message sent while
+  wherdr types a wake or another of its own messages into the agent waits for it, then goes), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), up to **8 MB per file** (core's `terminal.put`).
   A sent file shows as a chip (icon and original name) in the message and its history, also in
-  conversations from v2; a tap opens or downloads it.
+  conversations from v2; a tap opens or downloads it. A photo stays a picture in the message,
+  never its file path, also when the message was sent again (**Send now**, **Retry**) or waited
+  in the agent's queue.
   Slash commands typed in the field (`/compact`, `/clear`…) are sent as text. **Stop** (or `Esc`
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
