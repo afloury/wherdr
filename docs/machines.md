@@ -10,7 +10,9 @@ SSH connection of its own.
 
 - **On the home screen**, each machine is one of the machine tabs, online or offline, with its
   count of rows ([Machines as tabs](home.md#machines-as-tabs)). When a machine goes offline, its
-  last terminals stay visible, marked offline, until core reaches it again.
+  last terminals stay visible, marked offline, until core reaches it again. A project shows on
+  the tabs of its machines, or where its sheet's **Shown in** puts it
+  ([General](project-management.md#general)).
 - **New** starts a terminal or an agent on any online machine (`terminal.run` with `on`). Home,
   folders, Git detection and installed agents of that machine come from `machine.exec`; folders
   must stay under the machine's home.
@@ -79,3 +81,20 @@ and the machine's memory settings (side by side on a computer, stacked on a phon
   runs over midnight) keeps automatic starts off a machine outside its hours, and heavy work off it
   in its last 2 hours, so a laptop that leaves at 19:00 is not handed a long build at 18:30. The
   coordinator sees the same in `autopilot show` (`machines`).
+- **Paused in every project**: a machine that some project allows, switched off in each project
+  that allows it, says so on its card ([Pause a machine for a project](#pause-a-machine-for-a-project)).
+
+## Pause a machine for a project
+
+In the project sheet's General › Machines list ([project sheet](project-management.md#general)),
+each allowed machine has an on/off switch beside its ✕ (home has one once the project allows
+another machine). Off, the machine is *paused for this project*:
+
+- No new task of the project goes there: placement skips it, and so do the automatic starts
+  (Keep the board busy, chains, automations). A start asked for it (*Start on…*, the
+  coordinator's `task start <task> --on <machine>`) is refused with *This machine is paused for
+  this project*. With every machine of the project paused, its automatic starts wait.
+- Tasks already running there go on and finish there; a task that started there goes back there
+  (resume, retry, reviewer).
+- Its clone path, readiness and settings stay. On again, it takes work as before.
+- The coordinator's `autopilot show` lists it as *paused for this project*.

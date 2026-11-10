@@ -1,9 +1,11 @@
 // Global app state: live agents (WebSocket /ws/events), device
 // settings, lock, API calls. Module singletons (client app).
 import { createSocketProbe } from '~/utils/socketProbe'
-import { DESK_QUERY, SLIM_QUERY, TABLET_QUERY, provesHardwareKeyboard } from '~/utils/layoutMode'
+import { DESK_QUERY, SIDE_PANEL_QUERY, SLIM_QUERY, TABLET_QUERY, provesHardwareKeyboard } from '~/utils/layoutMode'
 import type { AppConfig, AuthStatus, HerdrState, MachineConfig, MachineInfo, Pane, Quotas } from '#shared/types'
 import { LOCAL, splitId } from '#shared/ids'
+import { isAppLink } from '#shared/appLinks'
+import type { UiOpenEvent } from '#shared/uiOpen'
 import { clearOffline, readHome, saveHome, type SavedHome } from '~/utils/offlineCache'
 import { coreRouteAllowed } from '#shared/coreRoutes'
 import { leaseFromStatus, mayReadOffline, readOfflineAccess, setOfflineAccess, type OfflineAccess } from '~/utils/offlineAccess'
@@ -231,6 +233,14 @@ watch(herdrState, pruneViewModes)
 // (utils/layoutMode.ts).
 export const desk = ref(false)
 export const slim = ref(false)
+// Room for Settings beside the conversation (≥ 1280 px, utils/settingsPanel.ts).
+export const sidePanelRoom = ref(false)
+// The panel's "Open full page": the next move to /settings stays a page.
+export const fullSettingsOnce = ref(false)
+// An agent's `ui open` (shared/uiOpen.ts), until its conversation's view takes
+// it (AgentView.vue); then who opened the Settings panel, on which section.
+export const uiOpenRequest = ref<UiOpenEvent | null>(null)
+export const uiOpenedBy = ref<{ by: string, section: string } | null>(null)
 // Slim: the list opened over the agent (HomeView; backdrop in app.vue).
 export const listDrawer = ref(false)
 // Tablet (shortest side ≥ 700 px, or a touch tablet's screen while the
@@ -254,7 +264,9 @@ if (import.meta.client) {
 if (import.meta.client) {
   const mq = matchMedia(DESK_QUERY)
   const narrow = matchMedia(SLIM_QUERY)
-  const read = () => { desk.value = mq.matches; slim.value = mq.matches && narrow.matches }
+  const room = matchMedia(SIDE_PANEL_QUERY)
+  const read = () => { desk.value = mq.matches; slim.value = mq.matches && narrow.matches; sidePanelRoom.value = mq.matches && room.matches }
+  room.addEventListener('change', read)
   read()
   mq.addEventListener('change', read)
   narrow.addEventListener('change', read)
@@ -565,6 +577,7 @@ export function connectEvents() {
       clearTimeout(evFirst)
       if (data?.type === 'restarting') { noteRestart(); return }
       if (data?.type === 'settings') { settingsSync.receive(data.settings || {}); return }
+      if (data?.type === 'ui-open') { if (typeof data.pane === 'string' && (data.show === undefined || data.show === 'card' || data.show === 'panel') && typeof data.by === 'string' && isAppLink(data.link)) uiOpenRequest.value = data; return }
       // Lock turned off: the server dropped every push subscription, this device posts its own again.
       if (data?.type === 'push-resubscribe') { syncPushLanguage().catch(() => {}); return }
       const got = paneReuse.reuse(normalize(data) as HerdrState)
@@ -616,7 +629,7 @@ export function sendViewing() {
   notificationLastSentAt = Date.now()
   const visible = pageVisible.value && document.hasFocus() && Date.now() - notificationActivityAt < 120_000
   notificationLastVisible = visible
-  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible }))
+  if (evWs && evWs.readyState === 1) evWs.send(JSON.stringify({ type: 'viewing', pane: curPane.value, visible, device: desk.value ? 'computer' : 'phone', idle: Date.now() - notificationActivityAt }))
 }
 watch(curPane, sendViewing)
 

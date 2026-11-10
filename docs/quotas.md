@@ -68,17 +68,20 @@ Needs: [Claude and Codex quotas](#claude-and-codex-quotas).
 
 **Settings › Agents › Pace** (also from a project's Autopilot tab) has one row per quota account:
 its weekly use against a target line, today's use, the 5-hour window, its name, and whether
-automatic work may start now. Its **mode** sets the line: **Working days** (the days you pick),
-**Every day**, or **Free with reserve** (no line: it keeps a weekly reserve per day left and a 5-hour reserve). Automatic
+automatic work may start now. Its **mode** sets the line: **Free** (the default for a new
+account: no line and no reserve, automatic work stops only when the account hits its own 5-hour
+or weekly limit; no mode settings), **Free with reserve** (no line: it keeps a weekly reserve
+per day left and a 5-hour reserve), **Every day**, or **Working days** (the days you pick). Automatic
 work (the autopilot, automations) waits while an account is ahead of its pace; your own starts
 never wait. An account with no quota reading is held by task-count limits only. Each machine's
 memory state shows below ([Machines](machines.md#manage-machines)).
 
-**End-of-week burn** (under **Mode settings**, per account): from a chosen number of hours
-before the weekly reset (24 by default) until the reset, automatic work ignores the mode and
-may use the week up to the burn's cap (up to 100 %), with its own 5-hour reserve (down to 0 %)
-and number of tasks at once (it replaces the autopilot's own limit while burning). **Every week** starts again before each new reset; **This week
-only** ends at the current reset. The row shows when the burn starts, or that it is burning.
+**End-of-week burn** (under **Mode settings**, per account, in every mode but Free): one switch. On, from now until the
+account's weekly reset, automatic work runs with no pace limit: no line or weekly reserve, no
+5-hour reserve, and tasks at once are Auto (the machines' room decides). The account's own
+limit still stops it (**Limit reached**), and so does a machine with no room. The line under the
+switch, and the row, say until when it burns (**Burning until Sun 19:00**); it turns itself off at the
+reset. It needs a quota reading, which gives the reset.
 
 ## v2 only: Codex updates and restarts
 

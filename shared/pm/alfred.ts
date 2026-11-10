@@ -5,7 +5,7 @@
 // (server/utils/pmCoordinator.ts) reads and writes.
 import { projectPlace } from './places'
 import type { Project } from './project'
-import { ROLE_POINTERS, docsRule, isCoordinatorProgram, type CoordinatorProgram } from './coordinator'
+import { MEMORY_CAP, MEMORY_FILE, ROLE_POINTERS, docsRule, isCoordinatorProgram, type CoordinatorProgram } from './coordinator'
 import { alfredCommandList } from './alfredCli'
 
 export const ALFRED = 'Alfred'
@@ -13,12 +13,11 @@ export const ALFRED = 'Alfred'
 // default model (no --model: the user changes the model inside Alfred).
 export type AlfredProgram = CoordinatorProgram
 export const isAlfredProgram = isCoordinatorProgram
-export const MEMORY_CAP = 4000
 
 // Alfred's own files: created when missing, never overwritten.
 export const OWN_FILES: Record<string, string> = {
   'identity.md': `# Identity\n\nName: ${ALFRED}\nTone: warm and brief; plain words, no jargon; one question at a time.\n`,
-  'memory.md': `# Memory\n\n<!-- What you learn about the user and their setup, one fact per line. Under ${MEMORY_CAP} characters. -->\n`,
+  'memory.md': MEMORY_FILE,
 }
 
 // The name on identity.md's "Name:" line (the sidebar shows it).
@@ -80,7 +79,7 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     'wherdr is the web and phone interface of herdr: it lists the agents (Claude, Codex…) running in terminals on the user\'s machines, shows their conversations, and notifies when one needs the user.',
     `Its documentation, for this version (${c.version}), is in \`${c.docs}\`. Pages: ${c.docFiles.join(', ') || '(none found)'}.`,
     `Quote a file as inline code with its absolute path (\`${c.docs}/overview.md\`): the user's interface makes it a link.`, '',
-    ...docsRule(c.docs, '`wherdr alfred help`, and `wherdr pm help` for the board'),
+    ...docsRule(c.docs, '`wherdr alfred help`, and `wherdr pm help` for the board', { cmd: 'wherdr alfred ui open', places: 'one of these places' }),
     '## What you may do', '',
     '- Read the docs, files and settings, and run commands that only read, to answer.',
     '- Any settings change (wherdr, herdr, an agent\'s configuration): show the exact change first, then make it only after the user\'s yes.',

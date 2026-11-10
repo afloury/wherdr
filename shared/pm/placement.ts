@@ -125,8 +125,9 @@ export function placeTask(args: {
 
 // An allowed machine as `autopilot show` gives it. running: its agents at work
 // with their task's weight; unchecked: another machine than home whose
-// readiness for the project was not checked yet (it is before its first task).
-export type MachineView = Omit<Candidate, 'running'> & { home: boolean, running: (Estimate & { weight: Weight })[], unchecked?: boolean }
+// readiness for the project was not checked yet (it is before its first task);
+// paused: switched off for the project, it takes no new task of it.
+export type MachineView = Omit<Candidate, 'running'> & { home: boolean, running: (Estimate & { weight: Weight })[], unchecked?: boolean, paused?: boolean }
 
 // "machine-a (home): 9.1 GB free of 32.0 GB · 8 cores, load 2.1 · 2 of 21 agents
 // · running 1 heavy, 1 light · fits heavy": the heaviest weight it takes now,
@@ -134,6 +135,7 @@ export type MachineView = Omit<Candidate, 'running'> & { home: boolean, running:
 export function machineLine(c: MachineView): string {
   const name = `${c.label || 'this host'}${c.home ? ' (home)' : ''}`
   const hours = c.settings.hours ? [`available ${hoursLabel(c.settings.hours)}`] : []
+  if (c.paused) return `${name}: paused for this project${c.running.length ? ` · ${c.running.length} agents at work` : ''}`
   if (!c.online) return [`${name}: offline`, ...hours].join(' · ')
   const count = WEIGHTS.slice().reverse().map(w => [w, c.running.filter(r => r.weight === w).length] as const).filter(([, n]) => n)
   const fits = WEIGHTS.slice().reverse().find(w => !misfit(c, w, WEIGHT_DEFAULTS[w]))

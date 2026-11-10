@@ -1,6 +1,6 @@
 // The running agents of tasks (GET /api/pm/agents), by herdr-core address:
 // their sidebar row, conversation header and search result name the task.
-import type { TaskAgent } from '#shared/pm/taskAgents'
+import { labelKey, type TaskAgent } from '#shared/pm/taskAgents'
 import type { Pane } from '#shared/types'
 import { taskAgentTitle } from '~/utils/taskAgentRow'
 
@@ -15,7 +15,9 @@ export const loadTaskAgents = () => api<Record<string, TaskAgent>>('/api/pm/agen
   }, () => {})
   .finally(() => { taskAgentsNow.value = Date.now() })
 
-export const taskAgentOf = (p?: Pane | null) => (p?.coreAddress ? taskAgents.value[p.coreAddress] : undefined)
+// By its address, else by its task and role labels (a re-attached or resumed terminal).
+export const taskAgentOf = (p?: Pane | null) => (p?.coreAddress && taskAgents.value[p.coreAddress])
+  || (p?.task && p.role ? taskAgents.value[labelKey(p.task, p.role)] : undefined)
 // The pane's task title (without its key when a badge shows it), '' for a renamed pane or one that is no task's.
 export const paneTaskTitle = (p?: Pane | null, withKey = true) => (p ? taskAgentTitle(p, taskAgentOf(p), withKey) : '')
 

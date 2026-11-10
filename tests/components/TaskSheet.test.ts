@@ -48,7 +48,7 @@ const cases: [string, Card, string, string[]][] = [
   ['a visual merge', waiting({
     yourTurn: 'Look at the screenshots, then merge', userLabel: 'Merge', links: [{ label: 'pr', url: 'https://github.com/o/r/pull/7' }],
     state: at(4, { yourTurn: { reason: 'user', badge: 'Look at the screenshots, then merge' }, rounds: { review: 1 }, shots: { work: [{ file: 'aaaaaaaaaaaa.png', phase: 'after', at: 1 }] } }),
-  }), 'merge', ['todo-shots', 'step-user', 'todo-back', 'todo-pr', 'todo-verdict']],
+  }), 'merge', ['todo-shots', 'step-user', 'todo-back', 'todo-pr', 'todo-review-note']],
   ['a decision after send-backs', waiting({
     yourTurn: 'Decide: review failed 4 times',
     state: at(3, { yourTurn: { reason: 'rounds', badge: 'Decide: review failed 4 times', advice: { outcome: 'round', why: 'New finding: x', options: ['round', 'split'], findings: [] } } }),
@@ -122,4 +122,71 @@ it('renders the description as Markdown, with no raw HTML', async () => {
   expect(desc.find('[style]').exists()).toBe(false)
   expect(desc.text()).toContain('<script>alert(2)</script>') // shown as text
   w.unmount()
+})
+
+it('a merge step shows the worker\'s and the reviewer\'s notes, full width, folded, with Show more, as tabs on the phone', async () => {
+  const report = 'Added the **notes**.\n\n- Done when: both notes show\n- Tested: `npx vitest related`\n\nMore lines\n\nAnd more'
+  const fixed = { id: 'cut', severity: 'major' as const, title: 'Button cut on the phone', where: 'app/x.vue:3', proof: 'shot' }
+  const c = waiting({
+    yourTurn: 'Look at the screenshots, then merge', userLabel: 'Merge',
+    state: at(4, { yourTurn: { reason: 'user', badge: 'Look at the screenshots, then merge' }, rounds: { review: 1 }, proofs: { work: { report } },
+      reviews: { review: [{ findings: [fixed] }] }, minor: { review: [{ id: 'name', severity: 'minor', title: 'A clearer name' }] } }),
+  })
+  // Tall content: FoldText folds it (the test DOM has no layout).
+  const tall = vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1000)
+  const w = await mountSuspended(TaskSheet, { props: { card: c }, global: { stubs } })
+  const worker = w.get('[data-testid="todo-worker-note"]'), review = w.get('[data-testid="todo-review-note"]')
+  expect(worker.text()).toContain('Worker\'s note')
+  expect(worker.find('strong').text()).toBe('notes') // Markdown
+  expect(review.text()).toContain('Review passed, 1 send-back.')
+  expect(review.findAll('li').map(li => li.text())).toEqual(['[major] Button cut on the phone (app/x.vue:3)', 'A clearer name'])
+  for (const n of [worker, review]) {
+    expect(n.find('.msg-fold').classes()).toContain('folded')
+    expect(n.get('.msg-fold-btn').text()).toBe('Show more')
+  }
+  await worker.get('.msg-fold-btn').trigger('click')
+  expect(worker.find('.msg-fold').classes()).not.toContain('folded')
+  // Full width, stacked; on the phone (CSS) Worker / Reviewer tabs pick the one shown.
+  const notes = w.get('[data-testid="todo-notes"]')
+  expect(notes.findAll('[role="tab"]').map(t => t.text())).toEqual(['Worker', 'Reviewer'])
+  expect(notes.attributes('data-shown')).toBe('worker')
+  await notes.get('[data-note="review"]').trigger('click')
+  expect(notes.attributes('data-shown')).toBe('review')
+  expect(notes.get('[data-note="review"]').attributes('aria-selected')).toBe('true')
+  tall.mockRestore()
+  w.unmount()
+})
+
+// An approved merge, from the task the server keeps: the same on any device and after a reload.
+const approvedCard = (step: Partial<StepState>, more: Partial<Task> = {}) => cardOf({
+  id: 'WHR-3', project: 'WHR', title: 'Approved', description: '', type: 'visual', state: 'working', createdAt: 1,
+  step: at(4, { approved: { by: 'user', at: 1 }, shots: { work: [{ file: 'aaaaaaaaaaaa.png', phase: 'after', at: 1 }] }, ...step }), ...more,
+}, plan, [])
+
+it('an approved merge keeps Merge loading with what it waits for, until it merges or fails', async () => {
+  // Second in the merge queue, its last try refused by the queue (not the user's): loading, no Try again.
+  const queued = approvedCard({ yourTurn: { reason: 'action', badge: 'Merge: merge: checks still running', error: 'merge: checks still running' } }, { queue: 2 })
+  for (let reload = 0; reload < 2; reload++) {
+    const w = await mountSuspended(TaskSheet, { props: { card: queued }, global: { stubs } })
+    expect(w.get('[data-testid="task-todo"]').attributes('data-todo')).toBe('merge')
+    expect(w.get('[data-testid="step-user"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="step-user-waits"]').text()).toBe('Waiting: 2nd in merge queue')
+    expect(w.find('[data-testid="task-retry"]').exists()).toBe(false)
+    w.unmount()
+  }
+  // Its machine offline: said under the button.
+  const offline = await mountSuspended(TaskSheet, { props: { card: { ...approvedCard({}), held: 'its machine is offline' } }, global: { stubs } })
+  expect(offline.get('[data-testid="step-user-waits"]').text()).toBe('Waiting: its machine is offline')
+  offline.unmount()
+  // Merged: no longer Your turn, no button.
+  const merged = await mountSuspended(TaskSheet, { props: { card: approvedCard({ done: true }) }, global: { stubs } })
+  expect(merged.find('[data-testid="task-todo"]').exists()).toBe(false)
+  expect(merged.find('[data-testid="step-user"]').exists()).toBe(false)
+  merged.unmount()
+  // Failed, out of the queue: the user's again, Try again enabled with the reason in plain words.
+  const failed = await mountSuspended(TaskSheet, { props: { card: approvedCard({ yourTurn: { reason: 'action', badge: 'Merge: merge: 2 check(s) failed', error: 'merge: 2 check(s) failed' } }) }, global: { stubs } })
+  expect(failed.get('[data-testid="task-retry"]').attributes('disabled')).toBeUndefined()
+  expect(failed.get('[data-testid="task-badge"]').text()).toContain('2 check(s) failed')
+  expect(failed.find('[data-testid="step-user-waits"]').exists()).toBe(false)
+  failed.unmount()
 })

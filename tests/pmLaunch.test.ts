@@ -10,6 +10,7 @@ import type { Template } from '../shared/pm/workflow'
 import { wherdr } from '../shared/pm/examples'
 import { planSteps } from '../shared/pm/steps'
 import { dueText } from '../shared/pm/advance'
+import { startFileWaits } from '../server/utils/pmFiles'
 
 const template: Template = {
   id: 'vibe', instructions: 'Small commits.', prefs: { agent: 'claude', model: 'opus' },
@@ -118,10 +119,30 @@ describe('startTask', () => {
       cwd: '/home/u/.wherdr/pm/worktrees/WEB-1', env: { DISABLE_AUTOUPDATER: '1', TMPDIR: '/home/u/.wherdr/pm/worktrees/WEB-1/.wherdr-tmp' }, no_parent: true,
       labels: { 'wherdr.install': install, 'wherdr.task': 'WEB-1', 'wherdr.run': t.run, 'wherdr.role': 'worker' },
     })
-    expect(runs[0]!.line).toContain(`exec claude '--model' 'opus' 'Read /home/u/.wherdr/pm/tasks/WEB-1/instructions.md and follow it.'`)
+    expect(runs[0]!.line).toContain(`exec claude '--model' 'opus' '--session-id' '${(await store.runs())[0]!.session}' 'Read /home/u/.wherdr/pm/tasks/WEB-1/instructions.md and follow it.'`)
     expect(files['/home/u/.wherdr/pm/tasks/WEB-1/instructions.md']).toMatch(/# WEB-1: Fix it[\s\S]*Small commits\.\nRun the tests\./)
     expect((await store.runs())[0]).toMatchObject({ id: t.run, state: 'running', terminal: expect.stringMatching(/\/t1$/) })
     await expect(startTask(deps, 'WEB-1')).rejects.toMatchObject({ code: 'busy' })
+  })
+
+  it('a start waits behind a started task that touches the same files, unless the user starts it anyway; the engine starts it once they are free', async () => {
+    const { store, deps, runs, files } = await setup()
+    const first = { ...(await store.task('WEB-1'))!, state: 'working' as const, step: { at: 1, started: true, since: 1, proofs: {}, rounds: {} }, changed: ['app/x.vue'] }
+    await store.saveTask(first)
+    await store.addTask({ project: 'WEB', title: 'Other', type: 'simple', files: ['app/'] })
+    expect(await startTask(deps, 'WEB-2')).toMatchObject({ state: 'todo', sameFiles: 'WEB-1' })
+    expect(runs).toHaveLength(0)
+    // Still behind it: nothing starts.
+    expect(await startFileWaits(deps)).toEqual([])
+    await store.saveTask({ ...first, step: { ...first.step, done: true } })
+    expect(await startFileWaits(deps)).toEqual(['WEB-2'])
+    expect(await store.task('WEB-2')).toMatchObject({ state: 'working' })
+    expect((await store.task('WEB-2'))!.sameFiles).toBeUndefined()
+    expect(files['/home/u/.wherdr/pm/tasks/WEB-2/instructions.md']).toContain('to /home/u/.wherdr/pm/tasks/WEB-2/files.txt, one per line (a folder covers what is in it). Planned so far: app.')
+    // The user's "Start anyway" goes beside it.
+    await store.saveTask({ ...first, id: 'WEB-1', step: first.step })
+    await store.addTask({ project: 'WEB', title: 'Third', type: 'simple', files: ['app/x.vue'] })
+    expect(await startTask(deps, 'WEB-3', { anyway: true })).toMatchObject({ state: 'working' })
   })
 
   it('a task stopped at its review starts no new worker: the review is told again by the next advance pass', async () => {
@@ -237,5 +258,7 @@ describe('reconcileRuns after a restart', () => {
     await reconcileRuns(list([]))
     expect(await restarted.task('WEB-1')).toMatchObject({ state: 'waiting', waiting: expect.stringContaining('gone') })
     expect((await restarted.runs())[0]).toMatchObject({ state: 'ended', endedBy: 'lost' })
+    // Recorded as an incident, with the facts it used.
+    expect(await restarted.incidents()).toMatchObject([{ tasks: ['WEB-1'], runs: [t.run], evidence: [expect.stringContaining('terminal not found')] }])
   })
 })

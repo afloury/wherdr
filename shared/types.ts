@@ -131,6 +131,8 @@ export interface Pane {
   label: string | null
   // herdr-core: the task this agent works on (its stored id, WHR-52), from its wherdr.task label.
   task?: string
+  // Its role on that task ('worker', 'reviewer'), from its wherdr.role label.
+  role?: string
   // Agent name shown by Herdr (`display_agent`), if it says more than the agent kind.
   displayAgent?: string
   // Pane without an agent: foreground command ("pnpm dev"), missing at the shell prompt.
