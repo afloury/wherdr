@@ -53,7 +53,7 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'machines', does: 'the machines herdr-core knows (key, label, status); the key "" is this machine' },
   { usage: 'coordinators', does: 'each coordinator: its agent and whether it runs' },
   { usage: 'coordinator open <KEY>', does: 'the link that opens a running project coordinator, to give the user' },
-  { usage: 'ui open \'<in-app link>\'', does: 'show that place in the user\'s open wherdr, beside this conversation (a card on a phone), quoted; only in a turn that comes from the user, only to an app showing this conversation. It changes nothing' },
+  { usage: 'ui open \'<in-app link>\'', does: 'show that place in the user\'s open wherdr, beside this conversation (a card on a phone), quoted; only in a turn that comes from the user, only to the wherdr the user is on now (the answer says which: phone or computer). It changes nothing' },
   { usage: 'tell <KEY> "<text>"', does: 'send a message to the project\'s coordinator, as from Alfred (started first when it does not run); written to the project\'s log' },
   { usage: 'last <KEY>', does: 'the last reply of the project\'s coordinator, and whether it is still working' },
   { usage: 'v2', does: 'when the user comes from wherdr v2: its projects the migration listed (suggested key, name, folder on this machine and whether it is there: here, base branch, v2 settings to redo, open tasks), each with the v3 project made from it, if any, and the migration report' },
