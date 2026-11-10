@@ -42,6 +42,9 @@ describe('alfredFiles', () => {
     expect(a).not.toContain('## Coordinating')
     expect(a).toContain('Settings › Projects')
     expect(alfredFiles({ ...ctx, pm: true }, ['## Coordinating'])['AGENTS.md']).toContain('## Coordinating')
+    // The guided setup of v2 projects: only for a user who comes from v2.
+    expect(a).not.toContain('## Coming from wherdr v2')
+    expect(alfredFiles({ ...ctx, v2: true }, [])['AGENTS.md']).toContain('## Coming from wherdr v2')
   })
   it('never ships its own files: those are created once', () => {
     expect(Object.keys(alfredFiles(ctx, []))).not.toContain('identity.md')
@@ -53,5 +56,8 @@ it('greets with the rename question on the first start only', () => {
   expect(startPrompt(true, ALFRED)).toContain(FIRST_MESSAGE)
   expect(startPrompt(false, 'Jeeves')).toMatch(/as Jeeves\.$/)
   expect(startPrompt(false, 'Jeeves')).not.toContain(FIRST_MESSAGE)
+  expect(startPrompt(true, ALFRED)).not.toContain('v2')
+  expect(startPrompt(true, ALFRED, true)).toMatch(new RegExp(`run \`wherdr alfred v2\` and say exactly: "${FIRST_MESSAGE.replace(/[?]/g, '\\?')}" .*set up those projects`))
+  expect(startPrompt(false, 'Jeeves', true)).not.toContain('v2')
 })
 

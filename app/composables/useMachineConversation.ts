@@ -11,7 +11,7 @@ export function useMachineConversation() {
   function remember() {
     const view = viewed()
     const pick = machineBarPick.value
-    if (pick === null || !view || !conversationIn(herdrState.value, view, pick, machineGroups.value)) return
+    if (pick === null || !view || !conversationIn(herdrState.value, view, pick, machineGroups.value, coordinatorPlaces.value)) return
     if (Object.hasOwn(memory, pick) && JSON.stringify(memory[pick]) === JSON.stringify(view)) return
     memory = { ...memory, [pick]: view }
     try { localStorage.setItem('machineConversations', JSON.stringify(memory)) } catch { /* storage unavailable */ }
@@ -41,7 +41,7 @@ export function useMachineConversation() {
     if (viewed()) {
       reopen = false
       if (restore) {
-        const destination = machineConversation(herdrState.value, machineBarPick.value, machineGroups.value, memory, viewed())
+        const destination = machineConversation(herdrState.value, machineBarPick.value, machineGroups.value, memory, viewed(), coordinatorPlaces.value)
         if (destination !== undefined) { open(destination); return }
       }
     }
@@ -49,7 +49,7 @@ export function useMachineConversation() {
   })
   watch(herdrState, remember, { immediate: true })
   return () => {
-    const destination = machineConversation(herdrState.value, machineBarPick.value, machineGroups.value, memory, viewed())
+    const destination = machineConversation(herdrState.value, machineBarPick.value, machineGroups.value, memory, viewed(), coordinatorPlaces.value)
     // Phones keep the list first; restore only when history reopens a view
     // outside the new filter, leaving explicit conversation choices alone.
     if (desk.value) open(destination)

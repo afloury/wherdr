@@ -5,11 +5,12 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore, type PmStore } from '../server/utils/pmStore'
 import { reconcileRuns, startTask, wherdrBase, type PmLaunchDeps } from '../server/utils/pmLaunch'
 import { uploadShot } from '../server/utils/pmBoard'
-import { agentLine, publicTask, reconcile, workerPlan, type Run, type Task } from '../shared/pm/run'
+import { agentLine, duplicateAgents, publicTask, reconcile, workerPlan, type Run, type Task } from '../shared/pm/run'
 import type { Template } from '../shared/pm/workflow'
 import { wherdr } from '../shared/pm/examples'
 import { planSteps } from '../shared/pm/steps'
 import { dueText } from '../shared/pm/advance'
+import { startFileWaits } from '../server/utils/pmFiles'
 
 const template: Template = {
   id: 'vibe', instructions: 'Small commits.', prefs: { agent: 'claude', model: 'opus' },
@@ -56,12 +57,26 @@ describe('reconcile', () => {
   })
 })
 
+describe('duplicateAgents', () => {
+  it('two live agents of one role on a task: the tracked one stays, the other ends', () => {
+    const t = (address: string, r: string, role = 'worker', state?: string) => ({ address, state, labels: { 'wherdr.install': 'me', 'wherdr.task': 'WEB-1', 'wherdr.run': r, 'wherdr.role': role } })
+    const runs = [run('a', { startedAt: 1 }), run('b', { startedAt: 2 })]
+    // The task's run stays, even the older one.
+    expect(duplicateAgents([t('t1', 'a'), t('t2', 'b')], runs, [{ id: 'WEB-1', run: 'a' }], 'me'))
+      .toEqual([{ task: 'WEB-1', role: 'worker', keep: t('t1', 'a'), end: [t('t2', 'b')] }])
+    // Not the task's run (a reviewer's): the newest worker run stays.
+    expect(duplicateAgents([t('t1', 'a'), t('t2', 'b')], runs, [{ id: 'WEB-1', run: 'x' }], 'me')[0]!.keep.address).toBe('t2')
+    // One per role, a finished one: nothing to end.
+    expect(duplicateAgents([t('t1', 'a'), t('t2', 'b', 'reviewer'), t('t3', 'c', 'worker', 'finished')], runs, [], 'me')).toEqual([])
+  })
+})
+
 // A fake herdr-core: one remote machine per test (kindsOf caches by machine).
 let dir = '', n = 0
 beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-launch-')) })
 afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
-async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template, screen?: string } = {}) {
+async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template, screen?: string, tmpFreeKb?: number } = {}) {
   const store: PmStore = createPmStore(dir)
   await store.setEnabled(true)
   await store.saveTemplate(opts.template ?? template)
@@ -76,6 +91,7 @@ async function setup(opts: { installed?: string[], exits?: (number | null)[], te
       const [, , script, , ...args] = p.argv as string[]
       if (script!.includes('command -v')) return { code: 0, stdout: Buffer.from(args.filter(a => (opts.installed ?? ['claude']).includes(a)).join('\n')).toString('base64') }
       if (script!.includes('$HOME')) return { code: 0, stdout: Buffer.from('/home/u').toString('base64') }
+      if (script!.includes('df -Pk /tmp')) return { code: 0, stdout: Buffer.from(String(opts.tmpFreeKb ?? 9e6)).toString('base64') }
       if (p.input) files[args[0]!] = Buffer.from(p.input as string, 'base64').toString()
       return { code: 0, stdout: '' }
     }
@@ -100,20 +116,42 @@ describe('startTask', () => {
     expect(runs).toHaveLength(1)
     const install = await store.install()
     expect(runs[0]).toMatchObject({
-      cwd: '/home/u/.wherdr/pm/worktrees/WEB-1', env: { DISABLE_AUTOUPDATER: '1' }, no_parent: true,
+      cwd: '/home/u/.wherdr/pm/worktrees/WEB-1', env: { DISABLE_AUTOUPDATER: '1', TMPDIR: '/home/u/.wherdr/pm/worktrees/WEB-1/.wherdr-tmp' }, no_parent: true,
       labels: { 'wherdr.install': install, 'wherdr.task': 'WEB-1', 'wherdr.run': t.run, 'wherdr.role': 'worker' },
     })
-    expect(runs[0]!.line).toContain(`exec claude '--model' 'opus' 'Read /home/u/.wherdr/pm/tasks/WEB-1/instructions.md and follow it.'`)
+    expect(runs[0]!.line).toContain(`exec claude '--model' 'opus' '--session-id' '${(await store.runs())[0]!.session}' 'Read /home/u/.wherdr/pm/tasks/WEB-1/instructions.md and follow it.'`)
     expect(files['/home/u/.wherdr/pm/tasks/WEB-1/instructions.md']).toMatch(/# WEB-1: Fix it[\s\S]*Small commits\.\nRun the tests\./)
     expect((await store.runs())[0]).toMatchObject({ id: t.run, state: 'running', terminal: expect.stringMatching(/\/t1$/) })
     await expect(startTask(deps, 'WEB-1')).rejects.toMatchObject({ code: 'busy' })
+  })
+
+  it('a start waits behind a started task that touches the same files, unless the user starts it anyway; the engine starts it once they are free', async () => {
+    const { store, deps, runs, files } = await setup()
+    const first = { ...(await store.task('WEB-1'))!, state: 'working' as const, step: { at: 1, started: true, since: 1, proofs: {}, rounds: {} }, changed: ['app/x.vue'] }
+    await store.saveTask(first)
+    await store.addTask({ project: 'WEB', title: 'Other', type: 'simple', files: ['app/'] })
+    expect(await startTask(deps, 'WEB-2')).toMatchObject({ state: 'todo', sameFiles: 'WEB-1' })
+    expect(runs).toHaveLength(0)
+    // Still behind it: nothing starts.
+    expect(await startFileWaits(deps)).toEqual([])
+    await store.saveTask({ ...first, step: { ...first.step, done: true } })
+    expect(await startFileWaits(deps)).toEqual(['WEB-2'])
+    expect(await store.task('WEB-2')).toMatchObject({ state: 'working' })
+    expect((await store.task('WEB-2'))!.sameFiles).toBeUndefined()
+    expect(files['/home/u/.wherdr/pm/tasks/WEB-2/instructions.md']).toContain('to /home/u/.wherdr/pm/tasks/WEB-2/files.txt, one per line (a folder covers what is in it). Planned so far: app.')
+    // The user's "Start anyway" goes beside it.
+    await store.saveTask({ ...first, id: 'WEB-1', step: first.step })
+    await store.addTask({ project: 'WEB', title: 'Third', type: 'simple', files: ['app/x.vue'] })
+    expect(await startTask(deps, 'WEB-3', { anyway: true })).toMatchObject({ state: 'working' })
   })
 
   it('a task stopped at its review starts no new worker: the review is told again by the next advance pass', async () => {
     const { store, deps, runs } = await setup({ template: { ...wherdr, id: 'vibe' } })
     const stopped = { ...(await store.task('WEB-1'))!, state: 'waiting' as const, waiting: 'The reviewer (claude) stopped right after starting', step: { at: 3, started: true, since: 5, told: 5, proofs: {}, rounds: {} } }
     await store.saveTask(stopped)
-    const t = await startTask(deps, 'WEB-1')
+    // Its worker still runs (kept until idle): no worker is started, so nothing to refuse.
+    await store.saveRun(run('w1', { terminal: 'm/t0' }))
+    const t = await startTask(deps, 'WEB-1', { by: 'user' })
     expect(runs).toHaveLength(0)
     expect(t).toMatchObject({ state: 'working', waiting: undefined, step: { at: 3 } })
     expect(t.step!.told).toBeUndefined()
@@ -144,6 +182,12 @@ describe('startTask', () => {
     expect(wherdrBase('m1', 'https://b.example', '', '7683')).toBe('https://b.example')
   })
 
+  it('a nearly full /tmp on the machine: waiting with the reason, no terminal', async () => {
+    const { deps, runs } = await setup({ tmpFreeKb: 100 * 1024 })
+    expect(await startTask(deps, 'WEB-1')).toMatchObject({ state: 'waiting', waiting: expect.stringMatching(/\/tmp .* only 100 MB free/) })
+    expect(runs).toHaveLength(0)
+  })
+
   it('a missing program: waiting with the reason, no terminal', async () => {
     const { deps, runs, machine } = await setup({ installed: [] })
     expect(await startTask(deps, 'WEB-1')).toMatchObject({ state: 'waiting', waiting: `claude is not installed on ${machine}` })
@@ -162,6 +206,36 @@ describe('startTask', () => {
     expect(t.waitKind).toBeUndefined() // not a login
     expect(runs).toHaveLength(2)
     expect((await store.runs()).map(r => [r.attempt, r.state])).toEqual(expect.arrayContaining([[1, 'ended'], [2, 'ended']]))
+  })
+
+  it('two starts at once (the user and the engine\'s chain): one worker, the other refused as already starting', async () => {
+    const { deps, runs } = await setup()
+    const [a, b] = await Promise.allSettled([startTask(deps, 'WEB-1', { by: 'user' }), startTask(deps, 'WEB-1')])
+    expect(a).toMatchObject({ status: 'fulfilled', value: { state: 'working' } })
+    expect(b).toMatchObject({ status: 'rejected', reason: { code: 'busy', message: expect.stringContaining('already starting') } })
+    expect(runs).toHaveLength(1)
+  })
+
+  it('a waiting task whose worker still runs gets no second one, even revived; once it ended, it starts', async () => {
+    const { store, deps, runs } = await setup()
+    const t = await startTask(deps, 'WEB-1')
+    await store.saveTask({ ...(await store.task('WEB-1'))!, state: 'waiting', waiting: 'a question' })
+    await expect(startTask(deps, 'WEB-1', { by: 'user' })).rejects.toMatchObject({ code: 'busy', message: expect.stringContaining('still running') })
+    await expect(startTask(deps, 'WEB-1', { revive: true })).rejects.toMatchObject({ code: 'busy' })
+    await store.saveRun({ ...(await store.runs()).find(r => r.id === t.run)!, state: 'ended', endedBy: 'stopped' })
+    expect(await startTask(deps, 'WEB-1', { by: 'user' })).toMatchObject({ state: 'working' })
+    expect(runs).toHaveLength(2)
+  })
+
+  it('a start held for room, then started by the user: the hold is cleared, the held start fires as busy (dropped by startHeld)', async () => {
+    const { store, deps, runs, machine } = await setup()
+    await store.saveTask({ ...(await store.task('WEB-1'))!, held: 'No room' })
+    const [user, held] = await Promise.allSettled([startTask(deps, 'WEB-1', { by: 'user' }), startTask(deps, 'WEB-1', { on: machine })])
+    expect(user).toMatchObject({ status: 'fulfilled', value: { state: 'working' } })
+    expect(held).toMatchObject({ status: 'rejected', reason: { code: 'busy' } })
+    expect((await store.task('WEB-1'))!.held).toBeUndefined()
+    await expect(startTask(deps, 'WEB-1', { on: machine })).rejects.toMatchObject({ code: 'busy' })
+    expect(runs).toHaveLength(1)
   })
 
   it('a program the shell cannot find is not started again', async () => {
@@ -184,5 +258,7 @@ describe('reconcileRuns after a restart', () => {
     await reconcileRuns(list([]))
     expect(await restarted.task('WEB-1')).toMatchObject({ state: 'waiting', waiting: expect.stringContaining('gone') })
     expect((await restarted.runs())[0]).toMatchObject({ state: 'ended', endedBy: 'lost' })
+    // Recorded as an incident, with the facts it used.
+    expect(await restarted.incidents()).toMatchObject([{ tasks: ['WEB-1'], runs: [t.run], evidence: [expect.stringContaining('terminal not found')] }])
   })
 })

@@ -10,6 +10,11 @@ import type { RevealNode, RevealPlan } from '~/utils/typewriter'
 import type { TypingSpeed } from '~/utils/typewriter'
 import { SVG_THEME_VARS, svgPreview } from '~/utils/svgPreview'
 import type { SvgColors } from '~/utils/svgPreview'
+import { appRoute, isAppLink, linkedTask } from '#shared/appLinks'
+import type { StatusKind } from '#shared/statusBlock'
+import StatusCard from './StatusCard.vue'
+import UiOpenCard from './UiOpenCard.vue'
+import { h, render } from 'vue'
 
 // `cipher` must default to undefined, not false: Vue casts a missing Boolean
 // prop to false, which would switch the encrypted text off everywhere.
@@ -22,7 +27,7 @@ let raf = 0
 // Reveal the SVG card atomically so typing never rewrites its source or controls.
 const atomic = (n: RevealNode) => {
   const classes = (n as unknown as Element).classList
-  return Boolean(classes?.contains('code-head') || classes?.contains('svg-block'))
+  return Boolean(classes?.contains('code-head') || classes?.contains('svg-block') || classes?.contains('wherdr-block'))
 }
 const keep = (n: RevealNode) => /^T[DH]$/.test((n as unknown as Element).tagName || '')
 
@@ -163,6 +168,18 @@ watchImageViolations()
 function onImageError(e: Event) {
   if (e.target instanceof HTMLImageElement && !revealSvgSource(e.target)) showImageFallback(e.target)
 }
+// An in-app address (utils/markdown.ts): the router opens it, no reload, the
+// conversation's history entry kept for Back. A task's sheet opens over the
+// conversation.
+const router = useRouter()
+function onAppLink(event: MouseEvent) {
+  const href = (event.target as Element).closest('a[href]')?.getAttribute('href')
+  if (!href || !isAppLink(href) || event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  const task = linkedTask(href)
+  if (task) openTaskSheet(task)
+  else router.push(appRoute(href))
+}
 function onClick() {
   if (plan) {
     stop()
@@ -170,8 +187,36 @@ function onClick() {
   }
 }
 
+// Live status cards (utils/markdown.ts `status-slot`): each slot gets its own
+// StatusCard, with the app's context; unmounted when the HTML is replaced.
+const app = getCurrentInstance()!.appContext
+let slots: HTMLElement[] = []
+function dropCards() {
+  for (const slot of slots) render(null, slot)
+  slots = []
+}
+function mountCards() {
+  dropCards()
+  for (const slot of el.value?.querySelectorAll<HTMLElement>('.status-slot') ?? []) {
+    const card = h(StatusCard, { kind: slot.dataset.statusKind as StatusKind, arg: slot.dataset.statusArg ?? '' })
+    card.appContext = app
+    slot.textContent = ''
+    render(card, slot)
+    slots.push(slot)
+  }
+  // An agent's `ui open` card, kept in its reply: no ×, it opens the place.
+  for (const slot of el.value?.querySelectorAll<HTMLElement>('.open-slot') ?? []) {
+    const card = h(UiOpenCard, { event: { type: 'ui-open', pane: '', link: slot.dataset.link ?? '', by: '' }, kept: true })
+    card.appContext = app
+    slot.textContent = ''
+    render(card, slot)
+    slots.push(slot)
+  }
+}
+
 // First state applied before display: no flash of the full text.
 onMounted(() => {
+  mountCards()
   syncSvgTheme(true)
   if (props.typing !== null) start(props.typing)
 })
@@ -187,8 +232,9 @@ watch(() => props.html, () => {
   plan = null
   emit('done')
 }, { flush: 'pre' })
-watch(() => props.html, () => syncSvgTheme(true), { flush: 'post' })
+watch(() => props.html, () => { mountCards(); syncSvgTheme(true) }, { flush: 'post' })
 onBeforeUnmount(() => {
+  dropCards()
   themeObserver?.disconnect()
   cancelAnimationFrame(raf)
   dropBands()
@@ -198,11 +244,13 @@ onBeforeUnmount(() => {
 
 <template>
   <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
-  <div ref="el" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" @click="onSvgToggle" @keydown="onKey" @error.capture="onImageError" v-html="html" />
+  <div ref="el" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" @click="onAppLink($event); onSvgToggle($event)" @keydown="onKey" @error.capture="onImageError" v-html="html" />
 </template>
 
 <style scoped>
 .md-body :deep(.svg-block) { background: transparent; }
+.md-body :deep(.wherdr-block .ui-open-card) { margin: 0; }
+.md-body :deep(.wherdr-block) { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px; margin: 8px 0; }
 .md-body :deep(img.svg-preview) {
   display: block; width: 100%; max-width: 100%; max-height: 65dvh;
   object-fit: contain; margin: 0; padding: 12px; border: 0;

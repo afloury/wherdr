@@ -1,1 +1,4 @@
 CHANGELOG.md merge=union
+# Parallel tasks each add a line to the docs index: local merges keep both
+# lines. GitHub's merge button ignores this; wherdr merges locally.
+docs/llms.txt merge=union

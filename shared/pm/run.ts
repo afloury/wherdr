@@ -1,12 +1,15 @@
 // Tasks and the agent runs that work on them. A run's terminal carries
 // wherdr.* labels on herdr-core, so the engine finds it again after a restart.
 import type { Project } from './project'
-import type { Prefs, Step, Template } from './workflow'
+import type { Prefs, Step, Template, Weight } from './workflow'
 import { fillBase, planSteps, type StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
+import type { Report } from './report'
+import type { TaskSummary } from './summary'
 import type { Mark } from './times'
 import { isPublic, publicWorkerSection } from './visibility'
+import type { Recovery } from './incident'
 
 // Who made a task: the user (the board, their turn), the coordinator in a
 // wake, an automation, a mission.
@@ -23,24 +26,43 @@ export interface Task {
   waitKind?: 'question' | 'permission' | 'auth' // what it waits for
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
   ci?: { head: string, red: boolean } // its PR's CI at the task's commit, as the engine last read it
+  queue?: number // its place in its project's merge queue (mergeQueue.ts), 1: merging now
+  queueOut?: string // why it stepped out of the queue's line (a conflict, its checks, its agent's work)
+  order?: number // its place on the board, set by the coordinator's `task order` (boardOrder.ts): lower first
   idle?: number // since when the agent holding its step sits idle, its report still due (blocked.ts)
+  stall?: { cause: string, reason: string, since: number } // its stall as the engine last saw it (blocked.ts)
+  stalls?: Record<string, { since: number, nudged?: number, restarted?: number, handled?: number, back?: number }> // each cause seen: when it began, its one nudge, restart and hand-over, when its agent went back to work
+  selfFix?: { step: string, block: string, tried: string[], at: number, woke?: number } // the engine's tries on a block in this step (selfFix.ts)
+  fixes?: { step: string, n: number } // mechanical fixes the coordinator's wakes made in this step (tell --fix)
   run?: string // the current run
+  weight?: Weight // light, standard or heavy, set by the user or the coordinator (weight.ts); else from its type
   machine?: string // where its first start put it: it always goes back there (none, once started: its project's machine)
   step?: StepState // where the step engine has it
   base?: string // the project's working branch when it started ('' none): a later change leaves it alone
+  branch?: string // its branch, named at its first start (branchName.ts), or the one its worker said it pushed
+  branchStart?: string // the branch its worktree was made on (none: task/<id>)
   prefs?: Prefs
   tags?: string[] // short texts, shown on the card
   links?: { label: string, url: string }[] // the PR, the ticket…
   shotToken?: string // the agent's key for POST /api/pm/shot (never sent to the browser)
   log?: TaskLogEntry[] // who changed what, newest last
+  specNotes?: SpecNote[] // spec changes added after its description (task note, tell --spec), newest last
+  specPass?: { at: number, step: string, reason: string } // the coordinator's last pass on a spec change, shown in Decisions for a day
   marks?: Mark[] // when its step or turn changed, added by the store (times.ts)
   after?: string // tasks of the same project, comma-separated: this one starts once they are done
   stopped?: Stopped // who stopped it and why (stop.ts): it waits for the user
   autopilot?: true // started or added by the coordinator in a wake: its autopilot's own
   auto?: string // the automation that added it
   origin?: TaskOrigin // who made it: only automatic work is held by the pace (pace.ts)
+  addedBy?: string // who added it: 'user', 'automation', or a coordinator's key (MAIN for the main one)
   held?: string // an automatic start waits for memory on its machine (memory.ts): the engine starts it once memory is back
+  files?: string[] // the files or folders it plans to change (files.ts)
+  changed?: string[] // what it changed since its branch started, as the engine last read it
+  sameFiles?: string // the started task its start waits behind: same files (files.ts)
   cleanup?: { done?: true, skipped?: string } // its worktree removed, or why it stays (cleanup.ts)
+  report?: Report // a problem the user reported, open until the coordinator acts (report.ts)
+  summary?: TaskSummary // a cheap model's few lines on how it went, per round (summary.ts)
+  recovery?: Recovery // its agent gone with an incident: the engine resumes it (recovery.ts)
   createdAt: number
 }
 
@@ -48,6 +70,18 @@ export interface Task {
 export const publicTask = ({ shotToken: _, ...t }: Task): Task => t
 
 export interface TaskLogEntry { at: number, by: string, text: string }
+export type SpecNote = TaskLogEntry
+
+// The rule the worker and the reviewer follow when the spec changed.
+export const SPEC_RULE = 'The latest note overrides the description where they disagree.'
+// The task's description, then its spec changes, newest last, as the worker's
+// and the reviewer's instructions give them.
+export function specText(task: Pick<Task, 'description' | 'specNotes'>) {
+  const notes = task.specNotes ?? []
+  return [task.description.trim() || '(no description)', ...(notes.length
+    ? ['', '## Spec changes', '', SPEC_RULE, '', ...notes.map(n => `- Spec change (${new Date(n.at).toISOString().slice(0, 10)}): ${n.text}`)]
+    : [])].join('\n')
+}
 
 export interface Run {
   id: string
@@ -64,6 +98,8 @@ export interface Run {
   state: 'starting' | 'running' | 'ended'
   endedBy?: 'exit' | 'lost' | 'stopped' | 'released' // released: idle while its task waited for the user (release.ts)
   startedAt: number
+  peakMb?: number // the most its worktree's processes took, sampled each tick (peaks.ts)
+  session?: string // Claude's conversation id, pinned at launch: a resume takes it up again
 }
 
 export const LABEL = { install: 'wherdr.install', task: 'wherdr.task', run: 'wherdr.run', role: 'wherdr.role', report: 'wherdr.report' } as const
@@ -93,16 +129,37 @@ export const runLabels = (install: string, run: Run) =>
   ({ [LABEL.install]: install, [LABEL.task]: run.task, [LABEL.run]: run.id, [LABEL.role]: run.role })
 
 // Where a task works on its machine, under that machine's home.
-export const taskPaths = (home: string, id: string) => ({
+export const taskPaths = (home: string, id: string, branch = `task/${id}`) => ({
   worktree: `${home}/.wherdr/pm/worktrees/${id}`,
   instructions: `${home}/.wherdr/pm/tasks/${id}/instructions.md`,
-  branch: `task/${id}`,
+  branch,
 })
+
+// A task's agents keep their temporary files in its worktree, not in the
+// machine's /tmp (often small, in memory, and shared by every agent): ignored
+// by git, removed with the worktree, kept when the agents are released.
+export const TMP_DIR = '.wherdr-tmp'
+export const agentEnv = (worktree: string) => {
+  const tmp = `${worktree}/${TMP_DIR}`
+  return { DISABLE_AUTOUPDATER: '1', TMPDIR: tmp, CLAUDE_CODE_TMPDIR: tmp, NODE_COMPILE_CACHE: tmp }
+}
+// Below this, the machine's /tmp would make the agent's shell commands fail.
+export const MIN_TMP_FREE_KB = 500 * 1024
+// The temp folder script's output: the KB free in /tmp. Unknown: no refusal.
+export function tmpRefusal(out: string) {
+  const kb = Number(out.trim().split('\n').pop())
+  if (!out.trim() || !Number.isFinite(kb) || kb >= MIN_TMP_FREE_KB) return undefined
+  return `/tmp on the task's machine has only ${Math.floor(kb / 1024)} MB free (needs ${MIN_TMP_FREE_KB / 1024} MB): free some space, then start the task again`
+}
 
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 // The shell line that starts the agent: model pinned, first message points at the file.
-export function agentLine(program: string, model: string, instructions: string) {
-  return ['exec', program, '--model', model, `Read ${instructions} and follow it.`].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
+// session (Claude only): the conversation's id, new (--session-id), or taken
+// up again (--resume) with `resume` as its first message.
+export function agentLine(program: string, model: string, instructions: string, session?: { id: string, resume?: string }) {
+  const own = program === 'claude' && session ? (session.resume ? ['--resume', session.id] : ['--session-id', session.id]) : []
+  const first = own[0] === '--resume' ? session!.resume! : `Read ${instructions} and follow it.`
+  return ['exec', program, '--model', model, ...own, first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
 }
 
 // A task's working branch: the one it started with, else its project's now.
@@ -113,7 +170,7 @@ export const taskBase = (task: Pick<Task, 'base'>, p?: Pick<Project, 'base'>) =>
 export const taskPlan = (t: Template, task: Pick<Task, 'type' | 'prefs' | 'base'>, p?: Pick<Project, 'base'>) =>
   planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }, taskBase(task, p))
 
-const typeSteps = (t: Template, type: string): Step[] =>
+export const typeSteps = (t: Template, type: string): Step[] =>
   (t.taskTypes[type]?.steps ?? []).map(s => (typeof s === 'string' ? t.steps?.[s] : s)).filter((s): s is Step => !!s)
 
 // Program and model of the worker: the nearest level wins (task, task type,
@@ -174,11 +231,11 @@ export function instructionsText(p: Project, t: Template, task: Task, run: Pick<
   const parts = [t.instructions, t.taskTypes[task.type]?.instructions, step?.instructions].map(s => s?.trim()).filter(Boolean).map(s => fillBase(s!, taskBase(task, p)))
   const visual = shotStep(t, task.type)
   return [
-    `# ${task.id}: ${task.title}`, '', task.description.trim() || '(no description)', '',
+    `# ${task.id}: ${task.title}`, '', specText(task), '',
     '## Instructions', '', ...(parts.length ? parts : ['(none)']), '',
     ...(visual && shots ? shotsSection(visual, task, shots) : []),
     ...(isPublic(p) ? publicWorkerSection(leakCheck) : []),
-    `You work in ${run.worktree} on branch ${run.branch} of project ${p.name}.`, '',
+    `You work in ${run.worktree} on branch ${run.branch} of project ${p.name}. If you push your work to another branch, add a line \`Branch: <its name>\` to your note: the engine then follows that branch.`, '',
   ].join('\n')
 }
 
@@ -192,5 +249,28 @@ export function reconcile(runs: Run[], terminals: LabelledTerminal[], install: s
     const t = terminals.find(x => x.labels?.[LABEL.install] === install && x.labels?.[LABEL.run] === run.id)
     if (!t) return { run, state: 'lost' }
     return t.state === 'finished' ? { run, state: 'exit' } : { run, terminal: t.address, state: 'running' }
+  })
+}
+
+// Two live agents of one role on a task (two starts that raced): the one the
+// engine tracks stays (the task's run, else its newest unended run), the others end.
+export function duplicateAgents(terminals: LabelledTerminal[], runs: Run[], tasks: Pick<Task, 'id' | 'run'>[], install: string) {
+  const groups = new Map<string, LabelledTerminal[]>()
+  for (const x of terminals) {
+    const l = x.labels
+    if (x.state === 'finished' || l?.[LABEL.install] !== install || !l[LABEL.task] || !l[LABEL.role]) continue
+    const k = `${l[LABEL.task]}\u0000${l[LABEL.role]}`
+    groups.set(k, [...(groups.get(k) ?? []), x])
+  }
+  return [...groups.values()].filter(g => g.length > 1).map(g => {
+    const task = g[0]!.labels![LABEL.task]!, role = g[0]!.labels![LABEL.role]! as Run['role']
+    const tracked = tasks.find(t => t.id === task)?.run
+    const rank = (x: LabelledTerminal) => {
+      const id = x.labels![LABEL.run]
+      if (id === tracked) return Infinity
+      return runs.find(r => r.id === id && r.state !== 'ended')?.startedAt ?? -1
+    }
+    const keep = g.reduce((a, b) => (rank(b) > rank(a) ? b : a))
+    return { task, role, keep, end: g.filter(x => x !== keep) }
   })
 }

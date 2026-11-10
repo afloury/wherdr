@@ -20,7 +20,7 @@ unit: see [Installation](installation.md#keep-it-running)), read at each start.
 | `HERDR_WEB_ALLOWED_HOSTS` | *(empty)* | Other private hostnames or IP addresses wherdr answers under, comma-separated, besides `APP_URL`, this machine's addresses and what `tailscale serve` publishes. Restart wherdr after a change. See [Security](security.md#security). |
 | `TAILNET_REFRESH_MS` | `30000` | How often wherdr reads again what `tailscale serve` publishes for its port. |
 | `PASSKEY_USER` | `wherdr` | User name stored with the passkeys. |
-| `DATA_DIR` | `./data` | VAPID keys, push subscriptions, passkeys, recent folders, and `settings.json`: the display settings that follow you across devices (theme, machine bar and groups, home list, file browser preferences). Screen-dependent ones (content width, sidebar width, terminal size and rendering), the last tab or filter and drafts stay in each browser. |
+| `DATA_DIR` | `./data` | VAPID keys, push subscriptions, passkeys, recent folders, and `settings.json`: the display settings that follow you across devices (theme, machine tabs and groups, home list, file browser preferences). Screen-dependent ones (content width, sidebar width, terminal size and rendering), the last tab or filter and drafts stay in each browser. |
 | `AGENT_KINDS` | all known agents | Agents offered in **New** (only installed ones are shown). |
 | `UPLOAD_DIR` | `~/.cache/herdr-web/uploads` | Where photos sent to agents are stored (deleted after 7 days). |
 | `ATTACH_DIR` | `~/.cache/herdr-web/files` | Where other files attached to messages are stored, on the agent's machine (mode 600, deleted after 7 days). |
@@ -43,4 +43,16 @@ In the app, **Settings** has these sections: Appearance, Conversation, Terminal,
 and About. **Settings** holds display preferences such as theme, typing effect and what the
 home screen shows; these follow you across devices through `settings.json`. Notifications, terminal text size and renderer remain device-specific. The passkey lock is
 managed under Settings › Security.
+
+On a computer window at least 1280 px wide, **Settings** opened from a conversation (the
+gear, ⌘ , or a `#/settings?section=…` link) open as a panel on the right of the
+conversation, on the linked section; the conversation stays readable and you can keep
+typing. Escape or the close button shuts the panel, **Open full page** shows today's full
+page. Narrower windows and phones keep the full page.
+
+Drag the panel's left edge to make it wider or narrower: it stays at least 400 px wide, and the
+conversation keeps at least 480 px. With the edge focused, the left and right arrows resize it
+(Shift for bigger steps); a double-click, Home or Enter goes back to the default width. The width
+is kept on this device and comes back the next time the panel opens; places an agent opens beside
+its conversation use the same panel and width.
 

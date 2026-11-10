@@ -3,7 +3,7 @@
 // quota among the readings, and the words the coordinator and the firings get.
 import type { Quota, QuotaAccount, Quotas } from '../types'
 import type { Task, TaskOrigin } from './run'
-import { DEFAULT_PACE, current, paceVerdict, targetLine, type PacePolicy, type PaceReason, type PaceVerdict } from './pacing'
+import { DEFAULT_PACE, burning, current, paceVerdict, targetLine, type PacePolicy, type PaceReason, type PaceVerdict } from './pacing'
 
 // Tasks made before `origin` existed: from their other marks.
 export const originOf = (t: Pick<Task, 'origin' | 'auto' | 'autopilot'>): TaskOrigin =>
@@ -33,7 +33,6 @@ const REASONS: Record<PaceReason, string> = {
   ahead: 'ahead of the target line',
   reserveWeek: 'the weekly reserve is reached',
   reserve5h: 'the 5-hour reserve is reached',
-  burnCap: 'the burn\'s cap is reached',
   stale: 'the last reading is too old for the margin left',
 }
 
@@ -48,12 +47,13 @@ export function paceWait(v: Extract<PaceVerdict, { go: false }>): string {
 export const paceRefusal = (v: PaceVerdict | undefined) =>
   v && !v.go ? `Paced: ${paceWait(v)} (automatic work waits; the user's own starts never do)` : undefined
 
-const MODES: Record<PacePolicy['mode'], string> = { workdays: 'working days', everyday: 'every day', free: 'free with reserve' }
+const MODES: Record<PacePolicy['mode'], string> = { unlimited: 'free', workdays: 'working days', everyday: 'every day', free: 'free with reserve' }
 
 // The weekly % automatic work may reach now: the target line, the free mode's
-// limit (100 − the reserve of the days left), or the burn's cap.
+// limit (100 − the reserve of the days left), or all of it while burning. 'unlimited': 100.
 export function weekLimit(p: PacePolicy, resetsAt: number, now: number) {
-  if (p.burn && now >= (p.burn.start ?? resetsAt - 86_400_000)) return { label: 'burn cap' as const, value: p.burn.cap }
+  if (p.mode === 'unlimited') return { label: 'limit' as const, value: 100 }
+  if (burning(p.burn, now)) return { label: 'burn' as const, value: 100 }
   if (p.mode === 'free') return { label: 'limit' as const, value: 100 - p.reservePerDay * Math.ceil((resetsAt - now) / 86_400_000) }
   return { label: 'line' as const, value: targetLine(p, resetsAt, now) }
 }
