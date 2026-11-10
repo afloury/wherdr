@@ -63,8 +63,12 @@ export function misfit(c: Candidate, weight: Weight, e: Estimate, now = new Date
   const cap = agentCap(c.settings, m)
   if (cap !== undefined && agents >= cap) return `${agents} agents (cap ${cap})`
   if (!m) return undefined
-  const reserve = reserveOf(c.settings, m)
-  if (m.available - e.mb < reserve) return `${gb(m.available)} free, needs ${gb(e.mb + reserve)} with its reserve`
+  // Idle (no agent of wherdr at work there): it takes one task its RAM can
+  // hold, whatever it reads free; the reserve holds the second one and beyond.
+  const idle = agents === 0
+  if (idle && e.mb > m.total) return `${gb(m.total)} of RAM, under ${gb(e.mb)}`
+  const reserve = idle ? 0 : reserveOf(c.settings, m)
+  if (!idle && m.available - e.mb < reserve) return `${gb(m.available)} free, needs ${gb(e.mb + reserve)} with its reserve`
   const strain = memoryStrain(m, weight === 'light')
   if (strain) return strain
   if (sum(c.running, 'mb') + e.mb > m.total - reserve) return `${agents} agents take ≈${gb(sum(c.running, 'mb'))} of ${gb(m.total)}`

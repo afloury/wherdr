@@ -6,7 +6,7 @@ import { herdrState } from '~/composables/useHerdr'
 import { answerConfirm, confirmState, menuState } from '~/composables/useUi'
 import { boardColumns, cardOf, type Board } from '#shared/pm/board'
 import { initialState, planSteps, type StepState } from '#shared/pm/steps'
-import { company, vibe } from '#shared/pm/examples'
+import { company, vibe, wherdr } from '#shared/pm/examples'
 import type { Run, Task } from '#shared/pm/run'
 import type { Template } from '#shared/pm/workflow'
 import type { Pane } from '#shared/types'
@@ -356,4 +356,19 @@ it('a task the engine resumes after an incident shows why it waits, not Your tur
   expect(laneOf(w, 'CO-1')).not.toBe('your-turn')
   expect(card(w, 'CO-1').find('[data-testid="board-status"]').text()).toBe(why)
   expect(card(w, 'CO-3').find('[data-testid="board-status"]').text()).toBe('Waits for CO-1 to resume')
+})
+
+it('an approved merge stays in Your turn with Merge loading and what it waits for, until it merges', async () => {
+  // A merge step the user approves (github.merge): the engine merges it once ready.
+  const merge = (step: Partial<StepState>, more: Partial<Task> = {}) => cardOf(task('CO-2', at(4, { approved: { by: 'user', at: 1 }, ...step }), { type: 'visual', ...more }), planSteps(wherdr, { type: 'visual' }), runs)
+  board.cards[2] = merge({}, { queue: 2 })
+  let w = await mount()
+  expect(laneOf(w, 'CO-2')).toBe('your-turn')
+  expect(card(w, 'CO-2').get('[data-testid="board-merging"]').text()).toBe('Merge')
+  expect(card(w, 'CO-2').get('[data-testid="board-status"]').text()).toBe('Approved, merges by itself · 2nd in merge queue')
+  w.unmount()
+  board.cards[2] = merge({ done: true })
+  w = await mount()
+  expect(laneOf(w, 'CO-2')).not.toBe('your-turn')
+  expect(card(w, 'CO-2').find('[data-testid="board-merging"]').exists()).toBe(false)
 })

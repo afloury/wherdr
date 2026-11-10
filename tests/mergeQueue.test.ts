@@ -33,6 +33,9 @@ describe('merge queue', () => {
     const entries = [e('A', ['x.ts'], 10), e('B', ['x.ts', 'y.ts'], 5), e('C', ['z.ts'], 50), e('D', ['w.ts'], 20)]
     expect(mergeOrder(entries)).toEqual(['D', 'C', 'B', 'A'])
     expect(mergeOrder(entries.map(x => (x.id === 'D' ? { ...x, out: 'conflict with its base' } : x)))).toEqual(['C', 'B', 'A', 'D'])
+    // The coordinator's board order (task order) comes before files and size, among PRs in line.
+    expect(mergeOrder(entries.map(x => ({ ...x, ...({ A: { order: -2 }, B: { order: -1 } } as Record<string, object>)[x.id] })))).toEqual(['A', 'B', 'D', 'C'])
+    expect(mergeOrder(entries.map(x => (x.id === 'A' ? { ...x, order: -1, out: 'checks failed' } : x)))).toEqual(['D', 'C', 'B', 'A'])
     expect([1, 2, 3, 4, 11, 12, 21, 22].map(ordinal)).toEqual(['1st', '2nd', '3rd', '4th', '11th', '12th', '21st', '22nd'])
     // Why a PR is out of line; ready: none.
     const out = (more: Partial<MechFacts>) => queueOut(facts(more))

@@ -10,6 +10,8 @@ import { highlightCode } from './codeHighlight'
 import { createRenderCache, createSupersedeTracker } from './renderCache'
 import { blockCommand, inlineCommand } from './shellCommand'
 import { svgPreview } from './svgPreview'
+import { parseStatusBlock, STATUS_MAX } from '../../shared/statusBlock'
+import { parseOpenLine } from '../../shared/uiOpen'
 
 let hooked = false
 // Budget of the cache, in characters of text + HTML: about 4 MB of strings
@@ -63,6 +65,20 @@ export function md(text: string, options: MdOptions = {}): string {
           const l = escHtml((lang || '').split(/\s/)[0] || '')
           // A language fence is an explicit preview request. A normal HTML/XML
           // fence (including examples containing SVG) remains ordinary code.
+          // A ```wherdr block of `status …` lines (shared/statusBlock.ts): one
+          // slot per card, which ChatMarkdown.vue fills with a live card. Its
+          // text stays the line, read as such before the card mounts.
+          const status = plainNow || l.toLowerCase() !== 'wherdr' ? null : parseStatusBlock(text)
+          if (status) {
+            return `<div class="wherdr-block">${status.map(r => `<div class="status-slot" data-status-kind="${r.kind}" data-status-arg="${escHtml(r.arg)}">status ${r.kind}:${escHtml(r.arg)}</div>`).join('')}</div>`
+          }
+          // `open <in-app link>` lines: the cards of an agent's `ui open`
+          // (shared/uiOpen.ts), kept in the conversation.
+          const opens = plainNow || l.toLowerCase() !== 'wherdr' ? [] : text.split('\n').filter(x => x.trim())
+          const links = opens.length && opens.length <= STATUS_MAX ? opens.map(parseOpenLine) : []
+          if (links.length && links.every(Boolean)) {
+            return `<div class="wherdr-block">${links.map(k => `<div class="open-slot" data-link="${escHtml(k!)}">open ${escHtml(k!)}</div>`).join('')}</div>`
+          }
           if (!docNow && l.toLowerCase() === 'svg') {
             const src = svgPreview(text)
             const source = `<pre class="svg-source"${src ? ' hidden' : ''}><code class="language-svg">${escHtml(text)}</code></pre>`
