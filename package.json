@@ -1,6 +1,6 @@
 {
   "name": "wherdr",
-  "version": "2.5.0",
+  "version": "3.0.0-dev",
   "license": "MIT",
   "type": "module",
   "description": "Unofficial mobile web client (PWA) for the coding agents of herdr-core (hc)",

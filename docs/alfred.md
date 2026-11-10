@@ -63,6 +63,8 @@ beside it) of Alfred and of every running project coordinator. It sends them no 
 none of them. Each one learns of the update on its next `wherdr alfred` or `wherdr pm` command,
 once: the answer starts with the line
 `wherdr was updated to <version> since your session started: re-read AGENTS.md and check docs/llms.txt before relying on what you knew`.
+The version includes the commit wherdr was built from (`3.0.0+1a2b3c4`), so a rebuild from a
+new commit counts as an update too.
 
 Alfred and the coordinators never explain wherdr from memory: they read `docs/llms.txt` (the
 docs index) first, then only the sections that answer. `wherdr alfred help` and `wherdr pm help`
