@@ -48,7 +48,9 @@ import { projectPace } from './pmPace'
 import { sameFilesText } from '../../shared/pm/files'
 import type { CoordinatorRecord, PmStore } from './pmStore'
 import { ALFRED, OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
-import { APP_URL_FILE, DATA_DIR, ENV_APP_URL } from './env'
+import { APP_URL_FILE, DATA_DIR, ENV_APP_URL, HOME } from './env'
+import { projectsHome } from '../../bin/lib/userpath.mjs'
+import { readV2Projects, type V2Candidate } from './v2Board'
 import pkg from '../../package.json'
 import { openUi, showUi, uiTargetsList, type UiOpenDeps } from './uiOpen'
 import { addAction } from './uiActions'
@@ -615,24 +617,22 @@ export async function takeUpdateNotice(store: PmStore, key: string | null) {
 const alfredAgent = (program: unknown): CoordinatorAgent | null => (isAlfredProgram(program) ? { program } : null)
 const readAlfredName = (deps: { alfredHome?: string }) => fs.readFile(path.join(homeOfAlfred(deps), 'identity.md'), 'utf8').then(alfredName, () => alfredName(''))
 
-// The v2 projects the migration listed for Alfred (V2_PROJECTS of scripts/v2-import.mjs).
-export interface V2Candidate { key: string, name: string, path: string, here: boolean, base?: string, left: string[], tasks: { v2: string, stage: string, title: string, description: string }[] }
-export async function readV2Projects(dataDir = DATA_DIR): Promise<V2Candidate[]> {
-  try { const j = JSON.parse(await fs.readFile(path.join(dataDir, 'migration', 'v2-projects.json'), 'utf8')); return Array.isArray(j?.projects) ? j.projects : [] }
-  catch { return [] }
+// The v2 projects, read now from herdr-projects' board on this machine (read only).
+export async function v2Projects(store: PmStore, hpDir = projectsHome(process.env, HOME)): Promise<V2Candidate[]> {
+  return readV2Projects(hpDir, await store.projects())
 }
 
 // Alfred's home, on wherdr's own machine: wherdr's files rewritten at each
 // start (an update ships new ones), its own files created once.
 // first: identity.md was just created, so this is its very first start.
-// v2: the user comes from wherdr v2, whose projects the migration listed.
+// v2: the user comes from wherdr v2: its herdr-projects board has projects.
 export async function writeAlfredHome(deps: Deps) {
   const folder = homeOfAlfred(deps)
   const projects = await deps.store.projects()
   const docs = docsDir()
   const docFiles = (await fs.readdir(docs).catch(() => [] as string[])).filter(n => n.endsWith('.md')).sort()
   const main = mainRoleFiles(projects)
-  const v2 = (await readV2Projects()).length > 0
+  const v2 = (await v2Projects(deps.store)).length > 0
   const files = { ...main, ...alfredFiles({ home: folder, version: wherdrVersion(), docs, docFiles, pm: await deps.store.enabled(), projects, v2 }, main['AGENTS.md']!.split('\n')) }
   for (const [file, text] of Object.entries(files)) {
     await fs.mkdir(path.dirname(path.join(folder, file)), { recursive: true, mode: 0o700 })

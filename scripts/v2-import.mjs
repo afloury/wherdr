@@ -1,20 +1,22 @@
 #!/usr/bin/env node
-// Finds a wherdr v2 install and imports what wherdr v3 can use from it: the
-// herdr-projects board's projects and open tasks (as candidates Alfred offers), Herdr's SSH machines (as
-// herdr-core machines), the synced settings. Never writes anything of v2: every
+// Finds a wherdr v2 install and imports what wherdr v3 can use from it: Herdr's
+// SSH machines (as herdr-core machines), the synced settings, the recent folders.
+// Nothing of herdr-projects: Alfred reads its board when the user wants their
+// projects (`wherdr alfred v2`). Never writes anything of v2: every
 // v2 file is only read. Writes v3's DATA_DIR and DATA_DIR/migration-report.md.
 //
 //   node scripts/v2-import.mjs detect [--json] [v2 options]
 //   node scripts/v2-import.mjs import --data-dir <v3 data> [--hc-session S] [--dry-run] [--json] [v2 options]
 //
 // v2 options (default: found on this machine): --v2-dir <~/wherdr> --v2-unit <unit or plist file>
-// --herdr-projects <~/.herdr-projects> --herdr-bin <herdr>. Exit codes: 0 done, 2 bad usage,
+// --herdr-bin <herdr> (--herdr-projects is ignored). Exit codes: 0 done, 2 bad usage,
 // 3 no v2 found, 5 a write failed.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { inProjectsHome } from '../bin/lib/userpath.mjs'
 
 const readText = f => { try { return fs.readFileSync(f, 'utf8') } catch { return null } }
 const readJson = f => { const t = readText(f); try { return t === null ? null : JSON.parse(t) } catch { return null } }
@@ -134,8 +136,6 @@ export function detectV2(o = {}) {
     const r = run('systemctl', ['--user', 'is-active', path.basename(unitFile)])
     active = r.out === 'active'
   }
-  const hpDir = path.resolve(expand(o.hpDir || env.HERDR_PROJECTS_HOME || path.join(home, '.herdr-projects'), home))
-  const board = fs.existsSync(path.join(hpDir, 'data', 'repos.json')) ? hpDir : null
   const herdr = run(o.herdrBin || 'herdr', ['machine', 'list', '--json'])
   if (!herdr.ok) notes.push(`herdr machine list failed (${herdr.code === 127 ? 'herdr not found' : herdr.err.split('\n').pop() || herdr.code}): no machine to import`)
   const machines = herdr.ok ? parseHerdrMachines(herdr.out) : []
@@ -144,74 +144,28 @@ export function detectV2(o = {}) {
   return {
     found, unit: unitFile, active, session: pick('HERDR_WEB_SESSION') || null,
     dir, envFile: fs.existsSync(envFile) ? envFile : null, dataDir, port, files,
-    board, machines,
+    machines,
     tailscale: { available: ts.ok, entries, v2Https: entries.filter(e => proxiesTo(e.proxy, port)).map(e => e.https) },
     notes,
   }
 }
 
-// ---- herdr-projects board ------------------------------------------------
+// ---- recent folders --------------------------------------------------------
 
-// repos.json { name: path }, settings/config.json repos.<name> (key and per-repo settings),
-// data/tasks/<repo>/<n>/task.json.
-export function readBoard(hpDir) {
-  const repos = readJson(path.join(hpDir, 'data', 'repos.json')) || {}
-  const config = readJson(path.join(hpDir, 'settings', 'config.json')) || {}
-  const tasks = []
-  const tdir = path.join(hpDir, 'data', 'tasks')
-  for (const repo of (() => { try { return fs.readdirSync(tdir).sort() } catch { return [] } })()) {
-    for (const n of (() => { try { return fs.readdirSync(path.join(tdir, repo)) } catch { return [] } })().sort((a, b) => a - b)) {
-      const t = readJson(path.join(tdir, repo, n, 'task.json'))
-      if (isObj(t)) tasks.push({ repo, ...t })
-    }
-  }
-  return { repos: isObj(repos) ? repos : {}, settings: isObj(config.repos) ? config.repos : {}, tasks }
+// The recent folders worth keeping: the user's own, not herdr-projects' (its
+// board, a coordinator's chat folder) nor the app folders of wherdr or
+// herdr-web (`apps`: v2's and v3's folders; the installer's default v3 folder
+// always counts).
+export function keptDirs(dirs, { home, env = {}, apps = [] }) {
+  const app = d => [...apps, path.join(home, 'herdr-web'), path.join(home, 'wherdr-v3')].some(a => d === a || d.startsWith(`${a}/`))
+  return dirs.filter(d => typeof d === 'string' && d.startsWith('/') && !inProjectsHome(d, env, home) && !app(d))
 }
 
-// Same rules as shared/pm/project.ts (KEY_RE, BRANCH_RE).
-const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
-const BRANCH_RE = /^(?!.*\.\.)(?!.*@\{)(?!\/)(?!.*\/$)[A-Za-z0-9._/-]{1,100}$/
-const DONE_STAGES = new Set(['done', 'merged', 'closed', 'cancelled', 'canceled'])
-
-function keyFor(name, wanted, taken) {
-  const derived = String(name).toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^[0-9]+/, '').slice(0, 10)
-  const base = KEY_RE.test(wanted) ? wanted : KEY_RE.test(derived) ? derived : 'PRJ'
-  let key = base
-  for (let i = 2; taken.has(key); i++) key = `${base.slice(0, 10 - String(i).length)}${i}`
-  return key
-}
-
-// Flattened setting paths of a repo: { merge: { by: 'x' } } → ['merge.by'].
-const flat = (o, pre = '') => Object.entries(o || {}).flatMap(([k, v]) => (isObj(v) ? flat(v, `${pre}${k}.`) : [`${pre}${k}`]))
-
-// How v2 showed a board task: KEY-n with the repo's key (WHR-37), else its id (app/1).
-export function v2TaskName(board, t) {
-  const key = String(board.settings?.[t.repo]?.repo?.key || '').toUpperCase()
-  const n = Number(t.n)
-  return KEY_RE.test(key) && Number.isInteger(n) && n > 0 ? `${key}-${n}` : String(t.id || `${t.repo}/${t.n}`)
-}
-
-// Board repos → candidates for v3 projects. None is added here: Alfred offers
-// them to the user (`wherdr alfred v2`). Each: a suggested key (free in v3),
-// its folder on this machine and whether it is there, its base branch, the v2
-// settings to redo in its template, and its open tasks.
-export function mapCandidates(board, existing = [], exists = p => fs.existsSync(p)) {
-  const projects = [], skipped = []
-  const taken = new Set(existing.map(p => p.key))
-  for (const [name, folder] of Object.entries(board.repos).sort(([a], [b]) => a.localeCompare(b))) {
-    if (typeof folder !== 'string' || !folder.startsWith('/')) { skipped.push({ name, path: String(folder), reason: 'not an absolute path' }); continue }
-    const s = board.settings[name] || {}
-    const key = keyFor(name, String(s.repo?.key || '').toUpperCase(), taken)
-    taken.add(key)
-    const from = s.workspace?.from
-    const base = typeof from === 'string' && BRANCH_RE.test(from) ? from : undefined
-    const left = flat(s).filter(k => k !== 'repo.key' && !(k === 'workspace.from' && base))
-    const tasks = board.tasks
-      .filter(t => t.repo === name && !t.archivedAt && !DONE_STAGES.has(String(t.stage || 'todo')))
-      .map(t => ({ v2: v2TaskName(board, t), stage: String(t.stage || 'todo'), title: String(t.title || '').trim().slice(0, 200) || `Task ${v2TaskName(board, t)}`, description: String(t.description || '').slice(0, 20000) }))
-    projects.push({ key, name: String(name).slice(0, 80), path: folder, here: exists(folder), ...(base ? { base } : {}), left, tasks })
-  }
-  return { projects, skipped }
+// v3's app folder when the import runs on its own: the folder holding both this
+// source and the data folder (~/wherdr-v3 with src/ and data/), else this source.
+export function v3AppDir(dataDir, home, src = fileURLToPath(new URL('..', import.meta.url))) {
+  const root = path.resolve(src), parent = path.dirname(path.resolve(dataDir))
+  return parent !== path.resolve(home) && parent !== '/' && root.startsWith(`${parent}/`) ? parent : root
 }
 
 // ---- settings ------------------------------------------------------------
@@ -317,24 +271,14 @@ function writeJsonFile(file, data) {
   fs.renameSync(temp, file)
 }
 
-// The candidates file, in v3's dataDir (server/utils/alfredCli.ts reads it).
-export const V2_PROJECTS = 'migration/v2-projects.json'
-
 // Imports into v3's dataDir. dryRun: computes everything, writes nothing.
 export function runImport(o) {
   const run = o.run || defaultRun
   const now = o.now ?? Date.now()
   const v2 = o.v2 || detectV2(o)
   const data = path.resolve(o.dataDir)
-  const pmDir = path.join(data, 'projects')
   const state = readJson(path.join(data, 'migration', 'imported.json')) || {}
-  const res = { at: new Date(now).toISOString(), dryRun: !!o.dryRun, v2: { dir: v2.dir, dataDir: v2.dataDir, unit: v2.unit, port: v2.port, board: v2.board }, dataDir: data }
-
-  // Projects, with their open tasks: candidates Alfred offers, never added here.
-  const existing = readJson(path.join(pmDir, 'projects.json'))?.projects || []
-  const board = v2.board ? readBoard(v2.board) : { repos: {}, settings: {}, tasks: [] }
-  const p = mapCandidates(board, existing, o.exists)
-  res.projects = { candidates: p.projects, skipped: p.skipped, board: v2.board }
+  const res = { at: new Date(now).toISOString(), dryRun: !!o.dryRun, v2: { dir: v2.dir, dataDir: v2.dataDir, unit: v2.unit, port: v2.port }, dataDir: data }
 
   // Settings and the small files v3 reads the same way.
   const v3Settings = readJson(path.join(data, 'settings.json'))?.settings || {}
@@ -343,8 +287,9 @@ export function runImport(o) {
   for (const f of ['quiet.json', 'machine-label.txt']) {
     if (fs.existsSync(path.join(v2.dataDir, f)) && !fs.existsSync(path.join(data, f))) copies.push(f)
   }
-  const dirs = readJson(path.join(v2.dataDir, 'dirs.json'))
-  const copyDirs = Array.isArray(dirs?.dirs) && dirs.dirs.length && !fs.existsSync(path.join(data, 'dirs.json'))
+  const v2Dirs = readJson(path.join(v2.dataDir, 'dirs.json'))?.dirs
+  const dirs = keptDirs(Array.isArray(v2Dirs) ? v2Dirs : [], { home: o.home || os.homedir(), env: o.env || process.env, apps: [v2.dir, o.appDir || v3AppDir(data, o.home || os.homedir())] })
+  const copyDirs = dirs.length && !fs.existsSync(path.join(data, 'dirs.json'))
   res.settings = { carried: s.carried, skipped: s.skipped, files: [...copies, ...(copyDirs ? ['dirs.json (this machine\'s recent folders)'] : [])] }
 
   // Machines: added to hc when it can reach them, else listed with what is missing.
@@ -380,14 +325,9 @@ export function runImport(o) {
   res.settings.machines = remapped.changes
 
   if (!o.dryRun) {
-    if (p.projects.length) {
-      writeJsonFile(path.join(data, V2_PROJECTS), { v: 1, at: res.at, projects: p.projects })
-      const pm = readJson(path.join(pmDir, 'pm.json')) || {}
-      if (pm.enabled !== true) { writeJsonFile(path.join(pmDir, 'pm.json'), { ...pm, v: 1, enabled: true }); res.projects.switchedOn = true }
-    }
     if (s.carried.length) writeJsonFile(path.join(data, 'settings.json'), { v: 1, settings: { ...v3Settings, ...s.patch } })
     for (const f of copies) { fs.mkdirSync(data, { recursive: true }); fs.writeFileSync(path.join(data, f), fs.readFileSync(path.join(v2.dataDir, f)), { mode: 0o600 }) }
-    if (copyDirs) writeJsonFile(path.join(data, 'dirs.json'), { dirs: dirs.dirs })
+    if (copyDirs) writeJsonFile(path.join(data, 'dirs.json'), { dirs })
     writeJsonFile(path.join(data, 'migration', 'imported.json'), { v: 1, at: res.at })
     res.report = path.join(data, 'migration-report.md')
     // The report of an earlier run is kept: it lists what that run imported.
@@ -417,15 +357,7 @@ export function renderReport(r) {
   const L = []
   const row = (...c) => L.push(`| ${c.map(x => String(x ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ')).join(' | ')} |`)
   L.push('# wherdr v2 → v3 migration report', '', `${r.dryRun ? 'Dry run (nothing written), ' : ''}${r.at}. v2 was only read: ${r.v2.dir} (data ${r.v2.dataDir}, port ${r.v2.port}). v3 data: ${r.dataDir}.`, '')
-  L.push('## Projects', '')
-  if (!r.projects.board) L.push('No herdr-projects board found: no project to set up.', '')
-  if (r.projects.candidates.length) {
-    L.push(`Not added: Alfred offers to set them up with you in its first message (machine, template, coordinator, open tasks)${r.projects.switchedOn ? '; Projects switched on' : ''}. Done and archived tasks are left out.`, '')
-    row('Key', 'Name', 'Folder', 'Base branch', 'Open tasks', 'v2 settings to redo in the template'); row('---', '---', '---', '---', '---', '---')
-    for (const p of r.projects.candidates) row(p.key, p.name, `${p.path}${p.here ? '' : ' (not on this machine)'}`, p.base || '', p.tasks.length, p.left.join(', '))
-    L.push('')
-  }
-  if (r.projects.skipped.length) { L.push('Left out:', ''); for (const s of r.projects.skipped) L.push(`- ${s.name} (${s.path}): ${s.reason}`); L.push('') }
+  L.push('## Projects', '', 'Not imported: Alfred offers to set up your v2 projects with you (machine, template, coordinator, open tasks), reading the herdr-projects board then.', '')
   L.push('## Machines', '')
   if (!r.machines.added.length && !r.machines.missing.length && !r.machines.have.length) L.push('No SSH machine in Herdr.')
   // hc names are 1-32 of a-z 0-9 - _ . : say when the v2 name was changed.
@@ -452,9 +384,11 @@ export function renderReport(r) {
 
 // ---- command line ----------------------------------------------------------
 
+export const IGNORED_HP = '--herdr-projects is ignored: nothing of herdr-projects is imported; Alfred reads its board when you set up your projects'
+
 export function parseArgs(argv) {
   const o = { command: argv[0] }
-  const names = { '--data-dir': 'dataDir', '--v2-dir': 'v2Dir', '--v2-unit': 'unit', '--herdr-projects': 'hpDir', '--herdr-bin': 'herdrBin', '--hc-session': 'hcSession', '--hc-bin': 'hcBin' }
+  const names = { '--data-dir': 'dataDir', '--v2-dir': 'v2Dir', '--v2-unit': 'unit', '--herdr-projects': 'ignored', '--herdr-bin': 'herdrBin', '--hc-session': 'hcSession', '--hc-bin': 'hcBin' }
   for (let i = 1; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--dry-run') o.dryRun = true
@@ -462,6 +396,7 @@ export function parseArgs(argv) {
     else if (names[a] && argv[i + 1] !== undefined) o[names[a]] = argv[++i]
     else throw new Error(`unknown option: ${a}`)
   }
+  if (o.ignored !== undefined) { delete o.ignored; o.notes = [IGNORED_HP] }
   if (!['detect', 'import'].includes(o.command)) throw new Error('first argument: detect or import')
   if (o.command === 'import' && !o.dataDir) throw new Error('import needs --data-dir <v3 DATA_DIR>')
   return o
@@ -474,7 +409,6 @@ export function describeV2(v) {
     `  folder: ${v.dir}${v.envFile ? ' (wherdr.env)' : ''}`,
     `  data: ${v.dataDir} (${v.files.length} files), port ${v.port}${v.session ? `, Herdr session ${v.session}` : ''}`,
     `  tailscale serve: ${v.tailscale.available ? (v.tailscale.v2Https.length ? `https ${v.tailscale.v2Https.join(', ')} → v2` : 'no entry for v2') : 'not available'}`,
-    `  herdr-projects board: ${v.board || 'none'}`,
     `  Herdr SSH machines: ${v.machines.map(m => `${m.label} (${m.target})`).join(', ') || 'none'}`,
     ...v.notes.map(n => `  note: ${n}`),
   ].join('\n')
@@ -484,6 +418,7 @@ async function main() {
   let o
   try { o = parseArgs(process.argv.slice(2)) }
   catch (e) { console.error(`ERROR usage: ${e.message}`); process.exit(2) }
+  for (const n of o.notes || []) console.error(`note: ${n}`)
   const v2 = detectV2(o)
   if (o.command === 'detect') {
     console.log(o.json ? JSON.stringify(v2, null, 2) : describeV2(v2))
