@@ -26,7 +26,7 @@ import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
-import { appRoute } from '#shared/appLinks'
+import { uiOpenPanel } from '~/utils/settingsPanel'
 import type { UiOpenEvent } from '#shared/uiOpen'
 import type { UiShowEvent } from '#shared/uiShow'
 
@@ -44,11 +44,11 @@ const uiCard = ref<UiOpenEvent | null>(null)
 watch(uiOpenRequest, (e) => {
   if (!e || e.pane !== props.paneId) return
   uiOpenRequest.value = null
-  const to = appRoute(e.link)
-  if (e.show === 'card' || !sidePanelRoom.value || !to.startsWith('/settings?')) { uiCard.value = e; return }
+  const panel = e.show === 'card' ? null : uiOpenPanel(e.link, route, sidePanelRoom.value)
+  if (!panel) { uiCard.value = e; return }
   uiCard.value = null
-  uiOpenedBy.value = { by: e.by, section: new URLSearchParams(to.split('?')[1]).get('section') ?? '' }
-  router.push(to)
+  uiOpenedBy.value = { by: e.by, section: panel.query.section }
+  router.push(panel)
 })
 // An agent's `ui show` (shared/uiShow.ts): beside the conversation when the
 // window has room, else a card that opens it in a sheet (UiShowPanel.vue).
