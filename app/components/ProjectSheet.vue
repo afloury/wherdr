@@ -33,7 +33,7 @@ const ready = ref<Record<string, string>>({}) // each other machine's last readi
 const loaded = ref(false)
 const error = ref('')
 const busy = ref('')
-const form = reactive({ name: '', key: '', color: '', base: '', branchName: '', agent: '', model: '', reviewAgent: '', reviewModel: '' })
+const form = reactive({ name: '', key: '', color: '', base: '', branchName: '', agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' })
 async function load() {
   const r = await api<{ workflow: Template | null, log: LogEntry[], ready?: Record<string, string> }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
   workflow.value = r.workflow
@@ -42,7 +42,7 @@ async function load() {
   fill(p.value, r.workflow?.prefs ?? {})
   loaded.value = true
 }
-const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '' })
+const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
 onMounted(() => { load().catch((e) => { error.value = (e as Error).message }); loadCoordinators() })
 
 async function run(what: string, fn: () => Promise<unknown>) {
@@ -91,11 +91,14 @@ const visibilityItems = (v?: RepoVisibility) => [
 // The agents its tasks start with: the offered programs, or the workflow's default.
 const agentItems = computed(() => [
   { label: tl('Default'), value: NONE },
-  ...[...new Set([...offerAgents().filter(k => k !== 'shell'), form.agent, form.reviewAgent].filter(Boolean))].map(k => ({ label: kindLabel(k), value: k })),
+  ...[...new Set([...offerAgents().filter(k => k !== 'shell'), form.agent, form.reviewAgent, form.reviewFallbackAgent].filter(Boolean))].map(k => ({ label: kindLabel(k), value: k })),
 ])
-const agentModel = (k: 'agent' | 'reviewAgent') => computed({ get: () => orNone(form[k]), set: (v: string) => { form[k] = fromNone(v) } })
+// The fallback has no default: none, or the agent the user picks.
+const fallbackItems = computed(() => [{ label: tl('None'), value: NONE }, ...agentItems.value.slice(1)])
+const agentModel = (k: 'agent' | 'reviewAgent' | 'reviewFallbackAgent') => computed({ get: () => orNone(form[k]), set: (v: string) => { form[k] = fromNone(v) } })
 const agent = agentModel('agent')
 const reviewAgent = agentModel('reviewAgent')
+const fallbackAgent = agentModel('reviewFallbackAgent')
 const base = computed({ get: () => orNone(form.base), set: (v: string) => { form.base = fromNone(String(v)) } })
 
 // The workflow changed (saved, started over): reload it here and the list.
@@ -183,8 +186,14 @@ async function remove() {
                 <USelect v-model="reviewAgent" :items="agentItems" size="lg" class="w-full" :aria-label="tl('Reviewer agent')" />
                 <UInput v-model="form.reviewModel" size="lg" class="w-full mono" :placeholder="tl('default model')" :aria-label="tl('Reviewer model')" maxlength="80" />
               </span>
+              <span class="pm-col pm-agent">
+                <span class="field-label">{{ tl('Fallback') }}</span>
+                <USelect v-model="fallbackAgent" :items="fallbackItems" size="lg" class="w-full" :aria-label="tl('Reviewer fallback agent')" data-testid="pm-fallback-agent" />
+                <UInput v-model="form.reviewFallbackModel" size="lg" class="w-full mono" :placeholder="tl('model, or same')" :aria-label="tl('Reviewer fallback model')" maxlength="80" />
+              </span>
             </div>
           </template>
+          <small v-if="workflow" class="muted">{{ tl('Fallback: the reviewer started instead while the reviewer\'s account is out of quota. None: reviews wait for it.') }}</small>
           <p v-else-if="loaded" class="muted settings-hint">{{ tl('No workflow yet: tasks cannot start until the project starts from a template.') }}</p>
           <UButton type="submit" size="xl" color="primary" variant="solid" class="hw-cta" :loading="busy === 'save'" :disabled="!loaded || busy !== ''" data-testid="pm-save">{{ tl('Save') }}</UButton>
 
@@ -261,7 +270,6 @@ async function remove() {
 .pm-col { display: grid; min-width: 0; }
 .pm-agent { gap: 8px; }
 .pm-agent .field-label { margin-bottom: 0; }
-.pm-prefs { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px 10px; }
 .pm-part { margin-bottom: 12px; }
 .project-tab-badge { margin-left: 6px; }
 .pm-proposal { display: flex; align-items: center; gap: 10px; width: 100%; margin-bottom: 12px; padding: 12px 16px; text-align: left; color: var(--blocked); }

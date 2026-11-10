@@ -2,8 +2,9 @@
 // the verdict of the worker's account (shared/pm/pacing.ts), the account's
 // quota among the readings, and the words the coordinator and the firings get.
 import type { Quota, QuotaAccount, QuotaCredits, Quotas } from '../types'
-import { limitState, type LimitState } from '../quotaLimit'
-import type { Task, TaskOrigin } from './run'
+import { limitEnds, limitState, type LimitState } from '../quotaLimit'
+import { accountFor } from '../quotaAccount'
+import { quotaOut, type Task, type TaskOrigin } from './run'
 import { DEFAULT_PACE, burning, current, paceVerdict, targetLine, type PacePolicy, type PaceReason, type PaceVerdict } from './pacing'
 
 // Tasks made before `origin` existed: from their other marks.
@@ -27,6 +28,16 @@ export function accountQuota(q: Quotas, account: QuotaAccount): Quota | null {
   const blocks = account.program === 'claude' ? q.claudeAccounts : q.codexAccounts
   if (blocks?.length) return blocks.find(b => b.key === account.key) ?? null
   return q[account.program]
+}
+
+// An agent's account on a machine at its limit now (an expired reading does
+// not count): why, for its reviewer's fallback. A machine with no account of
+// its own: the program's latest reading.
+export function accountOut(q: Quotas | null, program: string, machine: string, now: number) {
+  if (program !== 'claude' && program !== 'codex') return
+  const account = q && accountFor(q.accounts, machine, program)
+  const quota = q && (account ? accountQuota(q, account) : q[program])
+  return quota && limitState(quota, now) === 'reached' ? quotaOut(program, limitEnds(quota)!) : undefined
 }
 
 const REASONS: Record<PaceReason, string> = {

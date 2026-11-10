@@ -17,7 +17,7 @@ import { canStart, canStop, cardStatus, linkLabel, mergeWaits, statusText, type 
 import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
 import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
-import type { Task } from '#shared/pm/run'
+import { reviewSwitch, type Task } from '#shared/pm/run'
 import { shotMode } from '#shared/pm/shots'
 import { timesText } from '#shared/pm/times'
 import type { Choice } from '#shared/pm/verdict'
@@ -39,6 +39,9 @@ const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
 const shots = (id: string) => props.card.state?.shots?.[id] ?? []
 // The sets a rework after the review replaced.
 const earlier = (id: string) => props.card.state?.earlierShots?.[id] ?? []
+// The fallback took the last review (the review agent out of quota): said on the review step it holds now or held last.
+const switched = computed(() => reviewSwitch(props.card.log))
+const switchAt = computed(() => props.card.plan.findLastIndex((s, i) => s.holder === 'reviewer' && (done.value || i <= at.value)))
 // Where its PR and merge stand (the card's line), with the full time and the approval's date.
 const status = computed(() => { const s = cardStatus(props.card); return s && { ...s, text: statusText(s, fmtDateTime, true) } })
 
@@ -181,6 +184,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
               <summary>{{ tl('Instructions', 'Consignes') }}</summary>
               <p class="task-desc">{{ s.text }}</p>
             </details>
+            <small v-if="switched && i === switchAt" class="muted" data-testid="review-switch">{{ switched }}</small>
             <small v-for="[k, v] in proofs(s.id)" :key="k" class="muted">{{ k }}: <a v-if="/^https?:\/\//.test(v)" :href="v" target="_blank" rel="noopener">{{ v }}</a><template v-else>{{ v }}</template></small>
             <TaskShots v-if="shots(s.id).length" :task="card.id" :shots="shots(s.id)" :mode="shotMode(s)" />
             <details v-if="earlier(s.id).length" data-testid="shots-earlier">
