@@ -635,7 +635,7 @@ its question last; anything else opens the sheet on **To do**. The sheet stays
 one tap away: *Open the task* in the card's menu, or the small icon at the end
 of the entry. An agent that is not on screen here opens the sheet instead.
 
-- **A visual change to merge**: the **Worker's note** (its closing report: what
+- <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: the **Worker's note** (its closing report: what
   was done, why it is done, what was tested) and the **Reviewer's note** (the
   verdict, what it sent back and was fixed during the rounds, what it left as
   minor), each in Markdown, folded to a few lines with *Show more* (the

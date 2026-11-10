@@ -24,7 +24,7 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   reference instances. Incomplete, unsupported or unsafe diagrams stay readable code. Scripts,
   foreign HTML, animation and external resources are rejected; raw inline SVG is not inserted
   into the page. Other fence languages and file-explorer document fences remain code.
-- **Live status cards**: a code fence labelled `wherdr` whose lines are all `status …` shows one
+- <a id="live-status-cards"></a>**Live status cards**: a code fence labelled `wherdr` whose lines are all `status …` shows one
   card per line, read from wherdr's own data, never from what the agent wrote:
   `status machine:<key or name>` (online or offline, free memory, load, agents),
   `status quota:claude` or `status quota:codex` (5-hour and week windows left),
@@ -52,7 +52,7 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   an action in a task's sheet), never what the message says. A tap opens the task's sheet over
   the conversation. A task that is not on the board says so; a block with any other line stays
   plain code. Alfred and coordinators get this in their instructions.
-- **Places an agent opens for you**: when you ask Alfred or a project's coordinator to show you
+- <a id="places-an-agent-opens-for-you"></a>**Places an agent opens for you**: when you ask Alfred or a project's coordinator to show you
   a place, it can open it in the wherdr you are on (`wherdr alfred ui open
   '#/settings?section=phone'`, `wherdr pm ui open '…'`): of the apps showing its conversation,
   the one you last used (within 15 minutes), and no other, so a computer left open on the same
@@ -69,7 +69,7 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   terminal.key-order`; `ui targets` lists the settings it can point at): on a wide computer the
   side panel opens on its section and highlights it; on a phone the card names the setting with a
   crosshair, and a tap opens the page and highlights it.
-- **Buttons an agent puts in its reply**: Alfred or a project's coordinator can give you the
+- <a id="buttons-an-agent-puts-in-its-reply"></a>**Buttons an agent puts in its reply**: Alfred or a project's coordinator can give you the
   button for a task instead of telling you to go and find it (`wherdr pm ui action resume|step|open
   <task>`): *Resume WHR-12* for a stopped task, the step's own button (*Merge*, *Approve
   screenshots*) for a step that waits for you, or *Open WHR-12*. The card says who suggests it and
