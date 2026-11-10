@@ -31,6 +31,10 @@ const IN = 'cd "$1" || exit 1; shift;'
 // Does merged PR head $p hold HEAD ($h)? A head pushed from elsewhere is fetched first.
 const HOLDS = `{ [ "$p" = "$h" ] || { git cat-file -e "$p^{commit}" 2>/dev/null || git fetch -q origin "$p" 2>/dev/null; git merge-base --is-ancestor "$h" "$p" 2>/dev/null; }; }`
 const CLEAN = `[ -z "$(git status --porcelain)" ] || { echo "uncommitted changes: commit them, then say you are done"; exit ${CODE.SEND_BACK}; };`
+// After a merge, the project's own fix (git config wherdr.afterMerge, run at the
+// worktree's root), committed: merges done where its merge drivers do not run
+// (GitHub's Update branch) are fixed before the push. A failed fix leaves HEAD.
+const AFTER_MERGE = `a=$(git config --get wherdr.afterMerge) && { sh -c "$a" >/dev/null 2>&1 && git commit -qam "Fix the merge (wherdr.afterMerge)" >/dev/null 2>&1; git reset -q --hard; };`
 // The files that change the interface, at any depth (app/components, pages…).
 const UI_FILES = ['components', 'assets', 'pages', 'layouts'].map(d => `':(glob)**/${d}/**'`).join(' ')
 export const SCRIPT = {
@@ -40,6 +44,7 @@ if git ls-remote -q --exit-code --heads origin "$t" >/dev/null; then
   git fetch -q origin "$t" 2>&1 || exit 1
   if ! git merge -q --no-edit "origin/$t" >/dev/null 2>&1; then
     f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict in $f"; exit ${CODE.SEND_BACK}; fi
+  ${AFTER_MERGE}
 fi
 git push -q origin "HEAD:refs/heads/$t" 2>&1 || exit 1
 git rev-parse HEAD`,
@@ -115,13 +120,15 @@ echo "$why"; exit ${CODE.NOT_MERGED}`,
   catchUp: `${IN} ${CLEAN} git fetch -q origin "$1" 2>&1 || exit 1
 if ! git merge -q --no-edit "origin/$1" >/dev/null 2>&1; then
   f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with $1 in $f"; exit ${CODE.SEND_BACK}; fi
+${AFTER_MERGE}
 git push -q origin "HEAD:refs/heads/$2" 2>&1 || exit 1; git rev-parse HEAD`,
   // A push refused because the task branch ($1) is behind its remote: the
   // worktree takes the remote's commits (a fast-forward, else a merge), to push again.
   sync: `${IN} ${CLEAN} git fetch -q origin "$1" 2>&1 || exit 1
-if git merge-base --is-ancestor HEAD FETCH_HEAD; then git merge -q --ff-only FETCH_HEAD 2>&1 || exit 1; echo "fast-forwarded to origin/$1"; exit 0; fi
+if git merge-base --is-ancestor HEAD FETCH_HEAD; then git merge -q --ff-only FETCH_HEAD 2>&1 || exit 1; ${AFTER_MERGE} echo "fast-forwarded to origin/$1"; exit 0; fi
 if ! git merge -q --no-edit FETCH_HEAD >/dev/null 2>&1; then
   f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with origin/$1 in $f"; exit ${CODE.SEND_BACK}; fi
+${AFTER_MERGE}
 echo "merged origin/$1"`,
   // Where the PR head ($1) stands against the task's commit: same; behind (in
   // its history: the task's later commits are not pushed yet); or foreign (a

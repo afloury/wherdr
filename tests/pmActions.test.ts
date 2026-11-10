@@ -512,6 +512,31 @@ esac
   })
 })
 
+// GitHub's Update branch runs no local merge driver: a union-merged index may
+// list an entry twice. Synced into the worktree, the project's wherdr.afterMerge
+// fixes it in a commit of its own, before the push.
+describe('the project\'s after-merge fix', () => {
+  it('fixes a merge made on GitHub once synced, and commits it', async () => {
+    const dir = path.join(tmp, 'after-merge'), origin = path.join(dir, 'origin.git'), repo = path.join(dir, 'repo'), other = path.join(dir, 'other')
+    const file = (cwd: string, text?: string) => text === undefined ? fs.readFileSync(path.join(cwd, 'docs/llms.txt'), 'utf8') : fs.writeFileSync(path.join(cwd, 'docs/llms.txt'), text)
+    fs.mkdirSync(dir)
+    git(tmp, 'init', '-q', '--bare', '-b', 'dev', origin)
+    git(tmp, 'clone', '-q', origin, repo); fs.mkdirSync(path.join(repo, 'docs'))
+    file(repo, '- [A](docs/a.md): a.\n'); git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'base'); git(repo, 'push', '-q', 'origin', 'HEAD:dev')
+    git(repo, 'checkout', '-q', '-b', 'task/A-1'); file(repo, '- [A](docs/a.md): a, task.\n'); git(repo, 'commit', '-qam', 'task'); git(repo, 'push', '-q', 'origin', 'HEAD:task/A-1')
+    git(repo, 'config', 'wherdr.afterMerge', `node ${path.resolve('scripts/llms-merge.mjs')} fix`)
+    // Elsewhere: dev changes A too, and the update keeps both lines.
+    git(tmp, 'clone', '-q', origin, other); git(other, 'checkout', '-q', 'dev')
+    file(other, '- [A](docs/a.md): a, dev.\n'); git(other, 'commit', '-qam', 'dev'); git(other, 'push', '-q', 'origin', 'HEAD:dev')
+    git(other, 'checkout', '-q', 'task/A-1'); git(other, 'merge', '-q', '-s', 'ours', '--no-edit', 'dev')
+    file(other, '- [A](docs/a.md): a, task.\n- [A](docs/a.md): a, dev.\n'); git(other, 'commit', '-q', '-a', '--amend', '--no-edit'); git(other, 'push', '-q', 'origin', 'HEAD:task/A-1')
+    expect((await localSh(SCRIPT.sync, [repo, 'task/A-1'])).code).toBe(0)
+    expect(file(repo)).toBe('- [A](docs/a.md): a, task.\n')
+    expect(git(repo, 'log', '-1', '--format=%s')).toBe('Fix the merge (wherdr.afterMerge)')
+    expect(git(repo, 'status', '--porcelain')).toBe('')
+  })
+})
+
 describe('pipeline.watch', () => {
   const run = (o: object) => ({ databaseId: 1, workflowName: 'CI', status: 'completed', conclusion: 'success', headSha: 'h2', url: 'https://ci.example/run/1', ...o })
 

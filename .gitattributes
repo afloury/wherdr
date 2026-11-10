@@ -1,4 +1,5 @@
 CHANGELOG.md merge=union
 # Parallel tasks each add a line to the docs index: local merges keep both
-# lines. GitHub's merge button ignores this; wherdr merges locally.
-docs/llms.txt merge=union
+# sides' lines, one line per entry (scripts/llms-merge.mjs, set up by npm
+# install). GitHub ignores it: the engine runs the same fix after a merge.
+docs/llms.txt merge=llms-index
