@@ -63,6 +63,10 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   terminal.key-order`; `ui targets` lists the settings it can point at): on a wide computer the
   side panel opens on its section and highlights it; on a phone the card names the setting with a
   crosshair, and a tap opens the page and highlights it.
+- **Wakes**: in a coordinator's conversation, a wake (Autopilot, Health check, Engine, Incident,
+  Step check) is a compact muted row, not one of your bubbles, with the coordinator's answer under
+  it; routine runs fold into one row. See
+  [Who sends a wake](project-management.md#who-sends-a-wake).
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the
   question changed meanwhile. A free answer selects its option, waits for the field, then types
