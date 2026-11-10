@@ -54,6 +54,47 @@ const escHtml = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 // ChatMarkdown.vue opens it through the router.
 const appButton = (href: string, label: string) => `<a href="${escHtml(href)}" class="md-app-link"><span class="md-app-icon" aria-hidden="true"></span><span>${label}</span></a>`
 
+// A `wherdr` fence: what an agent asks the conversation to draw instead of
+// code, one element per line (`kind arg…`). A block with a line not
+// understood stays an ordinary code block, never an error. Kinds:
+// - `choices "A" | "B" | "C"`: 2 to 4 buttons; a tap sends that text as the
+//   user's reply, quoted to the question before the block (ChatView.vue).
+//   ```wherdr
+//   choices "Squash" | "Merge commit" | "Rebase"
+//   ```
+export interface WherdrChoices { kind: 'choices', options: string[] }
+export type WherdrElement = WherdrChoices
+export const CHOICES_MIN = 2
+export const CHOICES_MAX = 4
+const CHOICE_MAX_CHARS = 80
+const CHOICE = /^\s*"([^"]+)"\s*$/
+function parseChoices(arg: string): WherdrChoices | null {
+  const options: string[] = []
+  for (const part of arg.split('|')) {
+    const option = CHOICE.exec(part)?.[1]?.replace(/\s+/g, ' ').trim() || ''
+    if (!option || option.length > CHOICE_MAX_CHARS || options.some(o => o.toLowerCase() === option.toLowerCase())) return null
+    options.push(option)
+  }
+  return options.length >= CHOICES_MIN && options.length <= CHOICES_MAX ? { kind: 'choices', options } : null
+}
+const KINDS: Record<string, (arg: string) => WherdrElement | null> = { choices: parseChoices }
+export function parseWherdrBlock(text: string): WherdrElement[] | null {
+  const out: WherdrElement[] = []
+  for (const line of String(text || '').split('\n')) {
+    if (!line.trim()) continue
+    const m = /^\s*([a-z]+)\s+(.*)$/.exec(line)
+    const el = m && Object.hasOwn(KINDS, m[1]!) ? KINDS[m[1]!]!(m[2]!) : null
+    if (!el) return null
+    out.push(el)
+  }
+  return out.length ? out : null
+}
+// Its HTML. Each option rides in a data attribute, read back by ChatView.vue.
+function wherdrHtml(els: WherdrElement[]): string {
+  return els.map(el => `<div class="w-choices" role="group">${el.options.map(o =>
+    `<button type="button" class="q-choice" data-a="${escHtml(o)}">${escHtml(o)}</button>`).join('')}</div>`).join('')
+}
+
 export function md(text: string, options: MdOptions = {}): string {
   // The modes never share a cached result.
   const key = options.doc ? `\0doc\0${text}` : options.plain ? `\0plain\0${text}` : text
@@ -100,6 +141,9 @@ export function md(text: string, options: MdOptions = {}): string {
                 : `<p class="svg-note">${escHtml(t('SVG preview unavailable. Source shown below.'))}</p>${source}`)
               + '</div>'
           }
+          // Only in a conversation: a file read elsewhere shows its source.
+          const block = !plainNow && l.toLowerCase() === 'wherdr' ? parseWherdrBlock(text) : null
+          if (block) return wherdrHtml(block)
           if (docNow) {
             return `<div class="code-block"><div class="code-head"><span>${l || 'code'}</span>`
               + `<span class="code-tools"><button type="button" class="code-copy">${escHtml(t('Copy'))}</button></span></div>`
