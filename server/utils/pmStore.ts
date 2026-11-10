@@ -13,7 +13,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { UiCard } from '../../shared/uiActions'
-import { cleanProjectInput, isBranch, machinesOf, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
+import { cleanProjectInput, isBranch, isGitBranch, machinesOf, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
 import { defaultColor, keyClash, projectOf, renamed, showIds, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
 import { WEIGHTS, isWeight, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
@@ -344,7 +344,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const known = await tasks()
       if (afterIds({ after }).some(a => !known.some(t => t.id === a && t.project === p.key))) throw badInput([{ path: 'after', message: 'tasks of the same project, comma-separated' }])
       const auto = str('auto'), addedBy = str('addedBy').slice(0, 100), planned = parseFiles(o.files), fromBranch = str('fromBranch')
-      if (fromBranch && !isBranch(fromBranch)) throw badInput([{ path: 'fromBranch', message: 'a branch name' }])
+      if (fromBranch && !isGitBranch(fromBranch)) throw badInput([{ path: 'fromBranch', message: 'a branch name' }])
       if (o.weight !== undefined && o.weight !== '' && !isWeight(o.weight)) throw badInput([{ path: 'weight', message: `one of ${WEIGHTS.join(', ')}` }])
       const weight = isWeight(o.weight) ? o.weight : undefined
       const origin = (['coordinator', 'automation', 'mission'] as const).find(x => x === o.origin) ?? 'user'

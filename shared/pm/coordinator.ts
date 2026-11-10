@@ -1,7 +1,7 @@
 // The project coordinator: the `wherdr pm` commands its token allows, the
 // rights checked on each, and the role files written in its own folder. Pure:
 // the server (server/utils/pmCoordinator.ts) reads and writes.
-import { isBranch, type Project } from './project'
+import { isGitBranch, type Project } from './project'
 import { WEIGHTS, isWeight, type Holder, type Template, type Weight } from './workflow'
 import { SPEC_RULE, type Run, type Task } from './run'
 import { wasReleased } from './release'
@@ -269,7 +269,7 @@ function parseWords(argv: unknown): Command | { error: string } {
     if (weight !== undefined && !isWeight(weight)) return { error: `--weight is one of ${WEIGHTS.join(', ')}` }
     const files = parseFiles(flags.files ?? '')
     const fromBranch = flags['from-branch']?.trim()
-    if (fromBranch !== undefined && !isBranch(fromBranch)) return { error: '--from-branch is a branch name' }
+    if (fromBranch !== undefined && !isGitBranch(fromBranch)) return { error: '--from-branch is a branch name' }
     return { name: verb, title, type, ...(after ? { after } : {}), ...(description ? { description } : {}), ...(weight ? { weight } : {}), ...(files.length ? { files } : {}), ...(fromBranch ? { fromBranch } : {}) }
   }
   if (verb === 'pr merge') {

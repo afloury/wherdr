@@ -91,7 +91,7 @@ describe('import mapping', () => {
     // Open tasks only, by the name v2 showed (site's key "x" is not valid: site/1); an under-way one keeps its stage, branch and PR.
     expect(r.projects[0].tasks).toEqual([
       { v2: 'APP-1', stage: 'todo', title: 'Fix the login form', description: 'The form loses focus.', intro: 'From v2 APP-1.' },
-      { v2: 'APP-2', stage: 'progress', title: 'Add dark mode', description: '', branch: 'work/2-dark-mode', pr: 12, intro: 'From v2 APP-2. Continue from branch `work/2-dark-mode` / PR #12.' },
+      { v2: 'APP-2', stage: 'progress', title: 'Add dark mode', description: '', branch: 'feature/c++', pr: 12, intro: 'From v2 APP-2. Continue from branch `feature/c++` / PR #12.' },
     ])
     expect(r.projects[3].tasks.map((t: { v2: string }) => t.v2)).toEqual(['site/1'])
   })

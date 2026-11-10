@@ -3,6 +3,7 @@
 // open tasks. The install reads nothing of it; nothing here writes.
 import fs from 'node:fs'
 import path from 'node:path'
+import { isGitBranch } from '../../shared/pm/project'
 
 type Obj = Record<string, any>
 export interface BoardTask { repo: string, n?: unknown, id?: unknown, stage?: unknown, title?: unknown, description?: unknown, archivedAt?: unknown, branch?: unknown, pr?: unknown }
@@ -72,7 +73,7 @@ export function v2Intro(v2: string, branch?: string, pr?: number) {
 
 function v2Task(board: Board, t: BoardTask): V2Task {
   const v2 = v2TaskName(board, t)
-  const branch = typeof t.branch === 'string' && BRANCH_RE.test(t.branch.trim()) ? t.branch.trim() : undefined
+  const branch = typeof t.branch === 'string' && isGitBranch(t.branch.trim()) ? t.branch.trim() : undefined
   const pr = prNumber(t.pr)
   return { v2, stage: String(t.stage || 'todo'), title: String(t.title || '').trim().slice(0, 200) || `Task ${v2}`, description: String(t.description || '').slice(0, 20000), ...(branch ? { branch } : {}), ...(pr ? { pr } : {}), intro: v2Intro(v2, branch, pr) }
 }

@@ -108,7 +108,7 @@ to redo in its template (reviewer, merge, worker…). Alfred asks you to switch 
   "From v2 WHR-37. Continue from branch `feat/x` / PR #12.", and its worker starts from that
   branch, so it pushes to the same PR, when the remote still has the branch. When the remote
   no longer has it, the worker starts from the base branch, and the task's history and its
-  instructions say so;
+  instructions say so. When the remote cannot be reached, the task waits and starts again later;
 - its guards and the other machines its tasks may run on, when its v2 settings call for them.
 
 Alfred shows each change before making it, and makes it only after your yes. You can also ask it

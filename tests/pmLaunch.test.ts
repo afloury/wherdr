@@ -76,7 +76,7 @@ let dir = '', n = 0
 beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-launch-')) })
 afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
-async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template, screen?: string, tmpFreeKb?: number, exec?: (script: string) => string | undefined, fails?: (script: string) => boolean } = {}) {
+async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template, screen?: string, tmpFreeKb?: number, exec?: (script: string) => string | undefined, fails?: (script: string) => number | undefined } = {}) {
   const store: PmStore = createPmStore(dir)
   await store.setEnabled(true)
   await store.saveTemplate(opts.template ?? template)
@@ -90,7 +90,8 @@ async function setup(opts: { installed?: string[], exits?: (number | null)[], te
     if (method === 'machine.exec') {
       const [, , script, , ...args] = p.argv as string[]
       execs.push({ script: script!, args })
-      if (opts.fails?.(script!)) return { code: 1, stdout: '' }
+      const failed = opts.fails?.(script!)
+      if (failed) return { code: failed, stdout: '' }
       if (script!.includes('command -v')) return { code: 0, stdout: Buffer.from(args.filter(a => (opts.installed ?? ['claude']).includes(a)).join('\n')).toString('base64') }
       if (script!.includes('$HOME')) return { code: 0, stdout: Buffer.from('/home/u').toString('base64') }
       if (script!.includes('df -Pk /tmp')) return { code: 0, stdout: Buffer.from(String(opts.tmpFreeKb ?? 9e6)).toString('base64') }
@@ -186,7 +187,7 @@ describe('startTask', () => {
 
   it.each([false, true])('a task that continues a branch starts from it when the remote has it, else from the base, saying so (gone: %s)', async (gone) => {
     const worktree = (execs: { script: string, args: string[] }[]) => execs.find(e => e.script === WORKTREE_SCRIPT)!.args.slice(1)
-    const { store, deps, files, execs } = await setup({ fails: s => gone && s === FETCH_BRANCH_SCRIPT })
+    const { store, deps, files, execs } = await setup({ fails: s => gone && s === FETCH_BRANCH_SCRIPT ? 2 : undefined })
     await store.addTask({ project: 'WEB', title: 'Dark mode', type: 'simple', fromBranch: 'work/2-dark-mode' })
     const t = await startTask(deps, 'WEB-2')
     expect(execs.find(e => e.script === FETCH_BRANCH_SCRIPT)!.args).toEqual(['/home/u/web', 'work/2-dark-mode'])
@@ -202,6 +203,13 @@ describe('startTask', () => {
       expect(text).toContain(line)
       expect(t.log!.map(l => l.text)).toContain(line)
     }
+  })
+
+  it('a task whose branch to continue cannot be fetched (remote unreachable) waits, without a worktree', async () => {
+    const { store, deps, execs } = await setup({ fails: s => s === FETCH_BRANCH_SCRIPT ? 1 : undefined })
+    await store.addTask({ project: 'WEB', title: 'Dark mode', type: 'simple', fromBranch: 'feature/c++' })
+    expect(await startTask(deps, 'WEB-2')).toMatchObject({ state: 'waiting', waiting: expect.stringMatching(/Could not fetch branch `feature\/c\+\+`/) })
+    expect(execs.some(e => e.script === WORKTREE_SCRIPT)).toBe(false)
   })
 
   it('a nearly full /tmp on the machine: waiting with the reason, no terminal', async () => {
