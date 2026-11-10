@@ -49,6 +49,7 @@ import { sameFilesText } from '../../shared/pm/files'
 import type { CoordinatorRecord, PmStore } from './pmStore'
 import { ALFRED, OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
 import { APP_URL_FILE, DATA_DIR, ENV_APP_URL, HOME } from './env'
+import { findDocsDir } from './wherdrDocs'
 import { projectsHome } from '../../bin/lib/userpath.mjs'
 import { readV2Projects, type V2Candidate } from './v2Board'
 import pkg from '../../package.json'
@@ -607,8 +608,8 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   return { p, local: !!m.local, on, folder, first: false, v2: false, none: false }
 }
 
-// wherdr's docs on its own machine: the install's, so an update brings new ones.
-const docsDir = () => path.join(process.env.WHERDR_ROOT || process.cwd(), 'docs')
+// wherdr's docs on its own machine: the running build's, so an update brings new ones.
+const docsDir = () => findDocsDir()
 
 // At wherdr's start (an update included): every running coordinator's role
 // files rewritten, Alfred's home too. Nothing else: no message, no wake; each
@@ -646,7 +647,7 @@ export async function writeAlfredHome(deps: Deps) {
   const docFiles = (await fs.readdir(docs).catch(() => [] as string[])).filter(n => n.endsWith('.md')).sort()
   const main = mainRoleFiles(projects)
   const v2 = (await v2Projects(deps.store)).length > 0
-  const files = { ...main, ...alfredFiles({ home: folder, version: wherdrVersion(), docs, docFiles, pm: await deps.store.enabled(), projects, v2 }, main['AGENTS.md']!.split('\n')) }
+  const files = { ...main, ...alfredFiles({ home: folder, version: wherdrVersion(), docs, docFiles, address: coordinatorUrls(new URL('http://127.0.0.1')), pm: await deps.store.enabled(), projects, v2 }, main['AGENTS.md']!.split('\n')) }
   for (const [file, text] of Object.entries(files)) {
     await fs.mkdir(path.dirname(path.join(folder, file)), { recursive: true, mode: 0o700 })
     await fs.writeFile(path.join(folder, file), text, { mode: 0o600 })

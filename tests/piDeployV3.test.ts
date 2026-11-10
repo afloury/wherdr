@@ -142,16 +142,21 @@ describe.skipIf(!hasCommands('bash', 'tar', 'sha256sum'))('pi-v3-package.sh', ()
   const pkg = (extra?: (root: string) => void, version = `3.0.0-dev+${A.slice(0, 7)}`) => {
     const root = tmp()
     build(root, version)
+    fs.mkdirSync(path.join(root, 'docs'))
+    for (const f of ['llms.txt', 'overview.md']) fs.writeFileSync(path.join(root, 'docs', f), '')
     extra?.(root)
     return { root, r: spawnSync('bash', [PACKAGE, path.join(root, 'www'), A], { cwd: root, encoding: 'utf8' }) }
   }
 
-  it('packs .output and COMMIT with its checksum, COMMIT beside it', () => {
+  it('packs .output (the docs inside) and COMMIT with its checksum, COMMIT beside it', () => {
     const { root, r } = pkg()
     expect(r.status, r.stderr).toBe(0)
     const out = path.join(root, 'www')
     expect(fs.readFileSync(path.join(out, 'COMMIT'), 'utf8').trim()).toBe(A)
-    expect(execFileSync('tar', ['-tzf', path.join(out, 'wherdr-v3.tgz')], { encoding: 'utf8' })).toMatch(/^COMMIT$/m)
+    const files = execFileSync('tar', ['-tzf', path.join(out, 'wherdr-v3.tgz')], { encoding: 'utf8' })
+    expect(files).toMatch(/^COMMIT$/m)
+    expect(files).toMatch(/^\.output\/docs\/llms\.txt$/m)
+    expect(files).toMatch(/^\.output\/docs\/overview\.md$/m)
     expect(execFileSync('sha256sum', ['-c', 'wherdr-v3.tgz.sha256'], { cwd: out, encoding: 'utf8' })).toContain('OK')
   })
 
