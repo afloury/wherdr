@@ -33,7 +33,7 @@ const error = ref('')
 
 const at = computed(() => (props.card.state?.started ? props.card.state.at : -1))
 const done = computed(() => !!props.card.state?.done)
-const proofs = (id: string) => Object.entries(props.card.state?.proofs[id] ?? {}).filter(([, v]) => v)
+const proofs = (id: string) => Object.entries(props.card.state?.proofs[id] ?? {}).filter((e): e is [string, string] => !!e[1])
 const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
 // The steps that have screenshots, to look at before the push, the PR or the merge.
 const shots = (id: string) => props.card.state?.shots?.[id] ?? []
@@ -189,7 +189,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
               <p class="task-desc">{{ s.text }}</p>
             </details>
             <small v-if="switched && i === switchAt" class="muted" data-testid="review-switch">{{ switched }}</small>
-            <small v-for="[k, v] in proofs(s.id)" :key="k" class="muted">{{ k }}: <a v-if="/^https?:\/\//.test(v)" :href="v" target="_blank" rel="noopener">{{ v }}</a><template v-else>{{ v }}</template></small>
+            <TaskProofs :proofs="proofs(s.id)" :links="card.links" />
             <TaskShots v-if="shots(s.id).length" :task="card.id" :shots="shots(s.id)" :mode="shotMode(s)" />
             <details v-if="earlier(s.id).length" data-testid="shots-earlier">
               <summary>{{ tl('Earlier screenshots') }}</summary>
