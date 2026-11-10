@@ -749,7 +749,8 @@ function resetListWidth() {
       <QuotaStrip :rows="listQuotas" :api="listApi" :class="{ 'after-stats': showCounters && agents.length }" />
 
       <OpenNetworkBanner />
-      <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
+      <MajorReleaseCard v-if="majorCard" :next="majorCard" dismissible />
+      <UpdateBanner v-else-if="updateBanner" :info="updateBanner" dismissible />
 
       <p v-if="machineBarSelection?.length === 0" class="machine-empty">{{ tl('No machines in this group.', 'Aucune machine dans ce groupe.') }}</p>
       <template v-if="homeGrouping === 'state'">

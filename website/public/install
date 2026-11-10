@@ -29,7 +29,7 @@
 #   WHERDR_YES=1  answer yes to every question  (non-interactive use)
 #   WHERDR_NO_BROWSER=1  never open a browser
 #   WHERDR_SKILL=off  skip agent skill installation and refresh
-#   WHERDR_REF    Git tag or branch of the plugin (default: main)
+#   WHERDR_REF    Git tag or branch of the plugin (default: 2.x, the v2 release branch)
 #   WHERDR_PLUGIN a local checkout to install instead of afloury/wherdr (development)
 #
 # Source: https://github.com/afloury/wherdr/blob/main/website/public/install
@@ -42,7 +42,7 @@ main() {
   REPO="afloury/wherdr"
   PLUGIN_ID="afloury.wherdr"
   PLUGIN="${WHERDR_PLUGIN:-$REPO}"
-  REF="${WHERDR_REF:-main}"
+  REF="${WHERDR_REF:-2.x}"
   DIR="${WHERDR_DIR:-$HOME/wherdr}"
   case "$DIR" in /*) ;; *) DIR="$PWD/$DIR" ;; esac
   PORT="${WHERDR_PORT:-7683}"

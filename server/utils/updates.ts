@@ -1,7 +1,7 @@
 // Latest wherdr release on GitHub, checked at most once a day
 // (public API without a token, nothing is sent). WHERDR_UPDATE_CHECK=off disables the call.
 import pkg from '../../package.json'
-import { compareVersions, installMode, oneTapMode, updateCommand, type UpdateInfo } from '../../shared/updates'
+import { compareVersions, installMode, majorMove, majorOf, oneTapMode, releaseBranch, updateCommand, type UpdateInfo } from '../../shared/updates'
 
 export const REPO = 'afloury/wherdr'
 export const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases?per_page=100`
@@ -20,6 +20,7 @@ export function createUpdateChecker(opts: {
 }) {
   const now = opts.now ?? Date.now
   let cached: Release | null = null
+  let nextMajor: UpdateInfo['nextMajor'] = null
   let nextAt = 0
   let pending: Promise<void> | null = null
 
@@ -28,10 +29,17 @@ export function createUpdateChecker(opts: {
       const res = await opts.fetch(RELEASES_URL)
       if (!res.ok) throw new Error('http')
       const releases = await res.json() as { tag_name?: unknown, html_url?: unknown, draft?: boolean, prerelease?: boolean }[]
-      const stable = releases.filter(r => !r.draft && !r.prerelease && /^v\d+\.\d+\.\d+$/.test(String(r.tag_name)))
+      const all = releases.filter(r => !r.draft && !r.prerelease && /^v\d+\.\d+\.\d+$/.test(String(r.tag_name)))
         .sort((a, b) => compareVersions(String(b.tag_name), String(a.tag_name)))
+      // Only the running major is ever offered: a newer one (v3) installs beside
+      // this one, and its card says how.
+      const major = majorOf(opts.current)
+      const next = all.find(r => (majorOf(String(r.tag_name)) ?? 0) > (major ?? Infinity))
+      nextMajor = next ? majorMove(REPO, String(next.tag_name).replace(/^v/, ''), typeof next.html_url === 'string' ? next.html_url : '') : null
+      const stable = all.filter(r => majorOf(String(r.tag_name)) === major)
       const body = stable[0]
-      if (!body || typeof body.tag_name !== 'string') throw new Error('tag')
+      if (!body) { cached ??= { version: opts.current, url: '', missed: [], truncated: false }; nextAt = now() + DAY_MS; return }
+      if (typeof body.tag_name !== 'string') throw new Error('tag')
       const missed = [...new Set(stable.map(r => String(r.tag_name).replace(/^v/, '')))]
         .filter(version => compareVersions(version, opts.current) > 0)
       const candidate = { version: body.tag_name.replace(/^v/, ''), url: typeof body.html_url === 'string' ? body.html_url : '',
@@ -69,14 +77,14 @@ export function createUpdateChecker(opts: {
 
   return async function check(): Promise<UpdateInfo> {
     const mode = installMode(opts.env.WHERDR_INSTALL)
-    const base = { current: opts.current, mode, command: updateCommand(mode, REPO), oneTap: oneTapMode(mode), behind: 0, missed: [] as string[], behindAtLeast: false }
+    const base = { current: opts.current, mode, command: updateCommand(mode, REPO, releaseBranch(opts.current)), oneTap: oneTapMode(mode), behind: 0, missed: [] as string[], behindAtLeast: false }
     if (String(opts.env.WHERDR_UPDATE_CHECK || '').toLowerCase() === 'off') return { ...base, latest: null, url: null, checked: false }
     if (now() >= nextAt) {
       pending ??= refresh().finally(() => { pending = null })
       await pending
     }
     const newer = cached && compareVersions(cached.version, opts.current) > 0
-    return { ...base, latest: newer ? cached!.version : null, url: newer ? cached!.url || null : null, checked: !!cached,
+    return { ...base, latest: newer ? cached!.version : null, url: newer ? cached!.url || null : null, checked: !!cached, nextMajor,
       ...(newer ? { behind: cached!.missed.length, missed: cached!.missed.slice(0, 5), behindAtLeast: cached!.truncated } : {}) }
   }
 }

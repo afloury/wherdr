@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+
+- **Updates stay on wherdr 2; a card announces wherdr 3.** The update check and the one-tap update only consider releases of the running major, so wherdr 3 is never installed over wherdr 2 and 2.x fixes stay visible. When a newer major is published, Home shows a "wherdr 3 is out" card with its release notes, its migration guide and the command that installs it beside this version. The plugin update command, the curl installer and git checkouts follow the `2.x` branch instead of `main`.
+
 ### Fixed
 
 - **Back to a conversation that stays put.** Returning to the app re-reads the conversation at once without redrawing it when nothing changed.

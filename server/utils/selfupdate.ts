@@ -7,7 +7,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import pkg from '../../package.json'
-import { installMode, oneTapMode, updateRunning, type InstallMode, type UpdateJob } from '../../shared/updates'
+import { installMode, majorOf, oneTapMode, updateRunning, type InstallMode, type UpdateJob } from '../../shared/updates'
 import { log } from './env'
 import { HerdrError } from './herdr'
 import { checkUpdate, REPO } from './updates'
@@ -47,6 +47,8 @@ export function buildPlan(o: {
   if (updateRunning(o.job, o.now)) throw new HerdrError('update_running', 'An update is already in progress')
   // Only the release the server itself found: never a version picked by the client.
   if (!o.latest || o.to !== o.latest) throw new HerdrError('update_version', 'No newer version to install')
+  // A new major (v3) installs beside this one, never over it.
+  if (majorOf(o.latest) !== majorOf(o.current)) throw new HerdrError('update_major', `wherdr ${o.latest} is a new major version: it installs beside this one, see its migration guide`)
   return {
     kind: o.mode,
     from: o.current,

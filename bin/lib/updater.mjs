@@ -173,6 +173,12 @@ export async function runUpdate(plan, io) {
   const d = driverFor(plan, io)
   const healthMs = plan.healthMs ?? HEALTH_MS
   io.log(`update ${plan.from} → ${plan.to} (${plan.kind}, ${plan.root})`)
+  // Defence in depth (buildPlan refuses it too): a new major installs beside, never over.
+  const major = v => String(v).split('.')[0]
+  if (major(plan.from) !== major(plan.to)) {
+    io.state('failed', `wherdr ${plan.to} is a new major version: it installs beside this one, not over it. Still on ${plan.from}.`)
+    return 'failed'
+  }
   io.state('installing')
   try { await d.install() } catch (e) {
     io.log(`install failed: ${e.message}`)
