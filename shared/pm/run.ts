@@ -9,6 +9,7 @@ import type { Report } from './report'
 import type { TaskSummary } from './summary'
 import type { Mark } from './times'
 import { isPublic, publicWorkerSection } from './visibility'
+import { CODEX_NO_UPDATE } from '../codexLaunch'
 import type { Recovery } from './incident'
 import { uiGuide } from './uiGuide'
 
@@ -171,7 +172,7 @@ const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 export function agentLine(program: string, model: string, instructions: string, session?: { id: string, resume?: string }) {
   const own = program === 'claude' && session ? (session.resume ? ['--resume', session.id] : ['--session-id', session.id]) : []
   const first = own[0] === '--resume' ? session!.resume! : `Read ${instructions} and follow it.`
-  return ['exec', program, '--model', model, ...own, first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
+  return ['exec', program, ...(program === 'codex' ? CODEX_NO_UPDATE : []), '--model', model, ...own, first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
 }
 
 // A task's working branch: the one it started with, else its project's now.
