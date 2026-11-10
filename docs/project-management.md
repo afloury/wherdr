@@ -140,7 +140,9 @@ its folder, branches and task worktrees stay on the machine.
   machines and takes the path of the repository's clone there (`~/project`); once
   saved, wherdr runs that machine's readiness check (see *Start on…* under
   [Board](#board)) and shows *Ready* or what is missing. Each machine shows its
-  last check (*Not checked yet* before the first); ↻ runs it again. ✕ removes a machine:
+  last check (*Not checked yet* before the first); ↻ runs it again. Each machine also
+  shows its memory as placement reads it: *5.2 GB free of 16.0 GB*, on macOS
+  *pressure normal, ≈8.3 GB available of 18.0 GB*. ✕ removes a machine:
   new tasks no longer start there, tasks already there stay. Its switch off pauses it
   for the project instead, its clone kept ([Pause a machine for a project](machines.md#pause-a-machine-for-a-project)). Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
@@ -150,7 +152,8 @@ its folder, branches and task worktrees stay on the machine.
   machine with the largest share of memory and cores left after it) or *Home
   first* (other machines only once home is full). A machine fits a task when
   its free memory covers the task's estimate plus the machine's reserve
-  (Settings › Machines). An idle machine (no wherdr agent at work there) always
+  (Settings › Machines; on macOS the memory macOS reports available, its free
+  percentage of the RAM, which counts what it can reclaim or compress). An idle machine (no wherdr agent at work there) always
   takes one task its RAM can hold, even with less free memory than that: the
   reserve only holds its second task and beyond; on macOS a *critical* memory
   pressure still holds every task. A task that waits for room names it, and so does the

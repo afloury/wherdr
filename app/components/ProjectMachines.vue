@@ -8,8 +8,10 @@
 // tasks spread over these machines (shared/pm/placement.ts), saved at once.
 // Each machine's switch: off, it is paused for the project (no new task goes
 // there, tasks already there go on, its clone stays), saved at once.
+// Each machine's memory reading, as placement judges it (macOS: by its pressure).
 import { allowedMachines, isPaused, type Project } from '#shared/pm/project'
 import { STRATEGIES, STRATEGY_LABELS, type Strategy } from '#shared/pm/placement'
+import { memoryLabel } from '#shared/pm/memory'
 
 const props = defineProps<{ project: Project, ready?: Record<string, string> }>()
 const emit = defineEmits<{ changed: [] }>()
@@ -17,6 +19,11 @@ const p = computed(() => props.project)
 
 const labelOf = (key: string) => machines.value.find(m => m.key === key)?.label ?? (key || tl('This machine'))
 const others = computed(() => allowedMachines(p.value).slice(1))
+onMounted(loadMemory)
+const memOf = (k: string) => {
+  const mem = memoryRows.value?.find(r => r.key === k)?.mem
+  return mem ? memoryLabel(mem) : ''
+}
 const addable = computed(() => machines.value
   .filter(m => !m.session && (m.local || m.status === 'online') && !allowedMachines(p.value).includes(m.key))
   .map(m => ({ label: m.label, value: m.key })))
@@ -85,6 +92,7 @@ const remove = (k: string) => run(`rm:${k}`, async () => {
         <USwitch :model-value="!isPaused(p, p.machine)" color="success" size="lg" :disabled="busy !== ''" :aria-label="tl(`Take tasks on ${labelOf(p.machine)}`)" data-testid="pm-machine-on" @update:model-value="setOn(p.machine, $event)" />
         <i class="pm-slot" /><i class="pm-slot" />
       </span>
+      <small v-if="memOf(p.machine)" class="pm-ready" data-testid="pm-machine-memory">{{ memOf(p.machine) }}</small>
       <small v-if="isPaused(p, p.machine)" class="pm-ready" data-testid="pm-machine-paused">{{ tl('Paused for this project: no new task starts here') }}</small>
     </div>
     <div v-for="k in others" :key="k" class="pm-machine" data-testid="pm-machine">
@@ -95,6 +103,7 @@ const remove = (k: string) => run(`rm:${k}`, async () => {
         <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-refresh-cw" :aria-label="tl(`Check ${labelOf(k)}`)" :disabled="!!checks[k] && 'checking' in checks[k]!" data-testid="pm-machine-check" @click="check(k)" />
         <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-x" :aria-label="tl(`Remove ${labelOf(k)}`)" :loading="busy === `rm:${k}`" :disabled="busy !== ''" data-testid="pm-machine-remove" @click="remove(k)" />
       </span>
+      <small v-if="memOf(k)" class="pm-ready" data-testid="pm-machine-memory">{{ memOf(k) }}</small>
       <small v-if="isPaused(p, k)" class="pm-ready" data-testid="pm-machine-paused">{{ tl('Paused for this project: no new task starts here') }}</small>
       <small v-else class="pm-ready" :class="{ bad: status(k).bad }" data-testid="pm-machine-ready">{{ status(k).text }}</small>
     </div>
