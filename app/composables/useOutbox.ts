@@ -1,11 +1,14 @@
 // Messages of each conversation shown before the server confirms them (see
 // utils/outbox.ts). Sends of a conversation go out one after the other, in
 // the order they were typed, whatever each one takes on the server.
-import { reactive } from 'vue'
+import { reactive, watch } from 'vue'
 import type { Pane, QueuedMessage } from '#shared/types'
 import { type OutboxItem, type RecentSend, SendTimeout, addSending, chainSend, failLocal, isRepeat, newOutboxId, prune, recentSends, resend, returnHeld, settle } from '~/utils/outbox'
 import { tl } from '~/utils/i18n'
 import { sendMessage } from './useActions'
+import { herdrState, toast } from './useHerdr'
+import { useDraft } from './useDraft'
+import { restoreDraft } from '~/utils/queuedCancel'
 
 // Plain module state: it outlives the views (switching conversations while sending).
 const boxes = reactive(new Map<string, OutboxItem[]>())
@@ -93,9 +96,22 @@ export function outboxPrune(paneId: string, server: QueuedMessage[]) {
   if (boxes.has(paneId)) update(paneId, l => prune(l, server, Date.now(), reads.get(paneId) ?? 0))
 }
 
-// Codex gone while messages waited for it on the server: their texts, out of the outbox.
-export function outboxReturnHeld(paneId: string, server: QueuedMessage[]): string[] {
-  const { back } = returnHeld(outboxFor(paneId), server)
-  if (back.length) update(paneId, l => returnHeld(l, server).kept)
-  return back
+// With each state, for every conversation with messages here (open or not):
+// Codex gone (exited, or stopped by its update) while messages waited for it on
+// the server: they come back into that conversation's message field, after what
+// is typed there. Then the server's records prune the rest.
+export function outboxSync(paneId: string, p: Pane | undefined, stateOk: boolean) {
+  const server = p?.queued || []
+  if (stateOk && (!p || p.stopped)) {
+    const { kept, back } = returnHeld(outboxFor(paneId), server)
+    if (back.length) {
+      update(paneId, () => kept)
+      for (const text of back) restoreDraft(useDraft(paneId), text, [], true)
+      toast(tl('Codex stopped before your message reached it: it is back in the field'))
+    }
+  }
+  outboxPrune(paneId, server)
 }
+watch(herdrState, (s) => {
+  for (const id of [...boxes.keys()]) outboxSync(id, s.panes.find(x => x.id === id), s.ok)
+})

@@ -29,7 +29,6 @@ import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
 import { appRoute } from '#shared/appLinks'
 import type { UiOpenEvent } from '#shared/uiOpen'
 import type { UiShowEvent } from '#shared/uiShow'
-import { restoreDraft } from '~/utils/queuedCancel'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
 const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
@@ -269,16 +268,7 @@ function onSent(q: QueuedMessage | null) {
 }
 // As soon as the server lists them, the server state wins; once taken, they stay
 // until the transcript is read again (see utils/outbox.ts prune).
-// Codex gone (exited, or stopped by its update) while messages waited for it on
-// the server: they come back into the message field, after what is typed there.
-watch(pane, (p) => {
-  if (herdrState.value.ok && (!p || p.stopped)) {
-    const back = outboxReturnHeld(props.paneId, p?.queued || [])
-    for (const text of back) restoreDraft(draft, text, [], true)
-    if (back.length) toast(tl('Codex stopped before your message reached it: it is back in the field'))
-  }
-  outboxPrune(props.paneId, p?.queued || [])
-})
+watch(pane, p => outboxSync(props.paneId, p, herdrState.value.ok))
 
 const prompt = computed(() => (pane.value && pane.value.status === 'blocked' && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
 watch(() => JSON.stringify(prompt.value), () => nextTick(() => chatRef.value?.scrollToEnd(false)))

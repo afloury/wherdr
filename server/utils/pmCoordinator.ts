@@ -708,7 +708,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
     line: `${PATH_SETUP}; export PATH=${quote(`${c.folder}/bin`)}:"$PATH"; exec ${argv.map(quote).join(' ')}`,
   }, 30000)
   // Typed once the program is ready (in the background: it may wait on a dialog).
-  if (!asArg) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
+  if (!asArg) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' || r === 'installing' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
   // version: what this session knows (takeUpdateNotice tells it of an update).
   const { told: _told, ...rec } = (await deps.store.coordinator(key))!

@@ -63,12 +63,16 @@ export function prune(list: OutboxItem[], server: QueuedMessage[], now: number, 
   const out: OutboxItem[] = []
   for (const q of list) {
     if (q.state === 'sending') out.push(q)
-    else if (known.has(q.id)) continue
+    // Held on the server for a Codex not ready yet: the local copy stays until
+    // it is typed, or comes back into the field (see returnHeld).
+    else if (known.has(q.id)) { if (q.state === 'held') out.push(q) }
     else if (q.local) out.push(q)
     else {
-      const gone = q.goneAt ?? Math.max(now, q.settledAt ?? q.at ?? 0)
+      // No longer listed, Codex still there: typed. Never "held" again.
+      const left = q.state === 'held' ? { ...q, state: undefined } : q
+      const gone = left.goneAt ?? Math.max(now, left.settledAt ?? left.at ?? 0)
       if (readAt - gone >= SETTLED_MS || now - gone >= GONE_MAX_MS) continue
-      out.push(q.goneAt === gone ? q : { ...q, goneAt: gone })
+      out.push(left.goneAt === gone && left === q ? q : { ...left, goneAt: gone })
     }
   }
   return out

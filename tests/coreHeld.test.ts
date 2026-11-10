@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { createHeld } from '../server/utils/coreHeld'
 import { codexLine } from '../shared/codexLaunch'
-import { returnHeld } from '../app/utils/outbox'
-import type { Pane, QueuedMessage } from '../shared/types'
+import { addSending, prune, returnHeld, settle } from '../app/utils/outbox'
+import type { Pane } from '../shared/types'
 import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
@@ -23,7 +23,13 @@ describe('a message sent while Codex installs or updates itself', () => {
     const ready = [pane({ installing: undefined })]
     held.apply(ready)
     expect(sent).toEqual(['Hi'])
-    expect(ready[0]!.queued?.map(q => q.text)).toEqual(['Next'])
+    // Listed until it was typed, then the next one goes.
+    expect(ready[0]!.queued?.map(q => q.text)).toEqual(['Hi', 'Next'])
+    await new Promise(r => setTimeout(r, 0))
+    const after = [pane({ installing: undefined })]
+    held.apply(after)
+    expect(sent).toEqual(['Hi', 'Next'])
+    expect(after[0]!.queued?.map(q => q.text)).toEqual(['Next'])
   })
   it('is dropped when Codex exits or is stopped by its update, and comes back into the field', () => {
     const sent: string[] = []
@@ -34,9 +40,30 @@ describe('a message sent while Codex installs or updates itself', () => {
     expect(stopped[0]!.queued).toBeUndefined()
     held.apply([pane({ installing: undefined })])
     expect(sent).toEqual([])
-    // The sending device: its record the server no longer lists returns as text.
-    const local: QueuedMessage[] = [{ ...q, text: 'Hi' }, { id: 'w-x', text: 'Typed', state: 'failed' }]
-    expect(returnHeld(local, [])).toEqual({ kept: [local[1]], back: ['Hi'] })
+    // The sending device: its copy stays while the server lists it, then comes back as text.
+    const local = prune(settle(addSending([], 'w-abc', 'Hi', 1), 'w-abc', q, 2), [q], 3)
+    expect(local.map(x => x.state)).toEqual(['held'])
+    expect(returnHeld(local, []).back).toEqual(['Hi'])
+    // Typed while Codex stayed: no longer held, nothing to give back.
+    expect(returnHeld(prune(local, [], 4), []).back).toEqual([])
+  })
+  it('keeps a message whose send failed for the next try, but never types again one that may have reached Codex', async () => {
+    let fail: Error & { code?: string } = Object.assign(new Error('disconnected'), { code: 'unreachable' })
+    const held = createHeld(async () => { throw fail })
+    held.hold(pane(), 'Hi')
+    const ready = () => [pane({ installing: undefined })]
+    held.apply(ready())
+    await new Promise(r => setTimeout(r, 0))
+    const again = ready()
+    held.apply(again)
+    expect(again[0]!.queued?.map(q => q.text)).toEqual(['Hi'])
+    fail = Object.assign(new Error('timeout'), { code: 'timeout' })
+    await new Promise(r => setTimeout(r, 0))
+    held.apply(ready())
+    await new Promise(r => setTimeout(r, 0))
+    const after = ready()
+    held.apply(after)
+    expect(after[0]!.queued).toBeUndefined()
   })
 })
 

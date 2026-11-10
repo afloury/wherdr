@@ -202,7 +202,7 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       const turn = await alfredTurn()
       await noteTurn(store, p.key, turn?.kind === 'user' ? 'user' : 'wake', turn?.said)
       const text = `From ${ALFRED}: ${cmd.text}`
-      if (started) void sendFirstMessage(deps, terminal, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, terminal, text) : r)).catch(() => {})
+      if (started) void sendFirstMessage(deps, terminal, text).then(r => (r === 'dialog' || r === 'installing' ? sendAfterDialog(deps, terminal, text) : r)).catch(() => {})
       else await deps.call('terminal.send', { terminal, text }, 30000)
       await store.logProject(p.key, { by: ALFRED, text: `told the coordinator: ${cmd.text.slice(0, 300)}`, ...(turn?.said ? { said: turn.said } : {}) })
       return { told: p.key, ...(started ? { started: `its coordinator was not running: started on ${machineName(p.machine)}, the message goes once it is ready` } : {}), next: `Read its answer later with wherdr alfred last ${p.key}` }

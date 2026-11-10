@@ -16,7 +16,7 @@ import { fmt } from '../../shared/message'
 import { placementLabels } from '../../shared/coreLayout'
 import { codexInstalling, codexLine } from '../../shared/codexLaunch'
 import { coreCapabilities, hasPort, type CoreCapabilities } from '../../shared/coreCapabilities'
-import type { ChatItem, DirEntry, DirListing, MachineConfig, MachineInfo, Pane, Workspace } from '../../shared/types'
+import type { ChatItem, DirEntry, DirListing, MachineConfig, MachineInfo, Pane, QueuedMessage, Workspace } from '../../shared/types'
 
 export interface CoreAdminDeps {
   call: <T>(method: string, params: object, timeout: number) => Promise<T>
@@ -32,6 +32,8 @@ export interface CoreAdminDeps {
   onQueued?: (watch: Promise<unknown>) => void // test hook: the background wait of a queued first message
   readyWatchMs?: number // how long the first message waits for the program to be ready (default 15 s)
   pollMs?: number // readiness polling step (default 500 ms)
+  // A first message to a Codex that installs or updates itself: held like any message (coreHeld.ts).
+  hold?: (pane: Pane, text: string) => QueuedMessage
 }
 
 const REQUEST_LABEL = 'wherdr-request'
@@ -147,19 +149,20 @@ const STILL_POLLS = 6
 // state until the dialog is answered: a still screen alone is not enough when a status exists.
 // Never retried or replayed: a program that ends or stays busy past the deadline gets
 // nothing ('skipped'); one that shows a dialog or blocks is 'dialog' (see sendAfterDialog).
-export async function sendFirstMessage(deps: CoreAdminDeps, address: string, text: string): Promise<'sent' | 'skipped' | 'dialog'> {
+// Codex installing or updating itself (its title or status says so): 'installing'.
+export async function sendFirstMessage(deps: CoreAdminDeps, address: string, text: string): Promise<'sent' | 'skipped' | 'dialog' | 'installing'> {
   const step = deps.pollMs ?? 500
   const end = Date.now() + (deps.readyWatchMs ?? 15000)
   let last = '', stable = 0, sawStatus = false
   while (Date.now() < end) {
-    const t = await deps.call<CoreFacts & { status?: string | { state?: string } | null }>('terminal.get', { terminal: address }, 3000).catch(() => null)
+    const t = await deps.call<CoreFacts & { status?: string | { state?: string, msg?: string } | null }>('terminal.get', { terminal: address }, 3000).catch(() => null)
     const state = typeof t?.status === 'string' ? t.status : t?.status?.state
     if (!t || t.state === 'finished') return 'skipped'
+    if (codexInstalling(t.title, typeof t.status === 'object' ? t.status?.msg : null)) return 'installing'
     if (state === 'blocked') return 'dialog'
     if (state) sawStatus = true
     const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: address, lines: 40 }, 3000).catch(() => null))?.text || '')
-    // Codex installing or updating itself: the message waits like behind a dialog.
-    if (DIALOG_RE.test(screen) || codexInstalling(screen, t.title)) return 'dialog'
+    if (DIALOG_RE.test(screen)) return 'dialog'
     stable = screen.trim() && screen === last ? stable + 1 : 0
     last = screen
     if (state === 'idle' ? stable >= 2 : !sawStatus && stable >= STILL_POLLS) {
@@ -177,7 +180,7 @@ export async function sendAfterDialog(deps: CoreAdminDeps, address: string, text
   while (Date.now() < end) {
     await new Promise(r => setTimeout(r, (deps.pollMs ?? 500) * 2))
     const r = await sendFirstMessage(deps, address, text).catch(() => 'skipped' as const)
-    if (r !== 'dialog') return r
+    if (r !== 'dialog' && r !== 'installing') return r
   }
   return 'skipped'
 }
@@ -240,15 +243,18 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
   // The program needs time to start: wait for it so that the sheet can say when nothing was
   // typed. A failure here must not undo the creation.
   let sent: 'sent' | 'skipped' | 'queued' | null = null
+  let queued: QueuedMessage | undefined
   if (first) {
     const r = await sendFirstMessage(deps, address, first).catch(() => 'skipped' as const)
-    sent = r === 'dialog' ? 'queued' : r
-    if (r === 'dialog') {
+    sent = r === 'dialog' || r === 'installing' ? 'queued' : r
+    // Codex installing: held on the server, listed in the conversation, back into the field if Codex exits.
+    if (r === 'installing' && deps.hold) queued = deps.hold(pane, first)
+    else if (sent === 'queued') {
       const watch = sendAfterDialog(deps, address, first)
       deps.onQueued?.(watch)
     }
   }
-  return { pane_id: pane.id, workspace_id: pane.workspace, name: kind === 'shell' ? null : name || kind, first_message: sent }
+  return { pane_id: pane.id, workspace_id: pane.workspace, name: kind === 'shell' ? null : name || kind, first_message: sent, ...(queued ? { queued } : {}) }
 }
 
 // Adds a machine over SSH (like `hc machine add <target>`): no command (`via`) and no

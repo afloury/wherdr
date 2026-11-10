@@ -216,6 +216,14 @@ describe('resume and first message', () => {
     expect(r.first_message).toBe('queued')
     expect(t.calls.some(c => c[0] === 'terminal.send')).toBe(false)
   })
+  it('holds the first message of a Codex that installs or updates itself, like any message, never typed', async () => {
+    const t = setup((m: string) => m === 'terminal.run' ? { address: 't3' } : m === 'terminal.get' ? { state: 'live', title: 'Installing Codex', status: { state: 'idle' } } : m === 'terminal.read' ? { text: '> ' } : {})
+    const held: string[] = []
+    const r = await coreCreate({ ...t.deps, pollMs: 1, readyWatchMs: 50, hold: (p, text) => { held.push(`${p.coreAddress} ${text}`); return { id: 'held-1', text, state: 'held' } } }, { kind: 'codex', cwd: '/home/u', prompt: 'Hi' })
+    expect(r).toMatchObject({ first_message: 'queued', queued: { id: 'held-1', text: 'Hi', state: 'held' } })
+    expect(held).toEqual(['t3 Hi'])
+    expect(t.calls.some(c => c[0] === 'terminal.send')).toBe(false)
+  })
   it('sends a queued first message once the trust dialog has been answered', async () => {
     let answered = false
     const t = setup((m) => {
