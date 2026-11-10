@@ -193,6 +193,43 @@ describe('advanceTick (store and a fake herdr-core)', () => {
     finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
 
+  it('a reviewer that hits its account limit mid-review: the fallback takes the review over from the start', async () => {
+    const { createPmStore } = await import('../server/utils/pmStore')
+    const { advanceTick } = await import('../server/utils/pmAdvance')
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-advance-'))
+    try {
+      const store = createPmStore(dir)
+      await store.setEnabled(true)
+      await store.saveTemplate({ ...github, prefs: { ...github.prefs, reviewAgent: 'codex', reviewModel: 'gpt-6.1-sol', reviewFallbackAgent: 'claude', reviewFallbackModel: 'same' } })
+      await store.addProject({ key: 'CO', machine: '', path: '/src', template: 'github' }, async (_m, p) => p)
+      const t = await store.addTask({ project: 'CO', title: 'Fix', type: 'simple' })
+      const at = planSteps(github, { type: 'simple' }).findIndex(s => s.id === 'review')
+      const run = { task: t.id, machine: '', worktree: '/w', branch: 'task/CO-1', attempt: 1, state: 'running' as const }
+      await store.saveRun({ ...run, id: 'r1', role: 'worker', program: 'claude', model: 'sonnet', instructions: '/h/.wherdr/pm/tasks/CO-1/instructions.md', terminal: 'h/t1', startedAt: 1 })
+      await store.saveRun({ ...run, id: 'r2', role: 'reviewer', program: 'codex', model: 'gpt-6.1-sol', instructions: '/h/.wherdr/pm/tasks/CO-1/review.md', terminal: 'h/t2', startedAt: 2 })
+      await store.saveTask({ ...t, state: 'working', run: 'r2', step: { at, started: true, since: 5, told: 5, proofs: {}, rounds: {} } })
+      const install = await store.install(), now = Date.now(), resetsAt = now + 3_600_000
+      const labels = (id: string, role: string) => ({ 'wherdr.install': install, 'wherdr.task': t.id, 'wherdr.run': id, 'wherdr.role': role })
+      const started: Record<string, unknown>[] = []
+      const call = async (method: string, p: Record<string, unknown>) => {
+        if (method === 'terminal.list') return { terminals: [{ address: 'h/t1', labels: labels('r1', 'worker') }, { address: 'h/t2', state: 'finished', exit_code: 1, finished_ms: now, labels: labels('r2', 'reviewer') }] }
+        if (method === 'terminal.run') { started.push(p); return { address: 'h/t3' } }
+        return method === 'machine.exec' ? { code: 0, stdout: '' } : {}
+      }
+      // The engine's account reading: Codex at its limit for another hour.
+      const quotas = async () => ({ claude: null, codex: { at: now, five: null, week: null, limited: { resetsAt } }, accounts: [] })
+      await advanceTick({ store, call, quotas, machines: () => [{ key: '', local: true, label: 'host' }], launchWatchMs: 0 } as unknown as Parameters<typeof advanceTick>[0], now)
+      expect(started).toHaveLength(1)
+      expect(started[0]!.line).toContain(`exec claude '--model' 'sonnet'`)
+      const runs = await store.runs()
+      expect(runs.find(r => r.id === 'r2')).toMatchObject({ state: 'ended', endedBy: 'lost' })
+      expect(runs.find(r => r.role === 'reviewer' && r.id !== 'r2')).toMatchObject({ program: 'claude', model: 'sonnet' })
+      const until = new Date(resetsAt).toTimeString().slice(0, 5)
+      expect((await store.task(t.id))!.log?.map(l => l.text)).toContain(`review: Codex out of quota until ${until}, reviewed by claude sonnet`)
+    }
+    finally { await fs.rm(dir, { recursive: true, force: true }) }
+  })
+
   it('two live workers on a task: the one the task tracks goes on, the other is ended and logged', async () => {
     const { createPmStore } = await import('../server/utils/pmStore')
     const { advanceTick } = await import('../server/utils/pmAdvance')
