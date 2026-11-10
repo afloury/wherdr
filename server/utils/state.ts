@@ -23,6 +23,8 @@ import { machineOfPane } from './machines'
 import { createCodexStatus, dirWritable } from './codexStatus'
 import { runLocal, setCodexKnownWeek } from './quotas'
 import { pmStore } from './pmStore'
+import { createHeld } from './coreHeld'
+import { coreInputDeps, coreSend } from './coreInput'
 
 const fsp = fs.promises
 const hcCall = <T>(method: string, params: object, timeout: number) => coreCall<T>(process.env.HC_SOCKET || '', method, params, timeout)
@@ -151,10 +153,15 @@ export function takeBackFromClaude(p: Pane, io: { screen: () => Promise<string>,
   }).catch(() => null)
 }
 
+// ---------------------------------------------------------------- held messages
+// Sent while Codex installs or updates itself: typed once it is ready (coreHeld.ts).
+export const heldMessages = createHeld((p, q) => coreSend(coreInputDeps(), { pane_id: p.id, text: q.text }))
+
 // ---------------------------------------------------------------- poll
 export async function poll() {
   lastCorePoll = Date.now()
   state = await readCoreState(state)
+  heldMessages.apply(state.panes)
   await coreScreens().enrich(state.panes).catch(() => {})
   void coreTranscriptsOf().observe(state.panes)
   corePreviews().apply(state.panes)
