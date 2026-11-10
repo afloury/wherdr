@@ -69,5 +69,11 @@ The version includes the commit wherdr was built from (`3.0.0+1a2b3c4`), so a re
 new commit counts as an update too.
 
 Alfred and the coordinators never explain wherdr from memory: they read `docs/llms.txt` (the
-docs index) first, then only the sections that answer. `wherdr alfred help` and `wherdr pm help`
+docs index) first, then only the sections that answer. These are the docs of the build that runs, wherever
+wherdr was started from (see `WHERDR_ROOT` in [Configuration](configuration.md#configuration)).
+
+Alfred answers with this server's own address and port (and its published address, if any),
+not the defaults the docs quote. Commands meant for the server itself (an update, a restart, a
+`git pull` of its install) come as text to copy, never with *Run*, which would run them in
+Alfred's own folder. `wherdr alfred help` and `wherdr pm help`
 list the commands of the wherdr that runs now.

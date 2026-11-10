@@ -33,7 +33,8 @@
     "scripts/dictation-files.mjs",
     "app/utils/dictation/models.json",
     "app/utils/speech/voices.json",
-    "docs/*.md"
+    "docs/*.md",
+    "docs/llms.txt"
   ],
   "engines": {
     "node": ">=22"
