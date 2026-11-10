@@ -17,7 +17,7 @@ Reading:
 | `wherdr alfred coordinators` | each coordinator, its agent and whether it runs (`stopped`: its terminal ended, see `--resume`) |
 | `wherdr alfred coordinator open <KEY>` | the link that opens a running project coordinator |
 | `wherdr alfred last <KEY>` | what the project's coordinator last said (its last message, else the bottom of its screen), and whether it is still working |
-| `wherdr alfred v2` | when you come from wherdr v2: the projects its migration listed, their open tasks, the v3 project made from each, and the migration report ([set up your v2 projects](migrate-from-v2.md#set-up-your-v2-projects-with-alfred)) |
+| `wherdr alfred v2` | when you come from wherdr v2: its projects, read then from the herdr-projects board of this machine, their open tasks, the v3 project made from each, and the migration report ([set up your v2 projects](migrate-from-v2.md#set-up-your-v2-projects-with-alfred)) |
 | `wherdr alfred settings` | the synced settings, their values, and the values each setting Alfred may change accepts (`1` on, `0` off) |
 | `wherdr alfred help` | this list |
 
@@ -35,7 +35,9 @@ Changing (show, then do):
 
 A change without `--apply` (all but `setting set`, which is only proposed) changes nothing: it prints what it would do (`dryRun`, `change`) and
 the command that makes it. Alfred shows you those lines and runs that command, with `--apply`,
-only after your yes in the chat. When the answer names a `remote` machine (a project on another
+only after your yes in the chat. With `--propose` instead (only in a turn that follows your
+message), nothing changes yet: Alfred's reply carries a [card you apply](conversation.md#project-changes-alfred-proposes)
+with the change's lines, *Show me*, *Cancel* and *Apply*. When the answer names a `remote` machine (a project on another
 machine, its coordinator), Alfred makes the change only when you asked for it. No `wherdr alfred`
 command deletes anything (removing a project's machine leaves its clone and tasks there): removing a project, a template or a setting stays yours, in Settings.
 The one removal a coordinator has is `wherdr pm task remove`, for a task never started.
@@ -63,6 +65,8 @@ beside it) of Alfred and of every running project coordinator. It sends them no 
 none of them. Each one learns of the update on its next `wherdr alfred` or `wherdr pm` command,
 once: the answer starts with the line
 `wherdr was updated to <version> since your session started: re-read AGENTS.md and check docs/llms.txt before relying on what you knew`.
+The version includes the commit wherdr was built from (`3.0.0+1a2b3c4`), so a rebuild from a
+new commit counts as an update too.
 
 Alfred and the coordinators never explain wherdr from memory: they read `docs/llms.txt` (the
 docs index) first, then only the sections that answer. `wherdr alfred help` and `wherdr pm help`

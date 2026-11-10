@@ -69,7 +69,9 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   show you where a setting is, the agent points at it (`wherdr alfred ui open --target
   terminal.key-order`; `ui targets` lists the settings it can point at): on a wide computer the
   side panel opens on its section and highlights it; on a phone the card names the setting with a
-  crosshair, and a tap opens the page and highlights it.
+  crosshair, and a tap opens the page and highlights it. A part of a project's sheet takes the
+  project too (`ui open --target project.guards --project WEB`): its sheet opens on that tab,
+  highlighted. Other targets include *Machines › Add machine* and *Phone › Use it on your phone*.
 - <a id="buttons-an-agent-puts-in-its-reply"></a>**Buttons an agent puts in its reply**: Alfred or a project's coordinator can give you the
   button for a task instead of telling you to go and find it (`wherdr pm ui action resume|step|open
   <task>`): *Resume WHR-12* for a stopped task, the step's own button (*Merge*, *Approve
@@ -92,6 +94,13 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   it. The card then says *Applied by you · 14:02* or *Cancelled by you*. If the setting changed
   since (in Settings, on another device), it says so and applies nothing. Only in a turn that
   follows your message, never in a wake; a new proposal for the same setting replaces the older.
+- <a id="project-changes-alfred-proposes"></a>**Project changes Alfred proposes**: the same card, for a project change
+  (`wherdr alfred project add|template|guards|machine … --propose`, or `coordinator start …
+  --propose`): *Change proposed · by Alfred*, the place (*Project WEB › Guards*) and the lines the
+  change would make. *Show me* opens the project's sheet on that part, highlighted; *Apply* makes
+  the change from your session, only if it would still make the same lines (else *This changed
+  since: nothing was applied*); a check that fails then (a folder that is no longer a repository)
+  shows under the buttons.
 - **Files and screenshots beside the conversation**: an agent can show you a file of its own
   folder (`wherdr pm ui show file docs/plan.md`, a path relative to its folder: never `~`, `..`
   or a path outside it) or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task
@@ -111,11 +120,14 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   question changed meanwhile. A free answer selects its option, waits for the field, then types
   the text. Unrecognized blocking screens offer the real terminal.
 - **Composer**: send messages while the agent works (queued: the agent's own queue when it takes
-  them, else held by wherdr and sent when the turn ends; never sent twice), attach or paste
+  them, else held by wherdr and sent when the turn ends; never sent twice; a message sent while
+  wherdr types a wake or another of its own messages into the agent waits for it, then goes), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), up to **8 MB per file** (core's `terminal.put`).
   A sent file shows as a chip (icon and original name) in the message and its history, also in
-  conversations from v2; a tap opens or downloads it.
+  conversations from v2; a tap opens or downloads it. A photo stays a picture in the message,
+  never its file path, also when the message was sent again (**Send now**, **Retry**) or waited
+  in the agent's queue.
   Slash commands typed in the field (`/compact`, `/clear`…) are sent as text. **Stop** (or `Esc`
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,

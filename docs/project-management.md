@@ -91,9 +91,39 @@ its folder, branches and task worktrees stay on the machine.
   `Branch: <name>` line or a link with `?source=<branch>`, as a Bitbucket pull
   request link), wherdr follows that branch: its pushes, PR and merge checks
   use it, never the old one.
+- **Archive done tasks after**: 1, 3, 7 (the default), 14 or 30 days, or
+  *Never*. A done task stays in the Done column that long, then the engine
+  archives it (see [Archived tasks](#archived-tasks)). A shorter delay archives
+  at once the done tasks it now covers.
 - **Agents**: the worker and the reviewer its tasks start with, each with an
   optional model (empty: the agent's default), and the reviewer's optional
   **Fallback** (see [Reviewer fallback](#reviewer-fallback)).
+- **Worktree setup**: what wherdr prepares in a new task's worktree before its
+  worker first starts, so the worker does not rebuild it. Saved with *Save*, in
+  the workflow's `worktree` block (also editable in Workflow › Edit as JSON, kept
+  on *Start over*):
+  - *Files to copy*: ignored files taken from the project's clone, such as `.env`
+    or a local config, one path per line. Literal paths only; a file git tracks
+    (it is already there) or the clone does not have is skipped, and the log says so.
+  - *Folders to share*: big folders that can be rebuilt, such as
+    `node_modules` or a cache, copied from the clone (copy-on-write where the
+    disk allows it, so the task's own changes never reach the clone) only when
+    the *Lockfile* (default `package-lock.json`) is the same in the worktree
+    and the clone, and the clone's install is up to date with it. Empty:
+    `node_modules`. *Share no folder* shares none (`"share": []`): the setup
+    command then runs for every new task.
+  - *Setup command*: run in the worktree, such as `npm ci --prefer-offline`,
+    when a folder could not be shared (the task's branch changed the lockfile,
+    or the clone has no install) or when no folder is listed. Once it succeeds
+    it does not run again for that task. *Time limit*: 10m by default and at most.
+
+  The task's log gets one line with what was copied, shared or skipped and the
+  command with its time; the worker's instructions say what is ready. A
+  command that fails or runs past its limit puts the task under *Your turn*
+  with its last output lines; *Try again* runs it again.
+  ```json
+  "worktree": { "copy": [".env"], "share": ["node_modules"], "command": "npm ci --prefer-offline", "timeout": "5m" }
+  ```
 - **Repository**: public or private, as wherdr found it (*Check again*) or as
   you set it. A public repository gets the coordinator's public-repository rules.
 - **Based on**: the template the workflow was copied from and its version, for
@@ -211,13 +241,17 @@ diff. A proposal made before the workflow changed again is refused, and the
 review says so: ask the coordinator to propose again. The *Decisions* view links to this review. [Alfred](alfred.md) can propose
 a change too, on your request in its chat: you answer it in the same review.
 
-In the coordinator's conversation, a *Workflow change* card follows the message
-that made the proposal: what changes in one line, the steps of the first
+In the coordinator's conversation, a *Workflow change* card sits under the last
+reply of the turn that made the proposal (never a later one): what that
+proposal changes in one line (from the workflow it was made against, so a change
+made before it never shows; an added task type with its steps, PR target and
+who merges), the steps of the first
 changed task type before and after (the steps added or handed to someone else
 are outlined), who proposed it, your request with its
 time and *Go to message* (back to it in the conversation), *Accept*, *Refuse*
 and *See all changes* (the review). Once answered, the card shows the outcome, by whom and
-when.
+when; each proposal keeps its own card, one the coordinator replaced before you
+answered says *Replaced*.
 
 #### Reviewer fallback
 
@@ -452,6 +486,27 @@ reviewer` picks one, and `--lines N` (1 to 200, default 40) sets how much. A pro
 When an agent asks a question, its task's waiting line and the coordinator's
 wake (*question*) carry the question itself, and `wherdr pm tell` answers it.
 
+### What agents show in the chat
+
+Every agent's instructions include a short *Showing instead of telling*
+section: a table of situations, each with the tool to use and an example, so
+agents show you things rather than describe them.
+
+- Every agent: a `wherdr` block with `choices "A" | "B"` when it needs one
+  choice from you, and `task <ID>` for a task's live card when its state matters.
+- Alfred and coordinators also: a setting highlighted (`ui open --target`), a
+  live `status` card, and buttons you click (`ui action step|resume|open`),
+  screenshots beside the chat (`ui show shots`). Alfred proposes a setting
+  change as a card you apply (`setting set … --propose`); it never applies it
+  itself.
+- Task agents only write blocks: they have no `ui` command.
+
+The same rules hold for everyone: one card or button group per message, after
+the sentence that explains it; in a wake, blocks only (a `ui` command is
+refused there); after a refusal, the in-app link in text, never a retry; and
+never "I merged it" before the card shows the outcome, since only your click
+acts.
+
 ## Board
 
 The header has **Decisions** (with a count when some wait), **Add task**, the
@@ -486,7 +541,7 @@ click, long press, or ••• when it has more than *Open*) offers:
   project, and refuses the start with what fails there: the clone and its
   origin, `git fetch`, push rights (a dry run), `gh auth status` when the
   workflow uses GitHub, node and npm (against `.nvmrc` or `engines`), the
-  clone's dependencies (a warning only: each task then runs `npm ci`), the
+  clone's dependencies (a warning only: tasks cannot share them, see *Worktree setup* under [General](#general)), the
   worker's and reviewer's agent CLI and login, the `~/.wherdr/pm` folders, 5 GB
   free disk, and for a task with screenshots, reaching wherdr (set `APP_URL`
   behind a proxy) and Playwright's Chromium. A machine found ready is not
@@ -510,6 +565,21 @@ task type's `weight` when the workflow sets one, else heavy when a worker step
 asks for screenshots, light when the type lands no code (no commit, link or git
 action), standard otherwise. The coordinator does the same with `task add
 --weight`, and `show <task>` gives it.
+
+### Archived tasks
+
+A done task leaves the board some time after it is done: 7 days by default, set
+per project in [General](#general). The engine checks at start and every 6 hours
+and writes *archived after 7 days done* in the task's log. An archived task keeps
+everything: its description, history, log, PR link, number and `wherdr pm show`;
+its branch and PR are left alone. The Done column shows only done tasks not
+archived, newest done first; at its bottom, a muted line, **142 archived · show**, opens the list
+of the shown projects' archived tasks, newest first, with a search on title, id
+or tag and *Show more* for the next page. A tap opens the task's sheet, which says
+*Archived* with the date and has **Unarchive**: the task is back in Done, and its
+delay starts again. `wherdr pm list` leaves archived tasks out; `wherdr pm list
+--archived` lists only them. Check on GitHub still works on an archived task
+with a PR.
 
 ### Board order
 

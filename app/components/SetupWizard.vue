@@ -9,7 +9,7 @@ import type { PmOverview } from '#shared/pm/project'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import type { Template } from '#shared/pm/workflow'
 import { EXAMPLES } from '#shared/pm/examples'
-import { MAIN, isCoordinatorProgram } from '#shared/pm/coordinator'
+import { isCoordinatorProgram } from '#shared/pm/coordinator'
 import { SETUP_STEPS, setupDone, setupProject, setupResume, workflowLine, type SetupStepId } from '#shared/pm/setup'
 
 const open = defineModel<boolean>('open', { default: false })
@@ -84,15 +84,9 @@ const addTask = () => run(async () => {
 })
 
 // Instead: Alfred's conversation, with the setup asked of it.
-const ALFRED_PROMPT = 'Help me set up project management in wherdr, one question at a time: turn it on, add a project, choose its workflow from an example, check its guards, start its coordinator and add a first task.'
-const askAlfred = () => run(async () => {
-  await loadAlfred()
-  const program = alfred.value?.program ?? offerCoordinators(appConfig.value.kinds)[0]
-  const pane = alfredPane.value ?? (program ? await launchCoordinator(MAIN, { program }) : undefined)
-  if (!pane) throw new Error('Alfred could not start: check Settings › Agents.')
-  await sendMessage(pane, pane.id, ALFRED_PROMPT)
+const toAlfred = () => run(async () => {
+  await askAlfred(ALFRED_SETUP_PROMPT)
   open.value = false
-  await navigateTo(panePath(pane.id))
 })
 
 const TITLE: Record<SetupStepId, string> = {
@@ -129,7 +123,7 @@ const BODY: Record<SetupStepId, string> = {
       <template v-else-if="step === 'enable'">
         <UButton v-if="!done.enable" size="xl" color="primary" class="hw-cta" icon="i-lucide-power" :loading="busy" data-testid="setup-enable" @click="run(() => api('/api/pm/enabled', { enabled: true }))">{{ tl('Turn on') }}</UButton>
         <p v-else class="setup-ok" data-testid="setup-ok">{{ tl('Project management is on.') }}</p>
-        <UButton size="xl" color="neutral" variant="outline" icon="i-lucide-message-circle" :loading="busy" data-testid="setup-alfred" @click="askAlfred">{{ tl('Let Alfred guide me') }}</UButton>
+        <UButton size="xl" color="neutral" variant="outline" icon="i-lucide-message-circle" :loading="busy" data-testid="setup-alfred" @click="toAlfred">{{ tl('Let Alfred guide me') }}</UButton>
       </template>
 
       <template v-else-if="step === 'project'">

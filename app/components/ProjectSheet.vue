@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // A project's sheet (Settings › Projects › a row): tabs, the one shown in the
-// URL (`tab=`). General: name, key and color, base branch, branch name, repository visibility, the agents
-// its tasks start with (the workflow's prefs), where its workflow came from,
+// URL (`tab=`). General: name, key and color, base branch, branch name, when done tasks are archived, repository visibility, the agents
+// its tasks start with (the workflow's prefs), its worktree setup (the
+// workflow's `worktree`: files copied, folders shared, a setup command), where its workflow came from,
 // the machines its tasks may run on (ProjectMachines) and the home tab that
 // shows it (ProjectShownIn).
 // Workflow: ProjectWorkflow, its own entries first in the ⋯ menu. The ⋯ menu
@@ -15,12 +16,15 @@
 // other (PartHead); Workflow then draws its steps (WorkflowDiagram).
 import type { Project, TemplateInfo } from '#shared/pm/project'
 import { PROJECT_COLORS, shownKey } from '#shared/pm/projectKey'
+import { ARCHIVE_DAYS, archiveDays } from '#shared/pm/archive'
 import type { LogEntry } from '#shared/pm/templateText'
-import type { Prefs, Template } from '#shared/pm/workflow'
+import { SETUP_TIMEOUT, type Prefs, type Template, type WorktreeSetup } from '#shared/pm/workflow'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
 import { workflowFlow } from '#shared/pm/flow'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import { PROJECT_TABS, PROJECT_TAB_LABEL as TAB_LABEL, type ProjectTab } from '~/utils/projectTabs'
+import { projectTarget, uiTarget } from '#shared/uiTargets'
+import { showHalo, waitForElement } from '~/utils/uiHalo'
 
 const props = defineProps<{ project: Project, tab: ProjectTab, templates: TemplateInfo[], review?: boolean }>()
 const emit = defineEmits<{ tab: [tab: ProjectTab], close: [], changed: [] }>()
@@ -33,16 +37,23 @@ const ready = ref<Record<string, string>>({}) // each other machine's last readi
 const loaded = ref(false)
 const error = ref('')
 const busy = ref('')
-const form = reactive({ name: '', key: '', color: '', base: '', branchName: '', agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' })
+const form = reactive({ name: '', key: '', color: '', base: '', branchName: '', archiveAfter: '', agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' })
 async function load() {
   const r = await api<{ workflow: Template | null, log: LogEntry[], ready?: Record<string, string> }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
   workflow.value = r.workflow
   log.value = r.log
   ready.value = r.ready ?? {}
   fill(p.value, r.workflow?.prefs ?? {})
+  fillSetup(r.workflow?.worktree)
   loaded.value = true
 }
-const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
+const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', archiveAfter: String(archiveDays(x)), agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
+// The worktree setup: paths one per line (or comma separated). Folders to
+// share: empty is node_modules (no `share`), noShare is none (`share: []`).
+const setup = reactive({ copy: '', share: '', noShare: false, lockfile: '', command: '', timeout: '' })
+const fillSetup = (w: WorktreeSetup = {}) => Object.assign(setup, { copy: (w.copy ?? []).join('\n'), share: (w.share ?? []).join('\n'), noShare: !!w.share && !w.share.length, lockfile: w.lockfile ?? '', command: w.command ?? '', timeout: w.timeout ?? '' })
+const paths = (v: string) => v.split(/[\n,]/).map(x => x.trim()).filter(Boolean)
+const setupBody = () => ({ copy: paths(setup.copy), share: setup.noShare ? [] : paths(setup.share).length ? paths(setup.share) : undefined, lockfile: setup.lockfile.trim(), command: setup.command.trim(), timeout: setup.timeout.trim() })
 onMounted(() => { load().catch((e) => { error.value = (e as Error).message }); loadCoordinators() })
 
 async function run(what: string, fn: () => Promise<unknown>) {
@@ -54,8 +65,8 @@ async function run(what: string, fn: () => Promise<unknown>) {
   finally { busy.value = '' }
 }
 const save = () => run('save', async () => {
-  const { name, key, color, base, branchName, ...prefs } = form
-  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, base, branchName, ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs } : {}) })
+  const { name, key, color, base, branchName, archiveAfter, ...prefs } = form
+  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, base, branchName, archiveAfter: Number(archiveAfter), ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}) })
   // The prop is refreshed only after `changed`: the form takes the saved
   // project, and the shared lists that show its key and color are read again.
   await load()
@@ -64,6 +75,9 @@ const save = () => run('save', async () => {
   loadTaskAgents()
   toast(tl('Saved'))
 })
+
+// How long a done task stays in Done before it is archived.
+const archiveItems = ARCHIVE_DAYS.map(d => ({ label: d ? tl(`${d} day${d > 1 ? 's' : ''}`) : tl('Never'), value: String(d) }))
 
 // The working branch: a remote branch of the repo, or a name typed in.
 const branches = ref<string[] | null>(null)
@@ -107,6 +121,19 @@ const workflowTab = ref<InstanceType<typeof ProjectWorkflow>>()
 
 const coordinator = computed(() => projectCoordinators.value.find(c => c.project === p.value.key))
 const reviewOpen = ref(!!props.review)
+// A project target (`&target=project.guards`, shared/uiTargets.ts): its tab's
+// part, highlighted once shown (utils/uiHalo.ts).
+const route = useRoute()
+const sheet = ref<HTMLElement | null>(null)
+let endHalo = () => {}
+watch(() => `${props.tab}|${route.query.target}|${!!sheet.value}`, async () => {
+  endHalo()
+  const id = uiTarget(route.query.target)
+  if (!id || !projectTarget(id) || !sheet.value) return
+  const el = await waitForElement(sheet.value, `[data-ui-target="${id}"]`)
+  if (el && uiTarget(route.query.target) === id) { el.scrollIntoView({ block: 'nearest' }); endHalo = showHalo(el) }
+}, { immediate: true })
+onBeforeUnmount(() => endHalo())
 const reviewed = (accepted: boolean) => { if (accepted) workflowChanged() }
 const menu = (): MenuItem[] => [
   ...(props.tab === 'workflow' && workflowTab.value ? [...workflowTab.value.menu(), { kind: 'separator' as const }] : []),
@@ -121,7 +148,7 @@ async function remove() {
 
 <template>
   <AppSheet v-model:open="open" :title="p.name" tall wide hide-close @closed="emit('close')">
-    <div class="project-sheet" data-testid="project-sheet">
+    <div ref="sheet" class="project-sheet" data-testid="project-sheet">
       <div class="project-head">
         <span class="pm-id"><small class="mono-label">{{ shownKey(p) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
         <SpaceMenu :items="menu" :title="p.name" :label="tl(`Options of ${p.name}`)" />
@@ -174,6 +201,12 @@ async function remove() {
             <small class="muted">{{ tl('Each new task\'s branch. Fields: {id}, {tag} (the card\'s ticket key, else the task id), {type} (bugfix or feature), {slug} (from the title). Example: {type}/{tag}-{slug}.') }}</small>
           </span>
 
+          <span class="field-label">{{ tl('Archive done tasks after') }}</span>
+          <span class="pm-field">
+            <USelect v-model="form.archiveAfter" :items="archiveItems" size="lg" class="pm-base-pick" :aria-label="tl('Archive done tasks after')" data-testid="pm-archive-after" />
+            <small class="muted">{{ tl('A done task leaves the Done column after this time; the column\'s footer lists archived tasks. Its branch, PR and log stay.') }}</small>
+          </span>
+
           <template v-if="workflow">
             <div class="pm-cols">
               <span class="pm-col pm-agent">
@@ -194,6 +227,36 @@ async function remove() {
             </div>
           </template>
           <small v-if="workflow" class="muted">{{ tl('Fallback: the reviewer started instead while the reviewer\'s account is out of quota. None: reviews wait for it.') }}</small>
+          <template v-if="workflow">
+            <span class="field-label pm-later">{{ tl('Worktree setup') }}</span>
+            <div class="pm-cols">
+              <span class="pm-col pm-agent">
+                <label class="field-label" for="pmCopy">{{ tl('Files to copy') }}</label>
+                <UTextarea id="pmCopy" v-model="setup.copy" :rows="2" autoresize size="lg" class="w-full mono" placeholder=".env" maxlength="4000" data-testid="pm-setup-copy" />
+              </span>
+              <span class="pm-col pm-agent">
+                <label class="field-label" for="pmShare">{{ tl('Folders to share') }}</label>
+                <UTextarea id="pmShare" v-model="setup.share" :rows="2" autoresize size="lg" class="w-full mono" placeholder="node_modules" maxlength="4000" :disabled="setup.noShare" data-testid="pm-setup-share" />
+                <label class="toggle-row">
+                  <span><b>{{ tl('Share no folder') }}</b><small>{{ tl('The setup command always runs') }}</small></span>
+                  <USwitch v-model="setup.noShare" color="success" size="xl" data-testid="pm-setup-no-share" />
+                </label>
+              </span>
+            </div>
+            <div class="pm-cols">
+              <span class="pm-col pm-agent">
+                <label class="field-label" for="pmCommand">{{ tl('Setup command') }}</label>
+                <UInput id="pmCommand" v-model="setup.command" size="lg" class="w-full mono" placeholder="npm ci --prefer-offline" maxlength="500" data-testid="pm-setup-command" />
+              </span>
+              <span class="pm-col pm-agent">
+                <label class="field-label" for="pmLock">{{ tl('Lockfile') }}</label>
+                <UInput id="pmLock" v-model="setup.lockfile" size="lg" class="w-full mono" placeholder="package-lock.json" maxlength="200" />
+                <label class="field-label" for="pmTimeout">{{ tl('Time limit') }}</label>
+                <UInput id="pmTimeout" v-model="setup.timeout" size="lg" class="w-full mono" :placeholder="SETUP_TIMEOUT" maxlength="4" />
+              </span>
+            </div>
+            <small class="muted">{{ tl('Before a task\'s first worker. Files to copy: ignored files taken from the project\'s clone (a tracked or missing one is skipped). Folders to share: taken from the clone while the lockfile is the same in both; otherwise the setup command runs, at most 10m. Folders to share empty: node_modules; Share no folder: none.') }}</small>
+          </template>
           <p v-else-if="loaded" class="muted settings-hint">{{ tl('No workflow yet: tasks cannot start until the project starts from a template.') }}</p>
           <UButton type="submit" size="xl" color="primary" variant="solid" class="hw-cta" :loading="busy === 'save'" :disabled="!loaded || busy !== ''" data-testid="pm-save">{{ tl('Save') }}</UButton>
 
@@ -225,15 +288,15 @@ async function remove() {
           <span class="mono-label">{{ tl('Review') }}</span>
           <UIcon name="i-lucide-chevron-right" />
         </button>
-        <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
+        <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" data-ui-target="project.workflow" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
         <template v-else-if="tab === 'guards' && loaded">
-          <ProjectGuards v-if="workflow" :project="p" :workflow="workflow" @changed="workflowChanged" />
+          <ProjectGuards v-if="workflow" data-ui-target="project.guards" :project="p" :workflow="workflow" @changed="workflowChanged" />
           <p v-else class="muted settings-hint">{{ tl('No workflow yet: tasks cannot start until the project starts from a template.') }}</p>
         </template>
         <ProjectAutomations v-else-if="tab === 'automations'" :project="p.key" :name="p.name" />
         <template v-else-if="tab === 'autopilot'">
           <PartHead part="autopilot" :project="p.key" class="pm-part" />
-          <CoordinatorAutopilot v-if="coordinator" :c="coordinator" />
+          <CoordinatorAutopilot v-if="coordinator" data-ui-target="project.autopilot" :c="coordinator" />
           <p v-else-if="coordinatorsLoaded" class="muted settings-hint">{{ tl('This project has no coordinator yet.') }}</p>
           <UButton to="/settings?section=pacing" color="neutral" variant="ghost" size="lg" icon="i-lucide-gauge">{{ tl('Pace of every account') }}</UButton>
         </template>

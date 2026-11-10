@@ -7,11 +7,11 @@ import { projectPlace } from '../../shared/pm/places'
 import { freedMerge } from '../../shared/pm/guardEffects'
 import { allowedMachines, cleanProjectUpdate, type Project } from '../../shared/pm/project'
 import { taskPlan } from '../../shared/pm/run'
-import { PREF_KEYS, type Guards, type Prefs, type Template } from '../../shared/pm/workflow'
+import { PREF_KEYS, type Guards, type Prefs, type Template, type WorktreeSetup } from '../../shared/pm/workflow'
 import { HerdrError } from './herdr'
 import { alfredTokenOk, scopeOf } from './pmCoordinator'
 import type { CoreAdminDeps } from './coreCreate'
-import { stepAction } from './pmBoard'
+import { archiveDone, stepAction } from './pmBoard'
 import { lastReadiness } from './pmReady'
 import type { PmStore } from './pmStore'
 
@@ -62,7 +62,21 @@ export async function updateProject(store: PmStore, key: unknown, body: Record<s
     const { prefs: _old, ...rest } = t
     await store.saveWorkflow(t.id.toUpperCase(), Object.keys(prefs).length ? { ...rest, prefs } : rest)
   }
-  return { project: await store.updateProject(key, update) }
+  if (body.worktree !== undefined) await saveWorktreeSetup(store, key, body.worktree)
+  const project = await store.updateProject(key, update)
+  // A shorter delay archives at once what it now covers.
+  if (update.archiveAfter !== undefined) await archiveDone(store)
+  return { project }
+}
+
+// The workflow's worktree block, from the General tab: empty fields dropped
+// (but `share: []`, which shares no folder), none left removes it.
+async function saveWorktreeSetup(store: PmStore, key: unknown, raw: unknown) {
+  const { p, t } = await workflowOf(store, key)
+  const w = Object.fromEntries(Object.entries(raw && typeof raw === 'object' ? raw : {}).filter(([k, v]) => (Array.isArray(v) ? v.length || k === 'share' : v !== '' && v !== undefined && v !== null)))
+  const { worktree: _old, ...rest } = t
+  const next = Object.keys(w).length ? { ...rest, worktree: w as WorktreeSetup } : rest
+  await store.saveWorkflow(p.key, next) // checked there
 }
 
 // The user's save of the workflow: everything but the guards.

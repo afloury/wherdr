@@ -101,6 +101,19 @@ export async function launchCoordinator(project: string, agent?: CoordinatorAgen
   return undefined
 }
 
+// Hands a request to Alfred: its conversation (started with its agent, else
+// the first offered one), the request sent, then opened. The setup window and
+// Home's empty state ask it to set up projects this way.
+export const ALFRED_SETUP_PROMPT = 'Help me set up project management in wherdr, one question at a time: turn it on, add a project, choose its workflow from an example, check its guards, start its coordinator and add a first task.'
+export async function askAlfred(text: string) {
+  await loadAlfred()
+  const program = alfred.value?.program ?? offerCoordinators(appConfig.value.kinds)[0]
+  const pane = alfredPane.value ?? (program ? await launchCoordinator(MAIN, { program }) : undefined)
+  if (!pane) throw new Error('Alfred could not start: check Settings › Agents.')
+  await sendMessage(pane, pane.id, text)
+  await navigateTo(panePath(pane.id))
+}
+
 // One tap: its conversation while it runs, else a new one with its default agent.
 export async function openCoordinator(c: CoordinatorView) {
   const p = coordinatorPane(c) ?? await launchCoordinator(c.project, coordinatorAgent(c))

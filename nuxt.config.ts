@@ -14,7 +14,7 @@ import { BOOT_THEME_KEY } from './shared/bootTheme'
 const demo = process.env.VITE_WHERDR_DEMO === '1'
 // Chunks left out of the service worker precache (shared/precache.ts).
 const lazy = lazyChunks()
-// v3's own version (shared/v3Version.ts), from the commit being built.
+// The build's version (shared/v3Version.ts): package.json's plus the commit being built.
 const buildCommit = (() => {
   if (process.env.WHERDR_COMMIT) return process.env.WHERDR_COMMIT
   try { return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }) } catch { return process.env.GITHUB_SHA }

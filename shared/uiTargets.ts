@@ -23,14 +23,25 @@ export const UI_TARGETS = {
   'notifications.device': { link: '#/settings?section=notifications', label: 'Notifications › This device' },
   'phone.app-start': { link: '#/settings?section=phone', label: 'Phone › App start' },
   'security.passkey': { link: '#/settings?section=security', label: 'Security › Passkey' },
-} as const satisfies Record<string, { link: string, label: string }>
+  'machines.add': { link: '#/settings?section=machines', label: 'Machines › Add machine' },
+  'phone.setup': { link: '#/settings?section=phone', label: 'Phone › Use it on your phone' },
+  'projects.setup': { link: '#/settings?section=projects', label: 'Projects › Set up a project' },
+  // A project's sheet (project: true): the link names the project too.
+  'project.workflow': { link: '#/settings?section=projects&tab=workflow', label: 'Project › Workflow', project: true },
+  'project.guards': { link: '#/settings?section=projects&tab=guards', label: 'Project › Guards', project: true },
+  'project.autopilot': { link: '#/settings?section=projects&tab=autopilot', label: 'Project › Autopilot', project: true },
+} as const satisfies Record<string, { link: string, label: string, project?: true }>
 export type UiTargetId = keyof typeof UI_TARGETS
 
 export const uiTarget = (id: unknown): UiTargetId | null =>
   typeof id === 'string' && Object.hasOwn(UI_TARGETS, id) ? id as UiTargetId : null
 
-// The in-app address that opens a target's place and highlights it.
-export const uiTargetLink = (id: UiTargetId) => `${UI_TARGETS[id].link}&target=${id}`
+// A target on a project's sheet: its link needs the project's key.
+export const projectTarget = (id: UiTargetId) => 'project' in UI_TARGETS[id]
+
+// The in-app address that opens a target's place and highlights it; project:
+// the key of the project whose sheet holds it.
+export const uiTargetLink = (id: UiTargetId, project?: string) => `${UI_TARGETS[id].link}${project && projectTarget(id) ? `&project=${encodeURIComponent(project)}` : ''}&target=${id}`
 
 // The target's own name, without its section: "Theme".
 export const uiTargetName = (id: UiTargetId) => UI_TARGETS[id].label.split(' › ').pop()!

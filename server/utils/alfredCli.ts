@@ -12,12 +12,14 @@ import { offeredAgents, readAgentOrder, readHiddenAgents } from '../../shared/ag
 import { allowedMachines, cleanProjectInput, cleanProjectUpdate, machinesOf } from '../../shared/pm/project'
 import { keyClash, projectOf as findProject, shownKey } from '../../shared/pm/projectKey'
 import { HerdrError } from './herdr'
-import { alfredTokenOk, coordinatorsView, noteTurn, readV2Projects, startCoordinator, type CoordinatorUrls, type V2Candidate } from './pmCoordinator'
+import { alfredTokenOk, coordinatorsView, noteTurn, startCoordinator, v2Projects, type CoordinatorUrls } from './pmCoordinator'
+import type { V2Candidate } from './v2Board'
 import { sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { lastWords } from './pmRead'
 import type { FolderCheck, PmStore } from './pmStore'
 import { readSettings } from './settings'
-import { addSettingCard } from './uiActions'
+import { addChangeCard, addSettingCard } from './uiActions'
+import { CHANGE_PLACES } from '../../shared/uiActions'
 import { UI_TARGETS } from '../../shared/uiTargets'
 import { saveProjectGuards } from './pmProject'
 import { checkMachine } from './pmReady'
@@ -26,7 +28,7 @@ import { EXAMPLES } from '../../shared/pm/examples'
 import { DATA_DIR } from './env'
 import { openUi, uiTargetsList, type UiOpenDeps } from './uiOpen'
 
-type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, dataDir?: string, clients?: UiOpenDeps['clients'] }
+type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, dataDir?: string, herdrProjects?: string, clients?: UiOpenDeps['clients'] }
 
 // A turn the server saw start over an hour ago is not trusted any more (as a coordinator's).
 const TURN_MS = 3_600_000
@@ -37,7 +39,18 @@ const unb64 = (v: unknown) => (typeof v === 'string' ? Buffer.from(v, 'base64').
 export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?: unknown, argv64?: unknown, input?: unknown, input64?: unknown }) {
   if (!(await alfredTokenOk(deps.store, token))) throw new HerdrError('forbidden', 'Unknown Alfred token')
   const argv = Array.isArray(body.argv64) ? body.argv64.map(unb64) : body.argv
-  const input = body.input64 !== undefined ? unb64(body.input64) : body.input
+  return alfredCommand(deps, argv, body.input64 !== undefined ? unb64(body.input64) : body.input)
+}
+
+// The user's Apply on a change Alfred proposed (POST /api/ui/act): the same
+// command, made only while its dry run still shows the card's lines.
+export async function applyProposedChange(deps: Deps, argv: string[], lines: string[]): Promise<boolean> {
+  const out = await alfredCommand(deps, argv, undefined, lines) as { applied?: boolean }
+  return out.applied === true
+}
+
+// card: the lines of the proposal the user applies (no token: their click).
+async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: string[]) {
   const cmd = parseAlfredCommand(argv)
   if ('error' in cmd) throw new HerdrError('bad_input', cmd.error)
   const { store } = deps
@@ -75,8 +88,16 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
     const c = await store.coordinator(key)
     return c?.terminal ? deps.panes().find(p => p.coreAddress === c.terminal) : undefined
   }
-  // A change: its plan, then (with --apply) the change itself.
-  const change = async (plan: AlfredPlan, make: () => Promise<unknown>) => ('apply' in cmd && cmd.apply ? { applied: true, change: plan.change, result: await make() } : dryRun(argv as string[], plan))
+  // A change: its plan, then (with --apply, or the user's Apply on its card
+  // while the plan is the same) the change itself; --propose: the card.
+  const change = async (plan: AlfredPlan, make: () => Promise<unknown>) => {
+    if (card) return plan.change.join('\n') === card.join('\n') ? { applied: true, change: plan.change, result: await make() } : { stale: true }
+    if ('apply' in cmd && cmd.apply) return { applied: true, change: plan.change, result: await make() }
+    if (!('propose' in cmd && cmd.propose)) return dryRun(argv as string[], plan)
+    const key = 'input' in cmd ? cmd.input.key : cmd.key, place = CHANGE_PLACES[cmd.name]!, turn = await alfredTurn()
+    const target = cmd.name === 'project add' ? undefined : place.target
+    return addChangeCard(store, { turn: turn?.kind ?? 'none', by: ALFRED, label: place.label(key), change: { argv: (argv as string[]).filter(a => a !== '--propose'), lines: plan.change, project: key, ...(turn?.said ? { said: turn.said } : {}), ...(target ? { target } : {}) } })
+  }
 
   switch (cmd.name) {
     case 'help': return { commands: alfredCommandList(), note: `Changes (${CHANGES.join(', ')}) are only shown without --apply` }
@@ -90,14 +111,14 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
     }
     case 'templates': return { templates: (await store.overview()).templates, examples: EXAMPLES.map(e => ({ id: `example:${e.id}`, instructions: e.instructions, taskTypes: Object.keys(e.taskTypes), guards: e.guards })) }
     case 'v2': {
-      const candidates = await readV2Projects(deps.dataDir)
+      const candidates = await v2Projects(store, deps.herdrProjects)
       if (!candidates.length) return { fromV2: false }
       // The v3 project made from each: same folder (on any machine) or same name.
       const made = (c: V2Candidate) => projects.find(p => p.path === c.path || p.name === c.name)?.key ?? null
       return {
         fromV2: true, report: path.join(deps.dataDir ?? DATA_DIR, 'migration-report.md'),
         projects: candidates.map(c => ({ ...c, project: made(c) })),
-        note: 'Folders are those of the machine v2 ran on (this one). Add tasks again with wherdr pm task add once the project has a template',
+        note: 'Read now from the herdr-projects board of this machine (read only). Folders are those of the machine v2 ran on (this one). Add tasks again with wherdr pm task add once the project has a template',
       }
     }
     case 'machines': return { machines: machines.map(m => ({ key: m.key, label: m.label, local: m.local, status: m.status })) }

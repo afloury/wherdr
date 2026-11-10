@@ -29,7 +29,7 @@ it('links each target to its section with a target parameter, named on the card'
 })
 
 it('lists every target in the agents\' role text, with the commands that use them', () => {
-  const text = docsRule(undefined, 'help', { cmd: 'wherdr pm ui open', places: 'places' }).join('\n')
+  const text = docsRule(undefined, 'help', { cmd: 'wherdr pm ui open', places: 'places' }, []).join('\n')
   expect(text).toContain('`wherdr pm ui open --target <id>`')
   expect(text).toContain('`wherdr pm ui targets`')
   for (const id of Object.keys(UI_TARGETS)) expect(text).toContain(`${id} (`)
