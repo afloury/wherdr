@@ -68,7 +68,9 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   only. To show you where a setting is, the agent points at it (`wherdr alfred ui open --target
   terminal.key-order`; `ui targets` lists the settings it can point at): on a wide computer the
   side panel opens on its section and highlights it; on a phone the card names the setting with a
-  crosshair, and a tap opens the page and highlights it.
+  crosshair, and a tap opens the page and highlights it. A part of a project's sheet takes the
+  project too (`ui open --target project.guards --project WEB`): its sheet opens on that tab,
+  highlighted. Other targets include *Machines › Add machine* and *Phone › Use it on your phone*.
 - <a id="buttons-an-agent-puts-in-its-reply"></a>**Buttons an agent puts in its reply**: Alfred or a project's coordinator can give you the
   button for a task instead of telling you to go and find it (`wherdr pm ui action resume|step|open
   <task>`): *Resume WHR-12* for a stopped task, the step's own button (*Merge*, *Approve
@@ -91,6 +93,13 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   it. The card then says *Applied by you · 14:02* or *Cancelled by you*. If the setting changed
   since (in Settings, on another device), it says so and applies nothing. Only in a turn that
   follows your message, never in a wake; a new proposal for the same setting replaces the older.
+- <a id="project-changes-alfred-proposes"></a>**Project changes Alfred proposes**: the same card, for a project change
+  (`wherdr alfred project add|template|guards|machine … --propose`, or `coordinator start …
+  --propose`): *Change proposed · by Alfred*, the place (*Project WEB › Guards*) and the lines the
+  change would make. *Show me* opens the project's sheet on that part, highlighted; *Apply* makes
+  the change from your session, only if it would still make the same lines (else *This changed
+  since: nothing was applied*); a check that fails then (a folder that is no longer a repository)
+  shows under the buttons.
 - **Files and screenshots beside the conversation**: an agent can show you a file of its own
   folder (`wherdr pm ui show file docs/plan.md`, a path relative to its folder: never `~`, `..`
   or a path outside it) or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task

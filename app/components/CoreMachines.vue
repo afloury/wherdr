@@ -107,7 +107,7 @@ async function reconnect(key: string) {
     <p v-if="memoryError" class="form-error" role="alert">{{ memoryError }}</p>
     <p class="muted settings-hint">{{ memoryHint() }}</p>
     <p v-if="coreLine" class="mono-label core-line" data-testid="core-line">{{ coreLine }}</p>
-    <form class="sheet-form" @submit.prevent="add">
+    <form class="sheet-form" data-ui-target="machines.add" @submit.prevent="add">
       <label class="field-label" for="machineTarget">{{ t('SSH target') }}</label>
       <UInput id="machineTarget" v-model="target" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off" :spellcheck="false" :placeholder="noPort ? 'user@10.0.0.7' : 'user@10.0.0.7:22'" maxlength="200" :aria-describedby="portRefused ? 'machinePortHint' : undefined" />
       <p v-if="portRefused" id="machinePortHint" class="muted settings-hint" data-testid="machine-port-hint">{{ t('This herdr-core takes no port: update it, or use a Host from ~/.ssh/config') }}</p>

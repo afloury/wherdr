@@ -11,7 +11,7 @@ import { PREF_KEYS, type Guards, type Prefs, type Template, type WorktreeSetup }
 import { HerdrError } from './herdr'
 import { alfredTokenOk, scopeOf } from './pmCoordinator'
 import type { CoreAdminDeps } from './coreCreate'
-import { stepAction } from './pmBoard'
+import { archiveDone, stepAction } from './pmBoard'
 import { lastReadiness } from './pmReady'
 import type { PmStore } from './pmStore'
 
@@ -63,7 +63,10 @@ export async function updateProject(store: PmStore, key: unknown, body: Record<s
     await store.saveWorkflow(t.id.toUpperCase(), Object.keys(prefs).length ? { ...rest, prefs } : rest)
   }
   if (body.worktree !== undefined) await saveWorktreeSetup(store, key, body.worktree)
-  return { project: await store.updateProject(key, update) }
+  const project = await store.updateProject(key, update)
+  // A shorter delay archives at once what it now covers.
+  if (update.archiveAfter !== undefined) await archiveDone(store)
+  return { project }
 }
 
 // The workflow's worktree block, from the General tab: empty fields dropped

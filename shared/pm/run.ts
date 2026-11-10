@@ -66,6 +66,8 @@ export interface Task {
   report?: Report // a problem the user reported, open until the coordinator acts (report.ts)
   summary?: TaskSummary // a cheap model's few lines on how it went, per round (summary.ts)
   recovery?: Recovery // its agent gone with an incident: the engine resumes it (recovery.ts)
+  archived?: number // when the engine archived it, done for its project's delay: off the board (archive.ts)
+  unarchived?: number // when the user brought it back to Done: its delay runs again from then
   createdAt: number
 }
 

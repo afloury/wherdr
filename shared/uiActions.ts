@@ -19,10 +19,16 @@ export type UiCardState = 'open' | 'done' | 'dismissed' | 'stale'
 // (undefined: the default) → after, and the user's message behind it.
 // target: the element "Show me" highlights (shared/uiTargets.ts), if it has one.
 export interface SettingChange { key: SyncedSetting, before?: string, after: string, said?: string, target?: UiTargetId }
+// A proposed project change (`wherdr alfred project add|template|guards|machine
+// …` or `coordinator start … --propose`): the command the click runs, the
+// lines its dry run showed (the click runs it only while they still hold), the
+// project, and the part of its sheet "Show me" highlights.
+export interface ProjectChange { argv: string[], lines: string[], project: string, said?: string, target?: UiTargetId }
 export interface UiCard {
-  id: string, by: string, at: number, kind: UiAction | 'setting', task: string, shown: string
+  id: string, by: string, at: number, kind: UiAction | 'setting' | 'change', task: string, shown: string
   label: string, stamp: string, state: UiCardState, outcome?: { text: string, at: number }
   setting?: SettingChange // kind 'setting' only (task and shown are '')
+  change?: ProjectChange // kind 'change' only (task and shown are '')
   refused?: string // the click's answer only, never stored: why the step's action was refused
 }
 export const UI_CARD_MS = 24 * 3600_000
@@ -73,8 +79,19 @@ export function outcomeText(card: Pick<UiCard, 'kind' | 'label'>, after?: Pick<T
 // over: changed since (in Settings, on another device), it runs nothing.
 export const settingStamp = (key: string, value: string | undefined) => `setting:${key}:${value ?? ''}`
 
-// What the card is about: one card per task and action, or per setting.
-const cardAbout = (c: UiCard) => (c.setting ? `setting:${c.setting.key}` : `${c.kind}:${c.task}`)
+// Each project change's place: the card's title and what Show me highlights.
+export const CHANGE_PLACES: Record<string, { label: (key: string) => string, target?: UiTargetId }> = {
+  'project add': { label: k => `New project ${k}` },
+  'project template': { label: k => `Project ${k} › Workflow`, target: 'project.workflow' },
+  'project guards': { label: k => `Project ${k} › Guards`, target: 'project.guards' },
+  'project machine': { label: k => `Project ${k} › Machines` },
+  'coordinator start': { label: k => `Project ${k} › Coordinator`, target: 'project.autopilot' },
+}
+export const changeStamp = (lines: string[]) => `change:${lines.join('\n')}`
+
+// What the card is about: one card per task and action, per setting, or per
+// project and change.
+const cardAbout = (c: UiCard) => (c.setting ? `setting:${c.setting.key}` : c.change ? `change:${c.label}` : `${c.kind}:${c.task}`)
 
 // The cards a coordinator keeps: the new one first, one per task and action
 // (a new one replaces the older), the newest UI_CARDS_MAX of the last day.

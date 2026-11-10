@@ -111,6 +111,12 @@ describe('ui open', () => {
     for (const raw of ['#/settings?section=terminal&target=nope', '#/settings?section=phone&target=terminal.key-order', '#/settings?section=conversation&tab=dictation&target=conversation.reply-style', '#/board?target=agents.pace'])
       await expect(openUi(phone.deps, { ...web, raw, turn: 'user' })).rejects.toThrow(/Unknown target/)
     expect(phone.got[0]!.msgs).toHaveLength(1)
+    // A part of a project's sheet needs the project; a coordinator only its own.
+    const guards = '#/settings?section=projects&tab=guards&project=WEB&target=project.guards'
+    expect(parseCommand(['ui', 'open', '--target', 'project.guards', '--project', 'WEB'])).toEqual({ name: 'ui open', link: guards })
+    expect(parseAlfredCommand(['ui', 'open', '--target', 'project.guards'])).toEqual({ error: expect.stringContaining('add --project <KEY>') })
+    expect(parseAlfredCommand(['ui', 'open', '--target', 'agents.pace', '--project', 'WEB'])).toHaveProperty('error')
+    await expect(openUi(phone.deps, { ...web, raw: guards.replace('WEB', 'API'), turn: 'user' })).rejects.toThrow(/Your token opens project/)
   })
 
   // WHR-196: the same names label a chat's in-app links.
