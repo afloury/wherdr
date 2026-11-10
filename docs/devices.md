@@ -4,36 +4,30 @@
 
 ### On a computer
 
-- **Split panes, live**: a tab with several panes is drawn with Herdr's real layout; every pane
-  shows its conversation or terminal live. Every visible terminal fills its cell and follows
-  window and divider resizing, keeping its instance and connection when focus changes.
-  Click a cell to give it the keyboard. Leaving the tab restores each terminal's original size,
-  unless a Herdr client has resized it meanwhile.
-- **Rearrange the layout**: drag a pane onto another to move it, drag a divider to resize
-  (arrow keys work on a focused divider); changes go to Herdr itself.
 - **Spaces and tabs**: sidebar with every space, tabs at the top, active tab remembered per space.
+  With herdr-core each terminal of a space is a tab; the header's map button lists the space's
+  terminals to switch between. Rename, split and move of tabs stay in herdr-app.
+- **Composer under the terminal**: an agent's terminal keeps the message field below it.
   The sidebar can be resized, or collapsed to a narrow rail (search, new agent, settings and
   state counters) with the button next to Settings; the choice is kept on the device.
+- **Terminal key bar**: as wide as the message field, most used keys first (esc, arrows, tab,
+  ^C, y, n). When the column is too narrow the keys scroll sideways; the keyboard button
+  stays at the end of the bar.
 - **Keyboard shortcuts** (`Mod` is ⌘ on macOS, Ctrl elsewhere; `Mod+/` or `?` lists them all,
   also in Settings › Computer):
   - `Ctrl/⌘+K` global search across agents and conversations, `Alt+↑/↓` previous / next agent
-    in the list, `Mod+,` settings, `H` the [Board](board.md#works-great-with-herdr-projects) (outside a
-    text field and the terminal).
+    in the list, `Mod+,` settings.
   - `Mod+Alt+N` new agent in a new space, `Mod+Alt+T` new tab in the current space,
     `Mod+Alt+W` close the current pane (after confirmation). They work from the terminal too.
   - In an agent: `Mod+F` searches the conversation, ``Ctrl+` `` switches between conversation
     and terminal, and `Esc` stops a working agent when the message field is empty.
-  - `Alt+Shift+arrows` swaps the current pane with its neighbour, `Ctrl/⌘+Alt+arrows` moves
-    focus to the neighbouring pane in a side-by-side tab, `Esc` closes dialogs, `Enter` sends
+  - `Esc` closes dialogs, `Enter` sends
     and `Shift+Enter` adds a new line. On a "Your turn" card, `1`–`9` pick an option (on AZERTY
-    without Shift too, outside the message field); on the `/resume` card, `Ctrl+A` switches
-    between every project and the current one (`⌘A` still selects all on macOS).
+    without Shift too, outside the message field), and `↑` `↓` `Enter` `Esc` go to the terminal
+    while the same question is on screen.
 - In the message field, `↑` on the first line recalls previous messages and slash commands;
   `↓` on the last line returns to newer entries, then restores your draft. History keeps the
   last 100 texts sent from this device per agent, without attachments or quoted references.
-- **Board** for [herdr-projects](board.md#works-great-with-herdr-projects) 1.2.1 or later: every machine's
-  tasks in four columns (needs you, ready to approve, working, to do), done one tap away, each
-  task with its pull request, review, reply and approval.
 - **Settings** in a sidebar, with desktop-only options such as the content width.
 
 ### On a phone
@@ -43,16 +37,15 @@
   Tap it (always available, even for a lone pane) for the machine/space context and everything
   that manages panes and tabs: switching (listed only when there are several; a lone pane shows its
   full name and state instead), then the current
-  pane (rename, split, move, swap, copy ID, then **Close this conversation** or **Close this
-  terminal**: only that pane, from either view) and the current tab (rename, new tab, tab
-  overview). **Close entire space…** stands apart, and only when the space holds other panes: a
+  pane (rename, copy ID, then **Close this conversation** or **Close this terminal**: only that
+  pane, from either view) and new tabs. **Close entire space…** stands apart, and only when the space holds other panes: a
   lone pane has a single close, whose confirmation says the space closes too. A tab closes from its
   overview, which says how many panes go. Every close confirmation names what stops, how many tabs
   and panes go and what stays open; if the structure changes while it is open and the close would
   now take more, the updated confirmation is shown again. Long names ellipsize; multiple panes
   show their position, never 1/1.
   Options keeps the conversation, the agent and its tools: Terminal/Conversation, search,
-  notifications, changes, files, plugin actions, take control, restart, reconnect and settings.
+  notifications, browse files, keep after restart, take control, reconnect and settings.
 - **Terminal function keys** start closed. The square chevron button above Send shows or hides
   one horizontally scrolling row in both Conversation and Terminal. It holds Ctrl, Esc, Tab,
   arrows, Enter, Ctrl+C, Backspace and the remaining modifiers and function keys. The phone-keyboard
@@ -63,14 +56,14 @@
   The input stays on one row at rest and expands while editing. Desktop and tablet layouts
   keep their existing controls.
 - **Installable app (PWA)** on iPhone and Android, with safe-area and keyboard handling.
-- **Web Push notifications** when an agent finishes or needs you (with its question), and for
-  `herdr notification show` (plugins, scripts).
+- **Web Push notifications** when an agent finishes or needs you.
 - **Quick replies**: answer permissions and questions in one tap from the agent list.
-- **Split tabs on a small screen**: a plan of the tab's panes in Herdr's proportions, then each
-  pane full screen with a mini-map and swipe to its neighbours.
 - **Terminal key bar** (Esc, Enter, arrows, Shift+Tab, Ctrl+C…) and touch scrolling.
   On iPhone and iPad a tap on the terminal does not open the on-screen keyboard: type in the
   message field, or tap the key bar's keyboard button to type in the terminal.
+  In **Settings › Terminal › Phone key bar**, reorder the keys and uncheck the ones you never
+  use: a hidden key keeps its place for when you show it again, and the keyboard button is
+  always shown. **Reset to default** restores the order and shows every key. Saved on the device.
   Terminal links back to this app stay in the current window on a phone; external
   links still open separately.
 - **Offline reading** of the last known state and of recently opened conversations.
@@ -80,8 +73,6 @@
 - **Computer layout in both orientations**: in portrait the agent list folds to a narrow column
   and slides over the conversation; in landscape it stays docked. Buttons are 44 px, and the
   layout does not change when the on-screen keyboard opens.
-- **Side by side by touch**: finger-sized pane buttons, grip and dividers; the active terminal
-  pane has the key bar; with the keyboard open the tab fits the visible area above it.
 - **Hardware keyboard**: Enter sends (Shift+Enter adds a line) once a key only a hardware
   keyboard sends (arrows, Esc, a ⌘ chord) has been typed.
 
@@ -89,3 +80,6 @@ The terminal key bar also has **Ctrl**, **Alt** and **Shift** toggles. Select on
 several, then tap a key or type one ASCII character on the phone keyboard. The
 modifiers reset after that key; tapping a selected modifier cancels it. Pasting
 or entering composed text clears the selection and keeps the text unchanged.
+
+Split panes drawn in Herdr's layout, dragging panes and dividers, pane swaps
+(`Alt+Shift+arrows`) and side-by-side focus moves are v2 only.
