@@ -41,8 +41,10 @@ describe('mechanical moves', () => {
 
   it('fixes the base of a PR opened against the wrong branch', () => {
     expect(nextMove(facts({ pr: pr({ baseRefName: 'main' }) }))).toEqual({ key: 'base:abc1234', move: { kind: 'fix-base', base: 'v3' } })
-    // Not the task's commit, or before the PR step: nothing.
-    expect(nextMove(facts({ pr: pr({ baseRefName: 'main', headRefOid: 'other' }) }))).toBeUndefined()
+    // Not the task's commit, and not the engine's to merge (main, or a merge waiting for the user):
+    // only a head GitHub's Update branch made is taken in (pmActions takeUpdate), once per head.
+    expect(nextMove(facts({ pr: pr({ baseRefName: 'main', headRefOid: 'other' }) }))).toEqual({ key: 'update:other', move: { kind: 'take-update' } })
+    expect(nextMove(facts({ pr: pr({ baseRefName: 'main', headRefOid: 'other' }), task: task({ mech: { 'update:other': 1 } }) }))).toBeUndefined()
     // At the merge step, a PR head that is not the task's commit (a CI fix not pushed): the merge step sorts it out, once per attempt.
     expect(nextMove(facts({ pr: pr({ headRefOid: 'other' }) }))).toEqual({ key: 'merge:abc1234', move: { kind: 'merge', url: 'https://gh/pr/7', base: 'v3' } })
     expect(nextMove(facts({ pr: pr({ headRefOid: 'other' }), agentBusy: true }))).toBeUndefined()
@@ -97,6 +99,8 @@ describe('mechanical moves', () => {
       const clean = onEvent(visual, up, { kind: 'caught-up', head: 'fff0000' }, 7).state
       expect(clean).toMatchObject({ at: 3, yourTurn: { reason: 'user' }, proofs: { review: { commit: 'fff0000' } } })
       expect(clean.catchUp).toBeUndefined()
+      // Updated on GitHub while it waits: taken in and pushed, not left to the merge.
+      expect(nextMove(at(waiting, { pr: pr({ headRefOid: 'gh00000' }) }))).toEqual({ key: 'update:gh00000', move: { kind: 'take-update' } })
     })
 
     it('keeps the user\'s approval through a refused merge, then merges by itself once ready', () => {

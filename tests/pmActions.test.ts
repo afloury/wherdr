@@ -493,9 +493,9 @@ esac
   })
 
   // GitHub's Update branch runs no local merge driver: its union merge lists an
-  // index entry both sides changed twice. The merge step takes it into the
-  // worktree, whose wherdr.afterMerge fixes it, then reviews and pushes that.
-  it('takes a GitHub update into the worktree, fixes its merge, then reviews and pushes it', async () => {
+  // index entry both sides changed twice. The merge step (or the engine's
+  // take-update, when not merging) fixes it in the worktree and pushes it.
+  it('takes a GitHub update into the worktree, fixes its merge and pushes it, then has it reviewed', async () => {
     const s = setup('moved-update'), other = path.join(tmp, 'moved-update', 'gh')
     const file = (cwd: string, text?: string) => text === undefined ? fs.readFileSync(path.join(cwd, 'docs/llms.txt'), 'utf8') : fs.writeFileSync(path.join(cwd, 'docs/llms.txt'), text)
     git(s.repo, 'checkout', '-q', 'dev'); fs.mkdirSync(path.join(s.repo, 'docs'))
@@ -510,12 +510,12 @@ esac
     file(other, '- [A](docs/a.md): a, dev.\n'); git(other, 'commit', '-qam', 'dev'); git(other, 'push', '-q', 'origin', 'HEAD:dev')
     git(other, 'checkout', '-q', 'task/A-1'); git(other, 'merge', '-q', '--no-edit', 'dev'); git(other, 'push', '-q', 'origin', 'HEAD:task/A-1')
     expect(file(other)).toBe('- [A](docs/a.md): a, task.\n- [A](docs/a.md): a, dev.\n')
-    const fixed = await s.merge(1, reviewed).then(() => s.head())
+    // The fix is pushed at once, before the new head goes back to review.
+    const r = await s.merge(1, reviewed), fixed = s.head()
     expect(file(s.repo)).toBe('- [A](docs/a.md): a, task.\n')
     expect(git(s.repo, 'log', '-1', '--format=%s')).toBe('Fix the merge (wherdr.afterMerge)')
-    expect(await s.merge(2, reviewed)).toMatchObject({ ok: false, review: { since: reviewed, head: fixed } })
-    expect(await s.merge(3, fixed)).toEqual({ ok: true, link: 'https://pr/1', commit: fixed })
     expect(git(s.repo, '--git-dir', s.origin, 'rev-parse', 'task/A-1')).toBe(fixed)
+    expect(r).toMatchObject({ ok: false, review: { since: reviewed, head: fixed } })
   })
 
   it('refuses a head pushed from outside the task\'s worktree', async () => {

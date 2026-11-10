@@ -17,7 +17,7 @@ import { LABEL, taskPlan, trustPrompt, waitOf, type LabelledTerminal, type Run, 
 import { PATH_SETUP } from './coreCreate'
 import { HerdrError } from './herdr'
 import { CoreError } from './core'
-import { actionShell } from './pmActions'
+import { actionShell, takeUpdate } from './pmActions'
 import { prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
@@ -486,6 +486,19 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
       }
       if (r.code === 0) return `caught up with ${move.base}`
       return catchUpGaveUp(task, f.head) ? `${lastLine(r.out)} (failed ${CATCH_UP_TRIES} times: wherdr stops updating this commit)` : lastLine(r.out)
+    }
+    case 'take-update': {
+      const at = await sh(SCRIPT.headOf, [run.worktree, f.pr!.headRefOid, f.pr!.baseRefName])
+      if (at.code !== 0 || lastLine(at.out) !== 'update') return 'the PR head is not a GitHub update: left as it is'
+      const u = await takeUpdate(sh, run.worktree, run.branch, f.guards, 'engine')
+      if (!u.ok && u.toAgent) return hand(`${u.error}. Merge origin/${run.branch} into your branch, resolve the conflicts, commit, then say you are done.`)
+      if (!u.ok) return u.error
+      // A merge step waiting for the user: recorded as a clean update with its base, the reviewed commit moving with it.
+      if (waitsToMerge(f.plan[task.step!.at]) && !task.step!.catchUp) {
+        await stepEvent(deps, task.id, f.plan, { kind: 'catch-up', base: f.pr!.baseRefName, head: f.head! })
+        await stepEvent(deps, task.id, f.plan, { kind: 'caught-up', head: u.head })
+      }
+      return `took GitHub's update of the PR in, fixed and pushed at ${u.head.slice(0, 7)}`
     }
     case 'rerun-ci': {
       const r = await sh(SCRIPT.rerun, [run.worktree, f.head!])
