@@ -19,6 +19,7 @@ import type { CoreAdminDeps } from './coreCreate'
 import { runOn } from './pmLaunch'
 import { HerdrError } from './herdr'
 import type { PmStore } from './pmStore'
+import { archiveDays, archiveDue, archivedMatch, archivedText, doneAt } from '../../shared/pm/archive'
 
 const planOf = (t: Template | null, task: Task, p?: Project) => (t ? taskPlan(t, task, p) : [])
 
@@ -42,21 +43,62 @@ const machinesOf = (p: Project, known: MachineInfo[]): BoardMachine[] | undefine
   })
 }
 
+// The cards of these tasks, as the board shows them.
+async function cardsOf(store: PmStore, tasks: Task[], known: MachineInfo[]): Promise<Card[]> {
+  const [projects, templates, runs] = [await store.projects(), await templatesOf(store), await store.runs()]
+  return tasks.map((task) => {
+    const p = projects.find(x => x.key === task.project)
+    // A project with several machines: the card names the one its task went to.
+    const on = task.machine !== undefined && p && allowedMachines(p).length > 1 ? known.find(m => m.key === task.machine)?.label ?? (task.machine || 'Local') : undefined
+    return withPr({ ...shownTexts(projects, cardOf(task, planOf(templates.get(task.project) ?? null, task, p), runs)), shown: shownTaskId(projects, task.id), ...(p?.color ? { color: p.color } : {}), ...(on ? { machine: on } : {}), ...(task.sameFiles && task.state === 'todo' ? { sameFiles: shownTaskId(projects, task.sameFiles) } : {}) })
+  })
+}
+
 // known: the machines wherdr knows, to name those a project allows.
+// Archived tasks stay off it: only their count per project.
 export async function board(store: PmStore, known: MachineInfo[] = []): Promise<Board> {
-  const [projects, templates, tasks, runs] = [await store.projects(), await templatesOf(store), boardOrder(await store.tasks()), await store.runs()]
+  const [projects, templates, all] = [await store.projects(), await templatesOf(store), boardOrder(await store.tasks())]
+  const archived: Record<string, number> = {}
+  for (const t of all) if (t.archived) archived[t.project] = (archived[t.project] ?? 0) + 1
   return {
     projects: projects.map((p) => {
       const t = templates.get(p.key), machines = machinesOf(p, known)
       const plans = t ? Object.keys(t.taskTypes).map(type => ({ id: type, steps: planSteps(t, { type }, p.base) })) : []
       return { key: p.key, ...(p.label ? { label: p.label } : {}), ...(p.aliases ? { aliases: p.aliases } : {}), ...(p.color ? { color: p.color } : {}), name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → '), weight: weightText(weightOf(t, { type: x.id })) })), ...(machines ? { machines } : {}) }
     }),
-    cards: tasks.map((task) => {
-      const p = projects.find(x => x.key === task.project)
-      // A project with several machines: the card names the one its task went to.
-      const on = task.machine !== undefined && p && allowedMachines(p).length > 1 ? known.find(m => m.key === task.machine)?.label ?? (task.machine || 'Local') : undefined
-      return withPr({ ...shownTexts(projects, cardOf(task, planOf(templates.get(task.project) ?? null, task, p), runs)), shown: shownTaskId(projects, task.id), ...(p?.color ? { color: p.color } : {}), ...(on ? { machine: on } : {}), ...(task.sameFiles && task.state === 'todo' ? { sameFiles: shownTaskId(projects, task.sameFiles) } : {}) })
-    }),
+    // Done ones last, newest done first; the others in board order.
+    cards: await cardsOf(store, [...all.filter(t => !t.step?.done), ...all.filter(t => t.step?.done && !t.archived).sort((a, b) => doneAt(b) - doneAt(a))], known),
+    archived,
+  }
+}
+
+// GET /api/pm/archived: the archived tasks of these projects (all when none
+// named), newest archived first, matching the search, a page at a time.
+export const ARCHIVED_PAGE = 30
+export async function archivedCards(store: PmStore, known: MachineInfo[], q: { projects?: string[], search?: string, offset?: number }) {
+  const projects = await store.projects()
+  const tasks = (await store.tasks()).filter(t => t.archived && (!q.projects?.length || q.projects.includes(t.project)))
+    .sort((a, b) => b.archived! - a.archived!)
+  const found = (await cardsOf(store, tasks, known)).filter(c => archivedMatch({ ...c, shown: shownTaskId(projects, c.id) }, q.search ?? ''))
+  const at = Math.max(0, Math.floor(q.offset ?? 0))
+  return { cards: found.slice(at, at + ARCHIVED_PAGE), total: found.length }
+}
+
+// Brings an archived task back to Done; its delay runs again from now.
+export async function unarchiveTask(store: PmStore, id: unknown) {
+  const task = await store.task(id)
+  if (!task) throw new HerdrError('not_found', 'Unknown task')
+  if (!task.archived) throw new HerdrError('refused', `${task.id} is not archived`)
+  return store.logTask({ ...task, archived: undefined, unarchived: Date.now() }, 'user', 'unarchived: back in Done')
+}
+
+// The engine's pass: archives each done task past its project's delay, once at
+// start (older done tasks too) then with the other periodic sweeps.
+export async function archiveDone(store: Pick<PmStore, 'projects' | 'tasks' | 'logTask'>, now = Date.now()) {
+  const projects = await store.projects()
+  for (const t of await store.tasks()) {
+    const days = archiveDays(projects.find(p => p.key === t.project))
+    if (archiveDue(t, days, now)) await store.logTask({ ...t, archived: now }, 'engine', archivedText(days))
   }
 }
 

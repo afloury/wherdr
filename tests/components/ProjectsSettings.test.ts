@@ -85,7 +85,7 @@ it('opens the project sheet on the URL\'s tab; Guards saves a branch added; Gene
   ;(name as HTMLInputElement).value = 'Website'
   name.dispatchEvent(new Event('input'))
   inSheet('pm-save')!.closest('form')!.dispatchEvent(new Event('submit'))
-  await vi.waitFor(() => expect(calls[0]).toEqual({ url: '/api/pm/project-update', body: { key: 'WEB', name: 'Website', base: '', branchName: '', prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' } } }))
+  await vi.waitFor(() => expect(calls[0]).toEqual({ url: '/api/pm/project-update', body: { key: 'WEB', name: 'Website', base: '', branchName: '', archiveAfter: 7, prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' } } }))
 
   await vi.waitFor(() => expect(inSheet('pm-save')!.hasAttribute('disabled')).toBe(false))
   await pick(w, 'pm-visibility', 'private')

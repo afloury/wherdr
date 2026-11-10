@@ -11,7 +11,7 @@ import { PREF_KEYS, type Guards, type Prefs, type Template } from '../../shared/
 import { HerdrError } from './herdr'
 import { alfredTokenOk, scopeOf } from './pmCoordinator'
 import type { CoreAdminDeps } from './coreCreate'
-import { stepAction } from './pmBoard'
+import { archiveDone, stepAction } from './pmBoard'
 import { lastReadiness } from './pmReady'
 import type { PmStore } from './pmStore'
 
@@ -62,7 +62,10 @@ export async function updateProject(store: PmStore, key: unknown, body: Record<s
     const { prefs: _old, ...rest } = t
     await store.saveWorkflow(t.id.toUpperCase(), Object.keys(prefs).length ? { ...rest, prefs } : rest)
   }
-  return { project: await store.updateProject(key, update) }
+  const project = await store.updateProject(key, update)
+  // A shorter delay archives at once what it now covers.
+  if (update.archiveAfter !== undefined) await archiveDone(store)
+  return { project }
 }
 
 // The user's save of the workflow: everything but the guards.
