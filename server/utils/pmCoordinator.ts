@@ -199,7 +199,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
   const pilotRec = main ? (key ? await store.coordinator(key) : null) : rec, pilot = pilotRec?.autopilot
 
   // Alfred has no autopilot: it starts or adds tasks in the user's turns only.
-  if (main && turn !== 'user' && (cmd.name === 'task start' || cmd.name === 'task add')) throw new HerdrError('refused', `${cmd.name} is the user's request for Alfred: each project's coordinator runs its own autopilot`)
+  if (main && turn !== 'user' && (cmd.name === 'task start' || cmd.name === 'task add')) throw new HerdrError('refused', `Alfred runs ${cmd.name} only on a request from the user, sent from wherdr: each project's coordinator runs its own autopilot`)
 
   switch (cmd.name) {
     case 'help': return { commands: commandList(t) }
