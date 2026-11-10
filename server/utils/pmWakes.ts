@@ -1,18 +1,18 @@
 // The engine's wakes, every 30 s (server/plugins/pm.ts): reasons are gathered
 // (a coordinator step that starts or rechecks, the autopilot's events, its
-// interval and fixed times, those skipped when there is nothing to do or the
-// worker's account is ahead of its pace) into
+// interval and fixed times, those skipped when there is nothing to do, nothing
+// it could act on changed, or the worker's account is ahead of its pace) into
 // the persisted queue, then each coordinator's queue ticks (shared/pm/wakes.ts): delivery once it is idle and the user is quiet, the
 // end of an open wake, a missed ack tried again, then a push to the user.
 import { randomUUID } from 'node:crypto'
 import { MAIN, coordinatorBy, coordinatorWake } from '../../shared/pm/coordinator'
-import { LOOK_REASON, quietEvents, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
+import { LOOK_REASON, SKIP_WHY, quietEvents, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
 import { projectPace } from './pmPace'
 import { currentStep, durationMs } from '../../shared/pm/steps'
 import { taskPlan } from '../../shared/pm/run'
 import { due as isDue, parseSchedule } from '../../shared/pm/schedule'
-import { enqueue, tickWakes, wakeText, type CoordStatus, type Wake } from '../../shared/pm/wakes'
-import { healthEvery, healthSummary } from '../../shared/pm/health'
+import { addSkip, enqueue, tickWakes, wakeText, type CoordStatus, type Wake, type WakeSkip } from '../../shared/pm/wakes'
+import { healthEvery, healthRepeats, healthSummary } from '../../shared/pm/health'
 import { allowedMachines, type Project } from '../../shared/pm/project'
 import type { Run } from '../../shared/pm/run'
 import type { Template } from '../../shared/pm/workflow'
@@ -86,8 +86,12 @@ async function gather(deps: WakeDeps, now: number) {
     const ap = c.autopilot, mine = tasks.filter(x => x.project === p.key)
     const ev = autopilotEvents(ap ?? { on: false, goal: '', events: [], perDay: 0, atOnce: 0 }, mine, c.seen ?? {}, { key: p.key, by: coordinatorBy(p.key) })
     const on = !!ap?.on && !!c.terminal && inHours(ap.hours, new Date(now))
-    // The first look only notes where tasks stand.
-    if (on && c.seen) add(p.key, ev.reasons)
+    // The first look only notes where tasks stand. Each wake not sent is noted (autopilot show).
+    const skips: WakeSkip[] = []
+    if (on && c.seen) {
+      add(p.key, ev.reasons)
+      skips.push(...ev.skipped.map(why => ({ at: now, what: 'question' as const, why })))
+    }
     const due = on && ap!.every && now - (c.ranAt ?? 0) >= durationMs(ap!.every)
     // Fixed times: a slot missed (wherdr down, the coordinator off) wakes it once.
     const at = on && ap!.at ? parseSchedule(ap!.at) : null
@@ -98,19 +102,27 @@ async function gather(deps: WakeDeps, now: number) {
     let kind = due || atDue ? scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now)) : null
     if (kind === 'send' || kind === 'look') kind = scheduledWake(ap!, mine, c.woke ?? {}, c.userAt, today(c.lookAdded, now), (await projectPace(store, p.key, undefined, now))?.verdict)
     const skip = skippedWake(kind)
+    if (skip) skips.push({ at: now, what: 'autopilot', why: `Scheduled wake: ${SKIP_WHY[kind as keyof typeof SKIP_WHY]}` })
     if (kind && !skip) add(p.key, [`Scheduled wake (${due ? `every ${ap!.every}` : ap!.at}). ${kind === 'look' ? `${LOOK_REASON} ` : ''}${goal}`])
     // The health check: the first look only notes where tasks stand; off (or
-    // outside the hours), it starts over once back on.
+    // outside the hours), it starts over once back on. Only a new line sends
+    // it, or 12 h since the last one sent.
     const every = on ? healthEvery(ap) : null
     const healthDue = !!every && !!c.health && now - c.health.at >= durationMs(every)
-    if (healthDue) add(p.key, healthSummary(mine, c.health!.seen, now, idleMachines(deps, p, runs)), { kind: 'health' })
-    const health = every && (!c.health || healthDue) ? { health: { at: now, seen: ev.seen } } : !every && c.health ? { health: undefined } : null
+    const lines = healthDue ? healthSummary(mine, c.health!.seen, now, idleMachines(deps, p, runs)) : []
+    const repeats = lines.length > 0 && healthRepeats(lines, c.health?.sent, now)
+    if (repeats) skips.push({ at: now, what: 'health', why: 'Health check: the same lines as the last one sent' })
+    else add(p.key, lines, { kind: 'health' })
+    const sent = lines.length && !repeats ? { lines, at: now } : c.health?.sent
+    const health = every && (!c.health || healthDue) ? { health: { at: now, seen: ev.seen, ...(sent ? { sent } : {}) } } : !every && c.health ? { health: undefined } : null
     const woke = reasons.some(x => x.key === p.key)
-    if (due || atDue || woke || health || JSON.stringify(ev.seen) !== JSON.stringify(c.seen ?? null)) {
+    const noted = skips.reduce<WakeSkip[] | undefined>((list, x) => addSkip(list, x) ?? list, c.skips)
+    if (due || atDue || woke || health || noted !== c.skips || JSON.stringify(ev.seen) !== JSON.stringify(c.seen ?? null)) {
       await store.saveCoordinator({
         ...c, seen: ev.seen, ...(due ? { ranAt: now } : {}), ...(atDue ? { atRan: now } : {}), ...health,
         ...(woke ? { woke: { at: now, seen: ev.seen } } : {}),
         ...(skip ? { skipped: bump(c.skipped, now) } : {}),
+        ...(noted !== c.skips ? { skips: noted } : {}),
       })
     }
   }

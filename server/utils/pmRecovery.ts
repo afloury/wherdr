@@ -77,6 +77,8 @@ export async function resumeInterrupted(deps: IncidentDeps, now = Date.now()) {
     const res = await startTask(deps, t.id, { handover, ...(session ? { resume: session } : {}) }).catch(async (e: Error) => {
       // Started another way meanwhile (the user, the coordinator): nothing to do.
       if (e instanceof HerdrError && e.code === 'busy') return null
+      // Its machine out of reach again: not a failed resume, it waits for the engine still (no wake).
+      if (e instanceof HerdrError && (e.code === 'unreachable' || e.code === 'offline')) { await store.saveTask({ ...(await store.task(t.id))!, state: 'waiting', waiting: t.waiting, run: t.run, recovery: r }); return null }
       return store.saveTask({ ...(await store.task(t.id))!, state: 'waiting', waiting: e.message })
     })
     if (!res) continue
