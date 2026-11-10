@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-11-09",
+  "updated": "2026-11-10",
   "voices": [
     {
       "id": "siwis-medium",
@@ -30,6 +30,8 @@
         "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-fr_FR-siwis-medium.tar.bz2",
         "sha256": "375909aa30842b3a4efa10b1beb1d761af792960ae6873b4d53889f96c66195b"
       },
+      "memory": { "heap": 536870912, "basis": "iPhone 13, iOS Safari home-screen app, Settings › Read aloud › Test, 2026-11-10: the worker's WASM memory (512 MiB, the same for every voice), not the voice's own use" },
+      "speed": { "rtf": 0.16, "basis": "iPhone 13, iOS Safari home-screen app, Settings › Read aloud › Test, 2026-11-10" },
       "license": {
         "id": "CC-BY-4.0",
         "url": "https://doi.org/10.7488/ds/1705"
@@ -64,6 +66,8 @@
         "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_GB-cori-medium.tar.bz2",
         "sha256": "49c9a5361bbdd95d7ca9687c4de11e5908481f65e7c7c368960df79949fdac2b"
       },
+      "memory": { "heap": 536870912, "basis": "iPhone 13, iOS Safari home-screen app, Settings › Read aloud › Test, 2026-11-10: the worker's WASM memory (512 MiB, the same for every voice), not the voice's own use" },
+      "speed": { "rtf": 0.17, "basis": "iPhone 13, iOS Safari home-screen app, Settings › Read aloud › Test, 2026-11-10" },
       "license": {
         "id": "Public domain (LibriVox recordings)",
         "url": "https://brycebeattie.com/files/tts/"
