@@ -123,8 +123,9 @@ export function waitOf(t: { labels?: Record<string, string>, status?: string | {
 // its "trust" option from where the cursor is, then confirm; none for any other screen.
 const TRUST_OPTION = /^\s*(?:[❯›>]\s*)?(?:\d+\.\s+)?(Yes, I trust this folder|Yes, proceed|Yes, continue|Trust and continue|No, exit|No, quit|Back to\b)/
 export function trustKeys(screen: string, folder: string): string[] | undefined {
-  // The folder alone on its line or ending it ("You are in <folder>"), never a longer path.
-  const named = screen.split('\n').some(l => { const t = l.trimEnd(); return t.endsWith(folder) && /(^|\s)$/.test(t.slice(0, -folder.length)) })
+  // The folder exactly: alone on its line (Claude, Codex's folder access) or
+  // Codex's "You are in <folder>"; never a longer path, nor one with spaces ending in it.
+  const named = screen.split('\n').some(l => { const t = l.trim(); return t === folder || /^[>›]?\s*You are in$/.test(t.slice(0, -folder.length).trimEnd()) && t.endsWith(` ${folder}`) })
   if (!/trust/i.test(screen) || !named) return undefined
   const options = screen.split('\n').filter(l => TRUST_OPTION.test(l))
   const yes = options.findIndex(l => !/^(No|Back)\b/.test(TRUST_OPTION.exec(l)![1]!))

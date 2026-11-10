@@ -449,13 +449,15 @@ describe('role files', () => {
     expect(trustKeys(`${folder}\n❯ 1. Yes\n  2. No`, folder)).toBeUndefined()
     expect(trustKeys((await fixture('claude-trust-folder')).replace('/home/user/projects/new-folder', `${folder}-other`), folder)).toBeUndefined()
     expect(trustKeys((await fixture('codex-trust')).replace('/home/user/code/example', folder), folder)).toEqual(['enter'])
+    expect(trustKeys((await fixture('claude-trust-folder')).replace('/home/user/projects/new-folder', `/tmp/team ${folder}`), folder)).toBeUndefined()
+    expect(trustKeys((await fixture('codex-trust')).replace('/home/user/code/example', `/tmp/team ${folder}`), folder)).toBeUndefined()
     // Step 5 follows the agent: starting, asking (the dialog left unanswered), then running.
     expect([undefined, { status: null }, { status: 'unknown' }, { status: 'blocked' }, { status: null, screen: {} }, { status: 'idle' }].map(x => coordinatorStart(x as never)))
       .toEqual(['none', 'starting', 'starting', 'asks', 'asks', 'runs'])
     // Next and the wizard's resume wait on it: step 5 is done only once it runs.
     const o = { enabled: true, projects: [{ key: 'CO', name: 'CO', machine: '', path: '/src', addedAt: 1, from: { template: 'vibe', version: 1 } }], tasks: [] }
     const coords = [{ project: 'CO', terminal: 'host/t1' }]
-    expect((['asks', 'starting', 'runs'] as const).map(s => setupDone(o, 'CO', coords, s).coordinator)).toEqual([false, false, true])
+    expect((['none', 'asks', 'starting', 'runs'] as const).map(s => setupDone(o, 'CO', coords, s).coordinator)).toEqual([false, false, false, true])
     expect(setupDone(o, 'CO', coords).coordinator).toBe(true)
     screen = ''
   })

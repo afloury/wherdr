@@ -15,8 +15,8 @@ type Coord = { project: string, terminal?: string }
 type Overview = Pick<PmOverview, 'enabled' | 'projects' | 'tasks'>
 
 // The guards come with the workflow (its defaults): done once it is copied.
-// start: its coordinator's state when its pane is known (the wizard): step 5 is
-// done only once it runs, not while it starts or asks something.
+// start: its coordinator's state from its live pane (the wizard): step 5 is
+// done only once it runs, not while its pane has not arrived, starts or asks something.
 export function setupDone(o: Overview | null, key: string | undefined, coords: Coord[] = [], start?: CoordinatorStart): SetupDone {
   const p = o?.enabled ? o.projects.find(x => x.key === key && x.git !== false) : undefined
   const flow = !!p?.from
@@ -25,7 +25,7 @@ export function setupDone(o: Overview | null, key: string | undefined, coords: C
     project: !!p,
     workflow: flow,
     guards: flow,
-    coordinator: flow && coords.some(c => c.project === p!.key && !!c.terminal) && start !== 'starting' && start !== 'asks',
+    coordinator: flow && coords.some(c => c.project === p!.key && !!c.terminal) && (start === undefined || start === 'runs'),
     task: flow && !!o?.tasks?.some(t => t.project === p!.key),
   }
 }
