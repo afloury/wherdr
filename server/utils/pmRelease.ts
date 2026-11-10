@@ -67,8 +67,8 @@ const heldLogged = new Set<string>()
 // The released worker again, in its worktree, with a handover note; `now`:
 // what it is to do first (red CI, a conflict), when the step itself does not
 // say it. No room on its machine: not now, tried again on a later pass (undefined;
-// onHold gets why).
-export async function reviveWorker(deps: PmLaunchDeps, id: string, why: string, now?: string, onHold?: (hold: string) => void): Promise<Task | undefined> {
+// onHold gets why). stopped: why its handover says it was stopped.
+export async function reviveWorker(deps: PmLaunchDeps, id: string, why: string, now?: string, onHold?: (hold: string) => void, stopped = RELEASED_WHY): Promise<Task | undefined> {
   const { store } = deps
   const { task, plan } = await load(deps, id)
   const worker = (await store.runs()).filter(r => r.task === id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
@@ -83,7 +83,7 @@ export async function reviveWorker(deps: PmLaunchDeps, id: string, why: string, 
   }
   heldLogged.delete(id)
   forgetMemory(worker.machine)
-  const handover = handoverText({ ...task, stopped: { by: 'the engine', why: RELEASED_WHY, at: Date.now() } }, plan, worker.branch)
+  const handover = handoverText({ ...task, stopped: { by: 'the engine', why: stopped, at: Date.now() } }, plan, worker.branch)
     + (now ? `\nWhat to do now:\n\n${now}\n` : '')
   const started = await startTask(deps, id, { handover, revive: true })
   if (started.state !== 'working') return store.logTask(started, 'engine', `could not start the worker again (${why}): ${started.waiting ?? ''}`)
