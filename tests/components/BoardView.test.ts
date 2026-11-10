@@ -12,6 +12,8 @@ import type { Template } from '#shared/pm/workflow'
 import type { Pane } from '#shared/types'
 import { nextTick } from 'vue'
 import { pick, select, selectLabels, selectValue } from '../helpers/select'
+import { boardProject } from '~/composables/useBoardProject'
+import { machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
@@ -44,7 +46,8 @@ const reset = (co1: Partial<StepState> = {}) => {
 reset()
 registerEndpoint('/api/pm/board', () => board)
 // Alfred has no autopilot: only a project's coordinator gets the header button.
-registerEndpoint('/api/pm/coordinators', () => [{ project: '_main', name: 'Alfred', main: true }, { project: 'VIB', name: 'Vibe', autopilot: { on: true, goal: '', events: [], perDay: 1, atOnce: 1 } }])
+// Vibe works on host-a, Company on host-b: the home tabs that show each (projectOnBar).
+registerEndpoint('/api/pm/coordinators', () => [{ project: '_main', name: 'Alfred', main: true }, { project: 'VIB', name: 'Vibe', machines: ['host-a'], autopilot: { on: true, goal: '', events: [], perDay: 1, atOnce: 1 } }, { project: 'CO', name: 'Company', machines: ['host-b'] }])
 const posts: { url: string, body: Record<string, unknown> }[] = []
 // task: the new task, added to the board; task-start: refused (a limit) when `refuse` is set.
 let refuse = ''
@@ -62,7 +65,7 @@ const pane = (coreAddress: string, status: Pane['status']) => ({ id: coreAddress
 herdrState.value = { ok: true, workspaces: [], panes: [pane('host-a/t1', 'working'), pane('host-a/t2', 'idle'), pane('host-a/t3', 'working')] }
 
 let mounted: { unmount: () => void } | null = null
-afterEach(() => { mounted?.unmount(); mounted = null; reset(); refuse = ''; posts.length = 0 })
+afterEach(() => { mounted?.unmount(); mounted = null; reset(); refuse = ''; posts.length = 0; boardProject.value = null; machineGroups.value = []; machineBarSaved.value = null })
 const mount = async () => {
   const w = await mountSuspended(BoardView)
   mounted = w
@@ -84,6 +87,32 @@ it('shows the columns of a template without review, and of all projects', async 
   expect(laneOf(w, 'VIB-1')).toBe('Working')
   await pick(w, 'board-project', 'CO')
   expect(lanes(w)).toEqual(['your-turn', 'To do', 'Working', 'Review', 'Deploy', 'Done'])
+})
+
+const shown = (w: Awaited<ReturnType<typeof mount>>) => w.findAll('[data-testid="board-card"]').map(c => c.attributes('data-task')).sort()
+
+it('the project picker: All projects without groups; Follow machine tab once groups exist, in step with the home tab; the pick is kept', async () => {
+  let w = await mount()
+  expect(selectLabels(w, 'board-project')).toEqual(['Follow machine tab', 'All projects', 'Vibe', 'Company'])
+  expect(selectValue(w, 'board-project')).toBe('all')
+  w.unmount()
+  machineGroups.value = [{ id: 'g1', name: 'Group A', machines: ['host-a'] }, { id: 'g2', name: 'Group B', machines: ['host-b'] }]
+  machineBarSaved.value = 'g1'
+  w = mounted = await mountSuspended(BoardView)
+  await vi.waitFor(() => expect(shown(w)).toEqual(['VIB-1']))
+  expect(selectValue(w, 'board-project')).toBe('follow')
+  machineBarSaved.value = 'g2' // the home tab changes: the board follows, in place
+  await vi.waitFor(() => expect(shown(w)).toEqual(['CO-1', 'CO-2']))
+  machineBarSaved.value = '*'
+  await vi.waitFor(() => expect(shown(w)).toEqual(['CO-1', 'CO-2', 'VIB-1']))
+  expect(navigate).not.toHaveBeenCalled()
+  await pick(w, 'board-project', 'all')
+  expect(boardProject.value).toBe('all') // the synced setting, kept on the server
+  w.unmount()
+  w = mounted = await mountSuspended(BoardView) // a reload keeps All projects, groups or not
+  machineBarSaved.value = 'g1'
+  await vi.waitFor(() => expect(shown(w)).toEqual(['CO-1', 'CO-2', 'VIB-1']))
+  expect(selectValue(w, 'board-project')).toBe('all')
 })
 
 it('shows the reviewer\'s state in review, and no indicator on a holder: none card', async () => {

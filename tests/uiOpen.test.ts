@@ -91,4 +91,31 @@ describe('ui open', () => {
     expect(parseOpenLine('open \'#/board?project=WEB\'')).toBe('#/board?project=WEB')
     expect(parseOpenLine('open https://example.com')).toBeNull()
   })
+
+  it('points at one setting: --target in both CLIs, refused in a wake or for a target it does not hold', async () => {
+    const link = '#/settings?section=terminal&target=terminal.key-order'
+    expect(parseAlfredCommand(['ui', 'open', '--target', 'terminal.key-order'])).toEqual({ name: 'ui open', link })
+    expect(parseCommand(['ui', 'open', '--target', 'terminal.key-order'])).toEqual({ name: 'ui open', link })
+    expect(parseCommand(['ui', 'open', '--target', 'nope'])).toEqual({ error: expect.stringMatching(/Unknown target nope/) })
+    expect(parseAlfredCommand(['ui', 'open', '#/', '--target', 'agents.pace'])).toHaveProperty('error')
+    expect(parseCommand(['ui', 'targets'])).toEqual({ name: 'ui targets' })
+    expect(parseAlfredCommand(['ui', 'targets'])).toEqual({ name: 'ui targets' })
+    // A coordinator highlights a global setting; the phone card names it.
+    const phone = setup([{ pane: 'p2', device: 'phone', ago: 1 }])
+    const out = await openUi(phone.deps, { ...web, raw: link, turn: 'user' })
+    expect(out.note).toMatch(/Terminal › Phone key bar highlighted once the user taps the card/)
+    await expect(openUi(phone.deps, { ...web, raw: link, turn: 'wake' })).rejects.toThrow(/never in a wake/)
+    // Unknown, or held by another section or tab.
+    for (const raw of ['#/settings?section=terminal&target=nope', '#/settings?section=phone&target=terminal.key-order', '#/settings?section=conversation&tab=dictation&target=conversation.reply-style', '#/board?target=agents.pace'])
+      await expect(openUi(phone.deps, { ...web, raw, turn: 'user' })).rejects.toThrow(/Unknown target/)
+    expect(phone.got[0]!.msgs).toHaveLength(1)
+  })
+
+  // WHR-196: the same names label a chat's in-app links.
+  it('names every kind of place', () => {
+    const names = ['#/settings', '#/settings?section=phone', '#/settings?section=pacing', '#/settings?section=projects', '#/settings?section=projects&project=web&tab=nope',
+      '#/board', '#/board?project=WEB', '#/board?tag=ui', '#/board?project=WEB&tag=ui', '#/board?task=WEB-3', '#/decisions', '#/'].map(uiPlaceLabel)
+    expect(names).toEqual(['Settings', 'Settings › Phone', 'Settings › Agents › Pace', 'Settings › Projects', 'Settings › Projects › WEB › General',
+      'Board', 'Board › WEB', 'Board › ui', 'Board › WEB › ui', 'Task WEB-3', 'Decisions', 'Home'])
+  })
 })

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // The coordinator's proposed workflow change, in its conversation after the
-// message that made it: what changes in one line, who proposed it and the
+// message that made it: titled 'Workflow change' with what a workflow is, what
+// changes in one line, the steps before and after drawn, who proposed it and the
 // user's request behind it (ProposalOrigin), Accept / Refuse and See all
 // changes (ProposalReview). Once answered: the outcome, by whom, when.
 // canGoto, goto: in the conversation, the link back to that request.
@@ -22,8 +23,12 @@ const outcome = computed(() => {
 
 <template>
   <div class="proposal-card" :class="{ answered: !c.proposal }" data-testid="proposal-card">
-    <span class="mono-label muted">{{ tl('Workflow change proposed') }}</span>
+    <PartHead part="workflow" :title="tl('Workflow change')" />
     <p v-for="(l, i) in summary" :key="i" class="proposal-line" data-testid="proposal-headline">{{ l }}</p>
+    <template v-if="c.proposal?.flow">
+      <WorkflowDiagram :steps="c.proposal.flow.before" :label="tl(`Before · ${c.proposal.flow.type}`)" />
+      <WorkflowDiagram :steps="c.proposal.flow.after" :compare="c.proposal.flow.before" :label="tl(`After · ${c.proposal.flow.type}`)" />
+    </template>
     <template v-if="c.proposal">
       <ProposalOrigin :c="c" :can-goto="canGoto" @goto="emit('goto')" />
       <div class="proposal-actions">

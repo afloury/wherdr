@@ -135,6 +135,15 @@ export function ackWakes(q: Wake[], coordinator: string, ids: string[], now: num
   return { changed, unknown }
 }
 
+// A wake the engine did not send, and why: the coordinator's last SKIPS_KEPT,
+// newest last, shown by `wherdr pm autopilot show`, never in its chat.
+export interface WakeSkip { at: number, what: WakeKind | 'question', why: string }
+export const SKIPS_KEPT = 20
+const SKIP_AGAIN_MS = 12 * 3_600_000
+// The list with this skip, unless the same one is noted within 12 h (a block seen every tick).
+export const addSkip = (skips: WakeSkip[] | undefined, s: WakeSkip): WakeSkip[] | undefined =>
+  skips?.some(x => x.what === s.what && x.why === s.why && s.at - x.at < SKIP_AGAIN_MS) ? undefined : [...(skips ?? []), s].slice(-SKIPS_KEPT)
+
 // Is the coordinator's current turn a wake? Only while a delivered wake is open.
 export const inWake = (q: Wake[], coordinator: string) => mine(q, coordinator).some(isOpen)
 

@@ -109,6 +109,13 @@ describe('autopilot events', () => {
       .toEqual(['CO-1 (T1): question: Which DB?', 'CO-2 (T2): stuck: Run rm?', 'CO-3 (T3): decide: Decide: review failed 3 times', 'CO-4 (T4): done', 'CO-5 (T5): ready', 'CO-7 (T7): added'])
   })
 
+  it('a question a tell answered, back while its agent\'s label stays, wakes no one again', () => {
+    const asked = task(1, { state: 'waiting', waitKind: 'question', waiting: 'Which DB?', answered: 50 })
+    expect(autopilotEvents(DEFAULT_AUTOPILOT, [asked], { 'CO-1': 'working' })).toMatchObject({ reasons: [], skipped: ['CO-1 (T1): its question was answered already'] })
+    // Its label gone, answered is cleared: the next question wakes.
+    expect(autopilotEvents(DEFAULT_AUTOPILOT, [{ ...asked, answered: undefined }], { 'CO-1': 'working' }).reasons).toEqual(['CO-1 (T1): question: Which DB?'])
+  })
+
   it('an autopilot saved with the old default events drops them; any other choice stays', () => {
     expect(quietEvents({ ...DEFAULT_AUTOPILOT, on: true, events: ['stuck', 'done'] })).toEqual({ ...DEFAULT_AUTOPILOT, on: true, events: [] })
     for (const events of [['done'], ['done', 'stuck', 'ready'], []] as const) expect(quietEvents({ ...DEFAULT_AUTOPILOT, events: [...events] }).events).toEqual(events)
@@ -168,6 +175,16 @@ describe('nothing to do: scheduled wakes skipped', () => {
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, lookForWork: true, lookPerDay: 7 })).toEqual({ autopilot: { ...DEFAULT_AUTOPILOT, lookForWork: true, lookPerDay: 7 } })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, lookForWork: true, lookPerDay: 21 })).toEqual({ error: expect.stringMatching(/^lookPerDay/) })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, lookForWork: 'yes', lookPerDay: 7 })).toEqual({ autopilot: DEFAULT_AUTOPILOT })
+  })
+  it('skipped while nothing it could act on changed: to-do tasks that cannot start, no new block or answer', () => {
+    const blocked = [done(1), task(2, { state: 'todo', after: 'CO-1' }), task(3, { state: 'todo', sameFiles: 'CO-4' }), task(4, { state: 'waiting', waiting: 'Waits for its machine' })]
+    const last = { at: 100, seen: { 'CO-1': 'done', 'CO-2': 'todo', 'CO-3': 'todo', 'CO-4': 'waiting' } as const }
+    expect(scheduledWake(DEFAULT_AUTOPILOT, blocked, last, undefined, 0)).toBe('waits')
+    // A task startable now (Keep the board busy off), a new block or answer, a message of the user: it goes.
+    expect(scheduledWake({ ...DEFAULT_AUTOPILOT, on: true, keepBusy: false }, [...blocked, task(5, { state: 'todo' })], { ...last, seen: { ...last.seen, 'CO-5': 'todo' } }, undefined, 0)).toBe('send')
+    expect(scheduledWake(DEFAULT_AUTOPILOT, blocked, { ...last, seen: { ...last.seen, 'CO-4': 'working' } }, undefined, 0)).toBe('send')
+    expect(scheduledWake(DEFAULT_AUTOPILOT, blocked, last, 101, 0)).toBe('send')
+    expect(scheduledWake(DEFAULT_AUTOPILOT, blocked, {}, undefined, 0)).toBe('send')
   })
   it('counts per local day', () => {
     const c = { day: new Date(at(9)).toDateString(), n: 3 }
@@ -294,7 +311,7 @@ describe('the pace holds automatic starts only', () => {
     expect(scheduledWake({ ...DEFAULT_AUTOPILOT, lookForWork: true }, [done], wake, undefined, 0, wait)).toBe('paced')
     expect(scheduledWake(DEFAULT_AUTOPILOT, [done], wake, undefined, 0, wait)).toBe('idle')
     expect(scheduledWake(DEFAULT_AUTOPILOT, [task(1)], wake, undefined, 0, { go: true })).toBe('send')
-    expect(['send', 'look', 'idle', 'limit', 'paced'].map(k => skippedWake(k as never))).toEqual([false, false, true, true, true])
+    expect(['send', 'look', 'idle', 'limit', 'waits', 'paced'].map(k => skippedWake(k as never))).toEqual([false, false, true, true, true, true])
   })
 
   it('finds the account\'s quota and describes the pace for `autopilot show`', () => {

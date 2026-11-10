@@ -5,6 +5,7 @@
 // memory, quotas, the board), so an agent never writes the state itself.
 // A block with any other line is not a status block: it stays code.
 import type { Quota, Quotas } from './types'
+import { limitState } from './quotaLimit'
 import type { MachineCapacity } from './pm/capacity'
 import { cardStatus, prLink, type Card } from './pm/board'
 import { actionLabel } from './pm/describe'
@@ -68,7 +69,10 @@ export function quotaView(q: Quotas | null, arg: string, now: number): StatusVie
   const r = q?.[provider]
   const title = `${provider === 'claude' ? 'Claude' : 'Codex'} quota`
   if (!r) return null
-  if (r.limited) return { title, state: 'limit reached', tone: 'bad', lines: [] }
+  const limit = limitState(r, now)
+  if (limit === 'reached') return { title, state: 'limit reached', tone: 'bad', lines: [] }
+  if (limit === 'credits') return { title, state: 'limit reached, on credits', tone: 'wait', lines: [] }
+  if (limit === 'expired') return { title, state: 'reset since the last reading', tone: 'ok', lines: [] }
   const bars = [{ label: '5 h', left: left(r.five, now) }, { label: 'week', left: left(r.week, now) }]
   const low = Math.min(...bars.map(b => b.left))
   return { title, state: `${low} % left`, tone: low < 10 ? 'bad' : low < 30 ? 'wait' : 'ok', lines: [], bars }

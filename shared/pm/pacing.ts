@@ -10,6 +10,7 @@
 // limit. The end-of-week burn lifts all of it in the other modes, from the
 // moment the user turns it on until the weekly reset, where it turns off.
 import type { Quota, QuotaWindow } from '../types'
+import { limitEnds, limitState } from '../quotaLimit'
 
 export type PaceMode = 'unlimited' | 'workdays' | 'everyday' | 'free'
 
@@ -113,7 +114,8 @@ export function paceVerdict(policy: PacePolicy, quota: Quota | null, now: number
     intent === 'user' ? { go: true, warn: reason } : { go: false, reason, until }
   const burns = policy.mode !== 'unlimited' && burning(policy.burn, now)
   if (!quota) return { go: true, unknown: true, ...(burns ? { burning: true as const } : {}) }
-  if (quota.limited && (quota.limited.resetsAt === null || quota.limited.resetsAt > now)) return refuse('limited', quota.limited.resetsAt)
+  // A limit past its reset, or one the account's credits cover, holds nothing.
+  if (limitState(quota, now) === 'reached') return refuse('limited', limitEnds(quota))
   if (policy.mode === 'unlimited') return { go: true }
   // Burning: no pacing at all, only the account's own limit above.
   if (burns) return { go: true, burning: true }

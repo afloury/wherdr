@@ -3,6 +3,8 @@
 // a guess, and records it as an incident per machine. No fact that decides:
 // 'unknown', said as such.
 import type { Run, Task } from './run'
+import type { Quota } from '../types'
+import { limitState } from '../quotaLimit'
 
 export type Cause = 'offline' | 'restart' | 'killed' | 'out-of-memory' | 'limit' | 'unknown'
 
@@ -98,11 +100,11 @@ export function diagnose(gone: GoneAgent[], machines: MachineFacts[], limitAt: L
 }
 
 // The limit data of an account's quota reading at a time: limited, or a window at 100 %.
-export function limitText(q: { at: number, limited?: { resetsAt: number | null }, five: { used: number, resetsAt: number | null } | null, week: { used: number, resetsAt: number | null } | null } | null, at: number, maxAge = 15 * 60_000): string | null {
+export function limitText(q: { at: number, limited?: { resetsAt: number | null }, credits?: Quota['credits'], five: { used: number, resetsAt: number | null } | null, week: { used: number, resetsAt: number | null } | null } | null, at: number, maxAge = 15 * 60_000): string | null {
   if (!q || Math.abs(q.at - at) > maxAge) return null
   const after = (r: number | null) => r == null || r > at
   const until = (r: number | null) => (r == null ? '' : `, it resets at ${iso(r)}`)
-  if (q.limited && after(q.limited.resetsAt)) return `the account's reading at ${iso(q.at)} says it hit its limit${until(q.limited.resetsAt)}`
+  if (limitState(q, at) === 'reached') return `the account's reading at ${iso(q.at)} says it hit its limit${until(q.limited!.resetsAt)}`
   for (const [w, name] of [[q.five, '5-hour'], [q.week, 'weekly']] as const)
     if (w && w.used >= 100 && after(w.resetsAt)) return `the account's reading at ${iso(q.at)} has its ${name} window at ${Math.round(w.used)} %${until(w.resetsAt)}`
   return null
