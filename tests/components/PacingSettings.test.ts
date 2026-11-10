@@ -44,6 +44,19 @@ registerEndpoint('/api/quotas/name', {
 let mounted: { unmount: () => void } | null = null
 afterEach(() => { mounted?.unmount(); mounted = null; reset(); quotaDisplay.value = 'left' })
 
+it('an account with credits keeps its bars and auto state; a program with no reading shows no auto state', async () => {
+  rows[0] = { ...rows[0]!, credits: { unlimited: false, balance: 120 } }
+  const w = await mountSuspended(PacingSettings, { props: { active: true } })
+  mounted = w
+  await vi.waitFor(() => expect(w.findAll('[data-testid="pace-row"]')).toHaveLength(2))
+  const [account, codex] = w.findAll('[data-testid="pace-row"]')
+  expect(account!.find('[data-testid="pace-credits"]').text()).toBe('Credits: 120 credits')
+  expect(account!.find('[data-testid="pace-week"]').exists()).toBe(true)
+  expect(account!.find('[data-testid="pace-state"]').exists()).toBe(true)
+  expect(codex!.find('[data-testid="pace-state"]').exists()).toBe(false)
+  expect(codex!.find('[data-testid="pace-credits"]').exists()).toBe(false)
+})
+
 it('shows each account\'s pace, changes its mode, days, numbers and name; a program with no reading is unknown', async () => {
   const w = await mountSuspended(PacingSettings, { props: { active: true } })
   mounted = w

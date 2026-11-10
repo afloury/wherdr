@@ -1,7 +1,8 @@
 // The pace of automatic work (WHR-376 § 4.2, § 5): which starts are held by
 // the verdict of the worker's account (shared/pm/pacing.ts), the account's
 // quota among the readings, and the words the coordinator and the firings get.
-import type { Quota, QuotaAccount, Quotas } from '../types'
+import type { Quota, QuotaAccount, QuotaCredits, Quotas } from '../types'
+import { limitState, type LimitState } from '../quotaLimit'
 import type { Task, TaskOrigin } from './run'
 import { DEFAULT_PACE, burning, current, paceVerdict, targetLine, type PacePolicy, type PaceReason, type PaceVerdict } from './pacing'
 
@@ -98,6 +99,8 @@ export interface PaceRow {
   at: number | null // time of the reading
   today: number | null
   verdict: PaceVerdict
+  limit?: LimitState // the reading says "limit reached" (shared/quotaLimit.ts)
+  credits?: QuotaCredits
 }
 
 export function paceRows(q: Quotas | null, policyOf: (key: string) => PacePolicy, today: Record<string, number | null>, now: number): PaceRow[] {
@@ -111,7 +114,11 @@ export function paceRows(q: Quotas | null, policyOf: (key: string) => PacePolicy
       const w = quota && current(quota.week, now), f = quota && current(quota.five, now)
       const l = w?.resetsAt ? weekLimit(policy, w.resetsAt, now) : null
       const week = w?.resetsAt && l ? { used: w.used, resetsAt: w.resetsAt, limit: l.value, label: l.label } : null
-      return { program, account, policy, week, five: f ?? null, at: quota?.at ?? null, today: today[account.key] ?? null, verdict: paceVerdict(policy, quota, now) }
+      const limit = quota && limitState(quota, now)
+      return {
+        program, account, policy, week, five: f ?? null, at: quota?.at ?? null, today: today[account.key] ?? null, verdict: paceVerdict(policy, quota, now),
+        ...(limit ? { limit } : {}), ...(quota?.credits ? { credits: quota.credits } : {}),
+      }
     })
   })
 }
