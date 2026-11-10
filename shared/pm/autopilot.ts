@@ -199,19 +199,37 @@ export function nothingToDo(tasks: Task[], last: LastWake, userAt?: number) {
   return tasks.length === ids.length && tasks.every(t => taskStatus(t) === 'done' && last.seen![t.id] === 'done')
 }
 
+// Nothing a scheduled wake could act on changed since the last wake: every
+// task where it stood then (no new block, no answer, none added or removed),
+// no message of the user, and no to-do task startable now (each waits for its
+// after, its files, room or a machine; with Keep the board busy on, the
+// engine starts the others itself).
+export function unchanged(ap: Autopilot, tasks: Task[], last: LastWake, userAt?: number) {
+  if (!last.seen || (userAt ?? 0) > (last.at ?? 0) || tasks.length !== Object.keys(last.seen).length) return false
+  return tasks.every(t => last.seen![t.id] === taskStatus(t)) && (keepsBusy(ap) || !busyQueue(tasks).length)
+}
+
 // A scheduled wake with nothing to do: skipped ('idle'), unless the user asked
 // it to look for new work ('look'), within the tasks those wakes may add a
 // day ('limit' once reached: asleep until tomorrow). 'send': there is work.
+// 'waits': tasks are left, but nothing it could act on changed: skipped.
 // 'paced': there is work, but the worker's account is ahead of its pace (a
 // scheduled wake is automatic work): skipped too.
-export type ScheduledWake = 'send' | 'look' | 'idle' | 'limit' | 'paced'
+export type ScheduledWake = 'send' | 'look' | 'idle' | 'limit' | 'waits' | 'paced'
 export function scheduledWake(ap: Autopilot, tasks: Task[], last: LastWake, userAt: number | undefined, lookAdded: number, pace?: PaceVerdict): ScheduledWake {
-  const kind = !nothingToDo(tasks, last, userAt) ? 'send' : !ap.lookForWork ? 'idle' : lookAdded >= (ap.lookPerDay ?? LOOK_PER_DAY) ? 'limit' : 'look'
+  const kind = !nothingToDo(tasks, last, userAt) ? (unchanged(ap, tasks, last, userAt) ? 'waits' : 'send') : !ap.lookForWork ? 'idle' : lookAdded >= (ap.lookPerDay ?? LOOK_PER_DAY) ? 'limit' : 'look'
   return (kind === 'send' || kind === 'look') && pace && !pace.go ? 'paced' : kind
 }
 
 // Skipped: the slot counts as run, the paid turn is saved.
-export const skippedWake = (k: ScheduledWake | null) => k === 'idle' || k === 'limit' || k === 'paced'
+export const skippedWake = (k: ScheduledWake | null) => k === 'idle' || k === 'limit' || k === 'waits' || k === 'paced'
+// Why, in `autopilot show`.
+export const SKIP_WHY: Record<'idle' | 'limit' | 'waits' | 'paced', string> = {
+  idle: 'nothing to do',
+  limit: 'today\'s limit of new work is reached',
+  waits: 'nothing changed since the last wake: no task startable now, no new block, no answer',
+  paced: 'the worker\'s account is ahead of its pace',
+}
 
 // The reason a look-for-new-work wake starts with: its turn counts the tasks it adds.
 export const LOOK_REASON = 'Nothing is under way: look for new work toward your goal.'
@@ -240,13 +258,17 @@ export const addedBySelf = (t: Pick<Task, 'addedBy' | 'log'>, key: string, by: s
 // `seen`: each task's last status. A stopped task is not stuck: someone chose to stop it.
 // Nor is a block the engine fixes itself (selfFix.ts): it wakes the coordinator once it gives up;
 // nor a task stopped again right after the engine resumed it: the engine woke the coordinator for it (recovery.ts).
+// skipped: questions not woken for, already answered by a tell (Task.answered).
 export function autopilotEvents(ap: Autopilot, tasks: Task[], seen: Record<string, TaskStatus>, self?: { key: string, by: string }) {
-  const now: Record<string, TaskStatus> = {}, reasons: string[] = []
+  const now: Record<string, TaskStatus> = {}, reasons: string[] = [], skipped: string[] = []
   for (const t of tasks) {
     const s = now[t.id] = taskStatus(t)
     const failed = s === 'ready' && t.step?.yourTurn?.reason === 'action'
     const moved = t.id in seen && seen[t.id] !== s
-    const judgment: JudgmentEvent | undefined = !moved || t.stopped ? undefined
+    // A question a coordinator's tell answered, back while its agent's label stays: no second wake.
+    const again = s === 'waiting' && t.waitKind === 'question' && !!t.answered
+    if (moved && again) skipped.push(`${t.id} (${t.title}): its question was answered already`)
+    const judgment: JudgmentEvent | undefined = !moved || t.stopped || again ? undefined
       : s === 'waiting' && t.waitKind === 'question' ? 'question' : s === 'ready' && t.step?.yourTurn?.reason === 'rounds' ? 'decide' : undefined
     const ev: AutopilotEvent | undefined = !(t.id in seen) ? (self && addedBySelf(t, self.key, self.by) ? undefined : 'added') : !moved || judgment ? undefined
       : s === 'waiting' || s === 'stalled' || failed ? (t.stopped || engineOwns(t) || escalated(t) ? undefined : 'stuck') : s === 'done' || s === 'ready' ? s : undefined
@@ -254,7 +276,7 @@ export function autopilotEvents(ap: Autopilot, tasks: Task[], seen: Record<strin
     const kind = judgment ?? (ev && ap.events.includes(ev) ? ev : undefined)
     if (kind) reasons.push(`${t.id} (${t.title}): ${kind}${kind !== 'added' && kind !== 'done' && kind !== 'ready' && why ? `: ${why.split('\n')[0]}` : ''}`)
   }
-  return { seen: now, reasons }
+  return { seen: now, reasons, skipped }
 }
 
 // Commands that are the user's only, whatever the turn: the coordinator's

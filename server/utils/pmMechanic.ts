@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, infraLog, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { FIX_MOVE, blockOf, escalation, fixOf, mayTry, noteFix } from '../../shared/pm/selfFix'
-import { enqueue, wakesFor } from '../../shared/pm/wakes'
+import { addSkip, enqueue, wakesFor } from '../../shared/pm/wakes'
 import { MAIN } from '../../shared/pm/coordinator'
 import { inMergeQueue, mergeOrder, ordinal, queueOut } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
@@ -76,7 +76,9 @@ export async function syncWaits(deps: PmLaunchDeps) {
     const asked = kind === 'question' && task.state === 'working' ? await askedQuestion(deps, run!.terminal!) : undefined
     if (task.state === 'working' && kind) await store.saveTask({ ...task, state: 'waiting', waiting: (kind === 'permission' && msg) || (asked ? `${WAITS.question}: ${asked}` : WAITS[kind]), waitKind: kind })
     else if (task.state === 'waiting' && (task.waitKind === 'question' || task.waitKind === 'permission') && !kind)
-      await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined })
+      await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, answered: undefined })
+    // The answered question gone from its agent: the next one wakes the coordinator again.
+    else if (task.answered && task.state === 'working' && !kind) await store.saveTask({ ...task, answered: undefined })
   }
 }
 
@@ -206,10 +208,37 @@ async function noteHandedWork(deps: PmLaunchDeps, task: Task, plan: PlannedStep[
   return deps.store.saveTask({ ...fresh, step: { ...step, agent: { ...step.agent!, revived: now } } })
 }
 
+// The task's machine offline, or paused for its project: why it waits; undefined: up.
+async function machineDown(deps: PmLaunchDeps, task: Task, run: Run) {
+  const m = deps.machines().find(x => x.key === run.machine)
+  if (m && !m.local && m.status !== 'online') return MACHINE_OFFLINE
+  const p = (await deps.store.projects()).find(x => x.key === task.project)
+  return p && isPaused(p, run.machine) ? MACHINE_PAUSED : undefined
+}
+
+// A wake the engine does not send: noted for each coordinator it would have woken (autopilot show); how many.
+async function skipWake(deps: PmLaunchDeps, task: Task, why: string, now: number) {
+  const { store } = deps
+  const coords = new Map([[task.project, await store.coordinator(task.project)], [MAIN, await store.coordinator(MAIN)]])
+  const keys = wakesFor([task.project, MAIN], k => coords.get(k) ?? undefined, now)
+  for (const key of keys) {
+    const c = coords.get(key)!, skips = addSkip(c.skips, { at: now, what: 'engine', why })
+    if (skips) await store.saveCoordinator({ ...c, skips })
+  }
+  return keys.length
+}
+
 // The handed work waits for `why`: said on the step, the coordinator woken once (none: the user's).
+// Waiting only for its machine (offline, paused): no wake; the engine starts the
+// worker again with it once the machine is back, and wakes only if that fails
+// (no coordinator to wake: the user's, as before).
 async function handedWaits(deps: PmLaunchDeps, task: Task, why: string, now: number): Promise<Task> {
   const work = task.step!.agent!
   if (work.waits === why) return task
+  if (why === MACHINE_OFFLINE || why === MACHINE_PAUSED) {
+    const n = await skipWake(deps, task, showIds(await deps.store.projects(), `${task.id} (${task.title}): ${work.kind} handed to its worker, which ${why.toLowerCase()}.`), now)
+    return deps.store.logTask({ ...task, step: agentWaits(task.step!, why, work.told ?? (n ? undefined : 'user')) }, 'engine', `${work.kind}: ${why}.${n ? ' No wake: the engine goes on once the machine is back.' : ' In Your turn.'}`)
+  }
   const told = work.told ?? ((await wakeCoordinators(deps, task, showIds(await deps.store.projects(), `${task.id} (${task.title}): ${work.kind} was handed to its worker, which cannot do it: ${why}. \`wherdr pm tell ${task.id} "<what to do>" --fix ${work.kind === 'catch-up' ? 'base' : 'ci'} --reason "<why>"\` starts it again with it.`), now)).length ? 'coordinator' : 'user')
   const woke = work.told ? '' : told === 'coordinator' ? ' Woke its coordinator.' : ' In Your turn.'
   return deps.store.logTask({ ...task, step: agentWaits(task.step!, why, told) }, 'engine', `${work.kind}: ${why}.${woke}`)
@@ -345,7 +374,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
     const next = nextMove({ ...facts, task })
     const fix = block && next && FIX_MOVE[block] === next.move.kind ? block : undefined
     // No move, or past its tries: the coordinator's, once.
-    if (!next || (fix && !mayTry(task, fix))) { await escalate(deps, task, now); continue }
+    if (!next || (fix && !mayTry(task, fix))) { await escalate(deps, task, run, now); continue }
     const tried = fix && { selfFix: noteFix(task, fix, now, TRY_TEXT[next.move.kind]) }
     const noted = await store.saveTask({ ...task, mech: { ...task.mech, [next.key]: now }, ...tried })
     const text = await perform(deps, noted, run, next.move, facts, sh).catch((e: Error) => `failed: ${e.message}`)
@@ -371,9 +400,12 @@ const TRY_TEXT: Partial<Record<Move['kind'], string>> = {
 // The engine gives up on a block: the project's coordinator and the main one
 // woken once with what was tried, each whose autopilot wakes it for stuck
 // tasks (as its 'stuck' event would have); else the user's (Your turn).
-async function escalate(deps: PmLaunchDeps, task: Task, now: number) {
+// Its machine offline or paused: no wake, the incident covers it; tried again once the machine is back.
+async function escalate(deps: PmLaunchDeps, task: Task, run: Run, now: number) {
   const why = showIds(await deps.store.projects(), escalation(task, now))
   if (!why) return
+  const down = await machineDown(deps, task, run)
+  if (down) { await skipWake(deps, task, `${why} Not sent: it ${down.toLowerCase()}.`, now); return }
   const woken = await wakeCoordinators(deps, task, why, now)
   await deps.store.logTask({ ...task, selfFix: { ...task.selfFix!, woke: now } }, 'engine', `gave up: ${why}${woken.length ? ` Woke ${woken.join(' and ')}.` : ''}`)
 }

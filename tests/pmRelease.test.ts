@@ -234,21 +234,21 @@ describe('work the engine handed the worker', () => {
     expect(cardStatus({ plan: [], state: t.step })?.text).toBe('the agent is updating the PR')
   })
 
-  it('a worker whose machine goes offline: the status says why, the coordinator is woken; back online and ended, it starts again', async () => {
+  it('a worker whose machine goes offline: the status says why, no wake; back online and ended, it starts again; ended again, the coordinator is woken', async () => {
     const { store, deps, env, log } = await setup()
     await store.saveCoordinator({ project: 'WH', tokenHash: '', terminal: 'm1/c', autopilot: { on: true, goal: '', events: ['stuck'], perDay: null, atOnce: null } })
     redSmoke(env)
     await mechanicTick(deps, 0)
     expect(sentTexts(env).some(x => x.includes('CI failed on smoke'))).toBe(true)
-    // Its machine offline: the task says it waits for it, and its coordinator is woken once.
+    // Its machine offline: the task says it waits for it; no wake (the incident covers it), the skip noted.
     env.online = false
     await mechanicTick(deps, 60_000)
     await mechanicTick(deps, 120_000)
     let t = (await store.task('WH-1'))!
     expect(cardStatus({ plan: [], state: t.step })).toEqual({ text: 'Waits for its machine (offline)', tone: 'bad' })
-    expect(await log()).toContain('ci-to-agent: Waits for its machine (offline). Woke its coordinator.')
-    const wakes = (await store.wakes()).filter(w => w.reasons.some(r => r.includes('Waits for its machine')))
-    expect(wakes).toHaveLength(1)
+    expect(await log()).toContain('ci-to-agent: Waits for its machine (offline). No wake: the engine goes on once the machine is back.')
+    expect(await store.wakes()).toEqual([])
+    expect((await store.coordinator('WH'))!.skips).toEqual([{ at: 60_000, what: 'engine', why: 'WH-1 (Fix it): ci-to-agent handed to its worker, which waits for its machine (offline).' }])
     // Back online, its agent gone: started again with the fix, the status clears.
     env.online = true
     env.finished.push('m1/t1')
@@ -258,8 +258,12 @@ describe('work the engine handed the worker', () => {
     expect(t.step!.agent).toMatchObject({ kind: 'ci-to-agent', revived: 180_000 })
     expect(t.step!.agent!.waits).toBeUndefined()
     expect(cardStatus({ plan: [], state: t.step })?.text).toBe('the agent is updating the PR')
+    // The resume fails (its new agent ends at once): now the coordinator is woken.
+    env.finished.push('m1/t2')
+    await mechanicTick(deps, 240_000)
+    expect((await store.wakes()).filter(w => w.reasons.some(r => r.includes('which cannot do it')))).toHaveLength(1)
   })
-  it('a CI fix for a worker that ended on a machine paused for the project: it waits for its machine, the coordinator is woken', async () => {
+  it('a CI fix for a worker that ended on a machine paused for the project: it waits for its machine, no wake', async () => {
     const { store, deps, env, log } = await setup()
     await store.saveCoordinator({ project: 'WH', tokenHash: '', terminal: 'm1/c', autopilot: { on: true, goal: '', events: ['stuck'], perDay: null, atOnce: null } })
     redSmoke(env)
@@ -270,7 +274,7 @@ describe('work the engine handed the worker', () => {
     expect(env.calls.filter(c => c[0] === 'terminal.run')).toHaveLength(1) // never started there again
     const t = (await store.task('WH-1'))!
     expect(cardStatus({ plan: [], state: t.step })).toEqual({ text: 'Waits for its machine (paused)', tone: 'bad' })
-    expect(await log()).toContain('ci-to-agent: Waits for its machine (paused). Woke its coordinator.')
-    expect((await store.wakes()).filter(w => w.reasons.some(r => r.includes('(paused)')))).toHaveLength(1)
+    expect(await log()).toContain('ci-to-agent: Waits for its machine (paused). No wake: the engine goes on once the machine is back.')
+    expect(await store.wakes()).toEqual([])
   })
 })
