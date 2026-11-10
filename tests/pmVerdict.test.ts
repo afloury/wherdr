@@ -152,6 +152,9 @@ describe('verdict steps in the engine', () => {
     expect(r.state.yourTurn?.advice).toMatchObject({ outcome: 'your-turn', why: 'The next step is a merge only you may do' })
     expect(onEvent(r.plan, r.state, { kind: 'decide', by: 'coordinator', choice: 'pass', note: 'x' }, 0).refused).toBe('This one is for the user')
     expect(onEvent(r.plan, r.state, { kind: 'decide', by: 'coordinator', choice: 'pass', note: 'x', spec: true }, 0).refused).toBe('The next step is a merge only the user may do: this one is for the user')
+    // Nor a critical finding with proof, whatever the spec change.
+    const leak = play(company, 'feature', [...twice, verdict(f('leak', 'critical'))])
+    expect(onEvent(leak.plan, leak.state, { kind: 'decide', by: 'coordinator', choice: 'pass', note: 'x', spec: true }, 0).refused).toBe('A critical finding with proof is for the user')
   })
 })
 

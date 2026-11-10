@@ -7,7 +7,7 @@ import { WATCH, actionField, type Evidence, type Holder, type Step, type StepAct
 import { mayMerge } from './guards'
 import { taskGuards } from './actions'
 import { shotsMissing, shotsText, shotMode, type Shot } from './shots'
-import { advise, blocking, reviewText, sendBackText, type Advice, type Choice, type Finding, type Round } from './verdict'
+import { advise, blocking, weight, reviewText, sendBackText, type Advice, type Choice, type Finding, type Round } from './verdict'
 
 // text: what the holder is told at the start. guarded: a merge only the user may do.
 export interface PlannedStep extends Step { text: string, guarded?: true }
@@ -287,6 +287,8 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       // A pass on a spec change only ends the review loop: a guarded merge stays the user's.
       const onSpec = ev.by === 'coordinator' && ev.spec && ev.choice === 'pass' && !advice.options.includes('pass')
       if (onSpec && plan[state.at + 1]?.guarded) return refuse('The next step is a merge only the user may do: this one is for the user')
+      // Nor does it lift the critical guard: a critical finding with proof stays the user's.
+      if (onSpec && state.reviews?.[step.id]?.at(-1)?.findings.some(f => weight(f) === 'critical')) return refuse('A critical finding with proof is for the user')
       if (ev.by === 'coordinator' && !advice.options.includes(ev.choice) && !onSpec)
         return refuse(advice.options.length ? `The coordinator may only choose ${advice.options.join(' or ')}` : 'This one is for the user')
       if (ev.by === 'coordinator' && !ev.note?.trim()) return refuse('Give the reason of the choice')

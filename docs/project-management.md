@@ -471,7 +471,8 @@ when the engine does not offer *pass*: `wherdr pm task decide <task> pass
 --reason "<one sentence>"`, the reason citing the spec change (its date,
 `YYYY-MM-DD`, or its words). wherdr refuses it when the task has no spec
 change or the reason cites none, and then the choice stays yours. It only ends
-the review loop: a merge only you may do still waits for you. The pass is
+the review loop: a merge only you may do still waits for you, and a critical
+finding with proof stays yours. The pass is
 written to the task's log, the coordinator tells you in its next message, and
 *Decisions* shows it for a day under *Passed on a spec change*.
 
