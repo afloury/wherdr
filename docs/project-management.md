@@ -134,7 +134,9 @@ its folder, branches and task worktrees stay on the machine.
   machines and takes the path of the repository's clone there (`~/project`); once
   saved, wherdr runs that machine's readiness check (see *Start on…* under
   [Board](#board)) and shows *Ready* or what is missing. Each machine shows its
-  last check (*Not checked yet* before the first); ↻ runs it again. ✕ removes a machine:
+  last check (*Not checked yet* before the first); ↻ runs it again. Each machine also
+  shows its memory as placement reads it: *5.2 GB free of 16.0 GB*, on macOS
+  *pressure normal, ≈8.3 GB available of 18.0 GB*. ✕ removes a machine:
   new tasks no longer start there, tasks already there stay. Its switch off pauses it
   for the project instead, its clone kept ([Pause a machine for a project](machines.md#pause-a-machine-for-a-project)). Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
