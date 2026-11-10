@@ -65,12 +65,17 @@ export const sameAgent = (a?: CoordinatorAgent, b?: CoordinatorAgent) => !!a && 
 // base: the template version its diff was made against.
 // by: who proposed it, the project's key or 'main' (Alfred); said, saidAt:
 // the user's message it follows and when they sent it.
-export interface Proposal { template: Template, diff: string, at: number, base: number, by?: string, said?: string, saidAt?: number }
-// What became of the last one, for the coordinator's `template show`.
-export type ProposalOutcome = 'accepted' | 'refused' | 'outdated: the template changed since, propose again'
-// The last answer, kept for the card in the coordinator's conversation:
-// proposedAt places it, summary says what it changed.
+// changes: what it changes, from the template it was made against to the one it
+// proposes (a change made before it never shows in it).
+export interface Proposal { template: Template, diff: string, at: number, base: number, by?: string, said?: string, saidAt?: number, changes?: WorkflowChanges }
+// What became of one, for the coordinator's `template show`; replaced: the
+// coordinator proposed another before the user answered.
+export type ProposalOutcome = 'accepted' | 'refused' | 'replaced' | 'outdated: the template changed since, propose again'
+// An answer, kept for its card in the coordinator's conversation:
+// proposedAt places it, summary says what that proposal changed.
 export interface ProposalAnswer { outcome: ProposalOutcome, at: number, by?: string, proposedAt?: number, summary?: string[] }
+// The last answers kept, oldest first.
+export const PROPOSAL_ANSWERS = 10
 
 // GET /api/pm/coordinators: one per project.
 export interface CoordinatorView {
@@ -82,8 +87,8 @@ export interface CoordinatorView {
   // paused: those paused for it; busy: the paused ones where one of its tasks still runs.
   project: string, machines?: string[], paused?: string[], busy?: string[], name: string, label?: string, color?: ProjectColor, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
   // proposal: the change waiting for the user, as a person reads it too (flow: the steps of
-  // the first changed task type, before and after); answered: the last answer.
-  proposal?: Omit<Proposal, 'template' | 'base'> & { changes?: WorkflowChanges, flow?: ProposalFlow }, answered?: ProposalAnswer
+  // the first changed task type, before and after); answers: the last ones, oldest first.
+  proposal?: Omit<Proposal, 'template' | 'base'> & { flow?: ProposalFlow }, answers?: ProposalAnswer[]
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
   autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
   // Nothing to do: its scheduled wakes are skipped (asleep), since its last wake.

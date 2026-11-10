@@ -64,6 +64,12 @@ it('switches project management on; Add project opens the setup window on a new 
   await vi.waitFor(() => expect(inSheet('library-saved')?.dataset.id).toBe('vibe'))
 })
 
+// WHR-243: Alfred's `ui open --target projects.setup` opens the setup window, not only a halo.
+it('the projects.setup target opens the setup window', async () => {
+  mounted = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&target=projects.setup' })
+  await vi.waitFor(() => expect(inSheet('setup-wizard')).toBeTruthy())
+})
+
 it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name, base and worktree setup, and the visibility', async () => {
   state = { ...state, enabled: true, projects: [web()] }
   const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=guards' })
