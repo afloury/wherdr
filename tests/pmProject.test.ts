@@ -86,6 +86,12 @@ describe('project settings', () => {
   it('changes the name, base and agents', async () => {
     expect(await updateProject(store, 'CO', { name: 'Co', base: 'develop', prefs: { agent: 'codex', model: '' } })).toMatchObject({ project: { name: 'Co', base: 'develop' } })
     expect((await store.workflow('CO'))!.prefs).toEqual({ agent: 'codex' })
+    // The worktree setup: empty fields dropped, all empty removes it, a bad path refused.
+    await updateProject(store, 'CO', { worktree: { copy: ['.env'], share: [], command: 'npm ci', timeout: '' } })
+    expect((await store.workflow('CO'))!.worktree).toEqual({ copy: ['.env'], command: 'npm ci' })
+    await expect(updateProject(store, 'CO', { worktree: { copy: ['../secret'] } })).rejects.toThrow(/worktree\.copy/)
+    await updateProject(store, 'CO', { worktree: { copy: [], command: '' } })
+    expect((await store.workflow('CO'))!.worktree).toBeUndefined()
     expect((await updateProject(store, 'CO', { base: '' })).project).not.toHaveProperty('base')
     await expect(updateProject(store, 'CO', { base: 'a..b' })).rejects.toThrow('base: invalid branch name')
   })
@@ -108,12 +114,13 @@ describe('project settings', () => {
     await expect(templateFromProject(store, 'CO', 'common')).rejects.toThrow('A template already has this id')
   })
 
-  it('previews a start over: the kept guards are not in the diff, only what changes', () => {
-    const own = { ...company, id: 'co', guards }
+  it('previews a start over: the kept guards and worktree setup are not in the diff, only what changes', () => {
+    const own = { ...company, id: 'co', guards, worktree: { copy: ['.env'] } }
     const next = { ...startOverFrom(vibe, own), id: 'co' }
     expect(next.guards).toEqual(guards)
+    expect(next.worktree).toEqual(own.worktree)
     const diff = templateDiff(own, next).split('\n')
-    expect(diff.some(l => l.includes('"release"') || l.includes('"guards"'))).toBe(false)
+    expect(diff.some(l => l.includes('"release"') || l.includes('"guards"') || l.includes('"worktree"'))).toBe(false)
     expect(diff).toContain('-   "instructions": "Base branch is develop.",')
     expect(diff.every(l => /^[-+] /.test(l))).toBe(true)
     expect(diff.some(l => l.includes('"prefs"'))).toBe(false) // same prefs, another key order
