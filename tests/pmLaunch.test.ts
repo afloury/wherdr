@@ -76,7 +76,7 @@ let dir = '', n = 0
 beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-launch-')) })
 afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
-async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template, screen?: string, tmpFreeKb?: number } = {}) {
+async function setup(opts: { installed?: string[], exits?: (number | null)[], template?: Template, screen?: string, tmpFreeKb?: number, exec?: (script: string) => string | undefined } = {}) {
   const store: PmStore = createPmStore(dir)
   await store.setEnabled(true)
   await store.saveTemplate(opts.template ?? template)
@@ -93,7 +93,7 @@ async function setup(opts: { installed?: string[], exits?: (number | null)[], te
       if (script!.includes('$HOME')) return { code: 0, stdout: Buffer.from('/home/u').toString('base64') }
       if (script!.includes('df -Pk /tmp')) return { code: 0, stdout: Buffer.from(String(opts.tmpFreeKb ?? 9e6)).toString('base64') }
       if (p.input) files[args[0]!] = Buffer.from(p.input as string, 'base64').toString()
-      return { code: 0, stdout: '' }
+      return { code: 0, stdout: Buffer.from(opts.exec?.(script!) ?? '').toString('base64') }
     }
     if (method === 'terminal.run') { runs.push(p); const a = `${machine}/t${runs.length}`; states[a] = exits.shift(); return { address: a } }
     if (method === 'terminal.get') return states[p.terminal as string] === undefined ? { state: 'running' } : { state: 'finished', exit_code: states[p.terminal as string] }
@@ -186,6 +186,14 @@ describe('startTask', () => {
     const { deps, runs } = await setup({ tmpFreeKb: 100 * 1024 })
     expect(await startTask(deps, 'WEB-1')).toMatchObject({ state: 'waiting', waiting: expect.stringMatching(/\/tmp .* only 100 MB free/) })
     expect(runs).toHaveLength(0)
+  })
+
+  it('a failing worktree setup command: the task waits for the user with its output, no terminal', async () => {
+    const exec = (s: string) => (s.includes('ls-files') ? 'share no node_modules differs\nneed' : s.includes('sh -c "$cmd"') ? 'run 1 4\nout npm ERR! boom' : undefined)
+    const { store, deps, runs } = await setup({ template: { ...template, worktree: { command: 'npm ci' } }, exec })
+    expect(await startTask(deps, 'WEB-1')).toMatchObject({ state: 'waiting', waiting: expect.stringMatching(/`npm ci` exited with code 1\. Last output:\nnpm ERR! boom$/) })
+    expect(runs).toHaveLength(0)
+    expect((await store.task('WEB-1'))!.log!.at(-1)!.text).toBe('worktree setup: not shared node_modules (package-lock.json differs from the clone\'s); ran npm ci (exit code 1)')
   })
 
   it('a missing program: waiting with the reason, no terminal', async () => {

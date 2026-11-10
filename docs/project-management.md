@@ -94,6 +94,32 @@ its folder, branches and task worktrees stay on the machine.
 - **Agents**: the worker and the reviewer its tasks start with, each with an
   optional model (empty: the agent's default), and the reviewer's optional
   **Fallback** (see [Reviewer fallback](#reviewer-fallback)).
+- **Worktree setup**: what wherdr prepares in a new task's worktree before its
+  worker first starts, so the worker does not rebuild it. Saved with *Save*, in
+  the workflow's `worktree` block (also editable in Workflow › Edit as JSON, kept
+  on *Start over*):
+  - *Files to copy*: ignored files taken from the project's clone, such as `.env`
+    or a local config, one path per line. Literal paths only; a file git tracks
+    (it is already there) or the clone does not have is skipped, and the log says so.
+  - *Folders to share*: big folders that can be rebuilt, such as
+    `node_modules` or a cache, copied from the clone (copy-on-write where the
+    disk allows it, so the task's own changes never reach the clone) only when
+    the *Lockfile* (default `package-lock.json`) is the same in the worktree
+    and the clone, and the clone's install is up to date with it. Empty:
+    `node_modules`. *Share no folder* shares none (`"share": []`): the setup
+    command then runs for every new task.
+  - *Setup command*: run in the worktree, such as `npm ci --prefer-offline`,
+    when a folder could not be shared (the task's branch changed the lockfile,
+    or the clone has no install) or when no folder is listed. Once it succeeds
+    it does not run again for that task. *Time limit*: 10m by default and at most.
+
+  The task's log gets one line with what was copied, shared or skipped and the
+  command with its time; the worker's instructions say what is ready. A
+  command that fails or runs past its limit puts the task under *Your turn*
+  with its last output lines; *Try again* runs it again.
+  ```json
+  "worktree": { "copy": [".env"], "share": ["node_modules"], "command": "npm ci --prefer-offline", "timeout": "5m" }
+  ```
 - **Repository**: public or private, as wherdr found it (*Check again*) or as
   you set it. A public repository gets the coordinator's public-repository rules.
 - **Based on**: the template the workflow was copied from and its version, for
@@ -507,7 +533,7 @@ click, long press, or ••• when it has more than *Open*) offers:
   project, and refuses the start with what fails there: the clone and its
   origin, `git fetch`, push rights (a dry run), `gh auth status` when the
   workflow uses GitHub, node and npm (against `.nvmrc` or `engines`), the
-  clone's dependencies (a warning only: each task then runs `npm ci`), the
+  clone's dependencies (a warning only: tasks cannot share them, see *Worktree setup* under [General](#general)), the
   worker's and reviewer's agent CLI and login, the `~/.wherdr/pm` folders, 5 GB
   free disk, and for a task with screenshots, reaching wherdr (set `APP_URL`
   behind a proxy) and Playwright's Chromium. A machine found ready is not

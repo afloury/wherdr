@@ -105,12 +105,23 @@ export interface TaskType {
   steps: (Step | string)[] // a string reuses a shared step by its id
 }
 
+// Worktree setup (pmDeps.ts), before a task's first worker: copy, ignored
+// files from the project's clone (literal paths: a tracked or missing one is
+// skipped); share, ignored folders taken from the clone while `lockfile`
+// (default package-lock.json) is the same in both (default node_modules, []
+// none); command, run in the worktree when a folder could not be shared (or
+// when none is listed), within `timeout` (default and at most 10m).
+export interface WorktreeSetup { copy?: string[], share?: string[], lockfile?: string, command?: string, timeout?: string }
+export const SETUP_KEYS = ['copy', 'share', 'lockfile', 'command', 'timeout'] as const
+export const SETUP_TIMEOUT = '10m'
+
 export interface Template {
   id: string
   version?: number
   guards?: Guards
   instructions?: string
   prefs?: Prefs
+  worktree?: WorktreeSetup
   steps?: Record<string, Step> // shared steps, reused by id
   taskTypes: Record<string, TaskType>
 }
@@ -211,19 +222,35 @@ function checkWatch(a: Record<string, unknown>, s: Record<string, unknown>, err:
   if (s.holder !== undefined && s.holder !== 'none') err('holder', 'the engine watches the pipeline: leave the holder out')
 }
 
+// A path inside the worktree, as typed: no glob, no .., not absolute.
+const isRelPath = (v: unknown) => isStr(v) && (v as string).length <= 200 && !/^[/~]|[*?[\]\0\n]|(^|\/)\.\.(\/|$)/.test(v as string)
+function checkSetup(w: unknown, errs: WorkflowError[]) {
+  if (w === undefined) return
+  if (!isObj(w)) return void errs.push({ path: 'worktree', message: 'must be an object' })
+  checkKeys(w, SETUP_KEYS, 'worktree', errs)
+  for (const k of ['copy', 'share'] as const)
+    if (w[k] !== undefined && !(Array.isArray(w[k]) && w[k].length <= 50 && w[k].every(isRelPath))) errs.push({ path: `worktree.${k}`, message: 'must be a list of paths in the repository (no *, no .., not absolute)' })
+  if (w.lockfile !== undefined && !isRelPath(w.lockfile)) errs.push({ path: 'worktree.lockfile', message: 'must be a path in the repository' })
+  if (w.command !== undefined && typeof w.command !== 'string') errs.push({ path: 'worktree.command', message: 'must be text' })
+  if (w.timeout !== undefined && !(typeof w.timeout === 'string' && DURATION.test(w.timeout) && durationSecs(w.timeout) <= 600)) errs.push({ path: 'worktree.timeout', message: 'must be a duration up to 10m, like 5m' })
+}
+const SECS = { s: 1, m: 60, h: 3600, d: 86400 } as const
+export const durationSecs = (d: string) => Number(d.slice(0, -1)) * SECS[d.slice(-1) as keyof typeof SECS]
+
 // Start over: template `source` copied as a project's workflow. The project's
-// own guards stay when it already has a workflow (`own`).
+// own guards and worktree setup stay when it already has a workflow (`own`).
 export function startOverFrom(source: Template, own: Template | null): Template {
   if (!own) return source
-  const { guards: _guards, ...copy } = source
-  return own.guards ? { ...copy, guards: own.guards } : copy
+  const { guards: _guards, worktree: _worktree, ...copy } = source
+  return { ...copy, ...(own.guards ? { guards: own.guards } : {}), ...(own.worktree ? { worktree: own.worktree } : {}) }
 }
 
 // Every problem in a template, each with the path of the field at fault.
 export function validateTemplate(t: unknown): WorkflowError[] {
   const errs: WorkflowError[] = []
   if (!isObj(t)) return [{ path: '', message: 'must be an object' }]
-  checkKeys(t, ['id', 'version', 'guards', 'instructions', 'prefs', 'steps', 'taskTypes'], '', errs)
+  checkKeys(t, ['id', 'version', 'guards', 'instructions', 'prefs', 'worktree', 'steps', 'taskTypes'], '', errs)
+  checkSetup(t.worktree, errs)
   if (!isStr(t.id)) errs.push({ path: 'id', message: 'is required' })
   if (t.version !== undefined && !Number.isInteger(t.version)) errs.push({ path: 'version', message: 'must be a whole number' })
   if (t.instructions !== undefined && typeof t.instructions !== 'string') errs.push({ path: 'instructions', message: 'must be text' })

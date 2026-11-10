@@ -12,7 +12,7 @@ export type ChangeKind = 'added' | 'removed' | 'changed' | 'moved' | 'same'
 export interface StepChange { id: string, kind: ChangeKind, holder: string, ends?: string, fields: FieldChange[] }
 // steps: the new list in order, removed steps where they were.
 export interface TypeChange { type: string, kind: 'added' | 'removed' | 'changed', fields: FieldChange[], steps: StepChange[] }
-// all: the workflow's own fields (guards, instructions, prefs), for every type.
+// all: the workflow's own fields (guards, instructions, prefs, worktree), for every type.
 export interface WorkflowChanges { all: FieldChange[], types: TypeChange[] }
 
 const MERGE_BY = { engine: 'automatic', user: 'you' } as Record<string, string>
@@ -44,8 +44,9 @@ function compare(a: Record<string, string | undefined>, b: Record<string, string
 }
 
 const prefFields = (p?: Template['prefs']) => Object.fromEntries(Object.entries(p ?? {}).map(([k, v]) => [k, text(v)]))
-const ownFields = (o?: { guards?: Guards, instructions?: string, prefs?: Template['prefs'] }) =>
-  ({ ...guardFields(o?.guards), 'instructions': text(o?.instructions), ...prefFields(o?.prefs) })
+const setupFields = (w?: Template['worktree']) => Object.fromEntries(Object.entries(w ?? {}).map(([k, v]) => [`worktree ${k}`, text(v)]))
+const ownFields = (o?: { guards?: Guards, instructions?: string, prefs?: Template['prefs'], worktree?: Template['worktree'] }) =>
+  ({ ...guardFields(o?.guards), 'instructions': text(o?.instructions), ...prefFields(o?.prefs), ...setupFields(o?.worktree) })
 
 function stepFields(s: Step): Record<string, string | undefined> {
   const { id: _id, holder, ends, action: a, instructions, ...rest } = s
