@@ -23,7 +23,7 @@ is done and has a button that takes you there.
    copies the template you pick into the project: that copy is the project's
    own workflow. Projects imported from v2 ([Migrate from v2](migrate-from-v2.md))
    have none, and their tasks cannot start without it: open the project, then
-   *Workflow › ⋯ › Start over from a template*.
+   *Workflow › Start from a template*.
    **New › Project** also opens a project's coordinator, or adds a new or empty
    folder (created at start, `git init` offered), or any folder without git (a
    folder of several projects, for instance). A folder without git needs no
@@ -65,18 +65,28 @@ its folder, branches and task worktrees stay on the machine.
 
 ### Workflow
 
-The project's own workflow: its task types, and the steps of each. Each step
-has an id, a column on the board, who holds it (worker, reviewer, coordinator
-or none), how it ends (a report, a verdict, you, or an action) and, for an
-action, what it does: land on a branch, push, open a PR, merge a PR, or check
-that a branch was merged, with its branch, merge method and required checks.
-Under the form, the plan of the chosen task type. *Save* checks the workflow
-and shows each problem with its line.
+The project's own workflow, read only: pick a task type and its diagram shows
+how a task of that type runs. Each step is a node with its id, its board
+column, who holds it (worker, reviewer or coordinator, with the agent and model
+from the project's agents; the engine; or you), how it ends (a report, a
+verdict, your button, or an action such as *Open a GitHub PR to v3* or *Merge
+the GitHub PR · squash · once smoke green*), its timeout, the proofs it needs
+(screenshots, a report, a link) and a sentence saying what happens there. A
+merge step shows its guard: the branch is protected and you merge, or the
+engine merges. Coloured arrows mark the path: an agent works (purple), the
+engine acts (blue), the task waits for you (orange), and a dashed red loop
+sends the work back from a review, up to its number of rounds, then you
+decide. A square travels the path (still when the system asks for reduced
+motion). *JSON* shows the whole workflow, read only, with *Copy*.
 
-The ⋯ menu adds *Edit as JSON*, *Change log*, *Save as template* (copies the
-saved workflow into your templates; the project is untouched) and *Start over
-from a template* (pick a template or an example, read the difference, replace).
-Neither *Save* nor *Start over* changes the project's [guards](#guards).
+Nothing in the tab edits the workflow. To create or change one, *Ask the
+coordinator* opens the project's coordinator with a first message to complete;
+it writes the new workflow (`wherdr pm template edit`) and you accept or refuse
+it (below). A project without a workflow (imported from v2) shows *Start from a
+template*: pick a template or an example to start from.
+
+The ⋯ menu adds *Change log* and *Save as template* (copies the saved workflow
+into your templates; the project is untouched).
 
 When the project's coordinator proposes a change to the workflow (only after
 your request), a square marks the project's row (*1 to review*) and the

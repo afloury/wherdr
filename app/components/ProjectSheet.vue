@@ -2,7 +2,7 @@
 // A project's sheet (Settings › Projects › a row): tabs, the one shown in the
 // URL (`tab=`). General: name, base branch, repository visibility, the agents
 // its tasks start with (the workflow's prefs), where its workflow came from.
-// Workflow: ProjectWorkflow, its own entries first in the ⋯ menu. The ⋯ menu
+// Workflow: ProjectWorkflow (read only), its own entries first in the ⋯ menu. The ⋯ menu
 // removes the project. Guards: ProjectGuards. Automations and Autopilot reuse
 // the components shown elsewhere. A coordinator's proposed workflow change:
 // a badge on Workflow, its first row there opens the review (ProposalReview),
@@ -161,7 +161,7 @@ async function remove() {
             <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-refresh-cw" :loading="busy === 'vis'" :disabled="busy !== ''" data-testid="pm-visibility-check" @click="setVisibility({ check: true })">{{ tl('Check again', 'Revérifier') }}</UButton>
           </span>
           <span class="field-label">{{ tl('Template') }}</span>
-          <small class="muted" data-testid="pm-from">{{ p.from ? tl(`Based on: ${p.from.template} v${p.from.version}. Information only: changes to the template do not reach the project. To start over from a template: Workflow › ⋯.`) : tl('No template yet: start from one in the Workflow tab.') }}</small>
+          <small class="muted" data-testid="pm-from">{{ p.from ? tl(`Based on: ${p.from.template} v${p.from.version}. Information only: changes to the template do not reach the project. To change the workflow, ask the project\'s coordinator.`) : tl('No template yet: start from one in the Workflow tab.') }}</small>
         </form>
         <button v-if="tab === 'workflow' && coordinator?.proposal" type="button" class="settings-card pm-proposal" data-testid="workflow-proposal" @click="reviewOpen = true">
           <span class="card-state blocked" aria-hidden="true"><i /></span>
