@@ -38,7 +38,7 @@ Keep the label alongside the indicator so color is not the only signal.
 | Blocked | `--blocked` (orange by default) | Filled square, 0.9 s pulse | `.card-state.blocked i`, `.pill.blocked i` |
 | Done | `--done` (green by default) | Filled square | `.card-state.done`, `.pill.done` |
 | Inactive | `--muted` | Hollow square | `.pill.inactive i` |
-| Unknown / shell | `--dim` | Filled square | `.card-state.unknown`, `.card-state.shell`, `.pill.unknown`, `.pill.shell` |
+| Unknown / shell (card dot only: on the home, no status counts as Ready) | `--dim` | Filled square | `.card-state.unknown`, `.card-state.shell`, `.pill.unknown`, `.pill.shell` |
 
 Preserve the existing deliberate size variations rather than copying them into a
 new status system: `.card-state.blocked i` is 8 px; compact home lead indicators
@@ -74,14 +74,15 @@ a 44 px-high button. Check hit geometry, not just the visible icon.
 ## Phone headers and sheets
 
 Phone header bars must be **44 px high**, excluding safe-area insets. Build around
-the existing 44 px `.icon-btn` controls and `.agent-top` / `.board-panel-head`
-structure; do not add padding that unnecessarily increases the bar height. These
-selectors are the integration points, not evidence that every current header
-already meets this rule.
+the existing 44 px `.icon-btn` controls and `.agent-top` structure; do not add
+padding that unnecessarily increases the bar height. These selectors are the
+integration points, not evidence that every current header already meets this rule.
 
 Reuse [AppSheet.vue](../app/components/AppSheet.vue) for drawers and sheets:
 outside tap and downward swipe close a phone sheet; the handle also supports tap,
-and Escape closes the modal. **Do not add a cross close button to sheets.**
+and Escape closes the modal. On open, focus goes to the sheet itself (no outline),
+not to its handle or first button; Tab reaches the buttons, which keep their
+keyboard focus ring. **Do not add a cross close button to sheets.**
 The gesture implementation is `dragStart` / `dragMove` / `dragEnd`, with the
 `.hw-sheet-handle` target. Current implementation gap: `AppSheet` still renders
 `.hw-sheet-close` with `i-lucide-x`; this is not a pattern to copy. Full-screen
@@ -110,3 +111,12 @@ dismissal, scrolling, keyboard and safe areas. Use the existing responsive
 [device guide](devices.md) and the [iOS convention](../CONTRIBUTING.md#conventions);
 use the isolated demo screenshot workflow in
 [Contributing](../CONTRIBUTING.md#the-browser-demo) for visual evidence.
+
+**Nothing scrolls sideways: a sheet's or a page's content never exceeds its
+width.** Use no negative horizontal margin (`margin-left`, `margin-right`, a
+shorthand's sides, Tailwind `-mx-*`): to align an icon or a swatch inside a
+larger touch target, place it inside with padding or `justify-items: start`.
+One stays only when its parent clips (`overflow: hidden`) or has at least that
+much padding, and its line then says why: `/* overflow-safe: <why> */`.
+[tests/negativeMargins.test.ts](../tests/negativeMargins.test.ts) fails on any
+other in `app/`.

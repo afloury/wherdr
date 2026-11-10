@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ATTACH_LIMITS, agentReads, closeTrailingMention, attachmentDisplayName, attachmentIcon, attachmentPath, attachmentRef, checkAttachment,
+  ATTACH_LIMITS, agentReads, closeTrailingMention, attachmentDisplayName, attachmentIcon, attachmentRef, checkAttachment,
   classifyAttachment, isStoredAttachmentName, looksLikeText, parseAttachmentLine, safeAttachmentName, storedAttachmentName,
 } from '../shared/attachments'
 
@@ -98,10 +98,6 @@ describe('stored names', () => {
 
 describe('paths and references', () => {
   const stored = '2026-10-02T10-20-30-456Z-a1b2c3-spec.pdf'
-  it('builds the path on a local or remote machine', () => {
-    expect(attachmentPath('/home/dev', stored)).toBe(`/home/dev/.cache/herdr-web/files/${stored}`)
-    expect(attachmentPath('/Users/dev/', stored)).toBe(`/Users/dev/.cache/herdr-web/files/${stored}`)
-  })
 
   it('uses @ for text given to Claude, a plain path otherwise', () => {
     const p = '/home/dev/.cache/herdr-web/files/x-notes.md'
@@ -117,6 +113,18 @@ describe('paths and references', () => {
     expect(parseAttachmentLine(` @${p} `)).toEqual({ path: p, name: 'spec.pdf' })
     expect(parseAttachmentLine(`see ${p}`)).toBeNull()
     expect(parseAttachmentLine('/home/dev/.cache/herdr-web/uploads/a.jpg')).toBeNull()
+  })
+
+  it('recognizes a file attached on herdr-core (v3), on macOS and Linux', () => {
+    for (const state of ['/home/user/.local/state', '/Users/user/.local/state']) {
+      const p = `${state}/herdr-core/default/files/w1-p1/${stored}`
+      expect(parseAttachmentLine(p)).toEqual({ path: p, name: 'spec.pdf' })
+      expect(parseAttachmentLine(`@${p}`)).toEqual({ path: p, name: 'spec.pdf' })
+    }
+    // Same folder, not a name wherdr gives a file: a photo or a pasted file.
+    expect(parseAttachmentLine('/home/user/.local/state/herdr-core/default/files/t1/2026-10-02T10-20-30-456Z-a1b2c3.jpg')).toBeNull()
+    expect(parseAttachmentLine(`/home/user/.local/state/herdr-core/default/screens/t1/${stored}`)).toBeNull()
+    expect(parseAttachmentLine(`see /home/user/.local/state/herdr-core/default/files/t1/${stored}`)).toBeNull()
   })
 
   it('picks an icon by type', () => {

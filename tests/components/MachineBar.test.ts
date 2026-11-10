@@ -2,18 +2,21 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import HomeView from '~/components/HomeView.vue'
 import MachineBarSettings from '~/components/MachineBarSettings.vue'
-import { collapsedMachines, desk, eventsOpen, herdrState, homeGrouping, hostLabel } from '~/composables/useHerdr'
+import { desk, eventsOpen, herdrState, hostLabel } from '~/composables/useHerdr'
 import { machineBarHidden, machineBarOn, machineBarOrder, machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 import { BAR_ALL } from '~/utils/machineBar'
 import type { MachineInfo, Pane } from '#shared/types'
+import type { TaskAgent } from '#shared/pm/taskAgents'
+import { taskAgents } from '~/composables/useTaskAgents'
 
 import { menuState } from '~/composables/useUi'
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
+// The list reads its task agents: none, unless a test sets some.
+let taskAnswer: Record<string, TaskAgent> = {}
+registerEndpoint('/api/pm/agents', () => taskAnswer)
 
-registerEndpoint('/api/machine/order', () => ({ order: [] }))
-registerEndpoint('/api/machine/awake', () => ({ supported: false }))
 
 const machine = (key: string, label: string, status: MachineInfo['status'] = 'online'): MachineInfo =>
   ({ key, label, local: key === '', status, error: null, session: 'default' })
@@ -36,7 +39,6 @@ function setState() {
 function reset() {
   for (const w of mounted) w.unmount()
   mounted = []
-  homeGrouping.value = 'machine'
   machineGroups.value = []
   machineBarOn.value = true
   machineBarOrder.value = []
@@ -45,7 +47,8 @@ function reset() {
   localStorage.removeItem('machineConversations')
   navigate.mockClear()
   desk.value = false
-  collapsedMachines.value = []
+  taskAnswer = {}
+  taskAgents.value = {}
 }
 const pass = { template: '<div><slot /></div>' }
 let mounted: { unmount: () => void }[] = []
@@ -86,32 +89,43 @@ describe('the machine bar on the home list', () => {
   })
 
   it('merges online machines into state groups and badges every flat card', async () => {
-    homeGrouping.value = 'state'
     const w = await mountHome()
-    expect(w.findAll('section.machine, .project')).toHaveLength(0)
+    expect(w.findAll('.machine-row, .project')).toHaveLength(0)
     expect(w.findAll('.state-group.working .card')).toHaveLength(2)
     expect(w.findAll('.state-group.blocked .card')).toHaveLength(1)
     expect(w.findAll('.state-group .card-origin').map(b => b.text())).toEqual(['Server', 'Server', 'Laptop'])
     expect(w.find('[data-pane="devbox/w1:p1"]').exists()).toBe(false)
     await w.findAll('.machine-bar-item')[2]!.trigger('click')
-    expect(w.findAll('.state-group .card')).toHaveLength(1)
-    expect(w.find('.state-group .card-origin').text()).toBe('Laptop')
+    // A single machine shown: its cards need no machine label.
+    expect(w.find('.state-group .card').attributes('data-pane')).toBe('laptop/w1:p1')
+    expect(w.find('.state-group .card-origin').exists()).toBe(false)
+  })
+
+  it('agents of one task share a row, in the most urgent one\'s group, a line per agent with its machine', async () => {
+    const fix = { task: 'CO-1', shown: 'AC-1', title: 'Fix the login' }
+    taskAnswer = { a1: { ...fix, role: 'fix' }, a2: { ...fix, role: 'review' } }
+    taskAgents.value = taskAnswer
+    herdrState.value = { ok: true, workspaces, machines, panes: panes.map(p => p.id === 'w2:p1' ? { ...p, coreAddress: 'a1' } : p.id === 'laptop/w1:p1' ? { ...p, coreAddress: 'a2' } : p) } as never
+    const w = await mountHome()
+    expect(w.findAll('.state-group.working .card').map(c => c.attributes('data-pane'))).toEqual(['w1:p1'])
+    const row = w.find('.state-group.blocked .card')
+    expect(row.find('.card-title').text()).toBe('Fix the login')
+    expect(row.findAll('[data-testid="task-agent-line"]').map(l => l.text())).toEqual(['fix · Server', 'review · Laptop'])
   })
 
   it('filters state groups by a machine group, including an empty group', async () => {
-    homeGrouping.value = 'state'
     machineGroups.value = [{ id: '*group:studio', name: 'Studio', machines: ['laptop', 'devbox'] }, { id: '*group:empty', name: 'Empty', machines: [] }]
     const w = await mountHome()
     await w.findAll('.machine-bar-item').find(b => b.text().includes('Studio'))!.trigger('click')
-    expect(w.findAll('.state-group .card')).toHaveLength(1)
-    expect(w.find('.state-group .card-origin').text()).toBe('Laptop')
+    // A single machine shown: its cards need no machine label.
+    expect(w.find('.state-group .card').attributes('data-pane')).toBe('laptop/w1:p1')
+    expect(w.find('.state-group .card-origin').exists()).toBe(false)
     await w.findAll('.machine-bar-item').find(b => b.text().includes('Empty'))!.trigger('click')
     expect(w.findAll('.state-group .card')).toHaveLength(0)
     expect(w.find('.machine-empty').text()).toBe('No machines in this group.')
   })
 
   it('filters named sessions by their base machine and excludes reconnecting rows', async () => {
-    homeGrouping.value = 'state'
     const session = { ...machine('laptop/session', 'Laptop'), baseKey: 'laptop', session: 'review' }
     const sessionPane = pane('session/w1:p1', session.key, 'working')
     herdrState.value = { ok: true,
@@ -127,44 +141,46 @@ describe('the machine bar on the home list', () => {
     expect(w.find('.state-group .card').attributes('data-pane')).toBe(sessionPane.id)
   })
 
-  it('shows a machine badge with a single online machine in State mode', async () => {
-    homeGrouping.value = 'state'
+  it('a single machine: no bar (All and that machine are the same list), no machine label', async () => {
+    // Herdr's state lists no machine when there is only this one.
     herdrState.value = { ok: true, workspaces: workspaces.slice(0, 2), panes: panes.slice(0, 2) }
     hostLabel.value = 'Server'
     const w = await mountHome()
+    expect(w.find('.machine-bar').exists()).toBe(false)
     expect(w.findAll('.state-group .card')).toHaveLength(2)
-    expect(w.findAll('.state-group .card-origin').map(b => b.text())).toEqual(['Server', 'Server'])
-    expect(w.find('.solo-machine-row').exists()).toBe(false)
+    expect(w.find('.card-origin').exists()).toBe(false)
+    hostLabel.value = ''
   })
 
   it('shows All first, then each machine with its state and count', async () => {
     const w = await mountHome()
     const items = w.findAll('.machine-bar-item')
     expect(items.map(i => i.find('.machine-bar-label').text())).toEqual(['All', 'Server', 'Laptop', 'Devbox'])
-    expect(items.map(i => i.find('.machine-bar-count').text())).toEqual(['4', '2', '1', '1'])
+    // An offline machine's agents are stale: the counts leave them out.
+    expect(items.map(i => i.find('.machine-bar-count').text())).toEqual(['3', '2', '1', '0'])
     expect(items[0]!.classes()).toContain('on')
     expect(items[0]!.find('.machine-bar-state').exists()).toBe(false)
     expect(items[1]!.classes()).toContain('online')
     expect(items[3]!.classes()).toContain('offline')
-    expect(w.findAll('section.machine').length).toBe(3)
+    // No section per machine: the offline one sits on the bottom line.
+    expect(w.findAll('.state-group .card')).toHaveLength(3)
+    expect(w.findAll('.state-away-item').map(a => a.attributes('data-machine'))).toEqual(['devbox'])
   })
 
   it('a tap shows that machine only, and the choice is kept on the device', async () => {
-    collapsedMachines.value = ['laptop']
     const w = await mountHome()
+    const shown = () => w.findAll('.state-group .card').map(c => c.attributes('data-pane'))
     await w.findAll('.machine-bar-item')[2]!.trigger('click')
-    expect(w.findAll('section.machine').map(s => s.attributes('data-machine'))).toEqual(['laptop'])
+    expect(shown()).toEqual(['laptop/w1:p1'])
     expect(w.findAll('.machine-bar-item')[2]!.attributes('aria-pressed')).toBe('true')
-    // Folded, it would be a heading alone: it opens.
-    expect(collapsedMachines.value).toEqual([])
     expect(localStorage.getItem('machineBarPick')).toBe('"laptop"')
     // The counters follow the machine shown.
     expect(w.findAll('.stats .stat b').map(b => b.text())).toEqual(['0', '1', '0'])
     // The local machine's key is empty, and still a machine of its own.
     await w.findAll('.machine-bar-item')[1]!.trigger('click')
-    expect(w.findAll('section.machine').map(s => s.attributes('data-machine'))).toEqual(['local'])
+    expect(shown().sort()).toEqual(['w1:p1', 'w2:p1'])
     await w.findAll('.machine-bar-item')[0]!.trigger('click')
-    expect(w.findAll('section.machine').length).toBe(3)
+    expect(shown()).toHaveLength(3)
   })
 
   it('follows the settings: order, items taken off, turned off', async () => {
@@ -173,55 +189,15 @@ describe('the machine bar on the home list', () => {
     const w = await mountHome()
     expect(w.findAll('.machine-bar-label').map(i => i.text())).toEqual(['Laptop', 'All', 'Devbox'])
     // A machine off the bar still shows under All.
-    expect(w.findAll('section.machine').length).toBe(3)
+    expect(w.findAll('.state-group .card-origin').map(b => b.text())).toContain('Server')
+    expect(w.find('.state-machines').exists()).toBe(false)
+    // Turned off: still no machine chips.
     machineBarOn.value = false
     await nextTick()
     expect(w.find('.machine-bar').exists()).toBe(false)
+    expect(w.find('.state-machines').exists()).toBe(false)
   })
 
-  it('a choice taken off the bar falls back to its first item', async () => {
-    machineBarSaved.value = 'laptop'
-    machineBarHidden.value = ['laptop']
-    const w = await mountHome()
-    expect(w.find('.machine-bar-item.on .machine-bar-label').text()).toBe('All')
-    expect(w.findAll('section.machine').length).toBe(3)
-  })
-
-  it('a single machine has the bar too: All, then that machine', async () => {
-    // Herdr's state lists no machine when there is only this one.
-    herdrState.value = { ok: true, workspaces: workspaces.slice(0, 2), panes: panes.slice(0, 2) } as never
-    hostLabel.value = 'Server'
-    const w = await mountHome()
-    const items = w.findAll('.machine-bar-item')
-    expect(items.map(i => i.find('.machine-bar-label').text())).toEqual(['All', 'Server'])
-    expect(items.map(i => i.find('.machine-bar-count').text())).toEqual(['2', '2'])
-    expect(items[1]!.classes()).toContain('online')
-    // Choosing it keeps the whole list: it is the only machine.
-    await items[1]!.trigger('click')
-    expect(w.findAll('.card').length).toBeGreaterThan(0)
-    hostLabel.value = ''
-  })
-
-  it('a single machine\'s menu opens its board', async () => {
-    herdrState.value = { ok: true, workspaces: workspaces.slice(0, 2), panes: panes.slice(0, 2) } as never
-    const w = await mountHome()
-    navigate.mockClear()
-    await w.find('.solo-machine-options').trigger('click')
-    await vi.waitFor(() => expect(document.body.textContent).toContain('Open the board'))
-    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(e => e.textContent?.includes('Open the board'))!
-    item.click()
-    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: '' } }))
-  })
-
-  it('every machine\'s menu opens its board, filtered on it', async () => {
-    const w = await mountHome()
-    navigate.mockClear()
-    await w.findAll('.machine-options')[1]!.trigger('click')
-    await vi.waitFor(() => expect(document.body.textContent).toContain('Open the board'))
-    const item = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(e => e.textContent?.includes('Open the board'))!
-    item.click()
-    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: 'laptop' } }))
-  })
 })
 
 describe('Settings › Machine bar', () => {
@@ -278,17 +254,17 @@ describe('machine groups', () => {
 
   it('counts and filters a group in its own order, then falls back when hidden', async () => {
     machineGroups.value = [{ id: '*group:home', name: 'Home', machines: ['laptop', ''] }]
-    collapsedMachines.value = ['laptop']
     const w = await mountHome()
     const group = w.findAll('.machine-bar-item')[1]!
     expect(group.text()).toBe('Home3')
     expect(group.find('.machine-bar-group').exists()).toBe(true)
     await group.trigger('click')
-    expect(w.findAll('section.machine').map(s => s.attributes('data-machine'))).toEqual(['laptop', 'local'])
-    expect(collapsedMachines.value).toEqual([])
+    // The group's order: Laptop's card first in its state group.
+    expect(w.findAll('.state-group.working .card-origin').map(b => b.text())).toEqual(['Laptop', 'Server'])
+    expect(w.find('.state-away').exists()).toBe(false)
     machineBarHidden.value = ['*group:home']
     await nextTick()
-    expect(w.findAll('section.machine')).toHaveLength(3)
+    expect(w.findAll('.state-away-item')).toHaveLength(1)
   })
 
   it('creates, reorders, saves, edits, cancels and deletes a group', async () => {
@@ -331,68 +307,44 @@ describe('a tab showing one machine', () => {
   beforeEach(() => { reset(); setState(); menuState.open = false })
   afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] }; eventsOpen.value = false; menuState.open = false; reset() })
   // Long press with a finger: the phone's menu sheet.
+  // Fake timers: a real press costs half a second each.
   async function press(el: Element) {
-    el.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', clientX: 5, clientY: 5, bubbles: true }))
-    await new Promise(r => setTimeout(r, 500))
-    el.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch', bubbles: true }))
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      el.dispatchEvent(new PointerEvent('pointerdown', { pointerType: 'touch', clientX: 5, clientY: 5, bubbles: true }))
+      vi.advanceTimersByTime(500)
+      el.dispatchEvent(new PointerEvent('pointerup', { pointerType: 'touch', bubbles: true }))
+      vi.runOnlyPendingTimers()
+    } finally { vi.useRealTimers() }
   }
 
-  it('drops the machine header; the tab carries its actions', async () => {
+  it('a long press on the tab opens the machine\'s actions; no machine label on its cards', async () => {
     machineBarSaved.value = 'laptop'
     const w = await mountHome()
-    expect(w.findAll('section.machine').map(s => s.attributes('data-machine'))).toEqual(['laptop'])
-    expect(w.find('.machine-row').exists()).toBe(false)
-    expect(w.find('.machine-tab-offline').exists()).toBe(false)
-    expect(w.findAll('section.machine .card')).toHaveLength(1)
+    expect(w.findAll('.state-group .card')).toHaveLength(1)
+    expect(w.find('.card-origin').exists()).toBe(false)
     await press(w.find('[data-bar-id="laptop"]').element)
     expect(menuState.open).toBe(true)
-    expect(menuState.title).toBe('Laptop')
-    expect(menuState.items.map(i => i.label)).toEqual(expect.arrayContaining(['Herdr sessions', 'Rename', 'Connection status', 'Open the board']))
-    navigate.mockClear()
-    menuState.items.find(i => i.label === 'Open the board')!.run!()
-    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { machine: 'laptop' } })
+    expect(menuState.items.map(i => 'label' in i ? i.label : '')).toContain('New agent here')
   })
 
-  it('the local machine (key \'\') drops its header too', async () => {
-    machineBarSaved.value = ''
-    const w = await mountHome()
-    expect(w.findAll('section.machine').map(s => s.attributes('data-machine'))).toEqual(['local'])
-    expect(w.find('.machine-row').exists()).toBe(false)
-    await press(w.find('[data-bar-id=""]').element)
-    expect(menuState.title).toBe('Server')
-    expect(menuState.items.map(i => i.label)).toEqual(expect.arrayContaining(['Herdr sessions', 'Open the board']))
-  })
-
-  it('State mode keeps its own machine chip and quotas', async () => {
-    homeGrouping.value = 'state'
-    machineBarSaved.value = 'devbox'
-    const w = await mountHome()
-    expect(w.find('.machine-tab-info').exists()).toBe(false)
-  })
-
-  it('an offline machine says so at the top, with its error', async () => {
+  it('an offline machine stays on the bottom line, with its error', async () => {
     herdrState.value = { ...herdrState.value, machines: machines.map(m => m.key === 'devbox' ? { ...m, error: 'SSH unavailable' } : m) } as never
     machineBarSaved.value = 'devbox'
     const w = await mountHome()
-    expect(w.find('.machine-row').exists()).toBe(false)
-    expect(w.find('.machine-tab-offline').text()).toContain('Devbox is offline')
-    expect(w.find('.machine-tab-offline').text()).toContain('SSH unavailable')
+    expect(w.find('.state-away-item').attributes('title')).toContain('SSH unavailable')
     expect(w.find('[data-bar-id="devbox"]').classes()).toContain('offline')
   })
 
-  it('a group keeps the headers, even with one machine, and its menu opens its settings', async () => {
+  it('a group\'s menu opens its settings', async () => {
     machineGroups.value = [{ id: '*group:solo', name: 'Solo', machines: ['laptop'] }]
     machineBarSaved.value = '*group:solo'
     const w = await mountHome()
-    expect(w.findAll('.machine-row')).toHaveLength(1)
     await press(w.find('[data-bar-id="*group:solo"]').element)
-    expect(menuState.items.map(i => i.label)).toEqual(['Group settings', 'Board settings'])
+    expect(menuState.items.map(i => i.label)).toEqual(['Group settings'])
     navigate.mockClear()
     menuState.items[0]!.run!()
     expect(navigate).toHaveBeenCalledWith({ path: '/settings', query: { section: 'appearance', group: '*group:solo' } })
-    navigate.mockClear()
-    menuState.items.find(i => i.label === 'Board settings')!.run!()
-    expect(navigate).toHaveBeenCalledWith({ path: '/board', query: { settings: '*group:solo' } })
     menuState.open = false
     // "All" has no menu.
     await press(w.find('[data-bar-id="*"]').element)

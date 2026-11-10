@@ -2,48 +2,84 @@
 
 [Documentation](README.md) · [Project](../README.md)
 
-- **Conversation view**: the agent's real transcript (Claude Code, Codex and omp), rendered as
-  Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan), timestamps, search and infinite scroll back to the
-  first message. Reading a conversation never touches the terminal, so it never resizes a pane.
-  A command the agent proposes (shell code block, or inline `! command`) can be copied without
-  its prompt, or run in the agent's shell mode (`!`, Claude Code, Codex and omp) after you
-  confirm the full command.
-- **Interactive agent screens**: in a conversation, an uncertain menu or panel opens the
-  pane's real terminal in a modal window, with arrows, Enter, Escape, Tab, digits and y/n.
-  The rest of the app waits behind a scrim (the window fills the screen on a phone); in a
-  split, only the cell in use opens it. It closes after the agent's message field returns.
-  Close it yourself at any time with its button or a click on the scrim: that releases the
-  terminal without pressing Escape, which goes to the agent, and the same interaction stays
-  closed until you reopen it. Existing native questions, approvals, menus, waiting screens and
-  Claude settings cards keep their controls. The window is a fallback after those
-  recognizers, with two explicit exceptions: Codex's two-column `/usage` menu and
-  its Agent Command Center. The slash menu still lists and sends commands. On a phone, the window
-  temporarily fits the real pane to its width and restores its size on release, using
-  the same lease as Terminal view; it does not shrink 120 columns into unreadable text.
-  A pane already shown in Terminal keeps its existing live view. Try `/usage` on the
-  Codex agent in the browser demo (scripted, no account data).
-  In the compact list, native questions keep their preview and one-tap answers.
-  Unrecognized blocking screens offer an **Open interactive terminal** button.
-- **Composer**: send messages while the agent works (queued, cancellable: the agent's own
-  queue when it takes them, else held by wherdr and sent when the turn ends; never left
-  half-typed in its field; a message pulled back out of Claude's queue before it read it, or not seen after an hour, is
-  marked “Not sent” with Retry / Cancel, and “Not sent” clears once the message shows in its transcript), attach or paste
+Claude Code, Codex and Devin terminals open in conversation mode; any other terminal shows only its
+[terminal](terminal.md). How wherdr finds the conversation file on herdr-core is described in
+[herdr-core › Conversations](core.md#conversations).
+
+- **Conversation view**: the agent's real transcript (Claude Code, Codex and Devin), rendered as
+  Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan),
+  timestamps, search and infinite scroll back to the first message. Reading a conversation never
+  touches the terminal, so it never resizes it. A command the agent proposes (shell code block,
+  or inline `! command`) can be copied without its prompt.
+- **SVG diagrams**: complete code fences labelled `svg` render as isolated, theme-aware images.
+  **Source / Preview**, beside **Copy** in the card header, switches the same card between the
+  diagram and its original markup; **Copy** always copies that markup. Click or use Enter/Space
+  on the image for the full-screen viewer. Static shapes, text and local definitions are
+  supported, up to 150,000 source characters, 2,000 source elements and 10,000 expanded
+  reference instances. Incomplete, unsupported or unsafe diagrams stay readable code. Scripts,
+  foreign HTML, animation and external resources are rejected; raw inline SVG is not inserted
+  into the page. Other fence languages and file-explorer document fences remain code.
+- **Live status cards**: a code fence labelled `wherdr` whose lines are all `status …` shows one
+  card per line, read from wherdr's own data, never from what the agent wrote:
+  `status machine:<key or name>` (online or offline, free memory, load, agents),
+  `status quota:claude` or `status quota:codex` (5-hour and week windows left),
+  `status pr:<KEY>#<n>` (the PR of a task of project KEY, as the engine last read it) and
+  `status op:<task id>` (the step the task's engine runs now, such as a watched pipeline, and
+  since when). Up to 8 lines. Cards refresh every 15 s while they are on screen; a source that
+  is gone (machine removed, no quota read, unknown task or PR) shows **unavailable**. A PR or
+  operation card opens its task. On a phone the cards stack, one per line. A block with any
+  other line stays code; file documents never show cards.
+- **Links into wherdr**: an agent sending you somewhere in wherdr gives its in-app address, as a
+  Markdown link (`[Phone](#/settings?section=phone)`) or as inline code that is only the address
+  (`` `#/board?task=KEY-12` ``). Either opens the place in the app, on a computer and a phone,
+  without reloading; Back returns to the conversation. Other links open in a new tab, other
+  inline code stays plain. The addresses: `#/`, `#/decisions`, `#/board` (with `?project=KEY`,
+  `?tag=TAG` or `?task=ID`), `#/settings?section=<section>`, a tab of Settings › Conversation
+  `#/settings?section=conversation&tab=<tab>` (`display`, `dictation`, `read-aloud`) and a
+  project's sheet `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in
+  their instructions.
+- **Places an agent opens for you**: when you ask Alfred or a project's coordinator to show you
+  a place, it can open it in the wherdr you are on (`wherdr alfred ui open
+  '#/settings?section=phone'`, `wherdr pm ui open '…'`): of the apps showing its conversation,
+  the one you last used (within 15 minutes), and no other, so a computer left open on the same
+  conversation stays as it is while you are on your phone. On a computer window at least 1280 px
+  wide, a Settings place opens in the side panel beside the conversation; elsewhere, and for
+  the board, a task or Decisions, a card above the message field names the place, and a tap
+  opens it. Either says who opened it ("Opened by Alfred"); close the panel or dismiss the card
+  with ×. The agent is told where it went (phone or computer), and ends its reply with the same
+  card (a ```wherdr block of `open <in-app link>` lines), so it stays in the conversation for
+  later. With no app in use on the conversation, it gives you the link instead. Opening is all it
+  does: it changes no setting. It works only in a turn that follows your message (never in an
+  Autopilot wake), and a coordinator opens its own project's places and global Settings sections
+  only.
+- **Questions and permissions**: native questions, approvals and menus show their options; a tap
+  answers. wherdr reads the screen again right before answering and refuses the answer if the
+  question changed meanwhile. A free answer selects its option, waits for the field, then types
+  the text. Unrecognized blocking screens offer the real terminal.
+- **Composer**: send messages while the agent works (queued: the agent's own queue when it takes
+  them, else held by wherdr and sent when the turn ends; never sent twice), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
-  extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
-  of local commands. Stop button while the agent works. When Claude Code suggests a reply
-  (grayed-out in the empty field), `Tab` takes it on a computer and **Use**, inside the field on
-  its right, on a phone: the field gets the text, to edit or send. A long pasted text (log, output) becomes
-  a "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
-  conversation, where it opens in full with Copy; long typed messages fold with Show more.
-  The draft (text, quotes, attachments) is kept per agent, across reloads: when Herdr closes a
-  pane and opens a new one for the same agent (the same conversation, or the same herdr-projects
-  coordinator or task, as after `coordinator restart`), the view moves to the new pane and the
-  draft comes along. A pane closed for good keeps it under its banner, with **Copy draft**.
-- **Model and effort pickers** for Claude Code, Codex and omp (omp: its
-  "Switch Model" selector, `/switch` or `/model`, and its thinking level, changed with its own
-  ⇧⇥ cycle). Changes apply **to the current session only**; wherdr never changes your default
-  model.
-**Settings › Conversation › Reply style** chooses how an agent's reply offers to be quoted in
+  extension; Codex: notebooks, text and code), up to **8 MB per file** (core's `terminal.put`).
+  A sent file shows as a chip (icon and original name) in the message and its history, also in
+  conversations from v2; a tap opens or downloads it.
+  Slash commands typed in the field (`/compact`, `/clear`…) are sent as text. **Stop** (or `Esc`
+  in the empty field) interrupts the agent and says what core observed. When Claude Code
+  suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
+  inside the field on its right, on a phone. A long pasted text (log, output) becomes a
+  "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
+  conversation, where it opens in full with Copy; long typed messages fold with Show more. The
+  draft (text, quotes, attachments) is kept per agent, across reloads.
+- **omp context**: in the header, after the state, a small gauge with the percentage of omp's
+  context window and the estimated tokens (`68% · 136K`); select it for the window, the exact
+  percentage and omp's status line (on a phone, the percentage alone, under the title, in place of the agent kind). The
+  estimate comes from omp's rounded percentage, not a token count. Unknown readings stay
+  hidden; a reading taken while omp rests, or before its panel hid the gauge, is marked as
+  the last one.
+- **Composer and terminal together** on a computer: under an agent's terminal, the composer stays
+  available; typing in it takes control of the terminal's size ([Terminal](terminal.md)).
+- The model and effort pickers, the slash-command list and Codex update cards are v2 only.
+
+**Settings › Conversation › Display › Reply style** chooses how an agent's reply offers to be quoted in
 the field, question by question and point by point (a list item or a paragraph that asks
 nothing), so that one message answers them all:
 
@@ -94,7 +130,7 @@ No
 - In the conversation, each reference of a sent message shows as a quote; tap it to see the
   message it names. Messages sent earlier with `> ` lines still show as quotes.
 
-**Settings › Conversation › Quoted replies** chooses how the field shows these lines: **Tokens,
+**Settings › Conversation › Display › Quoted replies** chooses how the field shows these lines: **Tokens,
 native field** (default) draws each one as a token in the usual field, **Plain text** shows the
 same lines as text, a fallback if the tokens misbehave. The message sent is the same.
 
@@ -110,7 +146,7 @@ in doubt only Reply is offered: a single sentence that opens like a yes/no quest
 with `, OK?` / `, d'accord ?`, with no alternative (`or`, `ou`), no interrogative word (`which`,
 `how`, `quel`, `comment`…) and no negation.
 
-A **decision table**, a Markdown table whose rows are numbered questions as a coordinator writes
+A **decision table**, a Markdown table whose rows are numbered questions as an agent often writes
 them, gets a panel right under it: **OK to all** refers to the whole table and writes `OK to all`
 under it (a second tap takes it back), and each row has **Yes**, **No** and `↳`, which refer to
 the row by its number and write `Yes` or `No` under it, or nothing for an answer in words; a row
@@ -129,3 +165,17 @@ by **OK to all**; when the message asks one thing only, any words you type answe
 goes when everything is answered and when you send, and it never shows for earlier messages,
 while the agent is working, or while it waits on a prompt. It hangs from the top edge of the
 field, so nothing moves when it comes or goes.
+
+## Settings
+
+**Settings › Conversation** has three tabs, each kept in the address so a link opens it:
+
+- **Display** (`#/settings?section=conversation&tab=display`, the default): default pane view,
+  typewriter, reply style and quoted replies.
+- **Dictation** (`#/settings?section=conversation&tab=dictation`): off, on this device (its
+  models), online, and the rewrite pass ([Dictation design](dictation.md)). A dictation error's
+  **Settings** button opens this tab.
+- **Read aloud** (`#/settings?section=conversation&tab=read-aloud`): off or a voice, the voice
+  list and Test.
+
+Each setting says whether it is saved on this device or follows you on every device.
