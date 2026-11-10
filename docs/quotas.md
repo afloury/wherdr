@@ -25,6 +25,15 @@ reading without an account key) keeps a block of its own, titled with the machin
   reuse an older machine snapshot, and remembered weekly limits cannot cross account
   identities. Without a known fingerprint, remembered weekly corrections are not reused,
   even on the same machine. Session files are read from `~/.codex/sessions`.
+
+  **Limit reached** shows while the reading says Codex hit its limit and its reset time is ahead
+  (no reset time given: for 5 hours after the reading). Once that reset has passed, the row
+  reads **Reset since the last reading**, never blocked, and automatic work is no longer held.
+  When Codex's session files say the account has credits (`rate_limits.credits`: a balance, or
+  unlimited), the row shows them (**Credits: 120 credits**), and a reached limit reads
+  **Limit reached · work goes on with 120 credits**: automatic work is not held either. A
+  reading older than 6 hours says so under the row: **Last read 3 d ago: send a message to a
+  Codex agent to refresh** (Claude rows the same, with a Claude agent).
 - **Claude Code** only gives them to its status line. On each machine, install wherdr's
   invisible status line (it displays nothing, and chains to your existing status line if you
   have one):
@@ -73,7 +82,9 @@ account: no line and no reserve, automatic work stops only when the account hits
 or weekly limit; no mode settings), **Free with reserve** (no line: it keeps a weekly reserve
 per day left and a 5-hour reserve), **Every day**, or **Working days** (the days you pick). Automatic
 work (the autopilot, automations) waits while an account is ahead of its pace; your own starts
-never wait. An account with no quota reading is held by task-count limits only. Each machine's
+never wait. An account with no quota reading is held by task-count limits only. A Codex row also
+shows the account's credits, and **Limit reached · work goes on with …** or **Limit reset since
+the last reading** when its reading says so. Each machine's
 memory state shows below ([Machines](machines.md#manage-machines)).
 
 **End-of-week burn** (under **Mode settings**, per account, in every mode but Free): one switch. On, from now until the
