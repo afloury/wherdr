@@ -50,6 +50,23 @@ export function parseFindings(text: string): Finding[] | { error: string } {
   return out
 }
 
+// A preview line that holds a reviewer's verdict JSON (often cut at 200 characters),
+// read back: the full list when it parses, else what the cut text still shows.
+// null when the text holds no verdict.
+export interface VerdictGlance { complete: boolean, count: Partial<Record<Severity, number>>, total: number, title?: string }
+export function verdictGlance(text: string): VerdictGlance | null {
+  const start = text.search(/\{\s*"findings"\s*:/)
+  if (start < 0) return null
+  const json = text.slice(start)
+  const parsed = parseFindings(json)
+  const complete = Array.isArray(parsed)
+  const severities = complete ? parsed.map(f => f.severity) : [...json.matchAll(/"severity"\s*:\s*"(minor|major|critical)"/g)].map(m => m[1] as Severity)
+  const rawTitle = complete ? parsed[0]?.title : /"title"\s*:\s*"((?:[^"\\]|\\.)+)"/.exec(json)?.[1]?.replace(/\\(.)/g, '$1')
+  const count: Partial<Record<Severity, number>> = {}
+  for (const s of severities) count[s] = (count[s] ?? 0) + 1
+  return { complete, count, total: severities.length, ...(rawTitle ? { title: rawTitle } : {}) }
+}
+
 // What a finding weighs: preexisting = minor; without proof, one level down.
 export function weight(f: Finding): Severity {
   if (f.preexisting) return 'minor'
