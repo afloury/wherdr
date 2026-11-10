@@ -595,6 +595,14 @@ task's own changes to interface files (`components`, `assets`, `pages` and
 `layouts` folders) differ from those you approved; what a merge of the base
 brought does not count.
 
+Until the merge ends, *Merge* stays loading, on the card in *Your turn* and in
+the task sheet, with what it waits for under it: its place in the merge queue,
+its checks running, an update with its base, or its machine coming back
+online. This comes from the approval wherdr keeps, so it is the same after a
+reload and on every device. Once merged, the task leaves *Your turn*; if the
+merge fails or is refused, *Try again* comes back with the reason in plain
+words.
+
 #### The merge queue
 
 Each project has a **merge queue**: every task whose merge may go on without

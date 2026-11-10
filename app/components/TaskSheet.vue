@@ -13,7 +13,7 @@
 // text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR among them), Plan (each step with its
 // screenshots), History (the hand-offs between its agents and the user,
 // TaskHistory), Log (the raw lines).
-import { canStart, canStop, cardStatus, linkLabel, statusText, type Card } from '#shared/pm/board'
+import { canStart, canStop, cardStatus, linkLabel, mergeWaits, statusText, type Card } from '#shared/pm/board'
 import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
 import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
@@ -95,7 +95,8 @@ const sendBack = (note: string) => run(() => api('/api/pm/step-back', { id: prop
 // A problem reported to the coordinator: open on the card until it acts or the user withdraws it.
 const reportOpen = ref(!!props.reporting)
 // An action step that failed (a merge refused): the user runs it again.
-const failedAction = computed(() => { const s = props.card.state; return !props.card.stopped && !!s && !s.acting && s.yourTurn?.reason === 'action' && !!props.card.plan[s.at]?.action })
+// Not an approved merge on its way: a refusal the queue tries again is not the user's (mergeWaits).
+const failedAction = computed(() => { const s = props.card.state; return !props.card.stopped && !!s && !s.acting && s.yourTurn?.reason === 'action' && !!props.card.plan[s.at]?.action && mergeWaits(props.card) === undefined })
 const canReport = computed(() => !!props.card.yourTurn && !props.card.state?.done && !props.card.report)
 const report = (r: { text: string, shots: string[], block: boolean }) => run(async () => { await api('/api/pm/report', { id: props.card.id, ...r }); reportOpen.value = false })
 const withdraw = () => run(() => api('/api/pm/report', { id: props.card.id, withdraw: true }))
