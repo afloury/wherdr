@@ -95,7 +95,7 @@ The import brings none of your v2 projects: you choose which ones come over, and
 message, [Alfred](home.md#alfred) sees that this machine has a herdr-projects board with projects and offers
 to set them up with you, one project at a time. It reads the board then (`wherdr alfred v2`, read
 only): each project's suggested key, folder (and whether it is on this machine), `workspace.from`
-as the base branch, its open tasks (done and archived ones are left out), and the board settings
+as the base branch, its open tasks with their stage, branch and PR (done and archived ones are left out), and the board settings
 to redo in its template (reviewer, merge, worker…). Alfred asks you to switch Projects on first when they are off.
 
 - which projects to bring over (none or some is fine);
@@ -103,6 +103,12 @@ to redo in its template (reviewer, merge, worker…). Alfred asks you to switch 
 - its template, starting from a saved template or an example, with the v2 settings to redo in mind;
 - whether to start its coordinator;
 - which of its open v2 tasks to add again (each description starts with "From v2 WHR-37.");
+  each comes back as a task to do, whatever its v2 stage;
+- for an under-way or waiting task, its branch and PR are kept: its description starts with
+  "From v2 WHR-37. Continue from branch `feat/x` / PR #12.", and its worker starts from that
+  branch, so it pushes to the same PR, when the remote still has the branch. When the remote
+  no longer has it, the worker starts from the base branch, and the task's history and its
+  instructions say so;
 - its guards and the other machines its tasks may run on, when its v2 settings call for them.
 
 Alfred shows each change before making it, and makes it only after your yes. You can also ask it
