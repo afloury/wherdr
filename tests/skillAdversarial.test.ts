@@ -131,14 +131,14 @@ describe('one-tap update: which skill is left in place', () => {
     }
     pkg(root, 'old skill', previousHasHelper)
     pkg(`${root}.new`, 'new skill', true)
-    const plan = { kind: 'plugin', from: '1.0.0', to: '2.0.0', root, dir, runtime: '/usr/bin/node', serverPid: 0, port: '1', host: '127.0.0.1', releaseBase: 'https://releases.example', healthMs: 10 }
+    const plan = { kind: 'plugin', from: '2.0.0', to: '2.1.0', root, dir, runtime: '/usr/bin/node', serverPid: 0, port: '1', host: '127.0.0.1', releaseBase: 'https://releases.example', healthMs: 10 }
     const io = {
       log: () => {}, state: () => {},
       async run(cmd: string, args: string[], extra: Record<string, string> = {}) {
         if (cmd === 'sh') execFileSync(cmd, args, { env: env(h, extra) })
       },
       async download() {}, async verify() {}, async stopServer() {},
-      healthy: async (version: string) => version === '1.0.0', // 2.0.0 never answers
+      healthy: async (version: string) => version === '2.0.0', // 2.1.0 never answers
       exists: (p: string) => existsSync(p) || p.endsWith('/.output/server/index.mjs'),
       rm: (p: string) => { if (!p.endsWith('.new')) rmSync(p, { recursive: true, force: true }) },
       mkdir: () => {}, copy: () => {},
