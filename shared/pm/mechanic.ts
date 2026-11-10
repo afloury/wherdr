@@ -35,6 +35,7 @@ export type Move =
   | { kind: 'sync-push', step: string }
   | { kind: 'fix-base', base: string }
   | { kind: 'catch-up', base: string }
+  | { kind: 'take-update' }
   | { kind: 'rerun-ci', checks: string[] }
   | { kind: 'ci-to-agent', checks: string[] }
   | { kind: 'merge', url: string, base: string }
@@ -123,7 +124,12 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   if (waits && s.catchUp) return f.agentBusy ? undefined : pick(`catch-up:${head}`, { kind: 'catch-up', base: s.catchUp.base })
   // The PR head is not the task's commit (a CI fix not pushed, a push from
   // elsewhere): the merge step pushes it and has it reviewed again, or says why not.
-  if (pr.headRefOid !== head) return engineMerges && !f.agentBusy ? pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
+  if (pr.headRefOid !== head) {
+    if (f.agentBusy) return
+    if (engineMerges) return pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName })
+    // Not merging now (it waits for the user, or for its turn): a head GitHub's Update branch made is still fixed and pushed.
+    return pick(`update:${pr.headRefOid}`, { kind: 'take-update' })
+  }
   if (pr.baseRefName !== base) return pick(`base:${head}`, { kind: 'fix-base', base })
   if (f.agentBusy) return
   // Updated with its base only when GitHub reports a conflict or requires it (BEHIND: the branch rules want it up to date).
