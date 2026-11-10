@@ -53,8 +53,9 @@ export const transcripts = {
 }
 
 // ---------------------------------------------------------------- clients
-// What each device is looking at (no notification for the agent shown on screen).
-export interface EventClient { send: (data: string) => void, pane: string | null, visible: boolean }
+// What each device is looking at (no notification for the agent shown on screen),
+// its kind and when the user last used it (`ui open` goes to that one).
+export interface EventClient { send: (data: string) => void, pane: string | null, visible: boolean, device?: 'phone' | 'computer', activeAt?: number }
 export const eventClients = new Map<string, EventClient>()
 
 let state: HerdrState = startingState()

@@ -55,16 +55,18 @@ export interface QueueEntry {
   files: string[] // the files its PR changes
   size: number // lines added and deleted
   out?: string // why it stepped out of line (queueOut)
+  order?: number // its place on the board (task.order, boardOrder.ts)
 }
 
 // The queue's order, by id: the PRs in line first, then those that stepped
-// out; in each, PRs that touch no file another queued PR touches, then smaller diffs.
+// out; in each, those the coordinator ordered on the board (task order) in that
+// order, then PRs that touch no file another queued PR touches, then smaller diffs.
 export function mergeOrder(entries: QueueEntry[]): string[] {
   const shares = (e: QueueEntry) => entries.some(o => o !== e && o.files.some(f => e.files.includes(f)))
-  const rank = (e: QueueEntry) => [e.out ? 1 : 0, shares(e) ? 1 : 0, e.size] as const
+  const rank = (e: QueueEntry) => [e.out ? 1 : 0, e.order ?? Number.MAX_SAFE_INTEGER, shares(e) ? 1 : 0, e.size] as const
   return [...entries].sort((a, b) => {
     const x = rank(a), y = rank(b)
-    return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || a.id.localeCompare(b.id)
+    return x[0] - y[0] || x[1] - y[1] || x[2] - y[2] || x[3] - y[3] || a.id.localeCompare(b.id)
   }).map(e => e.id)
 }
 

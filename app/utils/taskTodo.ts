@@ -4,8 +4,9 @@
 // decide: the choice after N send-backs. stopped: how to go on. step: a step
 // that ends with the user's button. ask: the agent's question or permission.
 // refused: a failed engine action (a merge refused). blocked: anything else
-// that waits (overdue, a task it starts after failed).
-import type { Card } from '#shared/pm/board'
+// that waits (overdue, a task it starts after failed). An approved merge on its
+// way stays merge or step, its button loading (mergeWaits).
+import { mergeWaits, type Card } from '#shared/pm/board'
 
 export type TodoKind = 'merge' | 'decide' | 'stopped' | 'step' | 'ask' | 'refused' | 'blocked'
 
@@ -15,6 +16,8 @@ export const shotSteps = (c: Pick<Card, 'plan' | 'state'>) =>
 
 export function taskTodo(c: Card): TodoKind | undefined {
   if (c.stopped) return 'stopped'
+  // An approved merge on its way keeps its tab, its Merge loading until it ends.
+  if (c.userLabel && mergeWaits(c) !== undefined) return shotSteps(c).length ? 'merge' : 'step'
   if (!c.yourTurn || c.state?.done) return
   const reason = c.state?.yourTurn?.reason
   if (reason === 'rounds' && c.state?.yourTurn?.advice) return 'decide'
