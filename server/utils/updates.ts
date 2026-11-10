@@ -1,7 +1,7 @@
 // Latest wherdr release on GitHub, checked at most once a day
 // (public API without a token, nothing is sent). WHERDR_UPDATE_CHECK=off disables the call.
 import pkg from '../../package.json'
-import { compareVersions, installMode, oneTapMode, updateCommand, type UpdateInfo } from '../../shared/updates'
+import { compareVersions, installMode, isNewerRelease, oneTapMode, updateCommand, type UpdateInfo } from '../../shared/updates'
 
 export const REPO = 'afloury/wherdr'
 export const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases?per_page=100`
@@ -28,12 +28,18 @@ export function createUpdateChecker(opts: {
       const res = await opts.fetch(RELEASES_URL)
       if (!res.ok) throw new Error('http')
       const releases = await res.json() as { tag_name?: unknown, html_url?: unknown, draft?: boolean, prerelease?: boolean }[]
-      const stable = releases.filter(r => !r.draft && !r.prerelease && /^v\d+\.\d+\.\d+$/.test(String(r.tag_name)))
+      // Only newer releases of the running major (isNewerRelease): a 2.x is never offered to v3.
+      const stable = releases.filter(r => !r.draft && !r.prerelease && /^v\d+\.\d+\.\d+$/.test(String(r.tag_name))
+        && isNewerRelease(String(r.tag_name), opts.current))
         .sort((a, b) => compareVersions(String(b.tag_name), String(a.tag_name)))
       const body = stable[0]
-      if (!body || typeof body.tag_name !== 'string') throw new Error('tag')
+      if (!body || typeof body.tag_name !== 'string') {
+        if (!Array.isArray(releases)) throw new Error('tag')
+        cached = { version: opts.current, url: '', missed: [], truncated: false }
+        nextAt = now() + DAY_MS
+        return
+      }
       const missed = [...new Set(stable.map(r => String(r.tag_name).replace(/^v/, '')))]
-        .filter(version => compareVersions(version, opts.current) > 0)
       const candidate = { version: body.tag_name.replace(/^v/, ''), url: typeof body.html_url === 'string' ? body.html_url : '',
         missed, truncated: releases.length >= 100 }
       const mode = installMode(opts.env.WHERDR_INSTALL)
@@ -69,7 +75,7 @@ export function createUpdateChecker(opts: {
       pending ??= refresh().finally(() => { pending = null })
       await pending
     }
-    const newer = cached && compareVersions(cached.version, opts.current) > 0
+    const newer = cached && isNewerRelease(cached.version, opts.current)
     return { ...base, latest: newer ? cached!.version : null, url: newer ? cached!.url || null : null, checked: !!cached,
       ...(newer ? { behind: cached!.missed.length, missed: cached!.missed.slice(0, 5), behindAtLeast: cached!.truncated } : {}) }
   }

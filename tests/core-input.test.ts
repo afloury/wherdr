@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { CoreError } from '../server/utils/core'
 import { coreInput, coreInterrupt, coreKeepGet, coreKeepSet, coreKill, coreSend, type CoreInputDeps } from '../server/utils/coreInput'
 import { isBareBang } from '../shared/queuedMatch'
+import { takingTurns } from '../server/utils/terminalTurns'
 import type { Pane } from '../shared/types'
 
 const pane = (id: string, extra: Partial<Pane> = {}) => ({ id, workspace: 'w1', coreAddress: `m/${id}`, agent: 'claude', ...extra }) as Pane
@@ -19,6 +20,7 @@ function deps(reply: (method: string, params: any) => unknown = () => ({})) {
     pane: id => panes.find(p => p.id === id),
     panes: () => panes,
     refresh: () => { refreshed++ },
+    turnSettleMs: 0,
   }
   return { d, calls, refreshed: () => refreshed }
 }
@@ -45,6 +47,65 @@ describe('core input routes', () => {
     await coreSend(w.d, { pane_id: 't1', text: 'a\nb' })
     await coreSend(w.d, { pane_id: 't1', text: 'one line' })
     expect(w.calls.filter(c => c[0] === 'terminal.keys')).toHaveLength(0)
+  })
+
+  it('Claude\'s input already holds text: nothing typed, the send is refused', async () => {
+    const t = deps(() => ({ started: true }))
+    t.d.field = async () => '[Image #120] what is wrong here?'
+    await expect(coreSend(t.d, { pane_id: 't1', text: 'and this?' })).rejects.toMatchObject({ code: 'input_busy' })
+    expect(t.calls).toEqual([])
+  })
+
+  it('a send while a wake is being typed waits for it, then goes once the field is empty', async () => {
+    let release!: () => void
+    const wake = new Promise<void>(r => { release = r })
+    const t = deps(() => ({ started: true }))
+    t.d.settleMs = 1
+    const engine = takingTurns(async (m, params) => { t.calls.push([m, params, 0]); await wake; return {} as never }, 0)
+    const delivering = engine('terminal.send', { terminal: 'm/t1', text: 'Autopilot wake' }, 30000)
+    // Claude still empties its field for a moment after the wake.
+    let looks = 0
+    t.d.field = async () => (looks++ < 2 ? 'Autopilot wake' : null)
+    const sending = coreSend(t.d, { pane_id: 't1', text: 'look\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png' })
+    await new Promise(r => setTimeout(r, 5))
+    expect(t.calls.map(c => c[1].text)).toEqual(['Autopilot wake'])
+    release()
+    await delivering
+    expect(await sending).toEqual({ ok: true, started: true })
+    expect(t.calls.map(c => c[1].text)).toEqual(['Autopilot wake', 'look\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png'])
+  })
+
+  it('a send right after a wake was delivered: typed once the field is empty, once, nothing left in it', async () => {
+    const t = deps(() => ({ started: true }))
+    t.d.settleMs = 1
+    const engine = takingTurns(async () => ({}) as never, 40)
+    await engine('terminal.send', { terminal: 'm/t9', text: 'Autopilot wake' }, 30000)
+    ;(t.d.pane('t1') as Pane).coreAddress = 'm/t9'
+    const done = Date.now()
+    let field: string | null = 'Autopilot wake'
+    t.d.field = async () => field
+    setTimeout(() => { field = null }, 20)
+    const photos = '/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png\n/srv/core/files/t1/2026-01-01T10-00-01-000Z-d4e5f6.png\nwhat now?'
+    const sending = coreSend(t.d, { pane_id: 't1', text: photos })
+    await sending
+    expect(Date.now() - done).toBeGreaterThanOrEqual(35)
+    expect(t.calls).toEqual([['terminal.send', { terminal: 'm/t9', text: photos }, 30000]])
+    expect(await t.d.field!(t.d.pane('t1')!)).toBeNull()
+  })
+
+  it('our photo message left in Claude\'s input (also during a turn): Enter once; not for other text', async () => {
+    const msg = '/home/user/.cache/herdr-web/uploads/a.jpg\nwhat is wrong here?'
+    const long = `${msg}\n${Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n')}`
+    for (const [text, after, enters] of [[msg, '[Image #120] what is wrong here?', 1], [msg, '', 0], [msg, '[Image #120] what is wrong here? more', 0],
+      // A long paste, shown as its stand-in: still ours alone.
+      [long, '[Image #120] what is wrong here? [Pasted text #1 +29 lines]', 1], [long.split('\n').slice(1).join('\n'), '[Pasted text #1 +29 lines]', 1]] as const) {
+      const t = deps(m => (m === 'terminal.send' ? { started: false } : {}))
+      t.d.settleMs = 1
+      let reads = 0
+      t.d.field = async () => (reads++ ? after : null)
+      await coreSend(t.d, { pane_id: 't1', text })
+      expect(t.calls.filter(c => c[0] === 'terminal.keys')).toHaveLength(enters)
+    }
   })
 
   it('sends a multi-line "!" command as it is, in one terminal.send', async () => {

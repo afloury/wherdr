@@ -113,9 +113,9 @@ it('saves the workflow as a library template, and starts over only after showing
 it('sets screenshots as a step\'s evidence: after only, before and after, or none', async () => {
   const w = await mount()
   await menu(w, 'Edit as JSON')
-  const shots = () => selects(w, 'tpl-shots') // work, pr, deploy: the report steps
+  const shots = () => selects(w, 'tpl-shots') // work, pr: the report steps
   const step = (id: string) => json().taskTypes.feature.steps.find((s: { id?: string }) => s.id === id)
-  expect(shots()).toHaveLength(3)
+  expect(shots()).toHaveLength(2)
   await pick(w, 'tpl-shots', 'before-after', 1)
   await pick(w, 'tpl-shots', 'after', 0)
   expect(selectValue(w, 'tpl-shots', 1)).toBe('before-after')

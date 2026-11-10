@@ -1,6 +1,6 @@
 {
   "name": "wherdr",
-  "version": "2.5.0",
+  "version": "3.0.0-dev",
   "license": "MIT",
   "type": "module",
   "description": "Unofficial mobile web client (PWA) for the coding agents of herdr-core (hc)",
@@ -19,6 +19,9 @@
     "url": "git+https://github.com/afloury/wherdr.git"
   },
   "bugs": "https://github.com/afloury/wherdr/issues",
+  "config": {
+    "branch": "v3"
+  },
   "bin": {
     "wherdr": "bin/wherdr.mjs"
   },
@@ -29,7 +32,9 @@
     "scripts/fetch-dictation-files.mjs",
     "scripts/dictation-files.mjs",
     "app/utils/dictation/models.json",
-    "docs/*.md"
+    "app/utils/speech/voices.json",
+    "docs/*.md",
+    "docs/llms.txt"
   ],
   "engines": {
     "node": ">=22"
@@ -43,7 +48,7 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "shots:readme": "node tools/readme-shots/capture.mjs",
-    "prepare": "nuxt prepare",
+    "prepare": "node scripts/llms-merge.mjs install && nuxt prepare",
     "prepack": "nuxt build && node scripts/pack-output.mjs",
     "check:docs": "node scripts/check-doc-links.mjs",
     "check:leaks": "node scripts/check-leaks.mjs",

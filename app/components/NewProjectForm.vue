@@ -8,7 +8,8 @@
 import type { MachineConfig } from '#shared/types'
 import type { PmOverview } from '#shared/pm/project'
 import { EXAMPLES } from '#shared/pm/examples'
-import { canGitInit, draftGit, folderKind, proposeKey, proposeName, type FolderProbe, type ProjectDraft } from '#shared/pm/newProject'
+import type { Template } from '#shared/pm/workflow'
+import { canGitInit, draftGit, folderKind, needsRemote, proposeKey, proposeName, shortHome, type FolderProbe, type ProjectDraft } from '#shared/pm/newProject'
 
 const project = defineModel<string>('project', { required: true })
 const agent = defineModel<string>('agent', { required: true })
@@ -53,7 +54,7 @@ function add() {
 }
 const templateItems = computed(() => [
   ...templates.value.map(id => ({ label: id, value: id })),
-  ...EXAMPLES.filter(e => !templates.value.includes(e.id)).map(e => ({ label: tl(`${e.id} (example)`, `${e.id} (exemple)`), value: `example:${e.id}` })),
+  ...EXAMPLES.filter(e => !templates.value.includes(e.id) || template.value === `example:${e.id}`).map(e => ({ label: tl(`${e.id} (example)`, `${e.id} (exemple)`), value: `example:${e.id}` })),
 ])
 const template = computed({ get: () => draft.value?.template ?? '', set: (v: string) => { if (draft.value) draft.value.template = v } })
 
@@ -67,7 +68,7 @@ watch(() => [props.machine, !!draft.value] as const, async ([m, on]) => {
     if (draft.value?.machine === m) { repos.value = r.repos; home.value = r.home }
   } catch { repos.value = [] }
 }, { immediate: true })
-const short = (p: string) => (home.value && p.startsWith(`${home.value}/`) ? `~${p.slice(home.value.length)}` : p)
+const short = (p: string) => shortHome(p, home.value)
 const shown = computed(() => {
   const q = search.value.trim().toLowerCase()
   return (repos.value ?? []).filter(p => !q || short(p).toLowerCase().includes(q)).slice(0, 50)
@@ -102,6 +103,22 @@ onMounted(() => {
   newProjectOpen.value = false
 })
 const kind = computed(() => (draft.value?.probe ? folderKind(draft.value.probe) : null))
+// No origin (a git init folder, a local repository): an example that pushes
+// or opens pull requests cannot finish a task; vibe lands locally.
+const noRemote = computed(() => !!draft.value && draftGit(draft.value) && !draft.value.probe?.remote)
+// The picked template: an example, or a saved one read from the library.
+const picked = ref<Template | null>(null)
+watch(() => noRemote.value && template.value, async (id) => {
+  picked.value = null
+  if (!id) return
+  const ex = EXAMPLES.find(e => `example:${e.id}` === id)
+  if (ex) { picked.value = ex; return }
+  try {
+    const r = await api<{ template: Template }>(`/api/pm/template?id=${encodeURIComponent(id)}`)
+    if (template.value === id) picked.value = r.template
+  } catch {}
+}, { immediate: true })
+const pushes = computed(() => (noRemote.value && picked.value && needsRemote(picked.value) ? template.value.replace(/^example:/, '') : ''))
 const notes = {
   git: () => tl('Git repository: each task gets its own worktree and pull request.', 'Dépôt git : chaque tâche a son worktree et sa pull request.'),
   new: () => tl('New folder: it is created at start.', 'Nouveau dossier : il est créé au lancement.'),
@@ -154,6 +171,10 @@ const notes = {
         <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-folder-open" :aria-label="tl('Browse', 'Parcourir')" @click="emit('browse')" />
       </div>
       <p v-if="kind || probeError" class="coord-hint" :class="{ 'form-error': probeError }" data-testid="project-folder" :data-folder="kind">{{ probeError ? t(probeError) : notes[kind!]() }}</p>
+      <p v-if="noRemote && draft.probe" class="coord-hint muted" data-testid="project-no-remote">
+        {{ t('No remote (origin): a merge without a PR goes into a local branch; pushes and pull requests need one:') }}
+        <code>git remote add origin &lt;url&gt;</code>
+      </p>
       <label v-if="kind && canGitInit(kind)" class="toggle-row">
         <span><b>{{ tl('Start a git repository', 'Créer un dépôt git') }}</b><small>git init</small></span>
         <USwitch v-model="draft.gitInit" color="success" size="xl" data-testid="project-git-init" />
@@ -173,9 +194,13 @@ const notes = {
       <template v-if="!draft.probe || draftGit(draft)">
         <label class="field-label" for="projectTemplate">{{ tl('Template', 'Modèle') }}</label>
         <USelect id="projectTemplate" v-model="template" :items="templateItems" size="xl" class="w-full" data-testid="project-template" />
+        <p v-if="pushes" class="coord-note" data-testid="project-needs-remote">
+          {{ tl(`${pushes} pushes or opens pull requests: its tasks cannot finish without a remote. Add one, or`) }}
+          <a href="#" data-testid="project-use-vibe" @click.prevent="template = 'example:vibe'">{{ t('use vibe, which merges locally') }}</a>.
+        </p>
         <p class="coord-hint muted">
-          {{ tl('Templates are created and edited in', 'Les modèles se créent et se modifient dans') }}
-          <NuxtLink to="/settings?section=projects" @click="emit('settings')">{{ tl('Settings › Projects › Templates', 'Réglages › Projets › Modèles') }}</NuxtLink>.
+          {{ tl('The project gets its own copy. Read every template in') }}
+          <NuxtLink to="/settings?section=projects&library=1" @click="emit('settings')">{{ tl('Settings › Projects › Template library') }}</NuxtLink>.
         </p>
       </template>
     </template>
@@ -211,6 +236,8 @@ const notes = {
 .coord-state { flex: none; font: 500 10.5px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
 .coord-state.run { color: var(--green); }
 .repo-list { margin-top: 8px; max-height: 240px; overflow-y: auto; overscroll-behavior: contain; }
+/* Desktop: a wider sheet (main.css), room for more repositories. */
+@media (min-width: 900px) and (min-height: 700px) { .repo-list { max-height: 360px; } }
 .repo-path { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12px/1.2 var(--mono); color: var(--muted); }
 .path-row { display: flex; gap: 8px; }
 .path-row > :last-child { flex: none; width: 48px; justify-content: center; }
