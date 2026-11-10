@@ -2607,6 +2607,10 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .settings-panel .settings-nav-item span:not(.iconify) { display: none; }
   .settings-panel .settings-column { padding: 22px 20px 44px; }
   .settings-panel .settings-section-title { font-size: 24px; margin-bottom: 20px; }
+  /* Its left edge resizes it (components/SidePanelHandle.vue), drawn like .list-handle. */
+  .panel-handle { position: fixed; top: 0; bottom: 0; right: var(--settings-panel); width: 0; z-index: 30; cursor: col-resize; touch-action: none; outline: none; }
+  body:has(.panel-handle.dragging) { cursor: col-resize; user-select: none; }
+  body:has(.panel-handle.dragging) :is(iframe, .xterm) { pointer-events: none; }
 }
 
 /* ================================================================
@@ -2629,9 +2633,9 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 
   #home { right: auto; width: var(--side); border-right: 1px solid var(--line-soft); background: var(--bg-2); }
   .list-handle { position: fixed; top: 0; bottom: 0; left: var(--side); width: 0; z-index: 30; cursor: col-resize; touch-action: none; outline: none; }
-  .list-handle::before { content: ''; position: absolute; top: 0; bottom: 0; left: -5px; width: 9px; cursor: col-resize; }
-  .list-handle::after { content: ''; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: transparent; transition: background-color .12s ease; pointer-events: none; }
-  .list-handle:hover::after, .list-handle.dragging::after, .list-handle:focus-visible::after { background: var(--mauve); }
+  :is(.list-handle, .panel-handle)::before { content: ''; position: absolute; top: 0; bottom: 0; left: -5px; width: 9px; cursor: col-resize; }
+  :is(.list-handle, .panel-handle)::after { content: ''; position: absolute; top: 0; bottom: 0; left: -1px; width: 2px; background: transparent; transition: background-color .12s ease; pointer-events: none; }
+  :is(.list-handle, .panel-handle):is(:hover, .dragging, :focus-visible)::after { background: var(--mauve); }
   #home.resizing, body:has(#home.resizing) { user-select: none; }
   body:has(#home.resizing) { cursor: col-resize; }
   body:has(#home.resizing) iframe, body:has(#home.resizing) .xterm { pointer-events: none; }
