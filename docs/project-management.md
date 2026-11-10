@@ -112,7 +112,10 @@ its folder, branches and task worktrees stay on the machine.
   machine with the largest share of memory and cores left after it) or *Home
   first* (other machines only once home is full). A machine fits a task when
   its free memory covers the task's estimate plus the machine's reserve
-  (Settings › Machines). A task that waits for room names it, and so does the
+  (Settings › Machines). An idle machine (no wherdr agent at work there) always
+  takes one task its RAM can hold, even with less free memory than that: the
+  reserve only holds its second task and beyond; on macOS a *critical* memory
+  pressure still holds every task. A task that waits for room names it, and so does the
   coordinator's `autopilot show`. A task too big for every machine it may use
   (their RAM less the reserve is under its estimate) runs on the best one
   instead of waiting forever, and its log says so once. A worker started
