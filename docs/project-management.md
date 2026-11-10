@@ -91,7 +91,8 @@ its folder, branches and task worktrees stay on the machine.
   request link), wherdr follows that branch: its pushes, PR and merge checks
   use it, never the old one.
 - **Agents**: the worker and the reviewer its tasks start with, each with an
-  optional model (empty: the agent's default).
+  optional model (empty: the agent's default), and the reviewer's optional
+  **Fallback** (see [Reviewer fallback](#reviewer-fallback)).
 - **Repository**: public or private, as wherdr found it (*Check again*) or as
   you set it. A public repository gets the coordinator's public-repository rules.
 - **Based on**: the template the workflow was copied from and its version, for
@@ -216,6 +217,38 @@ are outlined), who proposed it, your request with its
 time and *Go to message* (back to it in the conversation), *Accept*, *Refuse*
 and *See all changes* (the review). Once answered, the card shows the outcome, by whom and
 when.
+
+#### Reviewer fallback
+
+The workflow's `prefs` (template, task type or task, the nearest wins) say
+which agents a task uses: `agent` and `model` for the worker, `reviewAgent`
+and `reviewModel` for the reviewer (another model than the worker's, or
+`"same"`: a fresh session of the worker's model, with the worker's agent).
+`reviewFallbackAgent` and `reviewFallbackModel`, always set together, name the
+reviewer to start instead when the review agent's account is out of quota on
+the task's machine. Any pair works, and nothing is picked for you:
+
+```json
+{ "agent": "claude", "model": "claude-opus-5-5",
+  "reviewAgent": "codex", "reviewModel": "gpt-6.1-sol",
+  "reviewFallbackAgent": "claude", "reviewFallbackModel": "same" }
+```
+
+or a Claude reviewer with a Codex fallback:
+`"reviewModel": "claude-sonnet-5-5", "reviewFallbackAgent": "codex", "reviewFallbackModel": "gpt-6.1-sol"`.
+The fallback follows the reviewer's rules; *Save* refuses one that breaks them,
+or one of the two prefs without the other.
+
+Before it starts a reviewer, wherdr reads the review agent's account (the
+reading of the home screen and pacing): at its limit and not yet reset, the
+fallback reviews instead. A reviewer that hits its limit during a review (an
+*account limit* [incident](#why-agents-are-gone)) is replaced at once by the
+fallback, which reviews from the start. Each switch is in the task's log
+(*review: Codex out of quota until 14:52, reviewed by claude claude-opus-5-5*)
+and on the review step of the task sheet's Plan. The next review uses the
+review agent again once its quota is back. Leave both out (as in the example
+templates) for no fallback: nothing changes, the review waits for the review
+agent.
 
 ### Guards
 
