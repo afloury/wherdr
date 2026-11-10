@@ -47,16 +47,21 @@ export function parseLinux(text: string): MachineCapacity | null {
   return { ...head(text), total, available, swapTotal: mb('SwapTotal') ?? 0, swapFree: mb('SwapFree') ?? 0 }
 }
 
-// macOS: available = (free + inactive + speculative + purgeable pages) × page
-// size, close to Activity Monitor's figure but not exact (minFree is the margin).
+// macOS: available is macOS's own estimate, the memory free percentage
+// (kern.memorystatus_level, as `memory_pressure -Q` prints it) × RAM: it counts
+// what macOS can reclaim or compress. Without it: (free + inactive + speculative
+// + purgeable pages + half the pages the compressor occupies) × page size.
 // No swap figures: the pressure (pressureOf) stands for them (unset when unreadable).
 export function parseMacos(text: string): MachineCapacity | null {
   const bytes = num(field(text, 'memsize'))
   const page = num(/page size of (\d+) bytes/.exec(text)?.[1])
   const pages = (k: string) => num(field(text, `Pages ${k}`)) ?? 0
   if (bytes === null || page === null || field(text, 'Pages free') === undefined) return null
-  const pressure = pressureOf(num(field(text, 'memfree')), field(text, 'pressure'))
-  const available = (pages('free') + pages('inactive') + pages('speculative') + pages('purgeable')) * page
+  const freePercent = num(field(text, 'memfree'))
+  const pressure = pressureOf(freePercent, field(text, 'pressure'))
+  const available = freePercent !== null
+    ? bytes * freePercent / 100
+    : (pages('free') + pages('inactive') + pages('speculative') + pages('purgeable') + pages('occupied by compressor') / 2) * page
   return { ...head(text), total: Math.round(bytes / 2 ** 20), available: Math.round(available / 2 ** 20), swapTotal: 0, swapFree: 0, ...(pressure ? { pressure } : {}) }
 }
 

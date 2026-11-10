@@ -144,7 +144,8 @@ its folder, branches and task worktrees stay on the machine.
   machine with the largest share of memory and cores left after it) or *Home
   first* (other machines only once home is full). A machine fits a task when
   its free memory covers the task's estimate plus the machine's reserve
-  (Settings › Machines). An idle machine (no wherdr agent at work there) always
+  (Settings › Machines; on macOS the memory macOS reports available, its free
+  percentage of the RAM, which counts what it can reclaim or compress). An idle machine (no wherdr agent at work there) always
   takes one task its RAM can hold, even with less free memory than that: the
   reserve only holds its second task and beyond; on macOS a *critical* memory
   pressure still holds every task. A task that waits for room names it, and so does the
