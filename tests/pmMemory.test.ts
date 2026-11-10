@@ -38,6 +38,8 @@ describe('the memory hold', () => {
     expect(reserveOf(DEFAULT_MEMORY, { total: 8 * GB })).toBe(1229)
     expect(reserveOf({ minFreeMb: 0 }, { total: 8 * GB })).toBe(0)
     expect(reserveOf(DEFAULT_MEMORY, null)).toBe(0)
+    // macOS (pressure read): 10 % of the RAM, macOS's available figure already holds its own margin.
+    expect(reserveOf(DEFAULT_MEMORY, { total: 18 * GB, pressure: 'normal' })).toBe(1843)
   })
 
   it('checks the user\'s settings', () => {

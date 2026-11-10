@@ -3,7 +3,7 @@
 // while it already runs as many agents as its cap, across all projects. The
 // user's own starts still go, with a word that the machine is short.
 
-import type { MachineCapacity } from './capacity'
+import { CRITICAL_FREE, type MachineCapacity } from './capacity'
 
 // The user's settings for one machine (Settings › Machines).
 export interface MemorySettings {
@@ -39,13 +39,24 @@ export const SWAP_MAX = 0.9 // automatic starts wait while more of the swap than
 export const MB_PER_AGENT = 1536
 
 // The Auto memory reserve: 15 % of the machine's RAM, at least 1 GB, at most
-// 4 GB (8 GB: 1.2 GB, 18 GB: 2.7 GB, 32 GB and more: 4 GB).
+// 4 GB (8 GB: 1.2 GB, 18 GB: 2.7 GB, 32 GB and more: 4 GB). macOS (its
+// pressure read): its available figure already leaves out what macOS keeps,
+// so the reserve is the critical line, CRITICAL_FREE % of its RAM, within the
+// same bounds (18 GB: 1.8 GB): under warn, light work still fits above it.
 export const RESERVE_SHARE = 0.15
-export const autoReserve = (totalMb: number) => Math.min(4096, Math.max(1024, Math.round(totalMb * RESERVE_SHARE)))
+export const autoReserve = (totalMb: number, macos = false) =>
+  Math.min(4096, Math.max(1024, Math.round(totalMb * (macos ? CRITICAL_FREE / 100 : RESERVE_SHARE))))
+type Reading = Pick<MachineCapacity, 'total'> & Partial<Pick<MachineCapacity, 'pressure'>>
+export const autoReserveOf = (mem: Reading) => autoReserve(mem.total, !!mem.pressure)
 // The memory automatic starts leave free: the user's, else the Auto reserve
 // (0 while the machine cannot be read: nothing to hold by then).
-export const reserveOf = (s: MemorySettings, mem: Pick<MachineCapacity, 'total'> | null) =>
-  s.minFreeMb ?? (mem ? autoReserve(mem.total) : 0)
+export const reserveOf = (s: MemorySettings, mem: Reading | null) =>
+  s.minFreeMb ?? (mem ? autoReserveOf(mem) : 0)
+// What the reading calls its room: "free" (Linux), "available" (macOS's estimate, by its pressure).
+export const roomWord = (mem: Pick<MachineCapacity, 'pressure'>) => (mem.pressure ? 'available' : 'free')
+// "5.2 GB free of 16.0 GB"; macOS: "pressure normal, ≈8.3 GB available of 18.0 GB".
+export const memoryLabel = (mem: MachineCapacity) =>
+  `${mem.pressure ? `pressure ${mem.pressure}, ≈` : ''}${gb(mem.available)} ${roomWord(mem)} of ${gb(mem.total)}`
 
 // The machine's cap: the user's, else one agent per MB_PER_AGENT of RAM (at least one).
 export const agentCap = (s: MemorySettings, mem: MachineCapacity | null) =>
@@ -67,20 +78,19 @@ export function memoryStrain(m: MachineCapacity, light: boolean): string | undef
 // agents running on it now, all projects together. An unknown reading holds
 // only by the user's cap; an idle one is not held by its reserve (placement.ts).
 export function memoryShort(mem: MachineCapacity | null, s: MemorySettings, agents: number): string | undefined {
-  if (agents && mem && mem.available < reserveOf(s, mem)) return `${gb(mem.available)} free, under ${gb(reserveOf(s, mem))}`
+  if (agents && mem && mem.available < reserveOf(s, mem)) return `${gb(mem.available)} ${roomWord(mem)}, under ${gb(reserveOf(s, mem))}`
   const strain = mem && memoryStrain(mem, false)
   if (strain) return strain
   const cap = agentCap(s, mem)
   if (cap !== undefined && agents >= cap) return `${agents} agents already run on it (cap ${cap})`
 }
 
-// The reading's parts: "5.2 GB free of 16.0 GB", "8 cores, load 2.1", "swap 3 %" (macOS: "pressure normal"), "2 of 10 agents".
+// The reading's parts: "5.2 GB free of 16.0 GB" (macOS: "pressure normal, ≈8.3 GB available of 18.0 GB"), "8 cores, load 2.1", "swap 3 %", "2 of 10 agents".
 export function capacityParts(mem: MachineCapacity | null, s: MemorySettings, agents: number): string[] {
   const cap = agentCap(s, mem)
   return [
-    mem ? `${gb(mem.available)} free of ${gb(mem.total)}` : 'memory unknown',
+    mem ? memoryLabel(mem) : 'memory unknown',
     ...(mem?.cores ? [`${mem.cores} cores, load ${mem.load1.toFixed(1)}`] : []),
-    ...(mem?.pressure ? [`pressure ${mem.pressure}`] : []),
     ...(mem?.swapTotal ? [`swap ${Math.round(swapUsed(mem) * 100)} %`] : []),
     cap !== undefined ? `${agents} of ${cap} agents` : `${agents} agents`,
   ]

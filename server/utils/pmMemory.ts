@@ -5,7 +5,7 @@
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { DEFAULT_MEMORY, agentCap, autoReserve, availabilityLine, mergeMemory, memoryLine, memoryShort, type MemorySettings } from '../../shared/pm/memory'
+import { DEFAULT_MEMORY, agentCap, autoReserveOf, availabilityLine, mergeMemory, memoryLine, memoryShort, type MemorySettings } from '../../shared/pm/memory'
 import { CAPACITY_SCRIPT, parseCapacity, type MachineCapacity } from '../../shared/pm/capacity'
 import { machineOn, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
@@ -94,7 +94,7 @@ export async function memoryState(deps: CoreAdminDeps & { store: PmStore }, mach
   const short = memoryShort(mem, settings, agents)
   const cap = agentCap(settings, mem)
   const there = availabilityLine(online, settings.hours)
-  return { key: machine, label, online, mem, settings, agents, ...(cap !== undefined ? { cap } : {}), ...(mem ? { autoReserve: autoReserve(mem.total) } : {}), line: (online ? `${there} · ${memoryLine(mem, settings, agents)}` : there) + leftovers(machine), ...(short ? { short } : {}) }
+  return { key: machine, label, online, mem, settings, agents, ...(cap !== undefined ? { cap } : {}), ...(mem ? { autoReserve: autoReserveOf(mem) } : {}), line: (online ? `${there} · ${memoryLine(mem, settings, agents)}` : there) + leftovers(machine), ...(short ? { short } : {}) }
 }
 
 // Settings › Machines and › Pace: every machine wherdr knows, offline ones too (their hours can be set).

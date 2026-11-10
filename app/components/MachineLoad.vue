@@ -5,6 +5,7 @@
 // used, free; the reserve automatic starts leave hatched at the end), cores and
 // load (macOS: memory pressure), its agents at work, and what it takes now.
 import type { MachineNow } from '#shared/pm/placement'
+import { roomWord } from '#shared/pm/memory'
 
 const props = defineProps<{ m: MachineNow }>()
 const gb = (mb: number) => `${(mb / 1024).toFixed(1)} GB`
@@ -32,7 +33,7 @@ const takes = computed(() => props.m.takes
       <small class="load-legend mono">
         <span><i class="key seg-agents" />{{ tl(`agents ${gb(m.memory.agents)}`) }}</span>
         <span><i class="key seg-other" />{{ tl(`rest ${gb(m.memory.other)}`) }}</span>
-        <span><i class="key" />{{ tl(`free ${gb(m.memory.free)} of ${gb(m.memory.total)}`) }}</span>
+        <span><i class="key" />{{ tl(`${roomWord(m)} ${gb(m.memory.free)} of ${gb(m.memory.total)}`) }}</span>
         <span><i class="key seg-reserve" />{{ tl(`reserve ${gb(m.memory.reserve)}`) }}</span>
         <span v-if="m.cores">{{ tl(`${m.cores} cores, load ${(m.load ?? 0).toFixed(1)}`) }}</span>
         <span v-if="m.pressure">{{ tl(`pressure ${m.pressure}`) }}</span>

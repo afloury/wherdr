@@ -153,7 +153,7 @@ describe('the coordinator\'s view of machines', () => {
     expect(view(machine('machine-c', 16, 12, 8, ['light']), { paused: true })).toBe('machine-c: paused for this project · 1 agents at work')
     // macOS: the memory pressure decides, not the swap (it grows on demand).
     const mac = (pressure: 'normal' | 'warn' | 'critical') => { const c = machine('machine-m', 18, 5, 8, ['standard']); return view({ ...c, capacity: { ...c.capacity!, pressure } }) }
-    expect(mac('normal')).toBe('machine-m: 5.0 GB free of 18.0 GB · 8 cores, load 0.0 · pressure normal · 1 of 12 agents · running 1 standard · fits standard')
+    expect(mac('normal')).toBe('machine-m: pressure normal, ≈5.0 GB available of 18.0 GB · 8 cores, load 0.0 · 1 of 12 agents · running 1 standard · fits standard')
     expect(mac('warn')).toMatch(/ · fits light$/)
     expect(mac('critical')).toMatch(/ · takes nothing now: memory pressure critical$/)
     // Learned estimates count, as placement counts them: a 6 GB heavy task needs 8 GB free with the reserve.

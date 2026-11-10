@@ -2,7 +2,7 @@
 // fits now, or a hold that names each machine's reason. Pure: the server reads
 // each machine (capacity, settings, agents at work, readiness, pace) and asks.
 import type { MachineCapacity, Pressure } from './capacity'
-import { agentCap, memoryStrain, reserveOf, capacityParts, hoursLabel, hoursWait, type MemorySettings } from './memory'
+import { agentCap, memoryStrain, reserveOf, capacityParts, hoursLabel, hoursWait, roomWord, type MemorySettings } from './memory'
 import { WEIGHTS, WEIGHT_DEFAULTS, type Weight } from './weight'
 
 export interface Estimate { mb: number, cores: number }
@@ -76,7 +76,7 @@ export function misfit(c: Candidate, weight: Weight, e: Estimate, now = new Date
   const idle = agents === 0
   if (idle && e.mb > m.total) return `${gb(m.total)} of RAM, under ${gb(e.mb)}`
   const reserve = idle ? 0 : reserveOf(c.settings, m)
-  if (!idle && m.available - e.mb < reserve) return `${gb(m.available)} free, needs ${gb(e.mb + reserve)} with its reserve`
+  if (!idle && m.available - e.mb < reserve) return `${gb(m.available)} ${roomWord(m)}, needs ${gb(e.mb + reserve)} with its reserve`
   const strain = memoryStrain(m, weight === 'light')
   if (strain) return strain
   if (sum(c.running, 'mb') + e.mb > m.total - reserve) return `${agents} agents take ≈${gb(sum(c.running, 'mb'))} of ${gb(m.total)}`
