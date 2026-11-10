@@ -123,7 +123,7 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
     }
     case 'github.merge': {
       // lag: waits for GitHub to show a fresh push; ci: waits for its checks. Counted apart.
-      let pushed = false, lag = 0, ci = 0
+      let pushed = false, synced = false, lag = 0, ci = 0
       for (;;) {
         const r = await run(deps, SCRIPT.prInfo, [wt, branch])
         if (r.code !== 0) return fail(r)
@@ -145,9 +145,17 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
         const refused = pr && guardAction(job.guards, a, { branch, by: job.by, base: pr.baseRefName })
         if (refused) return { ok: false, error: refused }
         if (pr) {
-          const h = head.trim(), at = await run(deps, SCRIPT.headOf, [wt, pr.headRefOid])
+          const h = head.trim(), at = await run(deps, SCRIPT.headOf, [wt, pr.headRefOid, pr.baseRefName])
           if (at.code !== 0) return fail(at)
           const where = lastLine(at.out)
+          // Updated on GitHub (Update branch): taken into the worktree, where the
+          // project's after-merge fix runs; the new head is then reviewed and pushed.
+          if (where === 'update' && !synced) {
+            const y = await run(deps, SCRIPT.sync, [wt, branch])
+            if (y.code !== 0) return fail(y)
+            synced = true
+            continue
+          }
           if (where === 'foreign') return { ok: false, error: `merge: the PR head ${pr.headRefOid.slice(0, 7)} has commits the task's worktree never had (pushed from elsewhere): bring them into the worktree, or merge by hand` }
           // The head moved after the review (catch-up, conflict, CI fix): reviewed again first.
           if (job.reviewed && job.reviewed !== h) return { ok: false, error: `merge: new commits since the review (${job.reviewed.slice(0, 7)}..${h.slice(0, 7)})`, review: { since: job.reviewed, head: h }, commit: h }

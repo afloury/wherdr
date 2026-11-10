@@ -492,6 +492,32 @@ esac
     expect(await s.merge(2, again)).toEqual({ ok: false, error: `merge: GitHub still shows the PR head at ${fix.slice(0, 7)} a minute after origin/task/A-1 moved to ${again.slice(0, 7)}: try the step again in a few minutes` })
   })
 
+  // GitHub's Update branch runs no local merge driver: its union merge lists an
+  // index entry both sides changed twice. The merge step takes it into the
+  // worktree, whose wherdr.afterMerge fixes it, then reviews and pushes that.
+  it('takes a GitHub update into the worktree, fixes its merge, then reviews and pushes it', async () => {
+    const s = setup('moved-update'), other = path.join(tmp, 'moved-update', 'gh')
+    const file = (cwd: string, text?: string) => text === undefined ? fs.readFileSync(path.join(cwd, 'docs/llms.txt'), 'utf8') : fs.writeFileSync(path.join(cwd, 'docs/llms.txt'), text)
+    git(s.repo, 'checkout', '-q', 'dev'); fs.mkdirSync(path.join(s.repo, 'docs'))
+    fs.writeFileSync(path.join(s.repo, '.gitattributes'), 'docs/llms.txt merge=union\n'); file(s.repo, '- [A](docs/a.md): a.\n')
+    git(s.repo, 'add', '.'); git(s.repo, 'commit', '-qm', 'index'); git(s.repo, 'push', '-q', 'origin', 'HEAD:dev')
+    git(s.repo, 'checkout', '-q', 'task/A-1'); git(s.repo, 'merge', '-q', '--no-edit', 'dev')
+    file(s.repo, '- [A](docs/a.md): a, task.\n'); git(s.repo, 'commit', '-qam', 'task'); git(s.repo, 'push', '-q', 'origin', 'HEAD:task/A-1')
+    git(s.repo, 'config', 'wherdr.afterMerge', `node ${path.resolve('scripts/llms-merge.mjs')} fix`)
+    const reviewed = s.head()
+    // On GitHub: dev changes A too, then Update branch merges dev with union.
+    git(tmp, 'clone', '-q', '-b', 'dev', s.origin, other)
+    file(other, '- [A](docs/a.md): a, dev.\n'); git(other, 'commit', '-qam', 'dev'); git(other, 'push', '-q', 'origin', 'HEAD:dev')
+    git(other, 'checkout', '-q', 'task/A-1'); git(other, 'merge', '-q', '--no-edit', 'dev'); git(other, 'push', '-q', 'origin', 'HEAD:task/A-1')
+    expect(file(other)).toBe('- [A](docs/a.md): a, task.\n- [A](docs/a.md): a, dev.\n')
+    const fixed = await s.merge(1, reviewed).then(() => s.head())
+    expect(file(s.repo)).toBe('- [A](docs/a.md): a, task.\n')
+    expect(git(s.repo, 'log', '-1', '--format=%s')).toBe('Fix the merge (wherdr.afterMerge)')
+    expect(await s.merge(2, reviewed)).toMatchObject({ ok: false, review: { since: reviewed, head: fixed } })
+    expect(await s.merge(3, fixed)).toEqual({ ok: true, link: 'https://pr/1', commit: fixed })
+    expect(git(s.repo, '--git-dir', s.origin, 'rev-parse', 'task/A-1')).toBe(fixed)
+  })
+
   it('refuses a head pushed from outside the task\'s worktree', async () => {
     const s = setup('moved-foreign'), reviewed = s.head()
     s.elsewhere('foreign', 'task/A-1')
@@ -509,31 +535,6 @@ esac
     expect(dueText(plan, s)?.text).toMatch(/^Short re-review: .*r1 → h2.*git log --oneline r1\.\.h2.*--remerge-diff/s)
     s = onEvent(plan, s, { kind: 'verdict', from: 'reviewer', findings: [], head: 'h2' }, 2).state
     expect([plan[s.at]!.id, s.acting, s.rereview, reviewedCommit(plan, s), s.rounds.review]).toEqual(['merge', true, undefined, 'h2', undefined])
-  })
-})
-
-// GitHub's Update branch runs no local merge driver: a union-merged index may
-// list an entry twice. Synced into the worktree, the project's wherdr.afterMerge
-// fixes it in a commit of its own, before the push.
-describe('the project\'s after-merge fix', () => {
-  it('fixes a merge made on GitHub once synced, and commits it', async () => {
-    const dir = path.join(tmp, 'after-merge'), origin = path.join(dir, 'origin.git'), repo = path.join(dir, 'repo'), other = path.join(dir, 'other')
-    const file = (cwd: string, text?: string) => text === undefined ? fs.readFileSync(path.join(cwd, 'docs/llms.txt'), 'utf8') : fs.writeFileSync(path.join(cwd, 'docs/llms.txt'), text)
-    fs.mkdirSync(dir)
-    git(tmp, 'init', '-q', '--bare', '-b', 'dev', origin)
-    git(tmp, 'clone', '-q', origin, repo); fs.mkdirSync(path.join(repo, 'docs'))
-    file(repo, '- [A](docs/a.md): a.\n'); git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'base'); git(repo, 'push', '-q', 'origin', 'HEAD:dev')
-    git(repo, 'checkout', '-q', '-b', 'task/A-1'); file(repo, '- [A](docs/a.md): a, task.\n'); git(repo, 'commit', '-qam', 'task'); git(repo, 'push', '-q', 'origin', 'HEAD:task/A-1')
-    git(repo, 'config', 'wherdr.afterMerge', `node ${path.resolve('scripts/llms-merge.mjs')} fix`)
-    // Elsewhere: dev changes A too, and the update keeps both lines.
-    git(tmp, 'clone', '-q', origin, other); git(other, 'checkout', '-q', 'dev')
-    file(other, '- [A](docs/a.md): a, dev.\n'); git(other, 'commit', '-qam', 'dev'); git(other, 'push', '-q', 'origin', 'HEAD:dev')
-    git(other, 'checkout', '-q', 'task/A-1'); git(other, 'merge', '-q', '-s', 'ours', '--no-edit', 'dev')
-    file(other, '- [A](docs/a.md): a, task.\n- [A](docs/a.md): a, dev.\n'); git(other, 'commit', '-q', '-a', '--amend', '--no-edit'); git(other, 'push', '-q', 'origin', 'HEAD:task/A-1')
-    expect((await localSh(SCRIPT.sync, [repo, 'task/A-1'])).code).toBe(0)
-    expect(file(repo)).toBe('- [A](docs/a.md): a, task.\n')
-    expect(git(repo, 'log', '-1', '--format=%s')).toBe('Fix the merge (wherdr.afterMerge)')
-    expect(git(repo, 'status', '--porcelain')).toBe('')
   })
 })
 

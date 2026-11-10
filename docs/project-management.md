@@ -838,8 +838,9 @@ the mechanical blocks itself and wakes it only when that fails:
 - **a merge a file's own merge driver did not handle** (GitHub's *Update
   branch* runs none): when the clone's git config sets `wherdr.afterMerge`, a
   command, wherdr runs it at the worktree's root after each merge it makes or
-  brings in (a catch-up, a sync, a landing) and commits what it changed before
-  pushing. wherdr's own repository sets it with `npm install`, so
+  brings in (a catch-up, a sync, a landing, a PR updated on GitHub, which the
+  merge step takes into the worktree) and commits what it changed before
+  pushing; the new head is reviewed again. wherdr's own repository sets it with `npm install`, so
   `docs/llms.txt` keeps one line per entry;
 - **an action interrupted** by a restart of wherdr: run again (a merge done
   meanwhile is recorded as merged);

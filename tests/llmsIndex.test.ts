@@ -46,6 +46,7 @@ describe('docs/llms.txt', () => {
       const driver = `node ${root}scripts/llms-merge.mjs driver %O %A %B`
       const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', '-c', `merge.llms-index.driver=${driver}`, ...args], { cwd: dir, stdio: 'pipe' })
       git('init', '-q', '-b', 'base')
+      execFileSync('node', [`${root}scripts/llms-merge.mjs`, 'install'], { cwd: dir })
       writeFileSync(join(dir, '.gitattributes'), readFileSync(`${root}.gitattributes`))
       const file = join(dir, 'docs/llms.txt')
       mkdirSync(join(dir, 'docs'))

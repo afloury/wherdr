@@ -3,17 +3,20 @@
 // line of both sides, so an entry both sides changed would be listed twice.
 //
 //   install          set up the merge driver and the engine's after-merge fix
-//                    in this clone's git config (run by npm's prepare)
+//                    in this clone's git config and info/attributes (which
+//                    win over .gitattributes' union here only; run by prepare)
 //   driver O A B     git merge driver: union of the three versions, then one
 //                    line per entry, written to A (the branch's side)
 //   fix [file]       one line per entry after a merge done elsewhere (GitHub's
 //                    Update branch runs no local driver): run by the engine
 import { execFileSync } from 'node:child_process'
-import { readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { dirname } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
 const INDEX = 'docs/llms.txt'
 const SELF = 'node scripts/llms-merge.mjs'
+const ATTR = `${INDEX} merge=llms-index`
 
 // An entry is a list line, named by its link: `- [Title](docs/page.md#anchor): …`.
 const entryOf = line => /^- \[[^\]]+\]\(([^)]+)\)/.exec(line)?.[1]
@@ -77,6 +80,13 @@ function install() {
     git('config', 'merge.llms-index.name', 'docs/llms.txt: union, one line per entry')
     git('config', 'merge.llms-index.driver', `${SELF} driver %O %A %B`)
     git('config', 'wherdr.afterMerge', `${SELF} fix`)
+    // Shared by the clone's worktrees; .gitattributes keeps union for GitHub.
+    const attrs = git('rev-parse', '--git-path', 'info/attributes').trim()
+    const text = existsSync(attrs) ? readFileSync(attrs, 'utf8') : ''
+    if (!text.split('\n').includes(ATTR)) {
+      mkdirSync(dirname(attrs), { recursive: true })
+      writeFileSync(attrs, `${text}${text && !text.endsWith('\n') ? '\n' : ''}${ATTR}\n`)
+    }
   }
   catch {} // not a git clone (a package install): nothing to set up
 }

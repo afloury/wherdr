@@ -131,10 +131,13 @@ if ! git merge -q --no-edit FETCH_HEAD >/dev/null 2>&1; then
 ${AFTER_MERGE}
 echo "merged origin/$1"`,
   // Where the PR head ($1) stands against the task's commit: same; behind (in
-  // its history: the task's later commits are not pushed yet); or foreign (a
-  // commit the task's worktree never had: pushed from elsewhere).
+  // its history: the task's later commits are not pushed yet); update (GitHub's
+  // Update branch: a merge of the base, $2, into a head the worktree has); or
+  // foreign (a commit the task's worktree never had: pushed from elsewhere).
   headOf: `${IN} p=$1; git cat-file -e "$p^{commit}" 2>/dev/null || git fetch -q origin "$p" 2>/dev/null
-if [ "$(git rev-parse HEAD)" = "$p" ]; then echo same; elif git merge-base --is-ancestor "$p" HEAD 2>/dev/null; then echo behind; else echo foreign; fi`,
+if [ "$(git rev-parse HEAD)" = "$p" ]; then echo same; elif git merge-base --is-ancestor "$p" HEAD 2>/dev/null; then echo behind
+elif [ -n "$2" ] && git rev-parse -q --verify "$p^2" >/dev/null && git merge-base --is-ancestor "$p^1" HEAD 2>/dev/null \
+  && git fetch -q origin "$2" 2>/dev/null && git merge-base --is-ancestor "$p^2" FETCH_HEAD; then echo update; else echo foreign; fi`,
   // The remote task branch's tip ($1), as origin has it now: empty when it has none.
   remoteHead: `${IN} r=$(git ls-remote origin "refs/heads/$1" 2>&1) || { echo "$r"; exit 1; }; echo "$r" | cut -f1`,
   // Runs again the failed or cancelled workflow runs of a commit.
