@@ -8,6 +8,7 @@ import { herdrState } from '~/composables/useHerdr'
 import { coordinators, resumedCoordinators } from '~/composables/useCoordinators'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
+import { github } from '#shared/pm/examples'
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
@@ -28,7 +29,8 @@ const folders: Record<string, { exists: boolean, git: boolean, remote?: boolean,
   '/repos/new-app': { exists: false, git: false, empty: false },
   '/repos/clients': { exists: true, git: false, empty: false },
 }
-registerEndpoint('/api/pm/overview', () => ({ enabled: true, projects: [], templates: [] }))
+registerEndpoint('/api/pm/overview', () => ({ enabled: true, projects: [], templates: [{ id: 'github' }] }))
+registerEndpoint('/api/pm/template', { method: 'GET', handler: () => ({ template: github, log: [] }) })
 registerEndpoint('/api/pm/repos', () => ({ home: '/repos', repos: ['/repos/api', '/repos/web'] }))
 registerEndpoint('/api/pm/folder', (e) => {
   const at = String(new URL(e.node.req.url!, 'http://x').searchParams.get('path')).replace(/^~/, '/repos')
@@ -154,11 +156,9 @@ it('adds a project from a git repository, a new folder or a folder without git, 
   expect(w.find('[data-testid="project-template"]').exists()).toBe(false)
   await w.get('[data-testid="project-git-init"]').trigger('click')
   await vi.waitFor(() => expect(w.find('[data-testid="project-template"]').exists()).toBe(true))
-  // git init makes a repository without a remote: github cannot finish a task there, vibe can.
-  w.findComponent({ name: 'USelect' }).vm.$emit('update:modelValue', 'example:github')
-  await flushPromises()
+  // git init makes a repository without a remote: the saved github cannot finish a task there, vibe can.
   expect(w.get('[data-testid="project-no-remote"]').text()).toContain('git remote add origin <url>')
-  expect(w.get('[data-testid="project-needs-remote"]').text()).toContain('github pushes or opens pull requests')
+  await vi.waitFor(() => expect(w.get('[data-testid="project-needs-remote"]').text()).toContain('github pushes or opens pull requests'))
   await w.get('[data-testid="project-use-vibe"]').trigger('click')
   expect(w.find('[data-testid="project-needs-remote"]').exists()).toBe(false)
   expect(w.get('[data-testid="project-template"]').text()).toContain('vibe (example)')

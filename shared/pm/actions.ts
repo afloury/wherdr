@@ -40,7 +40,7 @@ export const SCRIPT = {
   land: `${IN} ${CLEAN} t=$1
 if ! git remote get-url origin >/dev/null 2>&1; then
   old=$(git rev-parse -q --verify "refs/heads/$t")
-  if [ -n "$old" ] && ! git merge -q --no-edit "$t" >/dev/null 2>&1; then
+  if [ -n "$old" ] && ! git merge -q --no-edit "$old" >/dev/null 2>&1; then
     f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict in $f"; exit ${CODE.SEND_BACK}; fi
   w=$(git worktree list --porcelain | awk -v b="branch refs/heads/$t" '/^worktree /{ p=substr($0, 10) } $0 == b { print p }')
   [ -z "$w" ] || { echo "$t is checked out in $w: switch that folder to another branch, then try again"; exit 1; }

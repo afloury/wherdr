@@ -8,6 +8,7 @@
 import type { MachineConfig } from '#shared/types'
 import type { PmOverview } from '#shared/pm/project'
 import { EXAMPLES } from '#shared/pm/examples'
+import type { Template } from '#shared/pm/workflow'
 import { canGitInit, draftGit, folderKind, needsRemote, proposeKey, proposeName, shortHome, type FolderProbe, type ProjectDraft } from '#shared/pm/newProject'
 
 const project = defineModel<string>('project', { required: true })
@@ -53,7 +54,7 @@ function add() {
 }
 const templateItems = computed(() => [
   ...templates.value.map(id => ({ label: id, value: id })),
-  ...EXAMPLES.filter(e => !templates.value.includes(e.id)).map(e => ({ label: tl(`${e.id} (example)`, `${e.id} (exemple)`), value: `example:${e.id}` })),
+  ...EXAMPLES.filter(e => !templates.value.includes(e.id) || template.value === `example:${e.id}`).map(e => ({ label: tl(`${e.id} (example)`, `${e.id} (exemple)`), value: `example:${e.id}` })),
 ])
 const template = computed({ get: () => draft.value?.template ?? '', set: (v: string) => { if (draft.value) draft.value.template = v } })
 
@@ -105,11 +106,19 @@ const kind = computed(() => (draft.value?.probe ? folderKind(draft.value.probe) 
 // No origin (a git init folder, a local repository): an example that pushes
 // or opens pull requests cannot finish a task; vibe lands locally.
 const noRemote = computed(() => !!draft.value && draftGit(draft.value) && !draft.value.probe?.remote)
-const local = computed(() => (templates.value.includes('vibe') ? 'vibe' : 'example:vibe'))
-const pushes = computed(() => {
-  const ex = EXAMPLES.find(e => `example:${e.id}` === template.value)
-  return noRemote.value && ex && needsRemote(ex) ? ex.id : ''
-})
+// The picked template: an example, or a saved one read from the library.
+const picked = ref<Template | null>(null)
+watch(() => noRemote.value && template.value, async (id) => {
+  picked.value = null
+  if (!id) return
+  const ex = EXAMPLES.find(e => `example:${e.id}` === id)
+  if (ex) { picked.value = ex; return }
+  try {
+    const r = await api<{ template: Template }>(`/api/pm/template?id=${encodeURIComponent(id)}`)
+    if (template.value === id) picked.value = r.template
+  } catch {}
+}, { immediate: true })
+const pushes = computed(() => (noRemote.value && picked.value && needsRemote(picked.value) ? template.value.replace(/^example:/, '') : ''))
 const notes = {
   git: () => tl('Git repository: each task gets its own worktree and pull request.', 'Dépôt git : chaque tâche a son worktree et sa pull request.'),
   new: () => tl('New folder: it is created at start.', 'Nouveau dossier : il est créé au lancement.'),
@@ -187,7 +196,7 @@ const notes = {
         <USelect id="projectTemplate" v-model="template" :items="templateItems" size="xl" class="w-full" data-testid="project-template" />
         <p v-if="pushes" class="coord-note" data-testid="project-needs-remote">
           {{ tl(`${pushes} pushes or opens pull requests: its tasks cannot finish without a remote. Add one, or`) }}
-          <a href="#" data-testid="project-use-vibe" @click.prevent="template = local">{{ t('use vibe, which merges locally') }}</a>.
+          <a href="#" data-testid="project-use-vibe" @click.prevent="template = 'example:vibe'">{{ t('use vibe, which merges locally') }}</a>.
         </p>
         <p class="coord-hint muted">
           {{ tl('The project gets its own copy. Read every template in') }}
