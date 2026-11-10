@@ -46,6 +46,12 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   `#/settings?section=conversation&tab=<tab>` (`display`, `dictation`, `read-aloud`) and a
   project's sheet `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in
   their instructions.
+- **Task cards**: an agent shows a task where it stands with a code fence labelled `wherdr`, one
+  line `task KEY-12` per task. Each line shows the task's row as in the sidebar's Tasks to
+  handle: its key, title, step and what to do, read live from the board (every 15 s, and after
+  an action in a task's sheet), never what the message says. A tap opens the task's sheet over
+  the conversation. A task that is not on the board says so; a block with any other line stays
+  plain code. Alfred and coordinators get this in their instructions.
 - **Places an agent opens for you**: when you ask Alfred or a project's coordinator to show you
   a place, it can open it in the wherdr you are on (`wherdr alfred ui open
   '#/settings?section=phone'`, `wherdr pm ui open '…'`): of the apps showing its conversation,

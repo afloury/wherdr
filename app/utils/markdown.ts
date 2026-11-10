@@ -3,7 +3,7 @@
 // conversation is re-read every 1.5 s), within a budget (see MD_CACHE_CHARS).
 import { marked } from 'marked'
 import DOMPurify from 'dompurify'
-import { isAppLink } from '../../shared/appLinks'
+import { boardLink, isAppLink } from '../../shared/appLinks'
 import { uiPlaceLabel } from '../../shared/uiOpen'
 import { pathCandidate } from '../../shared/filePaths'
 import { codeKind } from './codeKind'
@@ -63,8 +63,11 @@ const appButton = (href: string, label: string) => `<a href="${escHtml(href)}" c
 //   ```wherdr
 //   choices "Squash" | "Merge commit" | "Rebase"
 //   ```
+// - `task WHR-12`: the task's live card, read from the board
+//   (ChatTaskCard.vue); a tap opens its sheet.
 export interface WherdrChoices { kind: 'choices', options: string[] }
-export type WherdrElement = WherdrChoices
+export interface WherdrTask { kind: 'task', id: string }
+export type WherdrElement = WherdrChoices | WherdrTask
 export const CHOICES_MIN = 2
 export const CHOICES_MAX = 4
 const CHOICE_MAX_CHARS = 80
@@ -78,7 +81,9 @@ function parseChoices(arg: string): WherdrChoices | null {
   }
   return options.length >= CHOICES_MIN && options.length <= CHOICES_MAX ? { kind: 'choices', options } : null
 }
-const KINDS: Record<string, (arg: string) => WherdrElement | null> = { choices: parseChoices }
+const TASK_ID = /^[A-Za-z][\w.-]*-\d+$/
+const parseTask = (arg: string): WherdrTask | null => TASK_ID.test(arg.trim()) ? { kind: 'task', id: arg.trim() } : null
+const KINDS: Record<string, (arg: string) => WherdrElement | null> = { choices: parseChoices, task: parseTask }
 export function parseWherdrBlock(text: string): WherdrElement[] | null {
   const out: WherdrElement[] = []
   for (const line of String(text || '').split('\n')) {
@@ -91,9 +96,19 @@ export function parseWherdrBlock(text: string): WherdrElement[] | null {
   return out.length ? out : null
 }
 // Its HTML. Each option rides in a data attribute, read back by ChatView.vue.
+// Tasks side by side share one grid: each a placeholder that ChatMarkdown.vue
+// fills live; until then a link to the task's sheet.
+const taskHtml = (id: string) => `<div class="wd-task" data-task="${escHtml(id)}"><a href="${escHtml(boardLink({ task: id }))}"><code>${escHtml(id)}</code></a></div>`
 function wherdrHtml(els: WherdrElement[]): string {
-  return els.map(el => `<div class="w-choices" role="group">${el.options.map(o =>
-    `<button type="button" class="q-choice" data-a="${escHtml(o)}">${escHtml(o)}</button>`).join('')}</div>`).join('')
+  let html = ''
+  let tasks = ''
+  for (const el of els) {
+    if (el.kind === 'task') { tasks += taskHtml(el.id); continue }
+    if (tasks) { html += `<div class="wherdr-block">${tasks}</div>`; tasks = '' }
+    html += `<div class="w-choices" role="group">${el.options.map(o =>
+      `<button type="button" class="q-choice" data-a="${escHtml(o)}">${escHtml(o)}</button>`).join('')}</div>`
+  }
+  return tasks ? `${html}<div class="wherdr-block">${tasks}</div>` : html
 }
 
 export function md(text: string, options: MdOptions = {}): string {
