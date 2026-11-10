@@ -25,7 +25,7 @@ const index = ref(0)
 const busy = ref(false)
 const error = ref('')
 
-const done = computed(() => setupDone(data.value, key.value, coordinators.value))
+const done = computed(() => setupDone(data.value, key.value, coordinators.value, started.value))
 const step = computed<SetupStepId | undefined>(() => SETUP_STEPS[index.value])
 const p = computed(() => data.value?.projects.find(x => x.key === key.value))
 const coord = computed(() => coordinators.value.find(c => c.project === key.value))

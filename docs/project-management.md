@@ -45,7 +45,7 @@ new project.
    "trust this folder?" question for it (that folder only, never yours), as for
    Alfred's. The step says *starting* until the agent is ready, then that it
    runs; if the agent still asks something (a login, say), *Answer its
-   question* opens its conversation. Its [autopilot](#autopilot) can be set
+   question* opens its conversation; Next waits until it runs. Its [autopilot](#autopilot) can be set
    under it (optional).
    It keeps a memory of its own, `memory.md` in its folder: your decisions
    and preferences, read at each start. wherdr never rewrites it, so the
