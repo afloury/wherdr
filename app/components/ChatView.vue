@@ -9,7 +9,8 @@ import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolVie
 import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
-import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
+import { uploadSrc } from '#shared/queuedMatch'
+import { userMessageParts } from '~/utils/userMessage'
 import { type PendingMessage, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
@@ -20,7 +21,6 @@ import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
 import { findReplyOrigin, parseReply, type ReplyTarget } from '#shared/replyQuote'
 import { messageId, messageOf, messageRef, pointRef, refLine, refsIn, sameRef, type Reference } from '#shared/reference'
-import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { WAKE_LABEL, wakeKindOf, type WakeKind } from '#shared/pm/wakes'
 import type { ProposalAnswer } from '#shared/pm/coordinator'
 import { proposalSpot, type PlacedBlock } from '~/utils/proposalPlace'
@@ -477,7 +477,6 @@ const NOTICE: Record<string, [string, string]> = {
   'scheduled': ['Scheduled task', 'i-lucide-clock'],
 }
 
-const UPLOAD_RE = /\/\.cache\/herdr-web\/uploads\/\S+/g
 // `in`: the folds (a wake, a run of routine wakes) that must be open for it to show.
 type Block = ({ k: 'day', key: string, label: string }
   | { k: 'who', key: string }
@@ -671,14 +670,10 @@ const blocks = computed<Block[]>(() => {
     flush()
     const key = keys[i]!
     if (it.role === 'user') {
-      const uploads = it.text.match(UPLOAD_RE) || []
-      // Attached files (PDF, text…): a chip each, their line leaves the text.
-      const files = it.text.split('\n').map(parseAttachmentLine).filter((f): f is { path: string, name: string } => Boolean(f))
-      const text = it.text.replace(/^.*\/\.cache\/herdr-web\/uploads\/\S+\s*$/gm, '').split('\n').filter(l => !isAttachmentLine(l)).join('\n').trim()
+      // Attached files (PDF, text…): a chip each; their line and photo paths leave the text.
       // Images re-read from the transcript (ref = position of the message in the
-      // file), or photos stored on the server whose path stayed as text.
-      const srcs = itemImageSrcs(it)
-      for (const u of uploads) srcs.push(`/uploads/${encodeURIComponent(u.split('/').pop()!)}`)
+      // file), then photos stored on the server whose path stayed as text.
+      const { text, srcs, files } = userMessageParts(it.text, itemImageSrcs(it))
       // Reply to a specific message: the marker becomes a quote linking to the original.
       const parsed = parseReply(text)
       const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
@@ -1188,13 +1183,12 @@ function queuedNow() {
   // Agent idle, nothing holding it: Claude's own queue is empty by now.
   const idle = waitFor.value === 'sending'
   return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle, input: props.pane.draft?.text }).map((q) => {
-    const lines = q.raw.split('\n')
-    const text = lines.filter(l => !isUploadLine(l) && !isAttachmentLine(l)).join('\n').trim()
+    const { text, files } = userMessageParts(q.raw)
     const parsed = parseReply(text)
     return {
       ...q,
       srcs: q.photos.map(uploadSrc),
-      files: lines.map(parseAttachmentLine).filter((f): f is { path: string, name: string } => Boolean(f)),
+      files,
       text,
       body: parsed ? parsed.body : text,
       reply: parsed?.reply || null,

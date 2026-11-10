@@ -6,6 +6,7 @@ import { HerdrError } from './herdr'
 import { keepPastes } from './pastes'
 import { fieldHolds, isBareBang, isSlashCommand } from '../../shared/queuedMatch'
 import { corePaint, readDraft, sameText } from './coreDraft'
+import { inTurn, typingInto } from './terminalTurns'
 import type { Pane } from '../../shared/types'
 
 type Call = <T>(method: string, params: object, timeout: number) => Promise<T>
@@ -19,6 +20,8 @@ export interface CoreInputDeps {
   /** Claude: text in its input field now (its gray suggestion left out), null when empty. */
   field?: (p: Pane) => Promise<string | null>
   settleMs?: number
+  /** Quiet time after a send before the next writer of the terminal (see terminalTurns.ts). */
+  turnSettleMs?: number
 }
 
 const KEY_RE = /^[a-z0-9+\-]{1,24}$/i
@@ -75,6 +78,8 @@ export function failure(e: unknown): never {
 }
 
 // Message from the composer: pasted, then submitted with Enter once nobody types.
+// It waits its turn behind wherdr's other writers of this terminal (a wake
+// being typed, see terminalTurns.ts), then goes.
 // Claude: never typed into an input field that already holds text (a message
 // left there, a draft typed in the terminal): Claude would submit both as one
 // message. It is refused instead, and the conversation shows that text with
@@ -84,11 +89,21 @@ export async function coreSend(deps: CoreInputDeps, b: { pane_id?: unknown, text
   const text = typeof b.text === 'string' ? b.text : ''
   if (!text.trim() || isBareBang(text)) throw new HerdrError('empty', 'Empty message')
   if (text.length > MAX_TEXT) throw new HerdrError('too_large', 'Message too large')
+  const waited = typingInto(p.coreAddress!)
+  return inTurn(p.coreAddress!, () => typeIn(deps, p, text, b.pastes, waited), deps.turnSettleMs)
+}
+
+// Behind another writer (or just after it), Claude may still be taking its
+// text out of the field: a few looks before calling the field busy.
+const BUSY_LOOKS = 5
+
+async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknown, waited: boolean) {
   const field = p.agent === 'claude' ? deps.field : undefined
-  if (field && await field(p).catch(() => null)) {
-    throw new HerdrError('input_busy', 'Claude’s input still holds text that was not sent: send it or clear it first, then send again.')
+  for (let i = 0; field && await field(p).catch(() => null); i++) {
+    if (!waited || i >= BUSY_LOOKS) throw new HerdrError('input_busy', 'Claude’s input still holds text that was not sent: send it or clear it first, then send again.')
+    await new Promise(res => setTimeout(res, deps.settleMs ?? 400))
   }
-  if (!isSlashCommand(text)) keepPastes(text, b.pastes)
+  if (!isSlashCommand(text)) keepPastes(text, pastes)
   try {
     const r = await deps.call<{ started?: boolean | null }>('terminal.send', { terminal: p.coreAddress, text }, 30000)
     let started = r?.started ?? null
