@@ -5,12 +5,15 @@
 // once in the synced projectTabs setting. A deleted group reads as Automatic.
 import { allowedMachines, type Project } from '#shared/pm/project'
 import { BAR_ALL } from '~/utils/machineBar'
-import { projectOnTab } from '~/utils/projectTabs'
+import { projectOnTab, projectTabMachines } from '~/utils/projectTabs'
 
 const props = defineProps<{ project: Project }>()
 const AUTO = 'auto'
 
-const autoGroups = computed(() => machineGroups.value.filter(g => projectOnTab(allowedMachines(props.project), g.machines)).map(g => g.name))
+// Automatic leaves out machines paused for the project, unless a task of it still runs there.
+const busy = computed(() => projectCoordinators.value.find(c => c.project === props.project.key)?.busy)
+const autoMachines = computed(() => projectTabMachines({ machines: allowedMachines(props.project), paused: props.project.paused, busy: busy.value }, undefined, []))
+const autoGroups = computed(() => machineGroups.value.filter(g => projectOnTab(autoMachines.value, g.machines)).map(g => g.name))
 const items = computed(() => [
   { label: autoGroups.value.length ? tl(`Automatic (${autoGroups.value.join(', ')})`) : tl('Automatic'), value: AUTO },
   ...machineGroups.value.map(g => ({ label: g.name, value: g.id })),
@@ -35,7 +38,7 @@ const value = computed({
       {{ tl('No machine group yet, so the project shows under All and on its machines\' tabs. Groups:') }}
       <NuxtLink to="/settings?section=appearance">{{ tl('Settings › Appearance › Machine tabs') }}</NuxtLink>.
     </small>
-    <small v-else class="muted">{{ tl('The home tab that shows its coordinator and its tasks to handle. Automatic: each group holding one of its machines.') }}</small>
+    <small v-else class="muted">{{ tl('The home tab that shows its coordinator and its tasks to handle. Automatic: each group holding one of its active machines.') }}</small>
   </span>
 </template>
 

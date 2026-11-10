@@ -11,6 +11,11 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   timestamps, search and infinite scroll back to the first message. Reading a conversation never
   touches the terminal, so it never resizes it. A command the agent proposes (shell code block,
   or inline `! command`) can be copied without its prompt.
+- **Following new messages**: a new or growing reply (typed in as it arrives, or shown at once)
+  keeps the view at the bottom only if you were at the bottom. Scroll up (wheel, touch, keyboard
+  or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the
+  **↓** button; content above that changes height (images, folding) does not move it. A
+  conversation still opens at its last message.
 - **SVG diagrams**: complete code fences labelled `svg` render as isolated, theme-aware images.
   **Source / Preview**, beside **Copy** in the card header, switches the same card between the
   diagram and its original markup; **Copy** always copies that markup. Click or use Enter/Space
@@ -19,15 +24,42 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   reference instances. Incomplete, unsupported or unsafe diagrams stay readable code. Scripts,
   foreign HTML, animation and external resources are rejected; raw inline SVG is not inserted
   into the page. Other fence languages and file-explorer document fences remain code.
+- **Live status cards**: a code fence labelled `wherdr` whose lines are all `status …` shows one
+  card per line, read from wherdr's own data, never from what the agent wrote:
+  `status machine:<key or name>` (online or offline, free memory, load, agents),
+  `status quota:claude` or `status quota:codex` (5-hour and week windows left),
+  `status pr:<KEY>#<n>` (the PR of a task of project KEY, as the engine last read it) and
+  `status op:<task id>` (the step the task's engine runs now, such as a watched pipeline, and
+  since when). Up to 8 lines. Cards refresh every 15 s while they are on screen; a source that
+  is gone (machine removed, no quota read, unknown task or PR) shows **unavailable**. A PR or
+  operation card opens its task. On a phone the cards stack, one per line. A block with any
+  other line stays code; file documents never show cards.
 - **Links into wherdr**: an agent sending you somewhere in wherdr gives its in-app address, as a
   Markdown link (`[Phone](#/settings?section=phone)`) or as inline code that is only the address
-  (`` `#/board?task=KEY-12` ``). Either opens the place in the app, on a computer and a phone,
+  (`` `#/board?task=KEY-12` ``). Either shows as an action button with an icon and a readable
+  label instead of the address: the link's text, or the place's name for inline code (*Open
+  Settings › Projects › KEY › Guards*, *Open Task KEY-12*, *Open Board › KEY › ui*). A tap opens
+  the place in the app, on a computer and a phone,
   without reloading; Back returns to the conversation. Other links open in a new tab, other
   inline code stays plain. The addresses: `#/`, `#/decisions`, `#/board` (with `?project=KEY`,
   `?tag=TAG` or `?task=ID`), `#/settings?section=<section>`, a tab of Settings › Conversation
   `#/settings?section=conversation&tab=<tab>` (`display`, `dictation`, `read-aloud`) and a
   project's sheet `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in
   their instructions.
+- **Places an agent opens for you**: when you ask Alfred or a project's coordinator to show you
+  a place, it can open it in the wherdr you are on (`wherdr alfred ui open
+  '#/settings?section=phone'`, `wherdr pm ui open '…'`): of the apps showing its conversation,
+  the one you last used (within 15 minutes), and no other, so a computer left open on the same
+  conversation stays as it is while you are on your phone. On a computer window at least 1280 px
+  wide, a Settings place opens in the side panel beside the conversation; elsewhere, and for
+  the board, a task or Decisions, a card above the message field names the place, and a tap
+  opens it. Either says who opened it ("Opened by Alfred"); close the panel or dismiss the card
+  with ×. The agent is told where it went (phone or computer), and ends its reply with the same
+  card (a ```wherdr block of `open <in-app link>` lines), so it stays in the conversation for
+  later. With no app in use on the conversation, it gives you the link instead. Opening is all it
+  does: it changes no setting. It works only in a turn that follows your message (never in an
+  Autopilot wake), and a coordinator opens its own project's places and global Settings sections
+  only.
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the
   question changed meanwhile. A free answer selects its option, waits for the field, then types

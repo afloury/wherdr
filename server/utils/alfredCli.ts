@@ -22,8 +22,9 @@ import { checkMachine } from './pmReady'
 import { projectPlace } from '../../shared/pm/places'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DATA_DIR } from './env'
+import { openUi, type UiOpenDeps } from './uiOpen'
 
-type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, dataDir?: string }
+type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, dataDir?: string, clients?: UiOpenDeps['clients'] }
 
 // A turn the server saw start over an hour ago is not trusted any more (as a coordinator's).
 const TURN_MS = 3_600_000
@@ -105,6 +106,7 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
       if (!pane) throw new HerdrError('not_found', `The coordinator of ${cmd.key} is not running: start it with wherdr alfred coordinator start ${cmd.key}`)
       return { link: `${deps.urls.remote ?? deps.urls.local}/#/a/${encodeURIComponent(pane.id)}`, note: 'Give the user this link; the sidebar shows it too' }
     }
+    case 'ui open': return openUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope: MAIN, main: true, raw: cmd.link, turn: (await alfredTurn())?.kind ?? 'none', by: ALFRED })
     case 'settings': return { settings: await readSettings(deps.settingsFile), values: SETTING_VALUES, note: 'Alfred changes only the settings listed in values, to one of their values (1 = on, 0 = off)' }
     case 'setting set': {
       const old = (await readSettings(deps.settingsFile))[cmd.key]

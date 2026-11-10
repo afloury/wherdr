@@ -123,3 +123,12 @@ dismissal, scrolling, keyboard and safe areas. Use the existing responsive
 [device guide](devices.md) and the [iOS convention](../CONTRIBUTING.md#conventions);
 use the isolated demo screenshot workflow in
 [Contributing](../CONTRIBUTING.md#the-browser-demo) for visual evidence.
+
+**Nothing scrolls sideways: a sheet's or a page's content never exceeds its
+width.** Use no negative horizontal margin (`margin-left`, `margin-right`, a
+shorthand's sides, Tailwind `-mx-*`): to align an icon or a swatch inside a
+larger touch target, place it inside with padding or `justify-items: start`.
+One stays only when its parent clips (`overflow: hidden`) or has at least that
+much padding, and its line then says why: `/* overflow-safe: <why> */`.
+[tests/negativeMargins.test.ts](../tests/negativeMargins.test.ts) fails on any
+other in `app/`.

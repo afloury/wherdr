@@ -7,6 +7,7 @@
 import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, MAX_PER_DAY, oldDefaults, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Wake } from '#shared/pm/wakes'
+import { HEALTH_EVERY } from '#shared/pm/health'
 
 const props = defineProps<{ c: CoordinatorView }>()
 const ap = computed<Autopilot>(() => props.c.autopilot ?? DEFAULT_AUTOPILOT)
@@ -14,13 +15,13 @@ const busy = ref(false)
 const error = ref('')
 const sent = ref(false)
 // The form's fields, from a saved autopilot. Empty: Tasks / day has no limit, At once is Auto.
-type Form = { goal: string, every: string, at: string, events: AutopilotEvent[], perDay: string, atOnce: string, lookForWork: boolean, lookPerDay: number }
+type Form = { goal: string, every: string, at: string, events: AutopilotEvent[], perDay: string, atOnce: string, lookForWork: boolean, lookPerDay: number, keepBusy: boolean, health: string }
 const text = (n: number | null) => (n === null ? '' : String(n))
-const formOf = (a: Autopilot): Form => ({ goal: a.goal, every: a.every ?? '', at: a.at ?? '', events: [...a.events], perDay: text(a.perDay), atOnce: text(a.atOnce), lookForWork: !!a.lookForWork, lookPerDay: a.lookPerDay ?? LOOK_PER_DAY })
+const formOf = (a: Autopilot): Form => ({ goal: a.goal, every: a.every ?? '', at: a.at ?? '', events: [...a.events], perDay: text(a.perDay), atOnce: text(a.atOnce), lookForWork: !!a.lookForWork, lookPerDay: a.lookPerDay ?? LOOK_PER_DAY, keepBusy: a.keepBusy !== false, health: a.health ?? '' })
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 // A field as it would be saved: numbers as numbers (empty: null), times trimmed.
 const orNull = (v: unknown) => (v === '' || v === null || v === undefined ? null : Number(v))
-const norm = (k: keyof Form, v: unknown) => (k === 'perDay' || k === 'atOnce' ? orNull(v) : typeof v === 'number' || k === 'lookPerDay' ? Number(v) : k === 'every' || k === 'at' ? String(v).trim() : v)
+const norm = (k: keyof Form, v: unknown) => (k === 'perDay' || k === 'atOnce' ? orNull(v) : typeof v === 'number' || k === 'lookPerDay' ? Number(v) : k === 'every' || k === 'at' || k === 'health' ? String(v).trim() : v)
 const KEYS = Object.keys(formOf(DEFAULT_AUTOPILOT)) as (keyof Form)[]
 const form = reactive<Form>(formOf(ap.value))
 // What the form was last filled with: the saved values it shows.
@@ -50,7 +51,7 @@ async function act(fn: () => Promise<unknown>) {
   finally { busy.value = false }
 }
 // The server's refusal names its field ("every: a duration like 30m or 2h"): shown under it.
-const FIELD: Record<string, keyof Form> = { goal: 'goal', every: 'every', at: 'at', events: 'events', perDay: 'perDay', atOnce: 'atOnce', lookPerDay: 'lookPerDay' }
+const FIELD: Record<string, keyof Form> = { goal: 'goal', every: 'every', at: 'at', events: 'events', perDay: 'perDay', atOnce: 'atOnce', lookPerDay: 'lookPerDay', health: 'health' }
 const saveError = ref('')
 const errorField = computed(() => FIELD[/^(\w+)/.exec(saveError.value)?.[1] ?? ''])
 const fieldError = (k: keyof Form) => (errorField.value === k ? saveError.value : '')
@@ -58,11 +59,11 @@ const fieldError = (k: keyof Form) => (errorField.value === k ? saveError.value 
 async function save() {
   saveError.value = ''
   await act(async () => {
-    const { lookForWork: _, lookPerDay: __, ...kept } = ap.value
+    const { lookForWork: _, lookPerDay: __, keepBusy: ___, health: ____, ...kept } = ap.value
     try {
       const r = await api<{ autopilot: Autopilot }>('/api/pm/autopilot', {
         project: props.c.project,
-        autopilot: { ...kept, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: orNull(form.perDay), atOnce: orNull(form.atOnce), ...(form.lookForWork ? { lookForWork: true, lookPerDay: Number(form.lookPerDay) } : {}) },
+        autopilot: { ...kept, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: orNull(form.perDay), atOnce: orNull(form.atOnce), ...(form.lookForWork ? { lookForWork: true, lookPerDay: Number(form.lookPerDay) } : {}), ...(form.keepBusy ? {} : { keepBusy: false }), ...(form.health.trim() ? { health: form.health.trim() } : {}) },
       })
       // The form takes the saved values (the goal trimmed…).
       if (r?.autopilot) { base.value = formOf(r.autopilot); Object.assign(form, formOf(r.autopilot)) }
@@ -118,6 +119,7 @@ const counters = computed(() => props.c.limits
       <USwitch :model-value="ap.on" color="success" size="lg" :disabled="busy" :aria-label="tl('Autopilot', 'Autopilote')" data-testid="autopilot-on" @update:model-value="setOn" />
       <span class="mono-label" data-testid="autopilot-state" :data-asleep="ap.on && c.asleep ? '' : undefined">{{ tl('Autopilot', 'Autopilote') }} · {{ stateText }}</span>
       <span class="ap-count mono-label" data-testid="autopilot-counters">{{ counters }}</span>
+      <span v-if="c.nextWake" class="ap-next mono-label" data-testid="autopilot-next-wake">{{ tl(`Next wake ${when(c.nextWake)}`) }}</span>
     </div>
     <form class="ap-form" @submit.prevent="save()">
       <label class="field-label" :for="`ap-goal-${c.project}`">{{ tl('Goal', 'Objectif') }}</label>
@@ -134,6 +136,12 @@ const counters = computed(() => props.c.limits
           <label class="field-label" :for="`ap-at-${c.project}`">{{ tl('At', 'À') }}</label>
           <UInput :id="`ap-at-${c.project}`" v-model="form.at" size="xl" class="w-full mono" placeholder="daily 08:00" maxlength="60" autocapitalize="none" autocorrect="off" :spellcheck="false" data-testid="autopilot-at" />
           <p v-if="fieldError('at')" class="error" role="alert" data-testid="autopilot-error-at">{{ fieldError('at') }}</p>
+        </div>
+        <div>
+          <label class="field-label" :for="`ap-health-${c.project}`">{{ tl('Health check') }}</label>
+          <UInput :id="`ap-health-${c.project}`" v-model="form.health" size="xl" class="w-full mono" :placeholder="HEALTH_EVERY" maxlength="5" autocapitalize="none" autocorrect="off" :spellcheck="false" data-testid="autopilot-health" />
+          <p class="muted">{{ tl('A short summary wakes the coordinator this often. Empty: every 3h; off: never.') }}</p>
+          <p v-if="fieldError('health')" class="error" role="alert" data-testid="autopilot-error-health">{{ fieldError('health') }}</p>
         </div>
         <div>
           <label class="field-label" :for="`ap-day-${c.project}`">{{ tl('Tasks / day', 'Tâches / jour') }}</label>
@@ -155,8 +163,11 @@ const counters = computed(() => props.c.limits
           {{ tl(...EVENT_LABEL[e]) }}
         </UButton>
       </div>
+      <p class="muted" data-testid="autopilot-events-hint">{{ tl('Routine events, off by default: the engine handles them. An agent\'s question, a choice after review rounds and a block the engine gave up on always wake the coordinator.') }}</p>
       <p class="muted" data-testid="autopilot-added-hint">{{ tl('Task added: added by someone else than this coordinator (you, another coordinator, an automation).') }}</p>
       <p v-if="fieldError('events')" class="error" role="alert" data-testid="autopilot-error-events">{{ fieldError('events') }}</p>
+      <USwitch v-model="form.keepBusy" size="lg" :label="tl('Keep the board busy')" data-testid="autopilot-keep-busy"
+        :description="tl('Start the next to-do task, oldest first, whenever a machine has room, within the limits and hours, without waking the coordinator.')" />
       <USwitch v-model="form.lookForWork" size="lg" :label="tl('Look for new work', 'Chercher du travail')" data-testid="autopilot-look-for-work"
         :description="tl('Keep the scheduled wakes when there is nothing to do, for a goal that adds its own tasks.', 'Garder les réveils programmés quand il n’y a rien à faire, pour un objectif qui crée ses propres tâches.')" />
       <div v-if="form.lookForWork" class="ap-grid">
@@ -207,6 +218,7 @@ const counters = computed(() => props.c.limits
 .ap { display: grid; gap: 6px; padding-top: 12px; border-top: 1px solid var(--line); }
 .ap p { margin: 0; overflow-wrap: anywhere; }
 .ap-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ap-next { flex: 1 1 100%; color: var(--muted); }
 .ap-head > .mono-label:not(.ap-count) { color: var(--text); }
 .ap-count { flex: 1; color: var(--muted); white-space: nowrap; }
 .ap-look-note { align-self: end; }

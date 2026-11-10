@@ -26,6 +26,8 @@ import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
+import { appRoute } from '#shared/appLinks'
+import type { UiOpenEvent } from '#shared/uiOpen'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
 const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
@@ -33,6 +35,20 @@ const core = useRuntimeConfig().public.core
 const paneChat = (p: Pane | null | undefined) => hasChat(p)
 const route = useRoute()
 const router = useRouter()
+// An agent's `ui open` for this conversation (shared/uiOpen.ts), sent to this
+// device only when the user uses it: Settings beside it on a computer
+// (`show: 'panel'`, when the window has room), else a card above the message field. It never
+// moves the user away: the card waits for their tap.
+const uiCard = ref<UiOpenEvent | null>(null)
+watch(uiOpenRequest, (e) => {
+  if (!e || e.pane !== props.paneId) return
+  uiOpenRequest.value = null
+  const to = appRoute(e.link)
+  if (e.show === 'card' || !sidePanelRoom.value || !to.startsWith('/settings?')) { uiCard.value = e; return }
+  uiCard.value = null
+  uiOpenedBy.value = { by: e.by, section: new URLSearchParams(to.split('?')[1]).get('section') ?? '' }
+  router.push(to)
+})
 
 // Pane being viewed (no notification for it, read as soon as it finishes): the active
 // cell. Only the view that set it clears it (the next view of the same pane
@@ -545,7 +561,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         />
         <PhoneIdentity v-if="compactPhone && pane" :pane="pane" :workspace="workspace" @overview="openPlan" />
         <div v-else class="agent-head">
-          <div class="agent-title"><ProjectBadge v-if="badge" class="head-badge" :text="badge.text" :color="badge.color" />{{ badge?.coordinator ? tl('coordinator') : headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
+          <div class="agent-title"><AlfredEmblem v-if="isAlfredPane(pane)" class="head-emblem" /><ProjectBadge v-if="badge" class="head-badge" :text="badge.text" :color="badge.color" />{{ badge?.coordinator ? tl('coordinator') : headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
           <div class="agent-meta">
             <!-- No state known yet (startup): nothing rather than "closed". -->
             <StatusPill v-if="pane || herdrState.ok" :pane="pane" kind />
@@ -640,6 +656,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         @pointerdown.prevent @mousedown.prevent @click.stop="togglePhoneKeys"><UIcon :name="phoneKeysOpen ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" /></button>
     </div>
     <Keybar v-if="keybarShown" :id="keybarId" :ctl="ctl" :compact="compactPhone" :terminal="termShown" @keyboard="toggleComposerKeyboard" />
+    <UiOpenCard v-if="uiCard" :event="uiCard" @close="uiCard = null" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @pointerdown="takeTerminalControl" @keydown="onComposerKey" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
     </div>
@@ -655,4 +672,5 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
 .dismissible-transcript-note > button { flex: none; align-self: stretch; min-width: 40px; min-height: 40px; color: var(--muted); font: 22px/1 var(--sans); border-radius: 6px; touch-action: manipulation; }
 .dismissible-transcript-note > button:hover, .dismissible-transcript-note > button:focus-visible { color: var(--text); background: var(--line-soft); }
 .head-badge { margin-right: 8px; }
+.head-emblem { display: inline-block; width: 18px; margin-right: 8px; vertical-align: -1px; }
 </style>

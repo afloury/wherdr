@@ -1,9 +1,9 @@
-// Agents of a task that waits for the user are ended once idle for 10 minutes
+// Agents of a task that waits for the user, or in the merge queue, are ended once idle for 10 minutes
 // (every minute, from the mechanic's pass), and its worker starts again in the
 // same worktree when the task needs it: a send-back, a conflict, red CI. The
 // rules are in shared/pm/release.ts.
 import { LABEL, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
-import { PUSH_LEFT_SCRIPT, RELEASED_WHY, idleSince, releaseDue } from '../../shared/pm/release'
+import { PUSH_LEFT_SCRIPT, RELEASED_WHY, idleSince, releaseDue, waitsForUser, waitsInQueue } from '../../shared/pm/release'
 import { handoverText } from '../../shared/pm/stop'
 import { runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 import { actionShell } from './pmActions'
@@ -56,7 +56,7 @@ export async function releaseIdle(deps: PmLaunchDeps, now = Date.now()) {
     unpushedLogged.delete(task.id)
     idle.delete(task.id)
     if (push.pushed) task = await store.logTask(task, 'engine', 'pushed the branch\'s unpushed commits before releasing its agents')
-    const t = await store.logTask(task, 'engine', 'released its agents: idle for 10 minutes while the task waits for you; they start again when it needs them')
+    const t = await store.logTask(task, 'engine', `released its agents: idle for 10 minutes while the task waits ${waitsInQueue(task) && !waitsForUser(task) ? 'in the merge queue' : 'for you'}; they start again when it needs them`)
     await endAgents(deps, t, 'released', ' to free memory')
     released.push(task.id)
   }
@@ -66,8 +66,9 @@ export async function releaseIdle(deps: PmLaunchDeps, now = Date.now()) {
 const heldLogged = new Set<string>()
 // The released worker again, in its worktree, with a handover note; `now`:
 // what it is to do first (red CI, a conflict), when the step itself does not
-// say it. No room on its machine: not now, tried again on a later pass (undefined).
-export async function reviveWorker(deps: PmLaunchDeps, id: string, why: string, now?: string): Promise<Task | undefined> {
+// say it. No room on its machine: not now, tried again on a later pass (undefined;
+// onHold gets why). stopped: why its handover says it was stopped.
+export async function reviveWorker(deps: PmLaunchDeps, id: string, why: string, now?: string, onHold?: (hold: string) => void, stopped = RELEASED_WHY): Promise<Task | undefined> {
   const { store } = deps
   const { task, plan } = await load(deps, id)
   const worker = (await store.runs()).filter(r => r.task === id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
@@ -76,12 +77,13 @@ export async function reviveWorker(deps: PmLaunchDeps, id: string, why: string, 
   const weight = reviveWeight(weightOf(t, task).weight, task.step && plan[task.step.at], task.step?.shots)
   const placed = await placeFor(deps, task, { weight })
   if ('hold' in placed) {
+    onHold?.(placed.hold)
     if (!heldLogged.has(id)) await store.logTask(task, 'engine', `the worker starts again once there is room (${why}): ${placed.hold}`)
     return void heldLogged.add(id)
   }
   heldLogged.delete(id)
   forgetMemory(worker.machine)
-  const handover = handoverText({ ...task, stopped: { by: 'the engine', why: RELEASED_WHY, at: Date.now() } }, plan, worker.branch)
+  const handover = handoverText({ ...task, stopped: { by: 'the engine', why: stopped, at: Date.now() } }, plan, worker.branch)
     + (now ? `\nWhat to do now:\n\n${now}\n` : '')
   const started = await startTask(deps, id, { handover, revive: true })
   if (started.state !== 'working') return store.logTask(started, 'engine', `could not start the worker again (${why}): ${started.waiting ?? ''}`)

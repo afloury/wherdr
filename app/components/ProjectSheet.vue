@@ -11,11 +11,14 @@
 // shows in the other), and a link to the pace of every account. A
 // coordinator's proposed workflow change: a badge on Workflow, its first row
 // there opens the review (ProposalReview), at once when the URL asks (`review=1`).
+// Workflow and Autopilot start with their name, what each is and a link to the
+// other (PartHead); Workflow then draws its steps (WorkflowDiagram).
 import type { Project, TemplateInfo } from '#shared/pm/project'
 import { PROJECT_COLORS, shownKey } from '#shared/pm/projectKey'
 import type { LogEntry } from '#shared/pm/templateText'
 import type { Prefs, Template } from '#shared/pm/workflow'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
+import { workflowFlow } from '#shared/pm/flow'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import { PROJECT_TABS, PROJECT_TAB_LABEL as TAB_LABEL, type ProjectTab } from '~/utils/projectTabs'
 
@@ -203,6 +206,10 @@ async function remove() {
           <span class="field-label pm-later">{{ tl('Shown in') }}</span>
           <ProjectShownIn :project="p" />
         </template>
+        <template v-if="tab === 'workflow'">
+          <PartHead part="workflow" :project="p.key" class="pm-part" />
+          <WorkflowDiagram v-if="workflow" :steps="workflowFlow(workflow)" class="pm-part" />
+        </template>
         <button v-if="tab === 'workflow' && coordinator?.proposal" type="button" class="settings-card pm-proposal" data-testid="workflow-proposal" @click="reviewOpen = true">
           <span class="card-state blocked" aria-hidden="true"><i /></span>
           <span class="pm-proposal-text">{{ tl('Change proposed by the coordinator') }}</span>
@@ -216,6 +223,7 @@ async function remove() {
         </template>
         <ProjectAutomations v-else-if="tab === 'automations'" :project="p.key" :name="p.name" />
         <template v-else-if="tab === 'autopilot'">
+          <PartHead part="autopilot" :project="p.key" class="pm-part" />
           <CoordinatorAutopilot v-if="coordinator" :c="coordinator" />
           <p v-else-if="coordinatorsLoaded" class="muted settings-hint">{{ tl('This project has no coordinator yet.') }}</p>
           <UButton to="/settings?section=pacing" color="neutral" variant="ghost" size="lg" icon="i-lucide-gauge">{{ tl('Pace of every account') }}</UButton>
@@ -237,9 +245,10 @@ async function remove() {
 .pm-key { width: min(100%, 160px); }
 .pm-key-row { display: flex; align-items: center; gap: 10px; }
 /* The palette: small squares, each in a 44 px button; the picked one framed.
-   No negative margin: it would stick out of the sheet and scroll it sideways. */
+   Each square sits at its button's start (3 px in, for the frame), so the first
+   lines up with the fields above and the row never exceeds the sheet's width. */
 .pm-colors { display: flex; flex-wrap: wrap; }
-.pm-color { display: grid; place-items: center; width: 44px; height: 44px; padding: 0; border: 0; background: none; cursor: pointer; }
+.pm-color { display: grid; place-items: center start; width: 44px; height: 44px; padding: 0 0 0 3px; border: 0; background: none; cursor: pointer; }
 .pm-color i { width: 20px; height: 20px; background: var(--key-c); box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px transparent; }
 .pm-color.on i { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--text); }
 .pm-color:focus-visible { outline: 1px solid var(--accent); outline-offset: -4px; }
@@ -252,6 +261,8 @@ async function remove() {
 .pm-col { display: grid; min-width: 0; }
 .pm-agent { gap: 8px; }
 .pm-agent .field-label { margin-bottom: 0; }
+.pm-prefs { display: grid; grid-template-columns: auto minmax(0, 1fr) minmax(0, 1fr); align-items: center; gap: 8px 10px; }
+.pm-part { margin-bottom: 12px; }
 .project-tab-badge { margin-left: 6px; }
 .pm-proposal { display: flex; align-items: center; gap: 10px; width: 100%; margin-bottom: 12px; padding: 12px 16px; text-align: left; color: var(--blocked); }
 .pm-proposal-text { flex: 1; min-width: 0; color: var(--text); }

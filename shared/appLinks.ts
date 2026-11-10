@@ -9,9 +9,9 @@ import { PROJECT_TABS, type ProjectTab } from './pm/places'
 export const SETTINGS_SECTIONS = ['appearance', 'conversation', 'terminal', 'agents', 'machines', 'projects', 'plugins', 'phone', 'notifications', 'security', 'shortcuts', 'about'] as const
 export type SettingsSection = typeof SETTINGS_SECTIONS[number]
 // Old section ids still linked from elsewhere: ?section=pacing opens Agents,
-// scrolled to its Pace group.
-export const SETTINGS_ALIASES: Record<string, { section: SettingsSection, anchor: string }> = {
-  pacing: { section: 'agents', anchor: 'settings-pace' },
+// pointing at its Pace group (a target of shared/uiTargets.ts).
+export const SETTINGS_ALIASES: Record<string, { section: SettingsSection, target: string }> = {
+  pacing: { section: 'agents', target: 'agents.pace' },
 }
 // Settings › Conversation's tabs, by their ?tab= key: Display by default.
 export const CONVERSATION_TABS = ['display', 'dictation', 'read-aloud'] as const
@@ -43,5 +43,8 @@ export function appLinkList(): string[] {
 // A whole in-app address: `#/`, a path of plain segments, an optional query,
 // no space or quote. Anything else (`#heading`, `https://…`) is not one.
 export const isAppLink = (s: string) => /^#\/(?:[\w.-]+(?:\/[\w.:-]+)*)?(?:\?[\w.~%&=+:,-]*)?$/.test(s)
+// The task of a task's sheet address (`#/board?task=X`, nothing else): it
+// opens over the current page.
+export const linkedTask = (s: string) => /^#\/board\?task=([\w.-]+)$/.exec(s)?.[1] ?? null
 // The router path of an in-app address (`#/board?task=X` → `/board?task=X`).
 export const appRoute = (s: string) => s.slice(1)

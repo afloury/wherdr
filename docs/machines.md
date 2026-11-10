@@ -66,7 +66,9 @@ and the machine's memory settings (side by side on a computer, stacked on a phon
   where the task fits, by the project's **Placement** ([project sheet](project-management.md#general)):
   by default heavy work to the strongest one, light and standard work to the project's
   own machine when it fits; or *Balance the load*, or *Home first*. A task fits when the machine keeps its minimum free after the task's
-  estimate (light ≈ 0.7 GB, standard ≈ 1.8 GB, heavy ≈ 3.9 GB), counting the agents just started,
+  estimate (light ≈ 0.7 GB, standard ≈ 1.8 GB, heavy ≈ 3.9 GB), counting the agents just started
+  (an idle machine, with no wherdr agent at work, always takes one task its RAM can hold, even
+  under its minimum free: the minimum only holds its second task and beyond, and its line says *go*),
   its swap is under 90 % used (on macOS, where the swap grows on demand: its memory pressure is normal:
   20 % or more of its memory free by `kern.memorystatus_level`, as `memory_pressure -Q` prints it;
   under 20 % (warn) it takes light work only, under 10 % or at the kernel's critical level nothing; the line shows *pressure normal* instead of the swap), its cores are not all taken, it runs fewer agents than its cap (yours,
@@ -81,3 +83,20 @@ and the machine's memory settings (side by side on a computer, stacked on a phon
   runs over midnight) keeps automatic starts off a machine outside its hours, and heavy work off it
   in its last 2 hours, so a laptop that leaves at 19:00 is not handed a long build at 18:30. The
   coordinator sees the same in `autopilot show` (`machines`).
+- **Paused in every project**: a machine that some project allows, switched off in each project
+  that allows it, says so on its card ([Pause a machine for a project](#pause-a-machine-for-a-project)).
+
+## Pause a machine for a project
+
+In the project sheet's General › Machines list ([project sheet](project-management.md#general)),
+each allowed machine has an on/off switch beside its ✕ (home has one once the project allows
+another machine). Off, the machine is *paused for this project*:
+
+- No new task of the project goes there: placement skips it, and so do the automatic starts
+  (Keep the board busy, chains, automations). A start asked for it (*Start on…*, the
+  coordinator's `task start <task> --on <machine>`) is refused with *This machine is paused for
+  this project*. With every machine of the project paused, its automatic starts wait.
+- Tasks already running there go on and finish there; a task that started there goes back there
+  (resume, retry, reviewer).
+- Its clone path, readiness and settings stay. On again, it takes work as before.
+- The coordinator's `autopilot show` lists it as *paused for this project*.

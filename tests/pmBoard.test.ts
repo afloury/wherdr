@@ -5,7 +5,7 @@ import { afterEach, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { board, userStep } from '../server/utils/pmBoard'
 import { company, wherdr } from '../shared/pm/examples'
-import { cardOf, cardStatus, linkLabel, prNow, requiredChecks } from '../shared/pm/board'
+import { cardOf, cardStatus, linkLabel, prNow, requiredChecks, shownTexts } from '../shared/pm/board'
 import { planSteps } from '../shared/pm/steps'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 
@@ -78,4 +78,14 @@ it('the card says where its PR and merge stand: waiting for checks, merging, fai
   expect(cardStatus(done)).toEqual({ text: 'merged', tone: 'ok', at: 5 })
   expect(cardStatus({ ...done, state: { ...done.state, proofs: {} } })).toBeUndefined() // done without a merge
   expect(linkLabel({ label: 'pr', url: pr.url })).toBe('PR #7')
+})
+
+it('a card\'s texts read each task id with its project\'s shown key, stored before the key changed too; its ids stay stored', () => {
+  const plan = planSteps(company, { type: 'feature' })
+  const t = { id: 'CP-17', project: 'CP', title: 'Add login', description: 'After CP-16', type: 'feature', state: 'waiting', waiting: 'CP-16, which this task starts after, stopped', createdAt: 1, after: 'CP-16', log: [{ at: 1, by: 'engine', text: 'waits for CP-16 on branch task/CP-16' }] } as const
+  const c = shownTexts([{ key: 'CP', label: 'CMP' }], cardOf(t as never, plan, []))
+  expect(c.yourTurn).toMatch(/^CMP-16, which this task starts after, stopped/)
+  expect(c.description).toBe('After CMP-16')
+  expect(c.log[0]!.text).toBe('waits for CMP-16 on branch task/CP-16')
+  expect([c.id, c.after]).toEqual(['CP-17', ['CP-16']])
 })

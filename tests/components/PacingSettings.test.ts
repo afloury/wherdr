@@ -44,6 +44,19 @@ registerEndpoint('/api/quotas/name', {
 let mounted: { unmount: () => void } | null = null
 afterEach(() => { mounted?.unmount(); mounted = null; reset(); quotaDisplay.value = 'left' })
 
+it('an account with credits keeps its bars and auto state; a program with no reading shows no auto state', async () => {
+  rows[0] = { ...rows[0]!, credits: { unlimited: false, balance: 120 } }
+  const w = await mountSuspended(PacingSettings, { props: { active: true } })
+  mounted = w
+  await vi.waitFor(() => expect(w.findAll('[data-testid="pace-row"]')).toHaveLength(2))
+  const [account, codex] = w.findAll('[data-testid="pace-row"]')
+  expect(account!.find('[data-testid="pace-credits"]').text()).toBe('Credits: 120 credits')
+  expect(account!.find('[data-testid="pace-week"]').exists()).toBe(true)
+  expect(account!.find('[data-testid="pace-state"]').exists()).toBe(true)
+  expect(codex!.find('[data-testid="pace-state"]').exists()).toBe(false)
+  expect(codex!.find('[data-testid="pace-credits"]').exists()).toBe(false)
+})
+
 it('shows each account\'s pace, changes its mode, days, numbers and name; a program with no reading is unknown', async () => {
   const w = await mountSuspended(PacingSettings, { props: { active: true } })
   mounted = w
@@ -80,12 +93,13 @@ it('shows each account\'s pace, changes its mode, days, numbers and name; a prog
   await vi.waitFor(() => expect(calls[2]).toEqual({ url: '/api/pacing', body: { key: 'claude:a1b2c3d4', policy: { cap: 80 } } }))
   expect(w.find('[data-testid="pace-invalid"]').exists()).toBe(false)
 
-  // End-of-week burn: on (every week), its start shown on the row.
+  // End-of-week burn: one switch, on until the weekly reset, said under it; then off.
   await w.find('[data-testid="pace-burn"]').trigger('click')
-  await vi.waitFor(() => expect(calls[3]).toEqual({ url: '/api/pacing', body: { key: 'claude:a1b2c3d4', policy: { burn: { until: null } } } }))
-  await vi.waitFor(() => expect(claude!.find('[data-testid="pace-burn-state"]').text()).toContain('Burn from'))
-  await w.find('[data-testid="pace-burn-cap"]').setValue('100')
-  await vi.waitFor(() => expect(calls[4]!.body.policy).toEqual({ burn: { cap: 100 } }))
+  await vi.waitFor(() => expect(calls[3]).toEqual({ url: '/api/pacing', body: { key: 'claude:a1b2c3d4', policy: { burn: { until: now + 3 * 86_400_000 } } } }))
+  await vi.waitFor(() => expect(w.find('[data-testid="pace-burn-hint"]').text()).toMatch(/^Burning until /))
+  expect(w.find('.pace-form').findAll('input[type="number"]')).toHaveLength(2) // the mode's own fields only
+  await w.find('[data-testid="pace-burn"]').trigger('click')
+  await vi.waitFor(() => expect(calls[4]!.body.policy).toEqual({ burn: null }))
 
   const name = w.find('[data-testid="pace-name"]')
   await name.setValue('  Work Pro ')

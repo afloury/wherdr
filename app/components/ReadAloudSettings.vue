@@ -1,9 +1,10 @@
 <script setup lang="ts">
-// Settings › Conversation › Read aloud: Off or the device's voices, which
-// voice, and a Test (composables/useReadAloud.ts). Kept on this device.
+// Settings › Conversation › Read aloud: Off, the device's voices (which voice,
+// and a Test) or the voice of wherdr run on this device (ReadAloudNeuralVoices.vue)
+// (composables/useReadAloud.ts). Kept on this device.
 // The voice list is filtered by language and quality, in sections best first
 // (utils/speech/voicePicker.ts); the chosen voice always stays listed.
-import { deviceVoices, readAloudEngine, readAloudHideLow, readAloudSupported, readAloudVoice, readAloudVoiceLang, speak, speakingId, stopSpeaking } from '~/composables/useReadAloud'
+import { deviceVoices, neuralVoice, readAloudEngine, readAloudHideLow, readAloudSupported, readAloudVoice, readAloudVoiceLang, speak, speakingId, stopSpeaking } from '~/composables/useReadAloud'
 import { isIOS } from '~/utils/format'
 import { language } from '~/utils/i18n'
 import { languageName, langCode, userLanguages, voiceLanguages, voiceSections, type VoiceQuality } from '~/utils/speech/voicePicker'
@@ -11,6 +12,7 @@ import { languageName, langCode, userLanguages, voiceLanguages, voiceSections, t
 const engineItems = computed(() => [
   { label: tl('Off', 'Désactivée'), description: tl('No Play button under replies.', 'Pas de bouton Lire sous les réponses.'), value: 'off' },
   { label: tl('Voices of this device', 'Voix de cet appareil'), description: tl('Free, spoken by the device. Default.', 'Gratuit, lu par l’appareil. Par défaut.'), value: 'device', disabled: !readAloudSupported },
+  { label: t('Voice of wherdr (on this device)'), description: t('Free, natural French and English voices, downloaded once and run on this device.'), value: 'wherdr', disabled: !neuralVoice },
 ])
 // The select drops an item whose value is '': the system voice gets a name here.
 const SYSTEM = 'system-default'
@@ -87,6 +89,7 @@ function test() {
         <UButton color="neutral" variant="outline" size="lg" :icon="testing ? 'i-lucide-square' : 'i-lucide-volume-2'" :label="testing ? tl('Stop', 'Arrêter') : tl('Test', 'Tester')" data-testid="read-aloud-test" @click="test" />
       </div>
     </template>
+    <ReadAloudNeuralVoices v-else-if="readAloudEngine === 'wherdr'" />
     <p v-if="!readAloudSupported" class="muted settings-hint">{{ tl('This browser has no voices.', 'Ce navigateur n’a pas de voix.') }}</p>
   </div>
 </template>

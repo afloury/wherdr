@@ -2,13 +2,15 @@
 // The task sheet's "To do" tab: what a task waiting for the user needs from
 // them, and the buttons for it, nothing else (taskTodo picks the case). A
 // visual merge shows its screenshots large (swipe between them, tap to zoom),
-// the review's verdict, then Merge or Send back with a note. A step to merge
+// the worker's and the reviewer's notes (full width, folded, Markdown), then Merge or Send
+// back with a note. A step the user ends shows the two notes too. A step to merge
 // or a refused one has Open the PR when a link proof is a pull request (any host).
+// Once approved, Merge stays loading until the merge ends, what it waits for said under it.
 import { adviceChoices } from '#shared/pm/decisions'
-import { canStart, prLink, type Card } from '#shared/pm/board'
+import { canStart, mergeWaits, prLink, type Card } from '#shared/pm/board'
 import { RESUMES, stoppedText, type Resume } from '#shared/pm/stop'
 import { shotUrl } from '#shared/pm/shots'
-import { reviewLine } from '#shared/pm/report'
+import { reviewNote, workerNote } from '#shared/pm/report'
 import { agentCatchingUp } from '#shared/pm/refusal'
 import type { Choice } from '#shared/pm/verdict'
 import type { Pane } from '#shared/types'
@@ -20,7 +22,9 @@ const emit = defineEmits<{ press: [], start: [], resume: [how: Resume], decide: 
 
 // Where the engine's catch-up of a conflict stands: the agent on it, or done.
 const told = computed(() => agentCatchingUp(props.card))
-const badge = computed(() => stepRefusalText(props.card.yourTurn ?? '', told.value))
+// An approved merge on its way (server state, the same after a reload): what it waits for.
+const waits = computed(() => mergeWaits(props.card))
+const badge = computed(() => (waits.value !== undefined ? tl('Merge approved: it merges by itself') : stepRefusalText(props.card.yourTurn ?? '', told.value)))
 const advice = computed(() => props.card.state?.yourTurn?.advice)
 const choices = computed(() => (advice.value ? adviceChoices(advice.value) : { options: [] }))
 
@@ -31,7 +35,10 @@ const reworked = computed(() => latest.value.some(x => x.rework))
 // Phone or desktop, from the image's shape once loaded.
 const shape = ref<Record<string, 'phone' | 'desktop'>>({})
 const loaded = (src: string, e: Event) => { const i = e.target as HTMLImageElement; shape.value = { ...shape.value, [src]: i.naturalWidth < i.naturalHeight ? 'phone' : 'desktop' } }
-const verdict = computed(() => { const v = reviewLine(props.card.plan, props.card.state?.at ?? 0, props.card.state?.rounds ?? {}); return v ? tl(v) : '' })
+// The notes before the user's step: the worker's report and the review's verdict.
+const notes = computed(() => (props.kind === 'merge' || props.kind === 'step') && props.card.state
+  ? { worker: workerNote(props.card.plan, props.card.state), review: reviewNote(props.card.plan, props.card.state) }
+  : {})
 const pr = computed(() => (props.kind === 'merge' || props.kind === 'step' || props.kind === 'refused' ? prLink(props.card) : undefined))
 const note = ref('')
 
@@ -42,6 +49,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
   <div class="todo" :data-todo="kind" data-testid="task-todo">
     <template v-if="kind === 'merge'">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
+      <TaskNotes v-if="notes.worker || notes.review" :worker="notes.worker" :review="notes.review" :summary="card.summary" />
       <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
       <ul class="todo-shots" data-testid="todo-shots">
         <li v-for="(src, i) in shots" :key="src">
@@ -51,7 +59,6 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
           <span v-if="shape[src]" class="mono-label muted">{{ shape[src] === 'phone' ? tl('Phone', 'Téléphone') : tl('Desktop', 'Ordinateur') }}</span>
         </li>
       </ul>
-      <p v-if="verdict" class="muted" data-testid="todo-verdict">{{ verdict }}</p>
     </template>
 
     <template v-else-if="kind === 'decide' && advice">
@@ -67,7 +74,10 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       <p v-if="!pane" class="muted">{{ tl('Its agent is not on screen here: open it from its machine.') }}</p>
     </template>
 
-    <p v-else-if="!refused" class="todo-say" data-testid="task-badge">{{ badge }}</p>
+    <template v-else-if="!refused">
+      <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
+      <TaskNotes v-if="notes.worker || notes.review" :worker="notes.worker" :review="notes.review" :summary="card.summary" />
+    </template>
 
     <div class="todo-actions">
       <template v-if="kind === 'decide'">
@@ -86,7 +96,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       </template>
       <div v-else class="task-sheet-actions todo-buttons">
         <!-- A refused action is tried again from the sheet's top (Try again). -->
-        <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy" data-testid="step-user" @click="emit('press')">{{ card.userLabel }}</UButton>
+        <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy || waits !== undefined" data-testid="step-user" @click="emit('press')">{{ card.userLabel }}</UButton>
         <UButton v-if="pr" color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" :to="pr.url" target="_blank" data-testid="todo-pr">{{ tl('Open the PR') }}</UButton>
         <UButton v-if="kind === 'blocked' && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="emit('start')">{{ tl('Start', 'Lancer') }}</UButton>
         <UButton v-if="pane && kind !== 'merge' && kind !== 'step'" :color="kind === 'ask' ? 'primary' : 'neutral'" :variant="kind === 'ask' ? 'solid' : 'outline'" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)" data-testid="todo-agent">
@@ -95,6 +105,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       </div>
     </div>
     <p v-if="pressing" class="muted" role="status" data-testid="step-user-busy">{{ tl('Running this step… A merge waits for the PR\'s checks, which can take a few minutes.', 'Étape en cours… Une fusion attend les vérifications de la PR, ce qui peut prendre quelques minutes.') }}</p>
+    <p v-else-if="waits !== undefined" class="muted" role="status" data-testid="step-user-waits">{{ tl('Waiting:') }} {{ waits }}</p>
     <p v-else-if="refused" class="error" role="alert" :title="refused" data-testid="step-user-refused">{{ stepRefusalText(refused, told) }}</p>
 
     <form v-if="kind === 'merge'" class="todo-back" data-testid="todo-back" @submit.prevent="emit('back', note.trim())">

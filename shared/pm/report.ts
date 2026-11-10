@@ -1,3 +1,5 @@
+import { weight, type Finding, type Round } from './verdict'
+
 // A problem the user reports on a task that waits for them (a visual merge
 // whose screenshots miss the feature, a bug): sent to the project's
 // coordinator, never to the task's agent, with everything it needs to decide.
@@ -29,4 +31,30 @@ export function reviewLine(plan: { ends?: string, id: string }[], at: number, ro
   if (!review) return
   const n = rounds[review.id] ?? 0
   return n ? `Review passed, ${n} send-back${n > 1 ? 's' : ''}` : 'Review passed'
+}
+
+type Planned = { ends?: string, id: string, holder?: string }
+
+// The worker's closing report before the current step, as the To do view shows it (Markdown).
+export function workerNote(plan: Planned[], s: { at: number, proofs: Record<string, { report?: string }> }) {
+  return plan.slice(0, s.at).filter(p => p.holder === 'worker' && p.ends === 'report').map(p => s.proofs[p.id]?.report?.trim()).findLast(Boolean)
+}
+
+// A finding as a Markdown list item: its weight, title and where.
+export const findingLine = (f: Finding, sev = true) => `- ${sev ? `[${weight(f)}] ` : ''}${f.title}${f.where ? ` (\`${f.where}\`)` : ''}`
+
+// The review before the current step, in Markdown: its verdict, what it sent
+// back (fixed during the rounds, each finding once) and what it left as minor.
+export function reviewNote(plan: Planned[], s: { at: number, rounds: Record<string, number>, reviews?: Record<string, Round[]>, minor?: Record<string, Finding[]> }) {
+  const line = reviewLine(plan, s.at, s.rounds)
+  if (!line) return
+  const id = plan.slice(0, s.at).findLast(p => p.ends === 'verdict')!.id
+  const fixed = [...new Map((s.reviews?.[id] ?? []).flatMap(r => r.findings).map(f => [f.id, f])).values()]
+  const minor = s.minor?.[id] ?? []
+  return [
+    `${line}.`,
+    ...(fixed.length ? ['', '**Fixed during the rounds**', ...fixed.map(f => findingLine(f))] : []),
+    ...(minor.length ? ['', '**Left as minor**', ...minor.map(f => findingLine(f, false))] : []),
+    ...(!fixed.length && !minor.length && s.minor?.[id] ? ['', 'No finding.'] : []),
+  ].join('\n')
 }

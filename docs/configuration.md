@@ -44,3 +44,22 @@ and About. **Settings** holds display preferences such as theme, typing effect a
 home screen shows; these follow you across devices through `settings.json`. Notifications, terminal text size and renderer remain device-specific. The passkey lock is
 managed under Settings › Security.
 
+On a computer window at least 1280 px wide, **Settings** opened from a conversation (the
+gear, ⌘ , or a `#/settings?section=…` link) open as a panel on the right of the
+conversation, on the linked section; the conversation stays readable and you can keep
+typing. Escape or the close button shuts the panel, **Open full page** shows today's full
+page. Narrower windows and phones keep the full page.
+
+Drag the panel's left edge to make it wider or narrower: it stays at least 400 px wide, and the
+conversation keeps at least 480 px. With the edge focused, the left and right arrows resize it
+(Shift for bigger steps); a double-click, Home or Enter goes back to the default width. The width
+is kept on this device and comes back the next time the panel opens; places an agent opens beside
+its conversation use the same panel and width.
+
+A Settings link can also point at one setting with `&target=<id>` (for example
+`#/settings?section=conversation&tab=display&target=conversation.reply-style`): Settings
+opens the section and tab, scrolls to that setting and outlines it. The outline pulses twice
+and fades within 4 s, or goes at once on a click or a key press; with reduced motion it stays
+still and fades. A setting that is not shown (a feature off) gets a highlighted line saying so
+instead. The ids are internal for now (`shared/uiTargets.ts`) and may change.
+

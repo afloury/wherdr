@@ -11,8 +11,9 @@
 // a task never started (confirmed). Those stay at the top; below, tabs (the app's
 // segmented style) for the rest, in the sheet's one scroll: Description (the
 // text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR among them), Plan (each step with its
-// screenshots), Log.
-import { canStart, canStop, cardStatus, linkLabel, statusText, type Card } from '#shared/pm/board'
+// screenshots), History (the hand-offs between its agents and the user,
+// TaskHistory), Log (the raw lines).
+import { canStart, canStop, cardStatus, linkLabel, mergeWaits, statusText, type Card } from '#shared/pm/board'
 import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
 import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
@@ -51,13 +52,13 @@ function onDescClick(e: MouseEvent) {
   const text = btn?.closest('.code-block')?.querySelector('pre')?.textContent
   if (btn && text != null) copyCodeBlock(btn, text)
 }
-type Tab = 'todo' | 'description' | 'plan' | 'log'
-const TAB_LABEL: Record<Tab, [string, string]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], log: ['Log', 'Journal'] }
+type Tab = 'todo' | 'description' | 'plan' | 'history' | 'log'
+const TAB_LABEL: Record<Tab, [string, string?]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], history: ['History'], log: ['Log', 'Journal'] }
 const tabs = computed<Tab[]>(() => [
   ...(todo.value ? ['todo' as const] : []),
-  ...(props.card.description || props.card.tags.length || props.card.links.length ? ['description' as const] : []),
+  ...(props.card.description || props.card.specNotes?.length || props.card.tags.length || props.card.links.length ? ['description' as const] : []),
   'plan',
-  ...(props.card.log.length ? ['log' as const] : []),
+  ...(props.card.log.length ? ['history' as const, 'log' as const] : []),
 ])
 const picked = ref<Tab>()
 // The tab picked while it is still there (the task read again), else the first.
@@ -87,14 +88,15 @@ watch(() => props.card.yourTurn, (b) => { if (b !== refused.value) refused.value
 const confirmStop = ref(!!props.stopping)
 const why = ref('')
 const stop = () => run(async () => { await stopTaskApi(props.card.id, why.value); confirmStop.value = false })
-const start = () => run(() => startTaskApi(props.card.id))
+const start = () => run(() => startTaskApi(props.card.id, undefined, props.card.sameFiles ? true : undefined))
 const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
 const decide = (choice: Choice) => run(() => api('/api/pm/decide', { id: props.card.id, choice }))
 const sendBack = (note: string) => run(() => api('/api/pm/step-back', { id: props.card.id, note }))
 // A problem reported to the coordinator: open on the card until it acts or the user withdraws it.
 const reportOpen = ref(!!props.reporting)
 // An action step that failed (a merge refused): the user runs it again.
-const failedAction = computed(() => { const s = props.card.state; return !props.card.stopped && !!s && !s.acting && s.yourTurn?.reason === 'action' && !!props.card.plan[s.at]?.action })
+// Not an approved merge on its way: a refusal the queue tries again is not the user's (mergeWaits).
+const failedAction = computed(() => { const s = props.card.state; return !props.card.stopped && !!s && !s.acting && s.yourTurn?.reason === 'action' && !!props.card.plan[s.at]?.action && mergeWaits(props.card) === undefined })
 const canReport = computed(() => !!props.card.yourTurn && !props.card.state?.done && !props.card.report)
 const report = (r: { text: string, shots: string[], block: boolean }) => run(async () => { await api('/api/pm/report', { id: props.card.id, ...r }); reportOpen.value = false })
 const withdraw = () => run(() => api('/api/pm/report', { id: props.card.id, withdraw: true }))
@@ -115,7 +117,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
         <p v-if="times" class="task-times" data-testid="task-times">{{ times }}</p>
         <div class="task-sheet-actions">
-          <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ tl('Start', 'Lancer') }}</UButton>
+          <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ card.sameFiles ? tl('Start anyway') : tl('Start', 'Lancer') }}</UButton>
           <UButton v-if="!todo && pane" color="neutral" variant="outline" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)">
             {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}
           </UButton>
@@ -162,6 +164,10 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
         <template v-else-if="tab === 'description'">
           <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
           <div v-if="descHtml" class="md-body task-md" data-testid="task-description" @click="onDescClick" v-html="descHtml" />
+          <section v-if="card.specNotes?.length" class="task-spec-notes" data-testid="task-spec-notes">
+            <span class="mono-label">{{ tl('Spec changes · the latest overrides the description') }}</span>
+            <p v-for="n in card.specNotes" :key="n.at" class="task-spec-note"><span class="mono-label">{{ fmtDateTime(n.at) }}</span> {{ n.text }}</p>
+          </section>
           <div v-if="card.tags.length || card.links.length" class="board-tags">
             <span v-for="tag in card.tags" :key="tag" class="board-chip">{{ tag }}</span>
             <a v-for="l in card.links" :key="l.url" :href="l.url" target="_blank" rel="noopener" class="board-chip">{{ linkLabel(l) }}</a>
@@ -183,6 +189,8 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
             </details>
           </li>
         </ol>
+
+        <TaskHistory v-else-if="tab === 'history'" :card="card" />
 
         <ol v-else class="task-log" data-testid="task-log">
           <li v-for="(e, i) in [...card.log].reverse()" :key="i">
@@ -214,6 +222,8 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-md { flex: none; overflow-wrap: anywhere; color: var(--text-2); }
 .task-md :deep(:is(h1, h2, h3, h4, h5, h6)) { font-size: 15px; margin: 1em 0 .4em; }
 .task-sheet .task-md :deep(p) { margin: 0 0 .75em; }
+.task-spec-notes { display: grid; gap: 6px; }
+.task-spec-note { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text-2); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-sheet-actions:empty { display: none; }
 .task-report-open { display: grid; gap: 6px; justify-items: start; padding: 10px 12px; border: 1px solid var(--working); }

@@ -1,7 +1,8 @@
 // The pace of automatic work (WHR-376 § 4.2, § 5): which starts are held by
 // the verdict of the worker's account (shared/pm/pacing.ts), the account's
 // quota among the readings, and the words the coordinator and the firings get.
-import type { Quota, QuotaAccount, Quotas } from '../types'
+import type { Quota, QuotaAccount, QuotaCredits, Quotas } from '../types'
+import { limitState, type LimitState } from '../quotaLimit'
 import type { Task, TaskOrigin } from './run'
 import { DEFAULT_PACE, burning, current, paceVerdict, targetLine, type PacePolicy, type PaceReason, type PaceVerdict } from './pacing'
 
@@ -33,7 +34,6 @@ const REASONS: Record<PaceReason, string> = {
   ahead: 'ahead of the target line',
   reserveWeek: 'the weekly reserve is reached',
   reserve5h: 'the 5-hour reserve is reached',
-  burnCap: 'the burn\'s cap is reached',
   stale: 'the last reading is too old for the margin left',
 }
 
@@ -51,10 +51,10 @@ export const paceRefusal = (v: PaceVerdict | undefined) =>
 const MODES: Record<PacePolicy['mode'], string> = { unlimited: 'free', workdays: 'working days', everyday: 'every day', free: 'free with reserve' }
 
 // The weekly % automatic work may reach now: the target line, the free mode's
-// limit (100 − the reserve of the days left), or the burn's cap. 'unlimited': 100.
+// limit (100 − the reserve of the days left), or all of it while burning. 'unlimited': 100.
 export function weekLimit(p: PacePolicy, resetsAt: number, now: number) {
   if (p.mode === 'unlimited') return { label: 'limit' as const, value: 100 }
-  if (burning(p.burn, resetsAt, now)) return { label: 'burn cap' as const, value: p.burn!.cap }
+  if (burning(p.burn, now)) return { label: 'burn' as const, value: 100 }
   if (p.mode === 'free') return { label: 'limit' as const, value: 100 - p.reservePerDay * Math.ceil((resetsAt - now) / 86_400_000) }
   return { label: 'line' as const, value: targetLine(p, resetsAt, now) }
 }
@@ -99,6 +99,8 @@ export interface PaceRow {
   at: number | null // time of the reading
   today: number | null
   verdict: PaceVerdict
+  limit?: LimitState // the reading says "limit reached" (shared/quotaLimit.ts)
+  credits?: QuotaCredits
 }
 
 export function paceRows(q: Quotas | null, policyOf: (key: string) => PacePolicy, today: Record<string, number | null>, now: number): PaceRow[] {
@@ -112,7 +114,11 @@ export function paceRows(q: Quotas | null, policyOf: (key: string) => PacePolicy
       const w = quota && current(quota.week, now), f = quota && current(quota.five, now)
       const l = w?.resetsAt ? weekLimit(policy, w.resetsAt, now) : null
       const week = w?.resetsAt && l ? { used: w.used, resetsAt: w.resetsAt, limit: l.value, label: l.label } : null
-      return { program, account, policy, week, five: f ?? null, at: quota?.at ?? null, today: today[account.key] ?? null, verdict: paceVerdict(policy, quota, now) }
+      const limit = quota && limitState(quota, now)
+      return {
+        program, account, policy, week, five: f ?? null, at: quota?.at ?? null, today: today[account.key] ?? null, verdict: paceVerdict(policy, quota, now),
+        ...(limit ? { limit } : {}), ...(quota?.credits ? { credits: quota.credits } : {}),
+      }
     })
   })
 }
