@@ -20,6 +20,7 @@ export function coreAdminDeps(): CoreAdminDeps {
     recent: m => recentDirs({ local: m.local, key: m.key, profileId: null }),
     remember: (dir, m) => rememberDir(dir, { local: m.local, key: m.key, profileId: null }),
     chat: async pane => (await transcripts.chat(pane)).items ?? null,
-    hold: (pane, text) => heldMessages.hold(pane, text),
+    hold: (pane, text, byHolder) => heldMessages.hold(pane, text, undefined, byHolder),
+    handOver: (address, id, typed) => heldMessages.handOver(address, id, typed),
   }
 }

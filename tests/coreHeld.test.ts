@@ -49,7 +49,8 @@ describe('a message sent while Codex installs or updates itself', () => {
   })
   it('keeps a message whose send failed for the next try, but never types again one that may have reached Codex', async () => {
     let fail: Error & { code?: string } = Object.assign(new Error('disconnected'), { code: 'unreachable' })
-    const held = createHeld(async () => { throw fail })
+    let tries = 0
+    const held = createHeld(async () => { tries++; throw fail })
     held.hold(pane(), 'Hi')
     const ready = () => [pane({ installing: undefined })]
     held.apply(ready())
@@ -61,6 +62,29 @@ describe('a message sent while Codex installs or updates itself', () => {
     await new Promise(r => setTimeout(r, 0))
     held.apply(ready())
     await new Promise(r => setTimeout(r, 0))
+    // Timed out: listed as 'unseen' (its device puts it back into the field), never sent again.
+    const before = tries
+    const after = ready()
+    held.apply(after)
+    expect(after[0]!.queued).toMatchObject([{ text: 'Hi', state: 'failed', reason: 'unseen' }])
+    await new Promise(r => setTimeout(r, 0))
+    held.apply(ready())
+    expect(tries).toBe(before)
+  })
+  it('types a first message held behind a dialog only once its holder hands it over', async () => {
+    const sent: string[] = []
+    const held = createHeld(async (_p, q) => { sent.push(q.text) })
+    const q = held.hold(pane(), 'Hi', undefined, true)
+    const ready = () => [pane({ installing: undefined })]
+    held.apply(ready())
+    expect(sent).toEqual([])
+    held.handOver('t1', q.id, false)
+    held.apply(ready())
+    expect(sent).toEqual(['Hi'])
+    // Typed by its holder: gone.
+    const r = held.hold(pane(), 'Other', undefined, true)
+    held.handOver('t1', r.id, true)
+    await new Promise(x => setTimeout(x, 0))
     const after = ready()
     held.apply(after)
     expect(after[0]!.queued).toBeUndefined()

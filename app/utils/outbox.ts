@@ -78,12 +78,15 @@ export function prune(list: OutboxItem[], server: QueuedMessage[], now: number, 
   return out
 }
 
-// Codex gone (exited, or stopped by its update) while messages waited on the
-// server for it (coreHeld.ts): the server drops them. Those it no longer lists
-// leave the outbox and come back as texts, for the message field.
-export function returnHeld(list: OutboxItem[], server: QueuedMessage[]): { kept: OutboxItem[], back: string[] } {
+// Messages held on the server for Codex (coreHeld.ts) that come back as texts,
+// for the message field. Codex gone (`gone`: exited, or stopped by its update):
+// the server dropped them, so those it no longer lists. Codex still there: only
+// those it lists as 'unseen' (their send timed out, they may have reached Codex);
+// one it no longer lists was typed.
+export function returnHeld(list: OutboxItem[], server: QueuedMessage[], gone = true): { kept: OutboxItem[], back: string[] } {
   const known = new Set(server.map(q => q.id))
-  const back = list.filter(q => q.state === 'held' && !q.local && !known.has(q.id))
+  const unseen = new Set(server.filter(q => q.reason === 'unseen').map(q => q.id))
+  const back = list.filter(q => q.state === 'held' && !q.local && (gone ? !known.has(q.id) : unseen.has(q.id)))
   return { kept: list.filter(q => !back.includes(q)), back: back.map(q => q.text) }
 }
 

@@ -32,8 +32,10 @@ export interface CoreAdminDeps {
   onQueued?: (watch: Promise<unknown>) => void // test hook: the background wait of a queued first message
   readyWatchMs?: number // how long the first message waits for the program to be ready (default 15 s)
   pollMs?: number // readiness polling step (default 500 ms)
-  // A first message to a Codex that installs or updates itself: held like any message (coreHeld.ts).
-  hold?: (pane: Pane, text: string) => QueuedMessage
+  // A first message to Codex: held like any message (coreHeld.ts), so that it comes back into
+  // the field if Codex exits first. `byHolder`: behind a dialog, typed here until handOver.
+  hold?: (pane: Pane, text: string, byHolder?: boolean) => QueuedMessage
+  handOver?: (address: string, id: string, typed: boolean) => void
 }
 
 const REQUEST_LABEL = 'wherdr-request'
@@ -175,11 +177,13 @@ export async function sendFirstMessage(deps: CoreAdminDeps, address: string, tex
 
 // The first message of a program that opened on a dialog (trust this folder): waits in the
 // background until the person has answered it, then sends it once. Gives up after queueWatchMs.
-export async function sendAfterDialog(deps: CoreAdminDeps, address: string, text: string): Promise<'sent' | 'skipped'> {
+// `stopOnInstall`: returns 'installing' when Codex starts installing (the held queue takes it).
+export async function sendAfterDialog(deps: CoreAdminDeps, address: string, text: string, stopOnInstall = false): Promise<'sent' | 'skipped' | 'installing'> {
   const end = Date.now() + (deps.queueWatchMs ?? 600_000)
   while (Date.now() < end) {
     await new Promise(r => setTimeout(r, (deps.pollMs ?? 500) * 2))
     const r = await sendFirstMessage(deps, address, text).catch(() => 'skipped' as const)
+    if (r === 'installing' && stopOnInstall) return r
     if (r !== 'dialog' && r !== 'installing') return r
   }
   return 'skipped'
@@ -248,9 +252,14 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
     const r = await sendFirstMessage(deps, address, first).catch(() => 'skipped' as const)
     sent = r === 'dialog' || r === 'installing' ? 'queued' : r
     // Codex installing: held on the server, listed in the conversation, back into the field if Codex exits.
-    if (r === 'installing' && deps.hold) queued = deps.hold(pane, first)
+    const held = kind === 'codex' && deps.hold && deps.handOver
+    if (r === 'installing' && held) queued = deps.hold!(pane, first)
     else if (sent === 'queued') {
-      const watch = sendAfterDialog(deps, address, first)
+      // Codex behind a dialog: held too (it may install next, or exit), typed here once answered.
+      const q = held ? deps.hold!(pane, first, true) : undefined
+      const watch = sendAfterDialog(deps, address, first, Boolean(q))
+        .then((res) => { if (q) deps.handOver!(address, q.id, res === 'sent'); return res })
+      queued = q
       deps.onQueued?.(watch)
     }
   }

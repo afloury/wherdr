@@ -103,7 +103,9 @@ yourself, in a terminal, when no conversation needs it.
 
 - **A message sent while Codex installs or updates itself** is never typed into it: it waits
   as **Queued · sent when Codex is ready** and is typed once Codex is ready. If Codex exits
-  instead, it comes back into the message field.
+  instead, it comes back into the message field. The first message of a new Codex agent waits
+  the same way, also behind its startup dialog. If typing it times out, it may have reached
+  Codex: it is never typed again, and comes back into the field for you to check.
 - **If Codex still updates itself and exits** (a new version once it has stopped), the space
   stays open: its terminal becomes a plain `sh`, and the conversation shows a **Your turn**
   card with **Resume conversation** (the same session; Codex's picker when wherdr cannot

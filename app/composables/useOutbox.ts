@@ -99,16 +99,20 @@ export function outboxPrune(paneId: string, server: QueuedMessage[]) {
 // With each state, for every conversation with messages here (open or not):
 // Codex gone (exited, or stopped by its update) while messages waited for it on
 // the server: they come back into that conversation's message field, after what
-// is typed there. Then the server's records prune the rest.
+// is typed there. A held message whose sending timed out ('unseen': it may have
+// reached Codex) comes back too, for the user to check. Then the server's records
+// prune the rest. A failed or partial state (stateOk false) changes nothing.
 export function outboxSync(paneId: string, p: Pane | undefined, stateOk: boolean) {
+  if (!stateOk) return
   const server = p?.queued || []
-  if (stateOk && (!p || p.stopped)) {
-    const { kept, back } = returnHeld(outboxFor(paneId), server)
-    if (back.length) {
-      update(paneId, () => kept)
-      for (const text of back) restoreDraft(useDraft(paneId), text, [], true)
-      toast(tl('Codex stopped before your message reached it: it is back in the field'))
-    }
+  const gone = !p || Boolean(p.stopped)
+  const { kept, back } = returnHeld(outboxFor(paneId), server, gone)
+  if (back.length) {
+    update(paneId, () => kept)
+    for (const text of back) restoreDraft(useDraft(paneId), text, [], true)
+    toast(gone
+      ? tl('Codex stopped before your message reached it: it is back in the field')
+      : tl('Codex may not have received your message: it is back in the field, check before sending it again'))
   }
   outboxPrune(paneId, server)
 }
