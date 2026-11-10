@@ -6,27 +6,57 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
-- **Agents installed under nvm are found.** The installed-agents probe and the launch line now look in the nvm version the default alias names (or the newest installed version) and in `~/.opencode/bin`. herdr-core started as a service has a short system PATH, so an agent only installed there was neither offered nor started. The nvm folder comes after the usual user folders: a native install in `~/.local/bin` still wins over an npm copy under nvm.
-- **The terminal keeps its size when reopened.** Going back to the conversation and returning to the terminal attached at the default 80×24 instead of the screen's size, which also resized the program for everyone. The "Fit to this screen" offer comes back too.
-- **No blank conversation on return to the app.** A conversation shown from the device's copy stays on screen while a server that just restarted answers "not found" or a read times out, instead of emptying and coming back. If a conversation list still alternates, the last non-empty one stays and a diagnostic is logged. A coordinator's pane gets its name back in the header when the coordinators list failed to load as the app woke up.
-- **Conversations open on their last read.** After a reload, an update or a network cut, the conversation kept on the device shows at once (the home state no longer waits for the server's first answer), then the server's answer merges in without moving what is on screen; replies that arrived meanwhile come in at the bottom like live ones. The startup background is the theme last shown on the device, so a reload no longer flashes another colour.
-- **Devin conversations on herdr-core.** Read saved ATIF transcripts from the running process, locally or on a core machine, with tools, inline images, search and previews. Updates arrive when Devin saves a turn; only history retained after compaction is available.
+## [3.0.0]
 
-- **App start, per device.** Settings › Phone › App start: **Up to date** (default, the current version, the saved copy past 3 seconds) or **Instant** (the saved copy at once, with the Reload banner for a newer version). After an update, the server keeps the previous two versions' files, so a page opened before it no longer reloads itself on a missing file.
-- **Qwen3-ASR WebGPU groundwork.** Added the ORT WebGPU worker and its scoped CSP route. Qwen is not selectable yet.
-- **omp context at a glance.** omp agent cards show their context usage as a thin line along their bottom edge, and the conversation header shows the percentage and estimated tokens, with omp's status line on demand. Read from omp's own gauge on screen (current and older layouts, every symbol preset); unknown readings stay hidden, old ones are marked. Thanks to [@guileen](https://github.com/guileen) (ported from 2.x).
-- **herdr-core 0.1.17: machines with an SSH port.** Settings › Agents › Machines › Add machine takes `user@host:port` when the core accepts one (read from its `rpc.discover`, not its version); on herdr-core 0.1.16 the form says so before sending.
-- **SVG diagrams in conversations.** Static `svg` code fences now show an isolated theme-aware preview with source, Copy and enlargement; incomplete or unsafe content stays readable code without executing or loading external resources (port of [#416](https://github.com/afloury/wherdr/pull/416) by [@guileen](https://github.com/guileen)).
+wherdr 3 runs on herdr-core (`hc`) instead of Herdr and adds built-in project management: you talk to a project's coordinator, agents carry its tasks through your workflow on a board, and Alfred helps you set it up. It installs from source beside wherdr v2, imports v2's machines and settings, and leaves v2 untouched. Release notes: [docs/release-notes-3.0.0.md](docs/release-notes-3.0.0.md).
 
-- **Clearer recovery messages.** A first conversation read that times out asks you to retry. A silent terminal reports that the machine sent nothing in time and offers Retry after four failed attaches.
+### New
 
-- **Faster Tailscale checks (#324).** Status and Serve reads run together with 4.5-second CLI deadlines, inside the socket handshake window; unreadable results remain unknown.
+- **Projects, board and tasks.** Each project's tasks go through the steps of its workflow on a board, done by agents ([Project management](docs/project-management.md)).
+- **Workflows from examples or templates.** Start from a built-in example or a saved template; the project keeps its own copy.
+- **Guards.** Protected branches, and whether a merge waits for you or is done by wherdr.
+- **A coordinator per project.** You talk to it about the project; it adds and follows tasks and keeps its own memory across restarts and agent changes.
+- **Autopilot and pace.** The coordinator keeps the board busy within its limits and hours; Pace decides when automatic work may start against your quotas.
+- **Merge queue.** Ready PRs merge one after the other.
+- **Routine blocks handled by wherdr.** Conflicts and branches behind their base, red CI from an infrastructure error, refused pushes and stalled agents, before the coordinator is woken.
+- **Crash recovery.** Work cut by a restart or a crash resumes by itself.
+- **Task sheet.** Time per step, waits for you, review rounds and CI fixes, with the task's description, plan and log.
+- **Tasks that touch the same files** do not run at the same time.
+- **Alfred.** wherdr's assistant guides the setup and sets up your v2 projects with you; it changes settings only after your yes.
+- **Machines.** Placement by memory, cores and load; keep awake; available hours; pause a machine for one project ([Machines](docs/machines.md)).
+- **Project tabs.** A project's coordinator and tasks show on the home tabs of its machines.
+- **Agents show instead of tell.** Choice buttons and live task cards; Alfred and coordinators also highlight a setting, show status cards and propose setting changes as cards.
+- **On-device dictation and neural read-aloud**, both running on the phone ([Read aloud](docs/read-aloud.md)).
+- **Devin conversations** open on their saved transcript, locally or on another machine.
+- **SVG diagrams** in conversations show as an isolated preview, never executed.
+- **A lighter, faster conversation, also with many agents.** wherdr reads only what a transcript added; a conversation opens on its last read, kept on the device.
+- **App start, per device.** Settings › Phone › App start: the current version (default) or the saved copy at once.
+- **omp context at a glance.** omp cards and the conversation header show its context usage. Thanks to [@guileen](https://github.com/guileen).
+- **Machines with an SSH port.** Add machine takes `user@host:port` when herdr-core accepts it.
+- **Agents installed under nvm are found** and offered.
+- **Clearer recovery.** A conversation stays on screen while a restarted server answers, and a silent terminal offers Retry.
 
-- **Startup updates (#324).** The app opens the server's current build when the server answers within 3 seconds, so a deployment no longer shows the Reload banner followed by an unexpected reload. Past that, or offline, the cached page opens and shows the existing Reload banner when a newer build is served, preserving the current view until the user reloads.
+### Changed
 
-- **Conversation reads recover (#324).** Bottom, older-page and speculative reads stop after 8 seconds so the next refresh can proceed. Speculative reads also work on iOS 16.4 and contain synchronous reader errors.
+- herdr-core (`hc`) replaces Herdr; other machines are hc machines reached over SSH.
+- wherdr installs from source and runs as a user service.
+- Beside v2, it has its own port, data folder, service and address.
+- Update with `git pull` and a rebuild, or let a build machine of your tailnet deploy each new build.
 
-- **Recovery after suspend (#324).** Unlock and Settings checks allow 10 seconds to save the offline lease; resume checks keep their 3-second deadline. Events sockets with no real packet after 8 seconds and terminal sockets with no core paint after 12 seconds close through the existing retry paths. Relay reset/resize messages do not count as paint; core's attach snapshot does, even for an idle or blank terminal.
+### Removed (v2 only)
+
+- Herdr sessions, the Herdr plugin and its actions, and the relay of Herdr notifications.
+- The herdr-projects board, replaced by v3's own projects and board.
+- The npm and Homebrew packages, the curl installer, Docker and the one-tap update.
+- Worktree management and the Changes view.
+- The model and effort pickers and the slash-command list.
+- Split panes: with hc every terminal of a space is a tab.
+
+### Moving from v2
+
+Install v3 beside v2 and import its machines and settings: [Migrate from v2](docs/migrate-from-v2.md). The install script needs Linux with `systemd --user` (macOS by hand), the build about 1.5 GB of memory, and herdr-core installed first.
+
+## 2.x (wherdr on Herdr)
 
 ## [2.5.0] — 2026-11-02
 

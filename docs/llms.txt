@@ -21,6 +21,7 @@
 - [On-device dictation files](docs/installation.md#on-device-dictation-files): where the dictation models and read-aloud voices are fetched and kept.
 - [Updating](docs/installation.md#updating): the version in Settings › About (with its commit), a banner for a newer 3.x release only (never a 2.x), update v3 by hand.
 - [Install with an agent](docs/install-with-an-agent.md): ready-to-paste prompts for an agent that installs or updates wherdr.
+- [Release notes 3.0.0](docs/release-notes-3.0.0.md): what v3 brings to a v2 user, what changed, what is gone and how to move.
 - [Migrate from v2](docs/migrate-from-v2.md): install v3 beside v2 and import its machines, settings and recent folders, nothing of herdr-projects; Alfred sets up its projects.
 - [What is imported](docs/migrate-from-v2.md#what-is-imported): what the v2 import brings over, and what to redo.
 - [Set up your v2 projects with Alfred](docs/migrate-from-v2.md#set-up-your-v2-projects-with-alfred): Alfred's first message offers to bring v2 projects over, reading the herdr-projects board then (machine, template, coordinator, open tasks).
