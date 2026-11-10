@@ -50,7 +50,7 @@ export async function openUi(deps: UiOpenDeps, o: { scope: string, main: boolean
 }
 
 // `ui targets`: the settings `ui open --target <id>` can highlight.
-export const uiTargetsList = () => ({ targets: uiTargetList(), note: 'Highlight one with ui open --target <id>, in a turn of the user' })
+export const uiTargetsList = () => ({ targets: uiTargetList(), note: 'Highlight one with ui open --target <id> (add --project <KEY> for a project.… target), in a turn of the user' })
 
 // `ui show file <path> | shots <task>`: the file (inside the agent's folder) or
 // the task's screenshots, beside the conversation of the app the user is on.
