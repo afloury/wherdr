@@ -28,7 +28,8 @@ import type { FolderOptions } from '../../shared/pm/newProject'
 import { MAIN, type CoordinatorAgent, type Proposal, type ProposalAnswer } from '../../shared/pm/coordinator'
 import type { Incident } from '../../shared/pm/incident'
 import { NEW_AUTOPILOT, type Autopilot, type DayCount, type LastWake, type TaskStatus } from '../../shared/pm/autopilot'
-import { readQueue, type Wake } from '../../shared/pm/wakes'
+import { readQueue, type Wake, type WakeSkip } from '../../shared/pm/wakes'
+import type { HealthSent } from '../../shared/pm/health'
 import type { Automation, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DATA_DIR } from './env'
@@ -46,7 +47,8 @@ export interface CoordinatorRecord {
   atRan?: number // the last scheduled wake at fixed times (autopilot.at), or when it was set
   woke?: LastWake // the last wake the engine queued, and where tasks stood then
   quiet?: true // its saved autopilot's old default events dropped, once (quietEvents)
-  health?: { at: number, seen: Record<string, TaskStatus> } // the last health check (health.ts), and where tasks stood then
+  health?: { at: number, seen: Record<string, TaskStatus>, sent?: HealthSent } // the last health check (health.ts), where tasks stood then, the last one sent
+  skips?: WakeSkip[] // wakes not sent, and why (autopilot show)
   skipped?: DayCount // scheduled wakes skipped that day: nothing to do (or the new work limit reached)
   lookAdded?: DayCount // tasks added that day in the turns of look-for-new-work wakes
   // version: wherdr's when this session started; told: the newer version it was told of.

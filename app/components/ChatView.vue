@@ -94,25 +94,25 @@ async function restoreChat() {
 }
 
 // ------------------------------------------------------------ scrolling
-const nearEnd = (px: number) => {
-  const b = box.value
-  return !b || b.scrollHeight - b.scrollTop - b.clientHeight < px
-}
+// At the end: within a few pixels of the bottom.
+const atEnd = (b: HTMLElement) => b.scrollHeight - b.scrollTop - b.clientHeight < 4
+// To the end, remembered at once: a scroll up right after is still seen as one.
+const pin = (b: HTMLElement) => { b.scrollTop = b.scrollHeight; lastTop = b.scrollTop }
 function scrollToEnd(force: boolean) {
   const b = box.value
   if (!b) return
-  if (force || (!held && (stick || nearEnd(160)))) {
+  if (force || (!held && stick)) {
     stick = true
     held = false
     // At once (no frame of a conversation opened at its top), and again once laid out.
-    b.scrollTop = b.scrollHeight
-    requestAnimationFrame(() => { b.scrollTop = b.scrollHeight })
+    pin(b)
+    requestAnimationFrame(() => { if (stick) pin(b) })
   }
 }
 // Updates the conversation while keeping the current reading position: stuck to the bottom if
 // we were there (or on first display), otherwise at the same place.
 async function apply(update: () => void, keepScroll = false) {
-  const wasNear = !held && (stick || nearEnd(120))
+  const wasNear = !held && stick
   const first = !rendered.value
   const before = blocks.value.length
   update()
@@ -139,22 +139,27 @@ async function apply(update: () => void, keepScroll = false) {
 }
 // Opened on a search result: that is what we show.
 let restoring = typeof route.query.hit !== 'string'
-// Stuck to the bottom: the conversation stays there when the area shrinks (agent
-// question, keyboard, attached photos) or when content arrives.
+// Following the end: the conversation stays at the bottom when the area shrinks
+// (agent question, keyboard, attached photos) or when content arrives or grows
+// (typewriter). On only from the bottom; the reader scrolling up turns it off at
+// once, and only the bottom again (or the jump button) turns it back on.
 let stick = true
+let lastTop = 0
 // After a one-tap answer (holdScroll): nothing sticks it again, neither the
 // scroll events that follow nor a status change, until the reader scrolls
 // or the draft is sent or emptied.
 let held = false
-function onUserScroll() {
+function onUserScroll(e: Event) {
   held = false
+  if (e instanceof WheelEvent && e.deltaY < 0) stick = false
   interruptThought()
 }
 let ro: ResizeObserver | null = null
 onMounted(() => {
   ro = new ResizeObserver(() => {
     const b = box.value
-    if (b && stick) b.scrollTop = b.scrollHeight
+    if (b && stick) pin(b)
+    else keepAnchor()
   })
   if (box.value) ro.observe(box.value)
   // Content that grows afterwards (images loaded, blocks expanded).
@@ -171,10 +176,43 @@ function onScroll() {
   if (!b) return
   lastScroll = Date.now()
   codeMenu.open = false
-  if (!held) stick = b.scrollHeight - b.scrollTop - b.clientHeight < 120
+  if (!held) {
+    if (atEnd(b)) stick = true
+    else if (b.scrollTop < lastTop - 1) stick = false
+  }
+  lastTop = b.scrollTop
+  if (!stick) findAnchor()
   // Infinite scrolling upwards: the blocks not shown yet, then the older pages.
   if (hiddenBlocks.value) { if (b.scrollTop < 1500) revealMore(MORE_BLOCKS * 2) }
   else if (b.scrollTop < 400 && rendered.value) loadOlder()
+}
+// The jump button (UChatMessages) follows the end again at once, even while it grows.
+function onJump(e: Event) {
+  if ((e.target as Element | null)?.closest?.('.hw-jump')) scrollToEnd(true)
+}
+// Scrolled up, content above that changes height (images, folding) leaves the
+// view where it is. Browsers with scroll anchoring do it themselves; elsewhere
+// (Safari) the block at the top of the view keeps its place.
+const nativeAnchor = typeof CSS !== 'undefined' && CSS.supports?.('overflow-anchor', 'auto')
+let anchor: { el: Element, top: number } | null = null
+function findAnchor() {
+  anchor = null
+  const b = box.value
+  const l = listEl.value
+  if (nativeAnchor || !b || !l) return
+  const top = b.getBoundingClientRect().top
+  for (let i = l.children.length - 1; i >= 0; i--) {
+    const r = l.children[i]!.getBoundingClientRect()
+    if (r.top <= top || i === 0) { anchor = { el: l.children[i]!, top: r.top - top }; return }
+  }
+}
+function keepAnchor() {
+  const b = box.value
+  if (b && anchor?.el.isConnected) {
+    const moved = anchor.el.getBoundingClientRect().top - b.getBoundingClientRect().top - anchor.top
+    if (Math.abs(moved) >= 1) b.scrollTop += moved
+  }
+  findAnchor()
 }
 
 // ------------------------------------------------------------ bottom first
@@ -1366,7 +1404,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
     <OfflineNote v-else-if="isStale(misses)" :label="t('Conversation not up to date — reconnecting…')" />
     <!-- The end kept on this device while the network is slow to answer: said, over the list (nothing moves). -->
     <span v-if="cachedTag && savedAt" class="cached-tag chat-cached" role="status">{{ tl(`Read at ${fmtTime(savedAt)}`, `Lu à ${fmtTime(savedAt)}`) }}</span>
-    <div ref="box" class="chat" @scroll.passive="onScroll" @wheel.passive="onUserScroll" @touchmove.passive="onUserScroll">
+    <div ref="box" class="chat" @scroll.passive="onScroll" @wheel.passive="onUserScroll" @touchmove.passive="onUserScroll" @click.capture="onJump">
       <UChatMessages
         :status="working ? 'streaming' : 'ready'" :should-auto-scroll="false"
         :auto-scroll="{ color: 'neutral', variant: 'outline' }"
