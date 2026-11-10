@@ -454,6 +454,9 @@ body.short-bottom { --safe-bottom: 0px; }
 .quota-row.quota-api { grid-template-columns: 44px 1fr; min-height: 34px; }
 .quota-api-label { margin: 0; padding: 4px 10px; align-self: center; min-width: 0; font: 400 10px/1.3 var(--mono); letter-spacing: .04em; color: var(--dim); overflow-wrap: anywhere; }
 .quota-limited { color: var(--danger); }
+/* Credits, and how to refresh an old reading: one line across the row. */
+.quota-note { grid-column: 1 / -1; margin: 0; padding: 3px 8px; border-top: 1px solid var(--line); font: 400 9.5px/1.3 var(--mono); color: var(--dim); overflow-wrap: anywhere; }
+.quota-row.stale .quota-note { color: var(--ochre); }
 
 .agent-group { margin-bottom: 26px; }
 .group-title {
@@ -2146,6 +2149,20 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-group .settings-warning { color: var(--danger); }
 /* Sub-section of a settings section shown only on a computer (Appearance › Desktop). */
 .settings-subhead { margin: 6px 0 22px; padding-top: 22px; border-top: 1px solid var(--line); }
+
+/* A pointed-at setting (`&target=`, utils/uiHalo.ts): an accent outline and a
+   soft shadow, drawn around the box so the layout never moves (the 6 px offset
+   stays inside the settings' 16 px side padding); two pulses, then it fades
+   over 4 s. Reduced motion: a still outline that fades. */
+.ui-halo { outline: 2px solid var(--accent); outline-offset: 6px; animation: ui-halo 4s ease-out forwards; }
+@keyframes ui-halo {
+  0%, 24%, 48% { outline-color: var(--accent); box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 10%, transparent), 0 0 22px 8px color-mix(in srgb, var(--accent) 22%, transparent); }
+  12%, 36% { outline-color: color-mix(in srgb, var(--accent) 45%, transparent); box-shadow: 0 0 0 6px transparent, 0 0 10px 2px color-mix(in srgb, var(--accent) 8%, transparent); }
+  100% { outline-color: transparent; box-shadow: 0 0 0 6px transparent, 0 0 0 0 transparent; }
+}
+@keyframes ui-halo-still { 0%, 50% { outline-color: var(--accent); } 100% { outline-color: transparent; } }
+@media (prefers-reduced-motion: reduce) { .ui-halo { animation-name: ui-halo-still; } }
+.settings-column > .ui-target-missing { margin: 0 2px 22px; }
 
 .settings-typing .encrypted-toggle { margin-top: 14px; }
 /* Settings › Phone (PhoneSetup.vue): steps with a mono label, live state, QR code. */

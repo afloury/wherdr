@@ -36,6 +36,7 @@
 - [Security](docs/security.md#security): who may reach wherdr, the passkey lock and remote-shell risks.
 - [Network access](docs/security.md#network-access): which networks wherdr answers, and `WHERDR_TRUSTED_NETWORKS`.
 - [Configuration](docs/configuration.md#configuration): environment variables and the data folder.
+- [Settings beside the conversation](docs/configuration.md#configuration): on a computer window at least 1280 px wide, Settings opened from a conversation show as a side panel on the linked section; Escape closes it, Open full page keeps the full page; `&target=<id>` scrolls to one setting and outlines it for a few seconds.
 - [Settings beside the conversation](docs/configuration.md#configuration): on a computer window at least 1280 px wide, Settings opened from a conversation show as a side panel on the linked section, resizable from its left edge (drag, arrows, double-click for the default; width kept on the device); Escape closes it, Open full page keeps the full page.
 
 ## Agent list
@@ -54,11 +55,10 @@
 ## Conversation, terminal and files
 
 - [Conversation and replies](docs/conversation.md): transcripts, one-tap answers, quoted replies, attachments (shown as chips once sent), dictation, and in-app links (`#/settings?section=…`, `#/board?task=…`), shown as labelled buttons, that open a place in wherdr.
-- [Places an agent opens for you](docs/conversation.md): `wherdr alfred ui open` / `wherdr pm ui open '<in-app link>'` shows a place beside the agent's conversation (Settings side panel on a wide computer, a tappable card otherwise), only in a turn from the user, changing nothing.
 - [Conversation and replies](docs/conversation.md): transcripts, one-tap answers, quoted replies, attachments (shown as chips once sent), dictation, and in-app links (`#/settings?section=…`, `#/board?task=…`) that open a place in wherdr.
 - [Conversation and replies](docs/conversation.md): transcripts, following new messages from the bottom, one-tap answers, quoted replies, attachments (shown as chips once sent), dictation, and in-app links (`#/settings?section=…`, `#/board?task=…`) that open a place in wherdr.
 - [Live status cards](docs/conversation.md): a `wherdr` code fence of `status machine:<key>`, `status quota:claude|codex`, `status pr:<KEY>#<n>` or `status op:<task id>` lines shows live cards from wherdr's own data, refreshed every 15 s on screen, "unavailable" when the source is gone.
-- [Places an agent opens for you](docs/conversation.md): `wherdr alfred ui open` / `wherdr pm ui open '<in-app link>'` shows a place on the device the user last used on the agent's conversation (Settings side panel on a wide computer, a tappable card otherwise), says where (phone or computer), keeps the card in the reply (```wherdr `open <link>`), only in a turn from the user, changing nothing.
+- [Places an agent opens for you](docs/conversation.md): `wherdr alfred ui open` / `wherdr pm ui open '<in-app link>'` shows a place on the device the user last used on the agent's conversation (Settings side panel on a wide computer, a tappable card otherwise), says where (phone or computer), keeps the card in the reply (```wherdr `open <link>`), only in a turn from the user, changing nothing; `ui open --target <id>` highlights one setting (`ui targets` lists the ids).
 - [Conversations on hc](docs/core.md#conversations): which agents open on their transcript and how it is read, and text left unsent in Claude's input box (never shown as read, never glued to the next message).
 - [Terminal](docs/terminal.md): the real terminal, shared viewers and taking control.
 - [Files](docs/files.md): browse an agent's folder, preview text, Markdown, images, PDFs and videos, download; which files a path in a conversation may open.
@@ -119,7 +119,7 @@
 - [Manage machines](docs/machines.md#manage-machines): Settings › Machines (one card per machine: name, state, actions, keep awake, memory), add, reconnect, rename, forget, keep awake (until a time or turned off, laptop battery and lid warning), capacity (memory, cores, load on Linux and macOS; swap on Linux, memory pressure on macOS), memory limits (an idle machine always takes one task its RAM holds, the minimum free holds the next ones), available hours and offline machines, and where each start goes (placement across a project's machines).
 - [Pause a machine for a project](docs/machines.md#pause-a-machine-for-a-project): a machine's on/off switch in a project's Machines list: no new task there, running ones finish, clone kept; Paused in every project in Settings › Machines.
 - [Machines on hc](docs/core.md#creating-terminals-and-agents-machines): how hc reaches core machines.
-- [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage per account, with the machines sharing it, and its setup.
+- [Claude and Codex quotas](docs/quotas.md#claude-and-codex-quotas): remaining usage per account, with the machines sharing it, and its setup; a Codex 'Limit reached' past its reset reads as reset, credits show and let work go on, an old reading says how to refresh it.
 - [Pace](docs/quotas.md#pace): Settings › Agents › Pace, its modes (Free, the default, stops only at the account's own limit), when automatic work may start, and the end-of-week burn (one switch: no pace limit until the weekly reset, then off).
 - [Notifications](docs/notifications.md#notifications): Web Push and Do not disturb.
 - [A default and exceptions](docs/notifications.md#a-default-and-exceptions): one synced policy: a default and its exceptions, a coordinator's kept across restarts.

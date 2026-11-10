@@ -221,3 +221,17 @@ it('Conversation: tabs split Display, Dictation and Read aloud, the tab kept in 
     expect(w.get('#conversation-panel-display').text()).toContain('Default pane view')
   } finally { w.unmount() }
 })
+
+it('points at a target: opens its tab, highlights it until a click, and says so politely', async () => {
+  desk.value = true
+  coarse.value = false
+  const w = await mountSuspended(SettingsView, { route: '/settings?section=conversation&tab=display&target=conversation.reply-style', global })
+  try {
+    const el = w.get('[data-ui-target="conversation.reply-style"]')
+    await vi.waitFor(() => expect(el.classes()).toContain('ui-halo'))
+    expect(el.attributes('aria-describedby')).toBe('ui-target-note')
+    expect(w.get('#ui-target-note').text()).toBe('Pointing to Reply style')
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
+    expect(el.classes()).not.toContain('ui-halo')
+  } finally { w.unmount() }
+})
