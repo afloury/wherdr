@@ -589,7 +589,7 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   for (const [file, text] of Object.entries(OWN_ROLE_FILES))
     if ((await exec(deps, on, CREATE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not create ${file}`)
   await exec(deps, on, 'chmod 755 "$1"', [`${folder}/bin/wherdr`])
-  return { p, local: !!m.local, on, folder, first: false, v2: false }
+  return { p, local: !!m.local, on, folder, first: false, v2: false, none: false }
 }
 
 // wherdr's docs on its own machine: the install's, so an update brings new ones.
@@ -644,7 +644,7 @@ export async function writeAlfredHome(deps: Deps) {
     try { await fs.writeFile(path.join(folder, file), text, { flag: 'wx', mode: 0o600 }); if (file === 'identity.md') first = true }
     catch (e) { if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e }
   }
-  return { folder, first, v2 }
+  return { folder, first, v2, none: !projects.length }
 }
 
 // The sidebar's Alfred row: its name (identity.md), the program the user chose
@@ -669,13 +669,13 @@ export function coordinatorUrls(here: URL): CoordinatorUrls {
 
 // When a project coordinator starts: its files, a new token, how to start it.
 export async function prepareCoordinator(deps: Deps, key: string, program: CoordinatorProgram, urls: CoordinatorUrls, resume = false) {
-  const { p, local, on, folder, first, v2 } = await writeRoleFiles(deps, key)
+  const { p, local, on, folder, first, v2, none } = await writeRoleFiles(deps, key)
   const url = local ? urls.local : urls.remote
   if (!url) throw new HerdrError('unreachable', 'The project\'s machine cannot reach this wherdr: publish it on your tailnet first (Settings › Phone)')
   const token = await issueToken(deps.store, key)
   if (key === MAIN) await issueAlfredToken(deps.store, folder!)
   // Alfred starts with its greeting (startPrompt); a resumed conversation had it already.
-  const prompt = key === MAIN && !resume ? [startPrompt(first, await readAlfredName(deps), v2)] : []
+  const prompt = key === MAIN && !resume ? [startPrompt(first, await readAlfredName(deps), v2, none)] : []
   return { on, folder, argv: coordinatorArgs(program, folder, p?.path, p?.git === false, resume), prompt, env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
 }
 

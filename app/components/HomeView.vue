@@ -529,6 +529,7 @@ function resetListWidth() {
           <div class="empty-art">&gt;_</div>
           <p>{{ t('No agents yet.') }}</p>
           <p class="muted">{{ tl('Start one here, or with', 'Lance-en un ici, ou avec') }} <code>hc</code> {{ t('in a terminal.') }}</p>
+          <HomeSetupHint />
         </div>
       </div>
       <p v-else-if="onlineMachines.length && !stateGroups.length" class="machine-empty state-empty">{{ t('No agents yet.') }}</p>

@@ -69,7 +69,7 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
       </span>
       <USwitch :model-value="data?.enabled ?? false" :disabled="!data || busy" color="success" size="xl" data-testid="pm-switch" @update:model-value="v => toggle(v)" />
     </label>
-    <UButton color="neutral" variant="ghost" size="lg" icon="i-lucide-list-checks" class="pm-setup" data-testid="pm-setup" @click="setupAdding = false; setupOpen = true">{{ tl('Set up a project') }}</UButton>
+    <UButton color="neutral" variant="ghost" size="lg" icon="i-lucide-list-checks" class="pm-setup" data-testid="pm-setup" data-ui-target="projects.setup" @click="setupAdding = false; setupOpen = true">{{ tl('Set up a project') }}</UButton>
     <SetupWizard v-model:open="setupOpen" :adding="setupAdding" @changed="load" />
 
     <template v-if="data?.enabled">
