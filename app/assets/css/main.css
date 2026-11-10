@@ -2317,6 +2317,10 @@ body.kb .composer { padding-bottom: 8px; }
 .key-order-label .key-order-cap { min-width: 34px; height: 30px; font-size: 11px; }
 .key-order-label .key-order-cap svg { width: 16px; height: 16px; }
 .key-order-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; color: var(--text); }
+.key-order-label:has(.key-order-check:not(:disabled)) { cursor: pointer; }
+.key-order-check { width: 21px; height: 21px; flex: none; margin: 0; accent-color: var(--accent); }
+.bar-pref-row.off .key-order-name, .bar-pref-row.off .key-order-label .key-order-cap { color: var(--dim); }
+.key-order-required { display: block; margin-top: 4px; font: 500 10px/1 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .key-order-step { flex: none; width: 44px; display: grid; place-items: center; border: 0; border-left: 1px solid var(--line-soft); border-radius: 0; background: none; color: var(--text-2); cursor: pointer; touch-action: manipulation; }
 .key-order-step svg { width: 18px; height: 18px; }
 .key-order-step:hover:not(:disabled) { color: var(--text); background: var(--surface-2); }
