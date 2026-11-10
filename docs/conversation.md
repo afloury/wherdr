@@ -63,6 +63,20 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   terminal.key-order`; `ui targets` lists the settings it can point at): on a wide computer the
   side panel opens on its section and highlights it; on a phone the card names the setting with a
   crosshair, and a tap opens the page and highlights it.
+- **Buttons an agent puts in its reply**: Alfred or a project's coordinator can give you the
+  button for a task instead of telling you to go and find it (`wherdr pm ui action resume|step|open
+  <task>`): *Resume WHR-12* for a stopped task, the step's own button (*Merge*, *Approve
+  screenshots*) for a step that waits for you, or *Open WHR-12*. The card says who suggests it and
+  sits in the reply (a ```wherdr block of `action <id>` lines). Only your click runs it, through
+  the same action as the task sheet, and only if the task still waits the same way: if it moved
+  on since, the card says *This changed since* and runs nothing, with a button to open the task.
+  After the click it shows the outcome (*Merge: done by you · 14:02*, or *approved by you, merges
+  once ready* for an approved merge whose PR is not ready yet); a refused step action (a PR in conflict, red
+  checks) keeps the button, with the reason under it, as the task sheet does. The agent can add one only
+  in a turn that follows your message, never in an Autopilot wake, and a coordinator only for its
+  own project's tasks. A button lasts a day, and a new one for the same task and action replaces
+  the older one. An agent's token cannot click (`/api/ui/act` refuses it); without a passkey,
+  though, any program on this computer reaches the app's API, as the task sheet's buttons do.
 - **Wakes**: in a coordinator's conversation, a wake (Autopilot, Health check, Engine, Incident,
   Step check) is a compact muted row, not one of your bubbles, with the coordinator's answer under
   it; routine runs fold into one row. See

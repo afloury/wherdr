@@ -45,6 +45,8 @@ const BASE = [
   'upload', 'attach', 'file', 'keep',
   'dictation/status', 'dictation/key', 'dictation/transcribe', 'dictation/prepare', 'GET dictation/models',
   'dictation/rewrite', 'GET dictation/text-models',
+  // Action buttons an agent puts in its reply (shared/uiActions.ts).
+  'GET ui/card', 'ui/act',
 ]
 
 export const CORE_ROUTES = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i, ...j, ...k, ...l, ...m, ...n, ...o, ...p, ...q, ...r, ...s, ...t, ...u, ...v, ...w, ...x, ...y, ...z]
