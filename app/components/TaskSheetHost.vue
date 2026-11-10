@@ -29,9 +29,11 @@ const onBoard = computed(() => {
 const archived = useArchivedCard(() => id.value, () => !!data.value && !onBoard.value)
 const card = computed(() => onBoard.value ?? archived.value)
 const pane = computed(() => (card.value?.terminal ? herdrState.value?.panes.find(p => p.coreAddress === card.value!.terminal) : undefined))
+// The project's working branch, for the sheet's branch line.
+const projectBase = computed(() => data.value?.projects.find(p => p.key === card.value?.project)?.base)
 const waits = computed(() => (card.value?.phase === 'todo' ? waitsFor(card.value, data.value!.cards) : []))
 </script>
 
 <template>
-  <TaskSheet v-if="card" :key="card.id" :card="card" :pane="pane" :waits-for="waits" @closed="closeTaskSheet" @changed="taskChanged" />
+  <TaskSheet v-if="card" :key="card.id" :card="card" :pane="pane" :waits-for="waits" :project-base="projectBase" @closed="closeTaskSheet" @changed="taskChanged" />
 </template>

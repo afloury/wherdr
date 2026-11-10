@@ -28,6 +28,7 @@ export interface Task {
   answered?: number // when a coordinator's tell answered its question; cleared once the agent's question is gone (no second wake: autopilot.ts)
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
   ci?: { head: string, red: boolean } // its PR's CI at the task's commit, as the engine last read it
+  prBase?: { base: string, commits?: number } // its PR's base and commit count, as the engine last read them: kept once done
   queue?: number // its place in its project's merge queue (mergeQueue.ts), 1: merging now
   queueOut?: string // why it stepped out of the queue's line (a conflict, its checks, its agent's work)
   order?: number // its place on the board, set by the coordinator's `task order` (boardOrder.ts): lower first
@@ -73,6 +74,10 @@ export interface Task {
 
 // A task as the browser gets it: the agent's screenshot key stays on the server.
 export const publicTask = ({ shotToken: _, ...t }: Task): Task => t
+
+// A task's PR, when a step or its worker linked one (the PR step's proof, a worker's report).
+export const hasPrLink = (t: Pick<Task, 'links' | 'step'>) =>
+  [...(t.links ?? []).map(l => l.url), ...Object.values(t.step?.proofs ?? {}).map(p => p?.link ?? '')].some(u => /\/pull\/\d+/.test(u))
 
 export interface TaskLogEntry { at: number, by: string, text: string }
 export type SpecNote = TaskLogEntry

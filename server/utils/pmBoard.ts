@@ -32,9 +32,7 @@ async function templatesOf(store: PmStore) {
 // What the mechanic last read of each task's PR (prNow), for the cards' status
 // line. In memory: read again within a minute of a restart.
 export const prSeen = new Map<string, string>()
-// Its base and commit count, for the branch line.
-export const prBaseSeen = new Map<string, NonNullable<Card['pr']>>()
-const withPr = (c: Card): Card => ({ ...c, ...(prSeen.has(c.id) ? { prNow: prSeen.get(c.id)! } : {}), ...(prBaseSeen.has(c.id) ? { pr: prBaseSeen.get(c.id)! } : {}) })
+const withPr = (c: Card): Card => (prSeen.has(c.id) ? { ...c, prNow: prSeen.get(c.id)! } : c)
 
 const machinesOf = (p: Project, known: MachineInfo[]): BoardMachine[] | undefined => {
   const keys = allowedMachines(p)

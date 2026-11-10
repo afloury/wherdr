@@ -119,6 +119,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     holder,
     ...(run?.terminal ? { terminal: run.terminal } : {}),
     ...(branch ? { branch } : {}),
+    ...(task.prBase ? { pr: task.prBase } : {}),
     ...(yourTurn ? { yourTurn } : {}),
     ...(stall ? { stall } : {}),
     ...(queue ? { queue } : {}),
