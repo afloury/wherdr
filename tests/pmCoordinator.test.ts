@@ -117,8 +117,8 @@ describe('the main coordinator (WHR-398)', () => {
     expect(alfred).toMatchObject({ main: true })
     expect(alfred).not.toHaveProperty('autopilot')
     await noteTurn(store, MAIN, 'wake')
-    await refused(cli(['task', 'start', st.id], undefined, main), 'its own autopilot')
-    await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST'], undefined, main), 'its own autopilot')
+    await refused(cli(['task', 'start', st.id], undefined, main), 'only on a request from the user, sent from wherdr')
+    await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST'], undefined, main), 'only on a request from the user, sent from wherdr')
     vi.stubGlobal('defineApi', (h: unknown) => h)
     const route = (await import('../server/api/pm/autopilot.post')).default as unknown as (e: unknown, b: unknown) => Promise<unknown>
     await refused(route({}, { project: MAIN, autopilot: { on: true } }), 'Alfred has no autopilot')
@@ -259,6 +259,20 @@ describe('template edit', () => {
     expect(await store.workflowLog('CO')).toEqual(log)
     expect(await cli(['template', 'show'])).toMatchObject({ lastProposal: 'refused' })
     await refused(answerProposal(deps(), 'CO', true), 'No template change waits for you')
+  })
+
+  it('each answer sums up its own proposal only; one replaced before an answer says so', async () => {
+    // The user changed a reviewer pref in the interface before.
+    await store.saveWorkflow('CO', { ...structuredClone(company), prefs: { reviewModel: 'gpt-x' } })
+    await noteTurn(store, 'CO', 'user', 'add a v2 type')
+    const withV2 = (instructions?: string) => { const t = structuredClone(company); t.prefs = { reviewModel: 'gpt-x' }; t.taskTypes.v2 = { steps: [{ id: 'todo' }, { id: 'done' }] }; if (instructions) t.instructions = instructions; return JSON.stringify(t) }
+    await cli(['template', 'edit'], withV2('First try.'))
+    await cli(['template', 'edit'], withV2())
+    expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.answers).toEqual([expect.objectContaining({ outcome: 'replaced', by: 'coordinator CO', summary: ['all types: instructions edited', '+ type v2 (2 steps)'] })])
+    await answerProposal(deps(), 'CO', true)
+    const answers = (await coordinatorsView(store)).find(c => c.project === 'CO')!.answers!
+    expect(answers.map(a => a.outcome)).toEqual(['replaced', 'accepted'])
+    expect(answers[1]!.summary).toEqual(['+ type v2 (2 steps)'])
   })
 
   it('never changes a guard with the token, even in a user turn', async () => {
@@ -856,7 +870,7 @@ describe('commands of lot 10', () => {
     await refused(cli(['task', 'add', 'X', '--type', 'study']), 'No task type "study": feature')
     await refused(cli(['task', 'add', 'X', '--type', 'feature', '--after', 'ST-1']), 'after: tasks of the same project')
     await noteTurn(store, 'CO', 'wake')
-    await refused(cli(['task', 'add', 'Next', '--type', 'feature']), 'only with the autopilot on')
+    await refused(cli(['task', 'add', 'Next', '--type', 'feature']), 'a request from the user, sent from wherdr')
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true } })
     expect((await cli(['task', 'add', 'Next', '--type', 'feature', '--after', 'CO-1'])).task).toMatchObject({ id: 'CO-3', after: 'CO-1' })
   })

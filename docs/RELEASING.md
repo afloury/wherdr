@@ -32,7 +32,8 @@ The branch v3 is installed and built from is `config.branch` in `package.json`, 
 The plan: `v3` and `main` stay as they are until v2's last release has reached its installs.
 
 1. Release **2.6.0** from `develop` with the 2.x process below (the version whose update
-   check ignores 3.x releases).
+   check ignores 3.x releases). Its installer and Herdr plugin must install from `2.x`, not
+   `main` (`WHERDR_REF` and `--ref`): from step 5 on, `main` holds v3's stubs.
 2. Create the frozen **`2.x`** branch at the `v2.6.0` tag: `git push origin v2.6.0^{commit}:refs/heads/2.x`.
    Later 2.x fixes are tagged on `2.x`.
 3. Wait **2 to 4 weeks**.
@@ -56,10 +57,16 @@ The plan: `v3` and `main` stay as they are until v2's last release has reached i
    - the "v2 docs" links (`blob/main/…`) to `blob/2.x/…`: [README](../README.md),
      [installation](installation.md), [troubleshooting](troubleshooting.md) and
      [command](command.md);
-   - `grep -rnE -- '-b v3|origin/v3|branch=v3|blob/main' README.md docs scripts .github`
+   - in the v3 stubs, `website/public/install` (also its `git clone -b v3`),
+     `herdr-plugin.toml` and `tests/herdrPlugin.test.ts`: `blob/v3` to `blob/main`;
+   - `grep -rnE -- '-b v3|origin/v3|branch=v3|blob/main|blob/v3' README.md docs scripts .github website/public/install herdr-plugin.toml tests/herdrPlugin.test.ts`
      must then list nothing left to move.
-8. The site (`website/`, deployed from `main` by `site.yml`): its pages and the one-line
-   installer at `/install` describe v2; update them for v3 and point v2 readers to `2.x`.
+8. The site: wherdr.dev stays v2's as it is, because v3's `site.yml` runs by hand only, so
+   merging v3 into `main` deploys nothing (to redeploy v2's site, run `site.yml` on `2.x`).
+   On v3, `website/public/install` and the Herdr plugin (`herdr-plugin.toml`) only print
+   how to install v3 beside v2: a failed plugin build
+   leaves the installed v2 plugin as it was. Update the pages and `agent.md` for v3, point v2
+   readers to `2.x`, then run `site.yml` on `main`.
 
 ## Publishing a 2.x version
 

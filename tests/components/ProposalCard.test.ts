@@ -22,11 +22,14 @@ it('pending: the change in a line, Accept answers it, See all changes opens the 
   await vi.waitFor(() => expect(document.querySelector('[data-testid="proposal-changes"]')?.textContent).toContain('automatic'))
 })
 
-it('answered: the outcome, by whom and when, and no buttons', async () => {
-  w = await mountSuspended(ProposalCard, { props: { c: { project: 'CO', name: 'Company', answered: { outcome: 'refused', at: 2, by: 'user', proposedAt: 1, summary: ['task: + land'] } } } })
+it('answered: its own change, the outcome, by whom and when, and no buttons, even while another waits', async () => {
+  w = await mountSuspended(ProposalCard, { props: { c: pending, answer: { outcome: 'refused', at: 2, by: 'user', proposedAt: 1, summary: ['task: + land'] } } })
   expect(w.text()).toContain('task: + land')
+  expect(w.text()).not.toContain('automatic')
   expect(w.find('[data-testid="proposal-outcome"]').text()).toMatch(/^Refused by you · /)
   expect(w.find('button').exists()).toBe(false)
+  await w.setProps({ answer: { outcome: 'replaced', at: 3, by: 'coordinator CO', proposedAt: 1 } })
+  expect(w.find('[data-testid="proposal-outcome"]').text()).toMatch(/^Replaced by coordinator CO · /)
 })
 
 it('says who proposed it and the request behind it: in full when unfolded, with a link back to it', async () => {

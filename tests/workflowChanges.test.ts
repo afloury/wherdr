@@ -33,7 +33,7 @@ it('lists, per type, the steps added, removed and changed, and each changed fiel
     'all types: merge: you → automatic',
     'task: work holder: worker → coordinator, review instructions edited, + land, − old',
     'type tiny removed',
-    'new type big',
+    '+ type big (1 step, automatic merge)',
   ])
   expect(changeSummary(c)).toEqual(['all types: merge: you → automatic', 'and 3 more changes'])
 })
