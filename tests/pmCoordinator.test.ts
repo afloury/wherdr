@@ -11,7 +11,7 @@ import { execFileSync } from 'node:child_process'
 import { MAIN, parseCommand, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
 import { EXAMPLES, common, company as example, github } from '../shared/pm/examples'
-import { DONE_CMD } from '../shared/pm/advance'
+import { DONE_CMD, reviewFile } from '../shared/pm/advance'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import type { Finding } from '../shared/pm/verdict'
 import type { Template } from '../shared/pm/workflow'
@@ -315,6 +315,20 @@ describe('arbitration after N send-backs', () => {
     await decide(id, 'round')
     expect((await store.task(id))!.log!.at(-1)).toMatchObject({ by: 'coordinator CO', text: expect.stringContaining('coordinator chose round') })
     expect((await store.task(id))!.log!.at(-1)!.text).toContain('The finding is real and small.')
+  })
+
+  it('passes outside the options in a wake only on a spec change its reason cites', async () => {
+    const id = await atReview([[f('a')], [f('a')], [f('b')]])
+    await noteTurn(store, 'CO', 'wake')
+    await refused(decide(id, 'pass', 'The finding asks for the toggle the user dropped.'), 'may only choose round or split')
+    const at = Date.UTC(2026, 10, 9, 12)
+    await store.saveTask({ ...(await store.task(id))!, specNotes: [{ at, by: 'coordinator CO', text: 'No toggle in Settings: follow the system theme.' }] })
+    await refused(decide(id, 'pass', 'The finding contradicts what the user wants now.'), 'cites the spec change')
+    const r = await decide(id, 'pass', 'Finding b asks for a toggle: no toggle in settings, per the spec change.') as { tellUser: string }
+    expect(r.tellUser).toContain('on the spec change of 2026-11-09')
+    const saved = (await store.task(id))!
+    expect(saved.specPass).toMatchObject({ step: 'review', reason: expect.stringContaining('no toggle') })
+    expect(saved.log!.at(-1)!.text).toContain('coordinator chose pass on a spec change')
   })
 
   it('never passes a critical with proof', async () => {
@@ -898,6 +912,27 @@ describe('commands of lot 10', () => {
     await noteTurn(store, 'CO', 'user', 'tell it')
     const blocked = async (method: string, p: { text: string }) => (method === 'terminal.get' ? { status: { state: 'blocked' } } : call(method, p))
     await refused(runCommand({ store, call: blocked } as unknown as Parameters<typeof runCommand>[0], token, { argv: ['tell', task.id, 'yes'] }), 'permission request is the user\'s')
+  })
+
+  it('spec changes: task edit, task note and tell --spec reach the running agent and the reviewer\'s next prompt; never in a wake', async () => {
+    const sent: string[] = []
+    const call = async (method: string, p: { text: string }) => { if (method === 'terminal.send') sent.push(p.text); return {} }
+    const run = (argv: string[]) => runCommand({ store, call } as unknown as Parameters<typeof runCommand>[0], token, { argv })
+    const task = await store.addTask({ project: 'CO', title: 'Add a dark theme', type: 'feature', description: 'A dark theme.\nA toggle in Settings.' })
+    await store.saveRun({ id: 'r1', task: task.id, role: 'worker', program: 'claude', model: 'opus', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: 'host/t3', attempt: 1, state: 'running', startedAt: 1 })
+    await noteTurn(store, 'CO', 'wake')
+    await refused(run(['task', 'edit', task.id, '--title', 'X', '--reason', 'Why.']), 'only for a turn that comes from the user')
+    await refused(run(['tell', task.id, 'no toggle', '--spec']), 'only for a turn that comes from the user')
+    await noteTurn(store, 'CO', 'user', 'follow the system instead')
+    expect(await run(['task', 'edit', task.id, '--title', 'Follow the system theme', '--description', 'A dark theme.\nIt follows the system.', '--reason', 'The user changed their mind.'])).toMatchObject({ told: ['worker'] })
+    expect(sent.at(-1)).toMatch(/^The task's spec changed: its title is now "Follow the system theme"/)
+    expect((await store.task(task.id))!.log?.at(-1)?.text).toBe('edited the spec (The user changed their mind.):\ntitle: "Add a dark theme" → "Follow the system theme"\n- A toggle in Settings.\n+ It follows the system.')
+    await run(['task', 'note', task.id, 'Keep the light theme as default.'])
+    await run(['tell', task.id, 'No', 'toggle', 'at', 'all.', '--spec'])
+    expect(sent.at(-1)).toBe('From the project coordinator: No toggle at all.')
+    const prompt = reviewFile((await store.task(task.id))!, { worktree: '/w', branch: 'b' }, 'Review it.', '/v.json')
+    expect(prompt).toContain('# Review of CO-1: Follow the system theme\n\nA dark theme.\nIt follows the system.\n\n## Spec changes\n\nThe latest note overrides the description where they disagree.\n\n')
+    expect(prompt).toMatch(/Spec change \(\d{4}-\d\d-\d\d\): Keep the light theme as default\.\n- Spec change \(\d{4}-\d\d-\d\d\): No toggle at all\.\n/)
   })
 
   it('read: what the task\'s agent last said, its conversation else its screen, on its project only', async () => {

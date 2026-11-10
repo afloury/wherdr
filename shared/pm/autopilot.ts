@@ -1,6 +1,7 @@
 // A coordinator's autopilot: what wakes it on its own, its goal and its
 // limits, stored with the coordinator. Only the user changes it (Settings, the
 // passkey session); the coordinator reads it with `wherdr pm autopilot show`.
+import { byBoardOrder } from './boardOrder'
 import type { Run, Task } from './run'
 import type { PlannedStep } from './steps'
 import { chainState } from './advance'
@@ -86,11 +87,11 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
 export const keepsBusy = (ap: Autopilot | undefined) => !!ap?.on && ap.keepBusy !== false
 
 // The to-do tasks the engine starts by itself to keep the board busy, in
-// board order (oldest first). A chained task is startChained's (it waits for
+// board order (boardOrder.ts: the coordinator's order, then oldest first). A chained task is startChained's (it waits for
 // its 'after'), a start held for room startHeld's.
 // A task behind another one's files starts from startFileWaits (pmFiles.ts).
 export const busyQueue = (tasks: Task[]) =>
-  tasks.filter(t => t.state === 'todo' && !t.after && !t.held && !t.sameFiles && !t.step?.started).sort((a, b) => a.createdAt - b.createdAt)
+  tasks.filter(t => t.state === 'todo' && !t.after && !t.held && !t.sameFiles && !t.step?.started).sort(byBoardOrder)
 
 // The goal as a sentence in a wake's text: one final period, never two.
 export const sentence = (s: string) => (/[.!?…]$/.test(s.trim()) ? s.trim() : `${s.trim()}.`)

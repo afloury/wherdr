@@ -49,11 +49,43 @@ export function agentsAtWork(runs: Run[], tasks: Task[], machine: string, holder
 // The engine hands the worker work of its own (a catch-up, red CI) at the PR
 // head `head`: the step leaves Your turn until a push or the worker's report.
 // No head (a fix handed by a `tell --fix`): only its report, or its silence, ends it.
-export const handToAgent = (s: StepState, kind: string, head: string | undefined, now: number): StepState =>
-  ({ ...s, yourTurn: undefined, agent: { kind, ...(head ? { head } : {}), at: now, ...(s.yourTurn ?? s.agent?.was ? { was: s.yourTurn ?? s.agent?.was } : {}) } })
+// text: what it is told, kept to start it again with it should it end first.
+export const handToAgent = (s: StepState, kind: string, head: string | undefined, now: number, text?: string): StepState =>
+  ({ ...s, yourTurn: undefined, agent: { kind, ...(head ? { head } : {}), at: now, ...(s.yourTurn ?? s.agent?.was ? { was: s.yourTurn ?? s.agent?.was } : {}), ...(text ? { text } : {}) } })
 
 // That work is in: the step's Your turn, if it had one, comes back.
 export const agentBack = ({ agent, ...s }: StepState): StepState => ({ ...s, ...(agent?.was ? { yourTurn: agent.was } : {}) })
+
+// The worker the engine handed work to, as a pass sees it: running, ended
+// (its session or its terminal), on a machine that is offline, or ended on a
+// machine the user paused for the project (never started there again).
+export type WorkerNow = 'alive' | 'gone' | 'offline' | 'paused'
+export const AGENT_ENDED = 'Waits for its agent: it ended. The coordinator, or Stop then Resume, continues it'
+export const MACHINE_OFFLINE = 'Waits for its machine (offline)'
+export const MACHINE_PAUSED = 'Waits for its machine (paused)'
+
+// The work the engine handed the worker (a catch-up, red CI), this pass: its
+// worker ended, it starts again with that work, once; on a machine offline, or
+// ended again, the step says why it waits; back at work, that goes. A failed
+// action's fix is fixWatch's. Undefined: nothing to do.
+export function handedWatch(plan: PlannedStep[], s: StepState, worker: WorkerNow | undefined): { revive: true } | { waits: string } | { back: true } | undefined {
+  const work = s.agent
+  if (!work || retriesAction(plan, s) || !worker) return
+  if (worker === 'alive') return work.waits ? { back: true } : undefined
+  if (worker === 'offline' || worker === 'paused') {
+    const why = worker === 'offline' ? MACHINE_OFFLINE : MACHINE_PAUSED
+    return work.waits === why ? undefined : { waits: why }
+  }
+  if (work.text && !work.revived) return { revive: true }
+  return work.waits === AGENT_ENDED ? undefined : { waits: AGENT_ENDED }
+}
+
+// The step with why its handed work waits (undefined: it does not), and who was told.
+export const agentWaits = (s: StepState, waits: string | undefined, told?: 'coordinator' | 'user'): StepState => {
+  if (!s.agent) return s
+  const { waits: _, told: __, ...work } = s.agent
+  return { ...s, agent: { ...work, ...(waits ? { waits, ...(told ? { told } : {}) } : {}) } }
+}
 
 // A failed engine action (a push refused, a PR not opened) handed to the
 // agent with a fix: once that work is in, the engine tries the action again

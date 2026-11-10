@@ -108,6 +108,16 @@ it('a visual merge is sent back with a note', async () => {
   w.unmount()
 })
 
+it('shows the spec changes under the description, newest last', async () => {
+  const specNotes = [{ at: 1, by: 'coordinator CO', text: 'Keep the light theme.' }, { at: 2, by: 'coordinator CO', text: 'No toggle.' }]
+  const w = await mountSuspended(TaskSheet, { props: { card: { ...card, yourTurn: undefined, description: 'A dark theme.', specNotes } }, global: { stubs } })
+  await w.get('[data-tab="description"]').trigger('click')
+  const html = w.get('[data-testid="task-panel"]').html()
+  expect(html.indexOf('task-description')).toBeLessThan(html.indexOf('task-spec-notes'))
+  expect(w.findAll('.task-spec-note').map(n => n.text().split(' ').slice(-2).join(' '))).toEqual(['light theme.', 'No toggle.'])
+  w.unmount()
+})
+
 it('renders the description as Markdown, with no raw HTML', async () => {
   const description = 'Intro with **bold** and `npm test`.\n\n- one\n- two\n\n<img src=x onerror="alert(1)"><script>alert(2)</script><b style="color:red">raw</b>'
   const w = await mountSuspended(TaskSheet, { props: { card: { ...card, yourTurn: undefined, description } }, global: { stubs } })
@@ -155,4 +165,38 @@ it('a merge step shows the worker\'s and the reviewer\'s notes, full width, fold
   expect(notes.get('[data-note="review"]').attributes('aria-selected')).toBe('true')
   tall.mockRestore()
   w.unmount()
+})
+
+// An approved merge, from the task the server keeps: the same on any device and after a reload.
+const approvedCard = (step: Partial<StepState>, more: Partial<Task> = {}) => cardOf({
+  id: 'WHR-3', project: 'WHR', title: 'Approved', description: '', type: 'visual', state: 'working', createdAt: 1,
+  step: at(4, { approved: { by: 'user', at: 1 }, shots: { work: [{ file: 'aaaaaaaaaaaa.png', phase: 'after', at: 1 }] }, ...step }), ...more,
+}, plan, [])
+
+it('an approved merge keeps Merge loading with what it waits for, until it merges or fails', async () => {
+  // Second in the merge queue, its last try refused by the queue (not the user's): loading, no Try again.
+  const queued = approvedCard({ yourTurn: { reason: 'action', badge: 'Merge: merge: checks still running', error: 'merge: checks still running' } }, { queue: 2 })
+  for (let reload = 0; reload < 2; reload++) {
+    const w = await mountSuspended(TaskSheet, { props: { card: queued }, global: { stubs } })
+    expect(w.get('[data-testid="task-todo"]').attributes('data-todo')).toBe('merge')
+    expect(w.get('[data-testid="step-user"]').attributes('disabled')).toBeDefined()
+    expect(w.get('[data-testid="step-user-waits"]').text()).toBe('Waiting: 2nd in merge queue')
+    expect(w.find('[data-testid="task-retry"]').exists()).toBe(false)
+    w.unmount()
+  }
+  // Its machine offline: said under the button.
+  const offline = await mountSuspended(TaskSheet, { props: { card: { ...approvedCard({}), held: 'its machine is offline' } }, global: { stubs } })
+  expect(offline.get('[data-testid="step-user-waits"]').text()).toBe('Waiting: its machine is offline')
+  offline.unmount()
+  // Merged: no longer Your turn, no button.
+  const merged = await mountSuspended(TaskSheet, { props: { card: approvedCard({ done: true }) }, global: { stubs } })
+  expect(merged.find('[data-testid="task-todo"]').exists()).toBe(false)
+  expect(merged.find('[data-testid="step-user"]').exists()).toBe(false)
+  merged.unmount()
+  // Failed, out of the queue: the user's again, Try again enabled with the reason in plain words.
+  const failed = await mountSuspended(TaskSheet, { props: { card: approvedCard({ yourTurn: { reason: 'action', badge: 'Merge: merge: 2 check(s) failed', error: 'merge: 2 check(s) failed' } }) }, global: { stubs } })
+  expect(failed.get('[data-testid="task-retry"]').attributes('disabled')).toBeUndefined()
+  expect(failed.get('[data-testid="task-badge"]').text()).toContain('2 check(s) failed')
+  expect(failed.find('[data-testid="step-user-waits"]').exists()).toBe(false)
+  failed.unmount()
 })

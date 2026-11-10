@@ -112,7 +112,10 @@ its folder, branches and task worktrees stay on the machine.
   machine with the largest share of memory and cores left after it) or *Home
   first* (other machines only once home is full). A machine fits a task when
   its free memory covers the task's estimate plus the machine's reserve
-  (Settings › Machines). A task that waits for room names it, and so does the
+  (Settings › Machines). An idle machine (no wherdr agent at work there) always
+  takes one task its RAM can hold, even with less free memory than that: the
+  reserve only holds its second task and beyond; on macOS a *critical* memory
+  pressure still holds every task. A task that waits for room names it, and so does the
   coordinator's `autopilot show`. A task too big for every machine it may use
   (their RAM less the reserve is under its estimate) runs on the best one
   instead of waiting forever, and its log says so once. A worker started
@@ -325,7 +328,7 @@ for goes at once, with a word when it goes past one (*started; past the
 autopilot's limit of 3 at once*), and still counts in them.
 
 **Keep the board busy** (on by default while the autopilot is on): the engine
-itself starts the next task to do, oldest first, whenever a machine the project
+itself starts the next task to do, in [board order](#board-order), whenever a machine the project
 allows has room, within the autopilot's limits, hours and pace. It never starts
 a task that waits for its *after* tasks (those start once they are done), nor
 one already under way, and each start goes in the task's log (*started by the
@@ -438,6 +441,54 @@ task type's `weight` when the workflow sets one, else heavy when a worker step
 asks for screenshots, light when the type lands no code (no commit, link or git
 action), standard otherwise. The coordinator does the same with `task add
 --weight`, and `show <task>` gives it.
+
+### Board order
+
+Each column lists its cards in board order: the tasks the coordinator put
+first, in the order it gave, then the others, oldest first. Ask the
+coordinator (or Alfred) to order them, for example the tasks waiting for a
+merge in the order they should merge: it runs `wherdr pm task order <task>
+[<task>…]`, which puts these tasks first in their column, in this order, and
+leaves the others in their order after them. A done task is refused. The order
+is the same for everyone and survives a restart; the project's log says who
+ordered what. In a wake, the coordinator orders the board only with the
+autopilot on.
+
+Keep the board busy starts to-do tasks in this order, the merge queue takes
+approved merges in it when several are ready at once, and `wherdr pm list`
+returns tasks in it.
+
+### Spec changes
+
+When you change your mind about a task while it runs, the coordinator records
+the change in the task's spec, so the reviewer reviews against what you want
+now, not the first description:
+
+- `wherdr pm task edit <task> [--title "<text>"] [--description "<text>"]
+  --reason "<one sentence>"` rewrites the title or the description. The
+  task's log keeps the reason and a short diff of the old and new text.
+- `wherdr pm task note <task> "<text>"` adds a dated spec change under the
+  description.
+- `wherdr pm tell <task> "<text>" --spec` tells the agent and records the same
+  text as a spec change.
+
+The worker's and the reviewer's instructions give the description, then every
+spec change, newest last, with the rule *the latest note overrides the
+description where they disagree*. A running agent of the task is told at once;
+the next ones read it from their step or review round. The task sheet's
+Description tab shows the spec changes under the description. The coordinator
+makes these changes only in a turn that comes from you, never in a wake.
+
+When a review still fails after several send-backs on findings that
+contradict a spec change, the coordinator may pass it, even in a wake and even
+when the engine does not offer *pass*: `wherdr pm task decide <task> pass
+--reason "<one sentence>"`, the reason citing the spec change (its date,
+`YYYY-MM-DD`, or its words). wherdr refuses it when the task has no spec
+change or the reason cites none, and then the choice stays yours. It only ends
+the review loop: a merge only you may do still waits for you, and a critical
+finding with proof stays yours. The pass is
+written to the task's log, the coordinator tells you in its next message, and
+*Decisions* shows it for a day under *Passed on a spec change*.
 
 ### Tasks that touch the same files
 
@@ -590,14 +641,23 @@ task's own changes to interface files (`components`, `assets`, `pages` and
 `layouts` folders) differ from those you approved; what a merge of the base
 brought does not count.
 
+Until the merge ends, *Merge* stays loading, on the card in *Your turn* and in
+the task sheet, with what it waits for under it: its place in the merge queue,
+its checks running, an update with its base, or its machine coming back
+online. This comes from the approval wherdr keeps, so it is the same after a
+reload and on every device. Once merged, the task leaves *Your turn*; if the
+merge fails or is refused, *Try again* comes back with the reason in plain
+words.
+
 #### The merge queue
 
 Each project has a **merge queue**: every task whose merge may go on without
 you (a merge the guards give to wherdr, or one you approved) enters it. Only
 PRs ready to merge now stand in line: no conflict, no update required, the
 task's last commit on the PR and its checks green. The first in line merges,
-then the next one, a minute apart; PRs that touch no file another queued PR
-touches come first, then smaller changes.
+then the next one, a minute apart; the tasks the coordinator put first on the
+board come first, in [board order](#board-order), then PRs that touch no file
+another queued PR touches, then smaller changes.
 
 A PR that needs work steps out of line until it is ready again, so it never
 holds up the others: a conflict with its base, checks still running or red,
@@ -814,10 +874,31 @@ commits need a review), wherdr starts the worker or the reviewer again in the
 same worktree, with a note on where the work stands. The task's log says when
 its agents were ended and started again.
 
+The same goes when you answer and the task moves on: a review decision (*pass*,
+say), *Send back*, *Try again* or a merge you confirm hands the next step to
+its worker or reviewer, which wherdr starts again at once. As a safety net,
+wherdr also watches every task under way: when the agent that holds its
+current step has not been running for 3 minutes (released, ended on its own,
+or gone in a wherdr restart), wherdr starts it again in its worktree, with a
+note on where the work stands, and the log says so. When it cannot, the card's
+status says why (*Waits for its machine (offline)*, *Waits for its machine
+(paused)*, no room on the machine), wherdr tries again every 3 minutes, and at
+the second failure the project's coordinator is woken once (its autopilot on).
+A start wherdr refuses (the agent's program missing, say) puts the task in
+*Your turn* with the reason.
+
 When wherdr hands the worker work of its own (a catch-up with the base branch,
 a CI fix), the task leaves *Your turn* and its card says *the agent is
 updating the PR*: its agents are never ended while wherdr waits for that work.
-The task is yours again once the worker pushes or says it is done. Before it
+The task is yours again once the worker pushes or says it is done. If the
+worker has ended when wherdr hands it that work, or ends before it pushes,
+wherdr starts it again in its worktree with the same message, once. When it
+cannot (its machine is offline, paused for the project or has no room, or the
+worker ended again), the card says why it waits instead, for example *Waits
+for its machine (offline)*, *Waits for its machine (paused)* or *Waits for its agent: it ended. The coordinator, or Stop then Resume,
+continues it*, and the project's coordinator is woken once with that reason
+(its autopilot on); with no coordinator to wake, the task goes to *Your turn*.
+Once the machine is back (online, or switched on again), wherdr starts the worker again by itself. Before it
 ends a task's agents, wherdr pushes the commits the branch has not pushed yet;
 if the push fails, the agents stay and the log says why.
 

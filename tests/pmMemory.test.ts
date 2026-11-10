@@ -18,8 +18,10 @@ describe('the memory hold', () => {
   it('holds under the free memory threshold, over 90 % of swap, or at the cap', () => {
     const mem = (free: number, swapFree = 4) => parseLinux(meminfo(16, free, 4, swapFree))
     expect(memoryShort(mem(8), DEFAULT_MEMORY, 0)).toBeUndefined()
-    expect(memoryShort(mem(1.5), DEFAULT_MEMORY, 0)).toBe('1.5 GB free, under 2.4 GB')
-    expect(memoryShort(mem(8), { minFreeMb: 10 * GB }, 0)).toBe('8.0 GB free, under 10.0 GB')
+    expect(memoryShort(mem(1.5), DEFAULT_MEMORY, 1)).toBe('1.5 GB free, under 2.4 GB')
+    expect(memoryShort(mem(8), { minFreeMb: 10 * GB }, 1)).toBe('8.0 GB free, under 10.0 GB')
+    // Idle: the reserve holds only its second task.
+    expect(memoryShort(mem(1.5), DEFAULT_MEMORY, 0)).toBeUndefined()
     expect(memoryShort(mem(8, 0.2), DEFAULT_MEMORY, 0)).toBe('swap 95 % used')
     // Default cap: one agent per 1.5 GB of RAM (16 GB: 10).
     expect(agentCap(DEFAULT_MEMORY, mem(8))).toBe(10)

@@ -7,7 +7,7 @@ import { WATCH, actionField, type Evidence, type Holder, type Step, type StepAct
 import { mayMerge } from './guards'
 import { taskGuards } from './actions'
 import { shotsMissing, shotsText, shotMode, type Shot } from './shots'
-import { advise, blocking, reviewText, sendBackText, type Advice, type Choice, type Finding, type Round } from './verdict'
+import { advise, blocking, weight, reviewText, sendBackText, type Advice, type Choice, type Finding, type Round } from './verdict'
 
 // text: what the holder is told at the start. guarded: a merge only the user may do.
 export interface PlannedStep extends Step { text: string, guarded?: true }
@@ -21,7 +21,9 @@ export interface YourTurn { reason: 'user' | 'timeout' | 'rounds' | 'action', ba
 // step's Your turn (`was`) waits until the PR head moves from `head` or the
 // worker reports. A failed action is then tried again (release.ts retriesAction);
 // idle: since when its agent sits idle, its report not in (fixWatch).
-export interface AgentWork { kind: string, head?: string, at: number, was?: YourTurn, idle?: number }
+// text: what the worker was told, to start it again with it; waits: why it cannot do it now (release.ts handedWatch);
+// revived: when the engine started it again for it; told: who was told it waits (the coordinator's wake, else the user).
+export interface AgentWork { kind: string, head?: string, at: number, was?: YourTurn, idle?: number, text?: string, waits?: string, revived?: number, told?: 'coordinator' | 'user' }
 
 export interface StepState {
   at: number // index of the current step
@@ -68,8 +70,9 @@ export type StepEvent =
   // The reviewer's findings (parseFindings); diffLines: the task's diff size, measured by the server.
   // head: the commit the reviewer read, recorded as that step's commit.
   | { kind: 'verdict', from: Holder, findings: Finding[], diffLines?: number, head?: string }
-  // The choice after N send-backs. The coordinator gives its reason, and only picks among the advice's options.
-  | { kind: 'decide', by: 'user' | 'coordinator', choice: Choice, note?: string }
+  // The choice after N send-backs. The coordinator gives its reason, and only picks among the advice's options;
+  // spec: a pass on a spec change its reason cites (checked by the server), even outside them.
+  | { kind: 'decide', by: 'user' | 'coordinator', choice: Choice, note?: string, spec?: true }
   | { kind: 'user', engine?: true } // the step's button, or "it is merged" said by the user; engine: run again by the engine
   // toAgent: the worker has to fix it (a conflict): the task goes back to its step.
   // review: new commits since the reviewed one: back to the review step, for them only.
@@ -281,11 +284,16 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
     case 'decide': {
       const advice = state.yourTurn?.reason === 'rounds' ? state.yourTurn.advice : undefined
       if (!advice) return refuse('Nothing to decide')
-      if (ev.by === 'coordinator' && !advice.options.includes(ev.choice))
+      // A pass on a spec change only ends the review loop: a guarded merge stays the user's.
+      const onSpec = ev.by === 'coordinator' && ev.spec && ev.choice === 'pass' && !advice.options.includes('pass')
+      if (onSpec && plan[state.at + 1]?.guarded) return refuse('The next step is a merge only the user may do: this one is for the user')
+      // Nor does it lift the critical guard: a critical finding with proof stays the user's.
+      if (onSpec && state.reviews?.[step.id]?.at(-1)?.findings.some(f => weight(f) === 'critical')) return refuse('A critical finding with proof is for the user')
+      if (ev.by === 'coordinator' && !advice.options.includes(ev.choice) && !onSpec)
         return refuse(advice.options.length ? `The coordinator may only choose ${advice.options.join(' or ')}` : 'This one is for the user')
       if (ev.by === 'coordinator' && !ev.note?.trim()) return refuse('Give the reason of the choice')
       if (ev.choice === 'swap' && state.swapped?.[step.id]) return refuse('The agent was already changed once')
-      effects.push({ kind: 'log', text: `${step.id}: ${ev.by} chose ${ev.choice} (advice: ${advice.outcome}, ${advice.why})${ev.note?.trim() ? `. ${ev.note.trim()}` : ''}` })
+      effects.push({ kind: 'log', text: `${step.id}: ${ev.by} chose ${ev.choice}${onSpec ? ' on a spec change' : ''} (advice: ${advice.outcome}, ${advice.why})${ev.note?.trim() ? `. ${ev.note.trim()}` : ''}` })
       const history = state.reviews![step.id]!, last = history.at(-1)!
       const named = advice.findings.length ? last.findings.filter(f => advice.findings.includes(f.id)) : last.findings
       const done = { ...state, yourTurn: undefined }
