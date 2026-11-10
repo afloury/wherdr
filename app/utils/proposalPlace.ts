@@ -7,7 +7,10 @@
 export interface PlacedBlock { k: string, key: string, ms?: number }
 
 export function proposalSpot(blocks: PlacedBlock[], at: number, opens: (b: PlacedBlock) => boolean): string | null {
-  const start = blocks.findLastIndex(b => opens(b) && (b.ms ?? 0) <= at)
+  // A block without a time (a "!" or "/" command…) takes the last time before it.
+  let last = 0
+  const times = blocks.map(b => (last = b.ms ?? last))
+  const start = blocks.findLastIndex((b, i) => opens(b) && times[i]! <= at)
   // Its turn is older than the first one loaded.
   if (start < 0 && blocks.some(opens)) return null
   const next = blocks.findIndex((b, i) => i > start && opens(b))
