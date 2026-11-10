@@ -21,7 +21,7 @@ import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
 import { allowedMachines, machineNamed, taskMachine, type Project } from '../../shared/pm/project'
 import { projectOf, showIds, shownKey, shownTaskId } from '../../shared/pm/projectKey'
-import { taskPlan, waitOf, type Task } from '../../shared/pm/run'
+import { taskPlan, trustKeys, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { CREATE_SCRIPT, WRITE_SCRIPT, exec, startTask } from './pmLaunch'
@@ -739,6 +739,8 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
     labels: { 'wherdr.install': await deps.store.install(), 'wherdr.coordinator': key },
     line: `${PATH_SETUP}; export PATH=${quote(`${c.folder}/bin`)}:"$PATH"; exec ${argv.map(quote).join(' ')}`,
   }, 30000)
+  // Its folder is wherdr's own, new at its first start: its trust dialog is answered here.
+  void answerOwnTrust(deps, address, c.folder).catch(() => {})
   // Typed once the program is ready (in the background: it may wait on a dialog).
   if (!asArg) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
@@ -748,4 +750,21 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   // This conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
   return { terminal: address, folder: c.folder }
+}
+
+// The folder trust dialog (Claude's, Codex's) on the coordinator's own folder,
+// which wherdr made: answered once, so a first start does not stop on it.
+// Watches until the agent is ready or gone, at most readyWatchMs (30 s).
+export async function answerOwnTrust(deps: CoreAdminDeps, address: string, folder: string) {
+  const end = Date.now() + (deps.readyWatchMs ?? 30_000)
+  while (Date.now() < end) {
+    const t = await deps.call<{ state?: string, status?: string | { state?: string } | null }>('terminal.get', { terminal: address }, 3000).catch(() => null)
+    const state = typeof t?.status === 'string' ? t.status : t?.status?.state
+    if (!t?.state || t.state === 'finished' || state === 'idle' || state === 'working') return false
+    const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: address, lines: 30 }, 3000).catch(() => null))?.text || '')
+    const keys = trustKeys(screen, folder)
+    if (keys) return deps.call('terminal.keys', { terminal: address, keys }, 10000).then(() => true)
+    await new Promise(r => setTimeout(r, deps.pollMs ?? 500))
+  }
+  return false
 }

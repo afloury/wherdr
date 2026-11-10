@@ -6,6 +6,8 @@ import SetupButton from '~/components/SetupButton.vue'
 import type { PmOverview } from '#shared/pm/project'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import { vibe } from '#shared/pm/examples'
+import { herdrState } from '~/composables/useHerdr'
+import type { Pane } from '#shared/types'
 
 // What the fake server answers; each case sets it before mounting.
 let overview: PmOverview
@@ -29,7 +31,9 @@ const project = (key: string, template?: string) => ({ key, name: key, machine: 
 const task = (p: string) => ({ id: `${p}-1`, project: p, title: 'First', type: 'simple' }) as unknown as NonNullable<PmOverview['tasks']>[number]
 
 let mounted: { unmount: () => void } | null = null
-afterEach(() => { mounted?.unmount(); mounted = null; coords = []; added = null })
+afterEach(() => { mounted?.unmount(); mounted = null; coords = []; added = null; herdrState.value = { ok: false, panes: [], workspaces: [] } })
+// The coordinator's live pane, as herdr-core shows it.
+const coordPane = (status: Pane['status']) => ({ id: 'w1:p1', coreAddress: 'host/t1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'claude', name: null, label: null, status, title: null, cwd: null, agentSession: null }) as Pane
 
 // The newest match: a sheet of the previous case may still be closing.
 const $ = (id: string) => [...document.querySelectorAll<HTMLElement>(`[data-testid="${id}"]`)].pop()
@@ -68,6 +72,14 @@ it('resumes at the first step left, and Back goes through the steps in order', a
 it('opens on the project asked, past the last step once all are done', async () => {
   overview = { enabled: true, projects: [project('API'), project('WEB', 'vibe')], templates: [], tasks: [task('WEB')] }
   coords = [{ project: 'WEB', terminal: 'host/t1' }]
+  // Its pane not shown yet, then asking: step 5, with its answer button; running: done.
+  await wizard({ project: 'WEB' })
+  await vi.waitFor(() => expect(stepShown()).toBe('coordinator'))
+  herdrState.value = { ok: true, panes: [coordPane('blocked')], workspaces: [] }
+  await vi.waitFor(() => expect($('setup-open')).toBeTruthy())
+  expect($('setup-next')!.hasAttribute('disabled')).toBe(true)
+  mounted!.unmount()
+  herdrState.value = { ok: true, panes: [coordPane('idle')], workspaces: [] }
   await wizard({ project: 'WEB' })
   await vi.waitFor(() => expect(stepShown()).toBe('done'))
   expect($('setup-complete')).toBeTruthy()
