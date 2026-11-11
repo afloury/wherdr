@@ -18,6 +18,7 @@ import { actionShell, dropMergedBranch, runAction } from './pmActions'
 import type { CoreAdminDeps } from './coreCreate'
 import { runOn } from './pmLaunch'
 import { HerdrError } from './herdr'
+import { localMachineLabel } from './machines'
 import type { PmStore } from './pmStore'
 import { archiveDays, archiveDue, archivedMatch, archivedText, doneAt } from '../../shared/pm/archive'
 
@@ -49,7 +50,7 @@ async function cardsOf(store: PmStore, tasks: Task[], known: MachineInfo[]): Pro
   return tasks.map((task) => {
     const p = projects.find(x => x.key === task.project)
     // A project with several machines: the card names the one its task went to.
-    const on = task.machine !== undefined && p && allowedMachines(p).length > 1 ? known.find(m => m.key === task.machine)?.label ?? (task.machine || 'Local') : undefined
+    const on = task.machine !== undefined && p && allowedMachines(p).length > 1 ? known.find(m => m.key === task.machine)?.label ?? (task.machine || localMachineLabel()) : undefined
     return withPr({ ...shownTexts(projects, cardOf(task, planOf(templates.get(task.project) ?? null, task, p), runs)), shown: shownTaskId(projects, task.id), ...(p?.color ? { color: p.color } : {}), ...(on ? { machine: on } : {}), ...(task.sameFiles && task.state === 'todo' ? { sameFiles: shownTaskId(projects, task.sameFiles) } : {}) })
   })
 }

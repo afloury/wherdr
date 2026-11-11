@@ -56,13 +56,14 @@ const recents = computed(() => (machineCfg.value ? machineCfg.value.dirs : appCo
 function syncKind() {
   const list = machineList.value
   if (fixedMachine.value) machine.value = machineOf(fixedMachine.value)
-  else if (list && !list.some(m => m.key === machine.value && online(m))) {
-    const last = list.find(m => m.key === lastMachine.value && online(m))
-    setMachine(last ? last.key : '')
-  } else if (!list && machine.value) setMachine('')
+  else if (list && !isOnline(machine.value)) setMachine(defaultMachine())
+  else if (!list && machine.value) setMachine('')
   kind.value = selectedAgentKind(kind.value, kinds.value)
   if (!dir.value) dir.value = recents.value[0] || home.value || '~'
 }
+const isOnline = (k: string) => !!machineList.value?.some(m => m.key === k && online(m))
+// The current machine tab's first online machine (utils/machineBar.ts).
+const defaultMachine = () => tabMachine(machineBarSelection.value, isOnline, lastMachine.value)
 function setMachine(k: string) {
   if (machine.value === k) return
   machine.value = k
@@ -93,7 +94,7 @@ watch(newAgentOpen, async (open) => {
   await loadConfig()
   // Opened from a machine's "…" menu: that machine, once its config (home) is in.
   const want = newAgentMachine.value
-  if (!fixedMachine.value && want !== null && machineList.value?.some(m => m.key === want && online(m))) setMachine(want)
+  if (!fixedMachine.value && machineList.value) setMachine(want !== null && isOnline(want) ? want : defaultMachine())
   syncKind()
 })
 // A machine (re)connects while the sheet is open: its home folder.

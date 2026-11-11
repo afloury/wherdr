@@ -112,8 +112,9 @@ can keep out of the project's repository (a deny rule for Claude, the sandbox fo
 
 ### Machines as tabs
 
-The **machine tabs** at the top of the list are **All**, then one tab per machine (this core and
-each core machine, online or offline) with its count: the total of its counters (its rows,
+The **machine tabs** at the top of the list are **All**, then one tab per machine (the host, the
+machine wherdr runs on, shown by its host name with a **HOST** badge, and each core machine,
+online or offline) with its count: the total of its counters (its rows,
 Alfred and its coordinators). A tap shows that machine alone, with its projects' coordinators
 and tasks to handle,
 with its Claude and Codex quotas at the top; an offline or reconnecting machine says so there.
@@ -137,7 +138,8 @@ not filtered by tab; the board is, when its picker follows the machine tab.
 
 - **New** opens a sheet: an agent (Claude Code, Codex…, those installed on that machine and offered
   in Settings › Agents, in the order set there: the first is preselected) or
-  a plain terminal, the machine, a folder (recent folders, a folder browser, Git detection), a
+  a plain terminal, the machine (the last one you picked when it is online and on the current
+  machine tab, else the tab's first online machine; on **All**, the host), a folder (recent folders, a folder browser, Git detection), a
   name, **resume** the last conversation, and an optional first message. The terminal is started
   by core in that folder; it joins the space whose folder holds it, else a new space.
 - **+** in a space's tab row starts at once a terminal like the space's current one (same kind,
