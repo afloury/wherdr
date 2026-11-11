@@ -8,7 +8,8 @@ import { randomUUID } from 'node:crypto'
 import { MAIN, coordinatorBy, coordinatorWake } from '../../shared/pm/coordinator'
 import { LOOK_REASON, SKIP_WHY, quietEvents, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
 import { projectPace } from './pmPace'
-import { currentStep, durationMs } from '../../shared/pm/steps'
+import { currentStep, durationMs, pauseClock } from '../../shared/pm/steps'
+import { clockStops } from '../../shared/pm/blocked'
 import { taskPlan } from '../../shared/pm/run'
 import { due as isDue, parseSchedule } from '../../shared/pm/schedule'
 import { addSkip, enqueue, tickWakes, wakesFor, wakeText, type CoordStatus, type Wake, type WakeSkip } from '../../shared/pm/wakes'
@@ -66,7 +67,10 @@ async function gather(deps: WakeDeps, now: number) {
     const t = templates.get(task.project)
     if (!task.step?.started || task.step.done || !t) continue
     const plan = taskPlan(t, task, projects.find(p => p.key === task.project))
-    const w = coordinatorWake(plan, task.step, now)
+    // Its holder cannot work (machine offline, an incident, no room): the step's clock stops.
+    const run = runs.filter(r => r.task === task.id && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
+    const m = run && deps.machines().find(x => x.key === run.machine)
+    const w = coordinatorWake(plan, pauseClock(task.step, clockStops(task, !!m && !m.local && m.status !== 'online'), now), now)
     if (JSON.stringify(w.state) === JSON.stringify(task.step)) continue
     // No coordinator: the tick still counts (timeouts), the step start stays to announce.
     const has = !!(await store.coordinator(task.project))?.terminal

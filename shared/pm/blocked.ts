@@ -9,6 +9,7 @@
 // task.idle, task.stalls), the board computes from it.
 import { durationMs, type PlannedStep } from './steps'
 import type { Task } from './run'
+import { recovering } from './incident'
 
 // Red CI sent to the agent, still red on that same commit, no other engine move.
 export const RED_CI_WAIT_MS = 10 * 60_000
@@ -109,3 +110,9 @@ export const nudgeText = (s: Stall, tests: string[] = []) => s.cause.startsWith(
 
 // What the board says of a stalled task once it is the user's.
 export const stallTurn = (s: Stall) => `Stalled: ${s.reason}`
+
+// The step's holder cannot work (pauseClock): the task waits for room, a machine
+// or the pace (held), for the engine to resume it after an incident, or the
+// machine its agent runs on is offline or unreachable.
+export const clockStops = (task: Pick<Task, 'state' | 'run' | 'recovery' | 'stopped' | 'waitKind' | 'held'>, machineOffline: boolean) =>
+  machineOffline || recovering(task) || (!!task.held && (task.state === 'todo' || task.state === 'working'))
