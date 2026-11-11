@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { summaryTick } from '../server/utils/pmSummary'
+import { TLDR_PROMPT } from '../shared/pm/summary'
 import { company } from '../shared/pm/examples'
 import { initialState } from '../shared/pm/steps'
 import type { Task } from '../shared/pm/run'
@@ -46,14 +47,15 @@ function fakeStore(tasks: Task[]) {
 }
 
 describe('summaryTick (the TL;DR)', () => {
-  it('sends the title, description, reports, files and Merge, masked, no file contents', async () => {
+  it('sends the title, description, reports and files, masked, no file contents nor the Merge', async () => {
     const store = fakeStore([task('CO-1')])
     const prompts: string[] = []
     const summarize = async (p: string) => { prompts.push(p); return '\n- Adds a CSV export.\n- Review: a missing test, added.\n\n' }
     await summaryTick({ store, summarize, pace: go }, 5000)
     expect(prompts).toHaveLength(1)
     const p = prompts[0]!
-    for (const s of ['Export to CSV', 'Add an export', 'Built the CSV export.', 'No test for empty rows', '- src/csv.ts +40 -2', 'merges the PR into develop', '[home path]']) expect(p).toContain(s)
+    for (const s of ['Export to CSV', 'Add an export', 'Built the CSV export.', 'No test for empty rows', '- src/csv.ts +40 -2', '[home path]']) expect(p).toContain(s)
+    expect(p).not.toContain('merges the PR')
     expect(p).not.toContain('SECRET FILE')
     expect(p).not.toContain(HOME)
     expect(p).not.toContain(TOKEN)
@@ -109,5 +111,23 @@ describe('summaryTick (the TL;DR)', () => {
     expect(n).toBe(1) // CO-4 has no report: nothing to write
     expect((await store.task('CO-3'))!.tldrHeld).toBeUndefined()
     expect((await store.task('CO-4'))!.tldr).toBeUndefined()
+  })
+
+  it('asks for plain words: what changes, what to look at, anything wrong; not how it was checked nor the Merge', () => {
+    for (const s of ['not a developer', 'Plain words', 'What changes for you:', 'What to look at:', 'Anything wrong:', 'Never name a file, function', 'no code formatting', 'Leave out how it was checked', 'what merging does', 'at most 5 lines']) expect(TLDR_PROMPT).toContain(s)
+    expect(TLDR_PROMPT).not.toMatch(/what the Merge does|the risks/i)
+  })
+
+  it('writes the TL;DR of an open task from an older prompt again once, even a day old; not a done one', async () => {
+    const old = { key: '111 2|no-test|', text: 'old style', at: 1 }
+    const done = task('CO-7')
+    const store = fakeStore([{ ...task('CO-6'), tldr: old }, { ...done, tldr: old, step: { ...done.step!, done: true } }])
+    let n = 0
+    const summarize = async () => `new ${++n}`
+    const day = 2 * 86_400_000
+    for (let i = 0; i < 3; i++) await summaryTick({ store, summarize, pace: go }, day)
+    expect(n).toBe(1)
+    expect((await store.task('CO-6'))!.tldr?.text).toBe('new 1')
+    expect((await store.task('CO-7'))!.tldr?.text).toBe('old style')
   })
 })
