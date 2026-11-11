@@ -223,7 +223,7 @@ export async function startWorkerFor(deps: PmLaunchDeps, id: string, by = 'user'
     ? `The PR conflicts with ${base}. Merge origin/${base} into your branch, resolve the conflicts, commit, then stop: the engine pushes it.`
     : redCiText(['the PR'], task!.ci?.head ?? 'HEAD'))
   const kind = s.agent?.kind ?? (base ? 'catch-up' : 'ci-to-agent')
-  if (await workerNow(deps, run) === 'alive') await deps.call('terminal.send', { terminal: run.terminal, text }, 30000)
+  if (await workerNow(deps, run) === 'alive') await deps.call('terminal.send', { terminal: run.terminal, text: showIds(await store.projects(), text) }, 30000)
   else {
     if (run.state !== 'ended') await store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
     let hold: string | undefined
