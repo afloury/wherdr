@@ -15,25 +15,25 @@ import { reviewerPlan, workerPlan, type Task } from '#shared/pm/run'
 import { actionLabel, describeStep } from '#shared/pm/describe'
 import { DEFAULT_ROUNDS } from '#shared/pm/steps'
 import { isPrMerge, type Evidence, type Template } from '#shared/pm/workflow'
-import { stepMarks, taskImpact, type ChangeKind, type FieldChange, type WorkflowChanges } from '#shared/pm/workflowChanges'
+import { stepMarks, taskImpact, type ChangeKind, type FieldChange, type StepMark, type WorkflowChanges } from '#shared/pm/workflowChanges'
 
 const props = defineProps<{ workflow: Template, type: string, base?: string, coordinator?: string, changes?: WorkflowChanges, compact?: boolean }>()
 
 type Kind = 'agent' | 'engine' | 'you' | 'edge'
 const PROOF: Record<Evidence, string> = { 'link': 'Link', 'commit': 'Commit', 'report': 'Report', 'proposed-tasks': 'Proposed tasks', 'screenshots': 'Screenshots' }
 
-const marks = computed(() => (props.changes ? stepMarks(props.changes, props.type) : new Map()))
+const marks = computed(() => (props.changes ? stepMarks(props.changes, props.type, props.workflow) : new Map<string, StepMark>()))
 // The proposed steps, the removed ones back where they stood.
 const plan = computed(() => {
   const steps = planSteps(props.workflow, { type: props.type }, props.base)
   if (!marks.value.size) return steps
   const by = new Map(steps.map(s => [s.id, s]))
-  return [...marks.value].map(([id, m]) => by.get(id) ?? ({ id, holder: m.holder, text: '' } as PlannedStep))
+  return [...marks.value].map(([id, m]) => by.get(id) ?? ({ id, holder: m.holder, ...(m.ends ? { ends: m.ends } : {}), ...m.step, text: '' } as PlannedStep))
 })
 const DIFF: Partial<Record<ChangeKind, string>> = { added: 'Added', removed: 'Removed', changed: 'Changed', moved: 'Moved' }
 const FIELD: Record<string, string> = { holder: 'Holder', ends: 'Ends', action: 'Action', rounds: 'Rounds', timeout: 'Timeout', agent: 'Agent', model: 'Model', reviewAgent: 'Agent', reviewModel: 'Model', reviewFallbackAgent: 'Fallback agent', reviewFallbackModel: 'Fallback model', sendBack: 'Sends back to', evidence: 'Proofs' }
 const fieldText = (f: FieldChange) => (f.field === 'instructions' ? tl('Instructions edited') : `${tl(FIELD[f.field] ?? f.field)}: ${f.before ?? tl('none')} → ${f.after ?? tl('none')}`)
-const impact = computed(() => (props.changes ? tl(taskImpact(props.changes, props.type)) : ''))
+const impact = computed(() => (props.changes ? tl(taskImpact(props.changes, props.type, props.workflow)) : ''))
 const guards = computed(() => taskGuards(props.workflow, props.type))
 const agentOf = (r: { program: string, model: string } | { reason: string }) =>
   'reason' in r ? tl('not set') : `${kindLabel(r.program)} · ${r.model}`

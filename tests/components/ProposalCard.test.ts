@@ -80,6 +80,9 @@ it('draws the proposed workflow small, its added, removed and changed steps mark
   expect(card.find('[data-step="review"] [data-testid="wf-delta"]').text()).toContain('Model: opus → haiku')
   expect(card.find('[data-step="review"] [data-testid="wf-delta"]').text()).toContain('Rounds: 2 → 3')
   expect(card.find('[data-testid="wf-impact"]').text()).toBe('For feature tasks: review changes its rounds, model; a new step shots; no more step deploy')
+  // The removed deploy still says what it did: the engine watching the pipeline.
+  expect(card.find('[data-step="deploy"] [data-testid="wf-who"]').text()).toBe('The engine')
+  expect(card.find('[data-step="deploy"] [data-testid="wf-ends"]').text()).toContain('Watch the pipeline')
   await card.trigger('click')
   await vi.waitFor(() => expect(document.querySelector('[data-testid="proposal-review"] [data-testid="wf-diagram"]')).not.toBeNull())
   const sheet = document.querySelector('[data-testid="proposal-review"]')!
@@ -89,6 +92,16 @@ it('draws the proposed workflow small, its added, removed and changed steps mark
   await vi.waitFor(() => expect(document.querySelector('[data-testid="proposal-diff"]')?.textContent).toContain('+ shots'))
   ;(sheet.querySelector('[data-testid="proposal-refuse"]') as HTMLElement).click()
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', accept: false }]))
+})
+
+it('a change of the reviewer\'s model for the whole workflow marks the reviewer\'s step', async () => {
+  const only: Template = { ...company, prefs: { ...company.prefs, reviewModel: 'haiku' } }
+  const changes = workflowChanges(company, only)
+  expect(changes.types).toEqual([])
+  w = await mountSuspended(ProposalCard, { props: { c: { project: 'CO', name: 'Company', proposal: { diff: '~ reviewModel', at: 1, changes, template: only } } } })
+  expect(marked(w.element)).toEqual({ review: 'changed' })
+  expect(w.find('[data-step="review"] [data-testid="wf-delta"]').text()).toBe('Model: opus → haiku')
+  expect(w.find('[data-testid="wf-impact"]').text()).toBe('For feature tasks: review changes its model')
 })
 
 it('the Workflow tab\'s head links to the Autopilot tab', async () => {
