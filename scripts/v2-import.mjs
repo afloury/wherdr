@@ -141,10 +141,14 @@ export function detectV2(o = {}) {
   const machines = herdr.ok ? parseHerdrMachines(herdr.out) : []
   const ts = run('tailscale', ['serve', 'status', '--json'])
   const entries = ts.ok ? serveEntries(ts.out) : []
+  // This machine's names, as v2 knew them: a Herdr profile aimed at one is v2's local machine.
+  const tsSelf = readJsonText(run('tailscale', ['status', '--json']).out || '')?.Self
+  const self = [pick('HOST_LABEL'), o.hostname ?? os.hostname(), tsSelf?.HostName, tsSelf?.DNSName, ...String(pick('HERDR_WEB_SELF_HOSTS') || '').split(',')]
+    .map(x => String(x || '').trim()).filter(Boolean)
   return {
     found, unit: unitFile, active, session: pick('HERDR_WEB_SESSION') || null,
     dir, envFile: fs.existsSync(envFile) ? envFile : null, dataDir, port, files,
-    machines,
+    machines, self,
     tailscale: { available: ts.ok, entries, v2Https: entries.filter(e => proxiesTo(e.proxy, port)).map(e => e.https) },
     notes,
   }
@@ -234,11 +238,34 @@ export function remapMachineSettings(patch, keys, labels = {}) {
   return { patch: out, changes }
 }
 
-// Herdr's machines → `machine.add` calls, minus those hc already has.
-export function mapMachines(v2, hc = []) {
-  const add = [], have = []
+// Host of an SSH target ("user@host:port", "[::1]:22"), as v2 compared them
+// (shared/ids.ts targetHost): lowercase, no user or port; a name's first label.
+export function targetHost(target) {
+  let h = String(target || '').trim().toLowerCase()
+  h = h.slice(h.lastIndexOf('@') + 1)
+  const v6 = /^\[([^\]]+)\]/.exec(h)
+  if (v6) return v6[1]
+  if ((h.match(/:/g) || []).length === 1) h = h.slice(0, h.indexOf(':'))
+  h = h.replace(/\.+$/, '')
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(h) || h.includes(':')) return h
+  return h.split('.')[0] || h
+}
+
+// A target aimed at this machine itself (`self`: its names): v2 showed it as its local machine.
+export function isSelfTarget(target, self = []) {
+  const h = targetHost(target)
+  if (!h) return false
+  if (['localhost', '::1', '0.0.0.0'].includes(h) || h.startsWith('127.')) return true
+  return self.map(targetHost).filter(Boolean).includes(h)
+}
+
+// Herdr's machines → `machine.add` calls, minus those hc already has and
+// those aimed at this machine (`local`: v3's local machine, never added).
+export function mapMachines(v2, hc = [], self = []) {
+  const add = [], have = [], local = []
   const names = new Set(hc.map(m => m.name))
   for (const m of v2) {
+    if (isSelfTarget(m.target, self)) { local.push(m); continue }
     const same = hc.find(h => h.target === m.target)
     if (same) { have.push({ ...m, name: same.name }); continue }
     let name = machineName(m.label)
@@ -246,7 +273,7 @@ export function mapMachines(v2, hc = []) {
     names.add(name)
     add.push({ ...m, name })
   }
-  return { add, have }
+  return { add, have, local }
 }
 
 // Where hc is on a machine. A non-interactive SSH shell often has a short PATH
@@ -300,8 +327,8 @@ export function runImport(o) {
   const reachable = o.hcReachable ?? hcSocketExists(session, hcEnv)
   const ls = reachable ? run(hcBin, ['machine', 'ls', '--json'], { env: hcEnv }) : { ok: false }
   const hcList = ls.ok ? (readJsonText(ls.out)?.machines || []) : []
-  const m = mapMachines(v2.machines || [], hcList)
-  res.machines = { added: [], have: m.have, missing: [], hc: ls.ok }
+  const m = mapMachines(v2.machines || [], hcList, v2.self)
+  res.machines = { added: [], have: m.have, local: m.local, missing: [], hc: ls.ok }
   for (const x of m.add) {
     const note = x.session !== 'default' ? `its Herdr session was ${x.session}; hc uses the machine's default hc session` : undefined
     if (!ls.ok && !(o.dryRun && !reachable)) { res.machines.missing.push({ ...x, reason: `herdr-core session ${session} is not running here, so no machine was added: start it and run the import again`, note }); continue }
@@ -319,6 +346,7 @@ export function runImport(o) {
   // Settings that name machines: v2 keys → the v3 machines made from them (same SSH target).
   const keys = {}, labels = {}
   for (const x of [...res.machines.added, ...res.machines.have]) if (x.key) keys[x.key] = { key: v3MachineKey(x.name), name: x.name }
+  for (const x of m.local) if (x.key) keys[x.key] = { key: '', name: 'Local' }
   for (const x of v2.machines || []) if (x.key) labels[x.key] = x.label
   const remapped = remapMachineSettings(s.patch, keys, labels)
   s.patch = remapped.patch
@@ -359,12 +387,13 @@ export function renderReport(r) {
   L.push('# wherdr v2 → v3 migration report', '', `${r.dryRun ? 'Dry run (nothing written), ' : ''}${r.at}. v2 was only read: ${r.v2.dir} (data ${r.v2.dataDir}, port ${r.v2.port}). v3 data: ${r.dataDir}.`, '')
   L.push('## Projects', '', 'Not imported: Alfred offers to set up your v2 projects with you (machine, template, coordinator, open tasks), reading the herdr-projects board then.', '')
   L.push('## Machines', '')
-  if (!r.machines.added.length && !r.machines.missing.length && !r.machines.have.length) L.push('No SSH machine in Herdr.')
+  if (!r.machines.added.length && !r.machines.missing.length && !r.machines.have.length && !r.machines.local?.length) L.push('No SSH machine in Herdr.')
   // hc names are 1-32 of a-z 0-9 - _ . : say when the v2 name was changed.
   const named = m => (m.label && m.label !== m.name ? `${m.name} (v2 name ${m.label} → ${m.name})` : m.name)
   for (const m of r.machines.added) L.push(`- ${m.planned ? 'Would add' : 'Added'} ${named(m)}, ${m.target}${[m.note, m.check].filter(Boolean).map(x => `; ${x}`).join('')}`)
   for (const m of r.machines.have) L.push(`- ${m.name} (${m.target}): already in herdr-core`)
-  for (const m of r.machines.missing) L.push(`- **To do:** ${named(m)}, ${m.target}: ${m.reason}${m.note ? `; ${m.note}` : ''}. Then add it in Settings › Agents › Machines, or run \`hc machine add ${m.target} --name ${m.name}\`.`)
+  for (const m of r.machines.local ?? []) L.push(`- ${m.label} (${m.target}): this machine, v3's Local`)
+  for (const m of r.machines.missing) L.push(`- **To do:** ${named(m)}, ${m.target}: ${m.reason}${m.note ? `; ${m.note}` : ''}. Then add it in Settings › Machines, or run \`hc machine add ${m.target} --name ${m.name}\`.`)
   L.push('', '## Settings', '')
   L.push(r.settings.carried.length ? `Carried over: ${r.settings.carried.join(', ')}.` : 'No synced setting carried over.')
   if (r.settings.files.length) L.push('', `Copied: ${r.settings.files.join(', ')}.`)

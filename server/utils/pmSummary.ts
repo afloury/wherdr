@@ -1,13 +1,14 @@
-// Each task's summary (shared/pm/summary.ts), made again when a new report or
-// verdict starts a round: one task at a time, by Claude Haiku through the
-// claude CLI on this machine, skipped while the pace of its Claude account
-// holds automatic work. Every minute (plugins/pm.ts), one task per pass.
+// Each task's TL;DR (shared/pm/summary.ts), written again on a significant
+// change only (its key moved): one task at a time, by Claude Haiku through the
+// claude CLI on this machine. While the pace of its Claude account holds
+// automatic work it waits, the task marked (tldrHeld: To do shows the notes).
+// Every minute (plugins/pm.ts), one task per pass.
 import { spawn } from 'node:child_process'
 import { accountFor } from '../../shared/quotaAccount'
 import { DEFAULT_PACE, paceVerdict, type PaceVerdict } from '../../shared/pm/pacing'
 import { accountQuota } from '../../shared/pm/pace'
 import { taskPlan } from '../../shared/pm/run'
-import { cleanSummary, summaryPrompt, summarySource } from '../../shared/pm/summary'
+import { cleanTldr, tldrPrompt, tldrSource, TLDR_VERSION } from '../../shared/pm/summary'
 import { PATH_SETUP } from './coreCreate'
 import type { PmStore } from './pmStore'
 import { readQuotas } from './quotas'
@@ -16,23 +17,29 @@ import { policyIn, readPolicies } from './pacingPolicies'
 export type Summarize = (prompt: string) => Promise<string>
 export interface SummaryDeps { store: PmStore, summarize?: Summarize, pace?: (now: number) => Promise<PaceVerdict> }
 
-const STALE = 86_400_000 // a task whose last report or verdict is older keeps its summary as it is
-const failed = new Map<string, number>() // task → the round that failed: not tried again until the next one
+// A task whose last report or verdict is older keeps its TL;DR as it is, unless
+// it was written with an older prompt and the task is still open.
+const STALE = 86_400_000
+const failed = new Map<string, string>() // task → the key that failed: not tried again until the next one
 
 export async function summaryTick(deps: SummaryDeps, now = Date.now()) {
   if (!(await deps.store.enabled())) return
   const projects = await deps.store.projects()
+  let go: boolean | undefined
   for (const task of await deps.store.tasks()) {
     const p = projects.find(x => x.key === task.project)
     const t = p ? await deps.store.workflow(p.key) : null
     if (!t) continue
-    const src = summarySource(task, taskPlan(t, task, p))
-    if (!src || task.summary?.round === src.round || failed.get(task.id) === src.round || now - src.last > STALE) continue
-    if (!(await (deps.pace ?? claudePace)(now)).go) return
-    const text = await (deps.summarize ?? haiku)(summaryPrompt(src.input)).then(cleanSummary, () => '')
-    if (!text) { failed.set(task.id, src.round); continue }
+    const src = tldrSource(task, taskPlan(t, task, p))
+    if (!src || task.tldr?.key === src.key || failed.get(task.id) === src.key) continue
+    const oldPrompt = !!task.tldr && !task.tldr.key.startsWith(`${TLDR_VERSION}|`) && !task.step?.done
+    if (now - src.last > STALE && !oldPrompt) continue
+    go ??= (await (deps.pace ?? claudePace)(now)).go
+    if (!go) { if (!task.tldrHeld) await deps.store.saveTask({ ...task, tldrHeld: true }); continue }
+    const text = await (deps.summarize ?? haiku)(tldrPrompt(src.input)).then(cleanTldr, () => '')
     const fresh = await deps.store.task(task.id)
-    if (fresh) await deps.store.saveTask({ ...fresh, summary: { round: src.round, text, at: now } })
+    if (!text) failed.set(task.id, src.key)
+    if (fresh) await deps.store.saveTask({ ...fresh, ...(text ? { tldr: { key: src.key, text, at: now } } : {}), tldrHeld: undefined })
     return // one per pass: the next waits for the next minute
   }
 }

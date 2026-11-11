@@ -3,8 +3,9 @@
 // engine starts it again (server/utils/pmWatchdog.ts). A try that fails is
 // said on the status line; at the second, the coordinator is woken once. Pure.
 import type { Task } from './run'
-import type { PlannedStep } from './steps'
+import { durationMs, type PlannedStep } from './steps'
 import { waitsForUser, waitsInQueue } from './release'
+import { backToWork } from './blocked'
 
 export const AGENTLESS_MS = 3 * 60_000
 
@@ -17,7 +18,8 @@ export const AGENTLESS_WHY = 'its agent was no longer running while the task was
 export function agentNeeded(task: Task, plan: PlannedStep[]): 'worker' | 'reviewer' | undefined {
   const s = task.step
   if (task.state !== 'working' || task.stopped || !s?.started || s.done || s.acting || s.agent || s.yourTurn) return
-  if (waitsForUser(task) || waitsInQueue(task)) return
+  // A review waiting in its account's queue: no agent is missing.
+  if (waitsForUser(task) || waitsInQueue(task) || task.reviewWait) return
   const holder = plan[s.at]?.holder
   return holder === 'worker' || holder === 'reviewer' ? holder : undefined
 }
@@ -37,4 +39,31 @@ export function watchAgent(prev: AgentWatch | undefined, missing: boolean, now: 
 export function watchFailed(w: AgentWatch, now: number): { watch: AgentWatch, wake: boolean } {
   const fails = w.fails + 1, wake = fails >= 2 && !w.woke
   return { watch: { since: now, fails, ...(w.woke || wake ? { woke: true as const } : {}) }, wake }
+}
+
+// Why the review cannot start again now; undefined: it can (its step is the
+// reviewer's, under way, the task working, no engine action running).
+export function reviewRestartRefusal(task: Task, plan: PlannedStep[]): string | undefined {
+  const s = task.step
+  if (task.stopped) return 'The task was stopped: start it again instead'
+  if (!s?.started || s.done || plan[s.at]?.holder !== 'reviewer') return 'The task is not at its review step'
+  // Waiting on a failure (its reviewer exited right after starting): the restart is the way out.
+  const failed = task.state === 'waiting' && !task.waitKind
+  if ((task.state !== 'working' && !failed) || s.acting) return 'The task is busy with something else now'
+}
+
+// The review started again: its timeout in Your turn or its failure goes, the
+// step's time limit starts again from now, and its holder is told again, so
+// the next advance pass starts a new reviewer on the branch's current head
+// (its old run ended by the caller).
+export function reviewRestarted(task: Task, plan: PlannedStep[], now: number): Task {
+  const back = backToWork(task, plan, now) ?? task
+  const { told: _, ...step } = back.step!
+  const timeout = plan[step.at]?.timeout
+  const failed = back.state === 'waiting' && !back.waitKind
+  return {
+    ...back, held: undefined,
+    ...(failed ? { state: 'working' as const, waiting: undefined } : {}),
+    step: { ...step, ...(step.yourTurn?.reason === 'timeout' ? { yourTurn: undefined } : {}), ...(timeout ? { deadline: now + durationMs(timeout) } : {}) },
+  }
 }

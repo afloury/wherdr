@@ -6,7 +6,8 @@ import { fillBase, planSteps, type StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
 import type { Report } from './report'
-import type { TaskSummary } from './summary'
+import type { TaskTldr } from './summary'
+import type { WorkReport } from './history'
 import type { Mark } from './times'
 import { isPublic, publicWorkerSection } from './visibility'
 import { CODEX_NO_UPDATE } from '../codexLaunch'
@@ -61,12 +62,19 @@ export interface Task {
   origin?: TaskOrigin // who made it: only automatic work is held by the pace (pace.ts)
   addedBy?: string // who added it: 'user', 'automation', or a coordinator's key (MAIN for the main one)
   held?: string // an automatic start waits for memory on its machine (memory.ts): the engine starts it once memory is back
+  reviewWait?: string // the reviewer account its review waits on, in that account's queue (reviewQueue.ts)
   files?: string[] // the files or folders it plans to change (files.ts)
   changed?: string[] // what it changed since its branch started, as the engine last read it
   sameFiles?: string // the started task its start waits behind: same files (files.ts)
   cleanup?: { done?: true, skipped?: string } // its worktree removed, or why it stays (cleanup.ts)
   report?: Report // a problem the user reported, open until the coordinator acts (report.ts)
-  summary?: TaskSummary // a cheap model's few lines on how it went, per round (summary.ts)
+  // Its own commits since its fork from the base (author time and subject, so a
+  // rebase or a merge of the base keeps it) and the files they change, read at each report or verdict.
+  // reviewed: the commits a verdict last read (a later report on the same ones changes nothing).
+  work?: { commits: string, files: { path: string, add: number, del: number }[], reviewed?: string }
+  workReports?: WorkReport[] // the worker's reports, each as it arrived, newest last (history.ts)
+  tldr?: TaskTldr // a cheap model's few lines for the user to decide, per significant change (summary.ts)
+  tldrHeld?: true // a new one waits for the pace of the Claude account
   recovery?: Recovery // its agent gone with an incident: the engine resumes it (recovery.ts)
   archived?: number // when the engine archived it, done for its project's delay: off the board (archive.ts)
   unarchived?: number // when the user brought it back to Done: its delay runs again from then

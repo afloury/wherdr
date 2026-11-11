@@ -9,7 +9,8 @@ import { lineDiff } from './coordinator'
 export interface FieldChange { field: string, before?: string, after?: string }
 // moved: kept, in another place among the kept steps (its fields may have changed too).
 export type ChangeKind = 'added' | 'removed' | 'changed' | 'moved' | 'same'
-export interface StepChange { id: string, kind: ChangeKind, holder: string, ends?: string, fields: FieldChange[] }
+// step: a removed step as it was, so a diagram can still draw what it did.
+export interface StepChange { id: string, kind: ChangeKind, holder: string, ends?: string, fields: FieldChange[], step?: Step }
 // steps: the new list in order, removed steps where they were; about: an added
 // type in a few words ("6 steps, PR to develop, you merge").
 export interface TypeChange { type: string, kind: 'added' | 'removed' | 'changed', fields: FieldChange[], steps: StepChange[], about?: string }
@@ -61,7 +62,7 @@ function stepChanges(oldSteps: Step[], newSteps: Step[]): StepChange[] {
   const before = new Map(oldSteps.map(s => [s.id, s]))
   const after = new Set(newSteps.map(s => s.id))
   const row = (s: Step, kind: ChangeKind, fields: FieldChange[] = []): StepChange =>
-    ({ id: s.id, kind, holder: s.holder ?? 'none', ...(s.ends ? { ends: s.ends } : {}), fields })
+    ({ id: s.id, kind, holder: s.holder ?? 'none', ...(s.ends ? { ends: s.ends } : {}), fields, ...(kind === 'removed' ? { step: s } : {}) })
   // The kept steps out of the longest run still in order: moved.
   const kept = (l: Step[], other: Set<string>) => l.map(s => s.id).filter(id => other.has(id))
   const moved = new Set(lineDiff(kept(oldSteps, after), kept(newSteps, new Set(before.keys()))).filter(l => l.startsWith('+ ')).map(l => l.slice(2)))
@@ -125,4 +126,40 @@ export function changeSummary(c: WorkflowChanges, max = 2): string[] {
 export function changeHeadline(c: WorkflowChanges): string {
   const [first, ...rest] = changeSummary(c, Infinity)
   return first ? (rest.length ? `${first} · and ${rest.length} more ${rest.length === 1 ? 'change' : 'changes'}` : first) : ''
+}
+
+// For the diagram of a proposal: each step of one task type with its mark
+// (added, removed, changed, moved) and the fields it changes. A change of the
+// worker's or reviewer's agent or model (prefs, of the type or the whole
+// workflow) marks the steps they hold; next: the proposed workflow, for a type
+// whose steps did not change (a change to the whole workflow only).
+export interface StepMark { kind: ChangeKind, holder: string, ends?: string, fields: FieldChange[], step?: Step }
+// Plain words for the fields named in taskImpact.
+const WORDS: Record<string, string> = { agent: 'agent', model: 'model', reviewAgent: 'agent', reviewModel: 'model', reviewFallbackAgent: 'fallback agent', reviewFallbackModel: 'fallback model', ends: 'ending', sendBack: 'send-back step', evidence: 'proofs' }
+const HOLDER_PREFS: Record<string, string> = { agent: 'worker', model: 'worker', reviewAgent: 'reviewer', reviewModel: 'reviewer', reviewFallbackAgent: 'reviewer', reviewFallbackModel: 'reviewer' }
+export function stepMarks(c: WorkflowChanges, type: string, next?: Template): Map<string, StepMark> {
+  const t = c.types.find(x => x.type === type)
+  const prefs = [...c.all, ...(t?.fields ?? [])].filter(f => HOLDER_PREFS[f.field])
+  const out = new Map<string, StepMark>()
+  const tt = next?.taskTypes[type]
+  const steps = t?.steps ?? (tt ? stepsOf(next!, tt).map((x): StepChange => ({ id: x.id, kind: 'same', holder: x.holder ?? 'none', ...(x.ends ? { ends: x.ends } : {}), fields: [] })) : [])
+  for (const s of steps) {
+    const own = prefs.filter(f => HOLDER_PREFS[f.field] === s.holder && s.kind !== 'added' && s.kind !== 'removed')
+    const kind = own.length && s.kind === 'same' ? 'changed' : s.kind
+    out.set(s.id, { kind, holder: s.holder, ...(s.ends ? { ends: s.ends } : {}), fields: [...s.fields, ...own], ...(s.step ? { step: s.step } : {}) })
+  }
+  return out
+}
+
+// What changes for the tasks of one type, in one plain line:
+// "For task tasks: a new step shots; review changes its model; merge: you → automatic".
+export function taskImpact(c: WorkflowChanges, type: string, next?: Template): string {
+  const t = c.types.find(x => x.type === type)
+  if (t?.kind === 'added') return `A new task type ${type}${t.about ? `: ${t.about}` : ''}`
+  if (t?.kind === 'removed') return `No more ${type} tasks: the type is removed`
+  const steps = [...stepMarks(c, type, next)].flatMap(([id, m]) => m.kind === 'added' ? [`a new step ${id}`] : m.kind === 'removed' ? [`no more step ${id}`]
+    : m.kind === 'moved' ? [`${id} moves`] : m.kind === 'changed' ? [`${id} changes its ${[...new Set(m.fields.map(f => WORDS[f.field] ?? f.field))].join(', ')}`] : [])
+  const own = [...c.all, ...(t?.fields ?? [])].filter(f => !HOLDER_PREFS[f.field]).map(fieldLine)
+  const parts = [...steps, ...own]
+  return parts.length ? `For ${type} tasks: ${parts.join('; ')}` : ''
 }

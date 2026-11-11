@@ -2,11 +2,12 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DONE_CMD, READ_SEP, chainState, dueText, parseRead, proofsOf, runsNow, signalEvent, type SignalRead } from '../shared/pm/advance'
+import { DONE_CMD, READ_SEP, chainState, dueText, parseRead, proofsOf, runsNow, signalEvent, signalKept, type SignalRead } from '../shared/pm/advance'
 import { initialState, onEvent, planSteps, type StepEvent, type StepState } from '../shared/pm/steps'
 import { company, github, vibe, common } from '../shared/pm/examples'
 import type { Template } from '../shared/pm/workflow'
 import type { Task } from '../shared/pm/run'
+import { taskHistory } from '../shared/pm/history'
 
 const read = (more: Partial<SignalRead> = {}): SignalRead => ({ head: 'abc1234', diffLines: 12, note: '', verdict: '', ...more })
 const major = '{"findings":[{"id":"no-test","severity":"major","title":"No test","proof":"npm test: 0 tests"}]}'
@@ -133,6 +134,28 @@ describe('end signals', () => {
     expect(r).toEqual({ head: 'abc1234', diffLines: 42, note: 'See https://github.com/o/r/pull/3.', verdict: '{"findings":[]}' })
     expect(proofsOf(r)).toMatchObject({ link: 'https://github.com/o/r/pull/3', commit: 'abc1234', report: r.note })
     expect(proofsOf(read({ head: undefined }))).toEqual({})
+    // Then the branch, its own commits' fingerprint and its files with their line counts (binary: 0).
+    const w = parseRead(['abc1234', '42', '', '', 'task/X-1\n', '123 45\n', '3\t1\tsrc/a.ts\n-\t-\tlogo.png\n'].join(`${READ_SEP}\n`))
+    expect(w.work).toEqual({ commits: '123 45', files: [{ path: 'src/a.ts', add: 3, del: 1 }, { path: 'logo.png', add: 0, del: 0 }] })
+  })
+
+  it('keeps each worker report as it arrives, and the commits a verdict read', () => {
+    const w = (commits: string) => ({ commits, files: [] })
+    const base = { id: 'X-1', project: 'X', title: 't', description: '', type: 'feature', state: 'working' } as Task
+    const a = signalKept(base, 'work', { kind: 'report' }, read({ note: 'First', work: w('1') }))
+    expect(a).toEqual({ work: w('1'), workReports: [{ step: 'work', text: 'First' }] })
+    const b = signalKept({ ...base, ...a }, 'review', { kind: 'verdict' }, read({ verdict: '{}', work: w('1') }))
+    expect(b).toEqual({ work: { ...w('1'), reviewed: '1' } })
+    const c = signalKept({ ...base, ...a, ...b }, 'work', { kind: 'report' }, read({ note: 'Second', work: w('2') }))
+    expect(c).toEqual({ work: { ...w('2'), reviewed: '1' }, workReports: [{ step: 'work', text: 'First' }, { step: 'work', text: 'Second' }] })
+
+    // An empty report keeps its place: the earlier one stays on its own "done".
+    const d = signalKept({ ...base, ...c }, 'work', { kind: 'report' }, read({ note: '', work: w('3') }))
+    expect(d.workReports!.map(r => r.text)).toEqual(['First', 'Second', ''])
+    const log = ['work: done', 'review: verdict, 0 finding(s)', 'work: done'].map((text, i) => ({ at: i, by: i === 1 ? 'reviewer x' : 'worker x', text }))
+    const reports = [{ step: 'work', text: 'Original report' }, { step: 'work', text: '' }]
+    expect(taskHistory(log, [{ id: 'work' }, { id: 'review' }], { proofs: {} }, false, reports).filter(e => e.who === 'worker').map(e => e.text))
+      .toEqual(['Original report', 'Reported done.'])
   })
 
   it('a verdict that does not parse is sent back to the reviewer, with how to answer', () => {
@@ -228,6 +251,50 @@ describe('advanceTick (store and a fake herdr-core)', () => {
       expect((await store.task(t.id))!.log?.map(l => l.text)).toContain(`review: Codex out of quota until ${until}, reviewed by claude sonnet`)
     }
     finally { await fs.rm(dir, { recursive: true, force: true }) }
+  })
+
+  it('a Codex reviewer idle on its usage-limit message, the reading empty: its review and the waiting ones go to the fallback', async () => {
+    const { createPmStore } = await import('../server/utils/pmStore')
+    const { advanceTick, SCREEN_OUT } = await import('../server/utils/pmAdvance')
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-advance-'))
+    try {
+      const store = createPmStore(dir)
+      await store.setEnabled(true)
+      await store.saveTemplate({ ...github, prefs: { ...github.prefs, reviewAgent: 'codex', reviewModel: 'gpt-6.1-sol', reviewFallbackAgent: 'claude', reviewFallbackModel: 'same' } })
+      await store.addProject({ key: 'CO', machine: '', path: '/src', template: 'github' }, async (_m, p) => p)
+      const at = planSteps(github, { type: 'simple' }).findIndex(s => s.id === 'review')
+      const install = await store.install(), labels: Record<string, Record<string, string>> = {}
+      for (const [n, told] of [[1, 5], [2, 0]] as const) {
+        const t = await store.addTask({ project: 'CO', title: `Fix ${n}`, type: 'simple' })
+        const run = { task: t.id, machine: '', worktree: `/w${n}`, branch: `task/CO-${n}`, attempt: 1, state: 'running' as const }
+        await store.saveRun({ ...run, id: `w${n}`, role: 'worker', program: 'claude', model: 'sonnet', instructions: `/h/.wherdr/pm/tasks/CO-${n}/instructions.md`, terminal: `h/w${n}`, startedAt: 1 })
+        labels[`h/w${n}`] = { 'wherdr.install': install, 'wherdr.task': t.id, 'wherdr.run': `w${n}`, 'wherdr.role': 'worker' }
+        // CO-1's Codex reviewer was told and sits on the limit; CO-2's review is due, no reviewer yet.
+        if (n === 1) {
+          await store.saveRun({ ...run, id: 'r1', role: 'reviewer', program: 'codex', model: 'gpt-6.1-sol', instructions: '/h/.wherdr/pm/tasks/CO-1/review.md', terminal: 'h/r1', startedAt: 2 })
+          labels['h/r1'] = { 'wherdr.install': install, 'wherdr.task': t.id, 'wherdr.run': 'r1', 'wherdr.role': 'reviewer' }
+        }
+        await store.saveTask({ ...t, state: 'working', ...(n === 1 ? { run: 'r1' } : {}), step: { at, started: true, since: 5, told, proofs: {}, rounds: {} } })
+      }
+      const screen = '• Reading the diff\n\n■ You\'ve hit your usage limit. Upgrade to Pro (https://example.com), or try again at 11:59 PM.\n\n› Ask Codex to do anything'
+      const calls: [string, Record<string, unknown>][] = []
+      const call = async (method: string, p: Record<string, unknown>) => {
+        calls.push([method, p])
+        if (method === 'terminal.list') return { terminals: Object.entries(labels).map(([address, l]) => ({ address, labels: l })) }
+        if (method === 'terminal.read') return { text: p.terminal === 'h/r1' ? screen : '' }
+        if (method === 'terminal.run') return { address: `h/n${calls.length}` }
+        return method === 'machine.exec' ? { code: 0, stdout: '' } : {}
+      }
+      // Codex's reading has no numbers: primary and secondary null.
+      const quotas = async () => ({ claude: null, codex: { at: Date.now(), five: null, week: null }, accounts: [] })
+      await advanceTick({ store, call, quotas, machines: () => [{ key: '', local: true, label: 'host' }], launchWatchMs: 0 } as unknown as Parameters<typeof advanceTick>[0])
+      expect(calls.some(([m, p]) => m === 'terminal.kill' && p.terminal === 'h/r1')).toBe(true)
+      expect((await store.runs()).find(r => r.id === 'r1')).toMatchObject({ state: 'ended', endedBy: 'lost' })
+      const started = calls.filter(([m]) => m === 'terminal.run').map(([, p]) => p)
+      expect(started.map(p => [p.cwd, p.line])).toEqual([['/w1', expect.stringContaining(`exec claude '--model' 'sonnet'`)], ['/w2', expect.stringContaining(`exec claude '--model' 'sonnet'`)]])
+      expect((await store.task('CO-2'))!.log?.map(l => l.text)).toContain('review: Codex out of quota until 23:59, reviewed by claude sonnet')
+    }
+    finally { SCREEN_OUT.clear(); await fs.rm(dir, { recursive: true, force: true }) }
   })
 
   it('a live fallback reviewer keeps a new round while the review agent is out, then ends once it has quota again', async () => {

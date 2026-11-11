@@ -8,7 +8,7 @@
 import type { PmOverview } from '#shared/pm/project'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import type { Template } from '#shared/pm/workflow'
-import { EXAMPLES } from '#shared/pm/examples'
+import { STARTER_EXAMPLES } from '#shared/pm/examples'
 import { needsRemote, type FolderProbe } from '#shared/pm/newProject'
 import { isCoordinatorProgram } from '#shared/pm/coordinator'
 import { SETUP_STEPS, coordinatorStart, setupDone, setupProject, setupResume, workflowLine, type SetupStepId } from '#shared/pm/setup'
@@ -53,7 +53,7 @@ watch(open, (o) => {
   key.value = undefined
   fresh.value = !!props.adding
   error.value = ''
-  load().then(() => { index.value = fresh.value ? Number(done.value.enable) : setupResume(done.value) }, (e) => { error.value = (e as Error).message })
+  load().then(() => { index.value = fresh.value ? Number(done.value.enable) : setupResume(done.value, !!coord.value?.terminal) }, (e) => { error.value = (e as Error).message })
 }, { immediate: true })
 
 // 2. A project: added here (SetupProject), then its repository's visibility, which the user may correct.
@@ -67,7 +67,7 @@ const projectItems = computed(() => (data.value?.projects ?? []).filter(x => x.g
 watch(key, (k, old) => { if (old && k) run(async () => {}) })
 
 // 3. Its workflow: a copy of an example.
-const example = ref(EXAMPLES[0]!.id)
+const example = ref(STARTER_EXAMPLES[0]!.id)
 const applyExample = () => run(() => api('/api/pm/project-apply', { key: key.value, template: `example:${example.value}` }))
 // A repository without origin (a git init folder): an example that pushes or
 // opens pull requests cannot finish a task there; vibe lands locally.
@@ -78,7 +78,7 @@ watch(() => step.value === 'workflow' && p.value, async (x) => {
   try { remote.value = (await api<FolderProbe>(`/api/pm/folder?machine=${encodeURIComponent(x.machine)}&path=${encodeURIComponent(x.path)}`)).remote }
   catch {}
 })
-const needsOrigin = computed(() => remote.value === false && needsRemote(EXAMPLES.find(e => e.id === example.value)!))
+const needsOrigin = computed(() => remote.value === false && needsRemote(STARTER_EXAMPLES.find(e => e.id === example.value)!))
 
 // 5. Its coordinator, started here; its autopilot, optional, under it.
 const agents = computed(() => offerCoordinators(undefined, key.value))
@@ -141,7 +141,7 @@ const BODY: Record<SetupStepId, string> = {
       <template v-else-if="step === 'enable'">
         <UButton v-if="!done.enable" size="xl" color="primary" class="hw-cta" icon="i-lucide-power" :loading="busy" data-testid="setup-enable" @click="run(() => api('/api/pm/enabled', { enabled: true }))">{{ tl('Turn on') }}</UButton>
         <p v-else class="setup-ok" data-testid="setup-ok">{{ tl('Project management is on.') }}</p>
-        <UButton size="xl" color="neutral" variant="outline" icon="i-lucide-message-circle" :loading="busy" data-testid="setup-alfred" @click="toAlfred">{{ tl('Let Alfred guide me') }}</UButton>
+        <UButton size="lg" color="neutral" variant="ghost" class="setup-secondary" icon="i-lucide-message-circle" :loading="busy" data-testid="setup-alfred" @click="toAlfred">{{ tl('Let Alfred guide me') }}</UButton>
       </template>
 
       <template v-else-if="step === 'project'">
@@ -150,7 +150,7 @@ const BODY: Record<SetupStepId, string> = {
           <USelect v-if="projectItems.length > 1" v-model="key" :items="projectItems" size="xl" class="w-full" :aria-label="tl('Project')" data-testid="setup-project" />
           <p class="setup-ok" data-testid="setup-ok">{{ p.name }} <span class="mono-label">{{ p.key }}</span></p>
           <USelect :model-value="visibility(p.visibility)" :items="visibilityItems" size="xl" class="w-full" :disabled="busy" :aria-label="tl('Repository')" data-testid="setup-visibility" @update:model-value="v => setVisibility(String(v))" />
-          <small class="muted">{{ tl('Public: its coordinator and tasks keep private paths, names and secrets out of it.') }}</small>
+          <small v-if="visibility(p.visibility) !== 'unknown'" class="muted" data-testid="setup-public-note">{{ tl('Public: its coordinator and tasks keep private paths, names and secrets out of it.') }}</small>
           <UButton size="xl" color="neutral" variant="outline" icon="i-lucide-plus" data-testid="setup-another" @click="addProject">{{ tl('Add another project') }}</UButton>
         </template>
       </template>
@@ -159,7 +159,7 @@ const BODY: Record<SetupStepId, string> = {
         <p v-if="p?.from" class="setup-ok" data-testid="setup-ok">{{ tl(`Copied from ${p.from.template}.`) }}</p>
         <template v-else>
           <div class="setup-choices" role="radiogroup" :aria-label="tl('Workflow')">
-            <button v-for="e in EXAMPLES" :key="e.id" type="button" role="radio" :aria-checked="example === e.id" :class="{ on: example === e.id }" :data-example="e.id" @click="example = e.id">
+            <button v-for="e in STARTER_EXAMPLES" :key="e.id" type="button" role="radio" :aria-checked="example === e.id" :class="{ on: example === e.id }" :data-example="e.id" @click="example = e.id">
               <b>{{ e.id }}</b><small class="mono">{{ workflowLine(e) }}</small>
             </button>
           </div>
@@ -238,4 +238,7 @@ const BODY: Record<SetupStepId, string> = {
 .setup-autopilot summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
 .setup-nav { display: flex; justify-content: space-between; gap: 8px; }
 .setup-nav > * { min-height: 44px; }
+/* Disabled: like a disabled main button, not a dimmed solid one that still looks active. */
+.setup-nav > button:disabled { background: var(--bg); color: var(--dim); box-shadow: inset 0 0 0 1px var(--line); opacity: 1; }
+.setup-secondary { justify-self: center; min-height: 44px; color: var(--text-2); }
 </style>

@@ -2,7 +2,11 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import ProposalCard from '~/components/ProposalCard.vue'
+import PartHead from '~/components/PartHead.vue'
 import type { CoordinatorView } from '#shared/pm/coordinator'
+import { company } from '#shared/pm/examples'
+import { workflowChanges } from '#shared/pm/workflowChanges'
+import type { Step, Template } from '#shared/pm/workflow'
 
 const posts: unknown[] = []
 registerEndpoint('/api/pm/coordinators', () => [])
@@ -55,4 +59,53 @@ it('proposed by Alfred: his name, no key badge; a short request is not folded', 
   expect(w.find('[data-testid="proposal-key"]').exists()).toBe(false)
   expect(w.find('[data-testid="proposal-said-more"]').exists()).toBe(false)
   expect(w.find('[data-testid="proposal-goto"]').exists()).toBe(false)
+})
+
+// A proposal on the company example: a screenshots step added after the review,
+// the deploy watch removed, the reviewer's model and rounds changed.
+const steps = company.taskTypes.feature!.steps as Step[]
+const next: Template = { ...company, prefs: { ...company.prefs, reviewModel: 'haiku' }, taskTypes: { feature: { steps: [
+  ...steps.slice(0, 2), { ...steps[2]!, rounds: 3 }, { id: 'shots', column: 'Review', holder: 'worker', ends: 'report', evidence: ['screenshots'] }, ...steps.slice(3, 5), steps[6]!,
+] } } }
+const drawn: CoordinatorView = { project: 'CO', name: 'Company', proposal: { diff: '+ shots', at: 1, changes: workflowChanges(company, next), template: next } }
+const marked = (root: { querySelectorAll: (s: string) => NodeListOf<Element> }) =>
+  Object.fromEntries([...root.querySelectorAll('[data-testid="wf-node"][data-diff]')].map(n => [n.getAttribute('data-step'), n.getAttribute('data-diff')]))
+
+it('draws the proposed workflow small, its added, removed and changed steps marked; a tap opens it in full, the JSON one tap away; Refuse answers', async () => {
+  w = await mountSuspended(ProposalCard, { props: { c: drawn } })
+  const card = w.find('[data-testid="proposal-chart"]')
+  expect(card.find('.wf-board').classes()).toContain('compact')
+  expect(card.find('[data-testid="wf-route"]').exists()).toBe(false)
+  expect(marked(card.element)).toEqual({ review: 'changed', shots: 'added', deploy: 'removed' })
+  expect(card.find('[data-step="review"] [data-testid="wf-delta"]').text()).toContain('Model: opus → haiku')
+  expect(card.find('[data-step="review"] [data-testid="wf-delta"]').text()).toContain('Rounds: 2 → 3')
+  expect(card.find('[data-testid="wf-impact"]').text()).toBe('For feature tasks: review changes its rounds, model; a new step shots; no more step deploy')
+  // The removed deploy still says what it did: the engine watching the pipeline.
+  expect(card.find('[data-step="deploy"] [data-testid="wf-who"]').text()).toBe('The engine')
+  expect(card.find('[data-step="deploy"] [data-testid="wf-ends"]').text()).toContain('Watch the pipeline')
+  await card.trigger('click')
+  await vi.waitFor(() => expect(document.querySelector('[data-testid="proposal-review"] [data-testid="wf-diagram"]')).not.toBeNull())
+  const sheet = document.querySelector('[data-testid="proposal-review"]')!
+  expect(marked(sheet)).toEqual({ review: 'changed', shots: 'added', deploy: 'removed' })
+  expect(sheet.querySelector('[data-testid="wf-route"]')).not.toBeNull()
+  ;(sheet.querySelector('[data-testid="proposal-view-json"]') as HTMLElement).click()
+  await vi.waitFor(() => expect(document.querySelector('[data-testid="proposal-diff"]')?.textContent).toContain('+ shots'))
+  ;(sheet.querySelector('[data-testid="proposal-refuse"]') as HTMLElement).click()
+  await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', accept: false }]))
+})
+
+it('a change of the reviewer\'s model for the whole workflow marks the reviewer\'s step', async () => {
+  const only: Template = { ...company, prefs: { ...company.prefs, reviewModel: 'haiku' } }
+  const changes = workflowChanges(company, only)
+  expect(changes.types).toEqual([])
+  w = await mountSuspended(ProposalCard, { props: { c: { project: 'CO', name: 'Company', proposal: { diff: '~ reviewModel', at: 1, changes, template: only } } } })
+  expect(marked(w.element)).toEqual({ review: 'changed' })
+  expect(w.find('[data-step="review"] [data-testid="wf-delta"]').text()).toBe('Model: opus → haiku')
+  expect(w.find('[data-testid="wf-impact"]').text()).toBe('For feature tasks: review changes its model')
+})
+
+it('the Workflow tab\'s head links to the Autopilot tab', async () => {
+  w = await mountSuspended(PartHead, { props: { part: 'workflow', project: 'CO' } })
+  expect(w.find('[data-testid="part-link"]').text()).toBe('Who starts tasks and when: Autopilot tab')
+  expect(w.find('[data-testid="part-link"]').attributes('href')).toBe('#/settings?section=projects&project=CO&tab=autopilot')
 })

@@ -1,7 +1,7 @@
 // The board's data, and the user's button on a step that waits for them.
 import { boardColumns, cardOf, shownTexts, type Board, type BoardMachine, type Card } from '../../shared/pm/board'
 import { initialState, onEvent, planSteps, reviewedCommit, reworkSince, waitsToMerge, type StepEvent } from '../../shared/pm/steps'
-import { taskGuards, type ActionResult } from '../../shared/pm/actions'
+import { endsMerged, taskGuards, type ActionResult } from '../../shared/pm/actions'
 import type { MergeBy, Template } from '../../shared/pm/workflow'
 import { addShot, isImage, needsShots, SHOT_TYPES, type Shot } from '../../shared/pm/shots'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
@@ -14,7 +14,7 @@ import { lastReadiness } from './pmReady'
 import { shownTaskId } from '../../shared/pm/projectKey'
 import { taskAgents, type TaskAgent } from '../../shared/pm/taskAgents'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
-import { actionShell, runAction } from './pmActions'
+import { actionShell, dropMergedBranch, runAction } from './pmActions'
 import type { CoreAdminDeps } from './coreCreate'
 import { runOn } from './pmLaunch'
 import { HerdrError } from './herdr'
@@ -176,10 +176,17 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     state = back.state
     mergedInto = result.ok ? result.base : undefined
     const log = back.effects.find(e => e.kind === 'log')
-    if (log?.kind === 'log') return store.logTask({ ...(await fresh()), step: state }, 'engine', log.text)
     const auto = result.ok && approved && by === 'engine' ? 'merged by itself, as the user approved' : undefined
     const said = [auto, result.note, result.alert].filter(Boolean).join('. ')
-    if (said) return store.logTask({ ...(await fresh()), step: state }, 'engine', `${act.step}: ${said}`)
+    const saved = log?.kind === 'log' ? await store.logTask({ ...(await fresh()), step: state }, 'engine', log.text)
+      : said ? await store.logTask({ ...(await fresh()), step: state }, 'engine', `${act.step}: ${said}`)
+        : await store.saveTask({ ...(await fresh()), step: state })
+    // Merged (by the engine, or on the Git host and confirmed): the task's remote branch goes, when safe.
+    const merged = result.ok && run && endsMerged(act.action.kind)
+    const gone = merged && await dropMergedBranch(actionShell(deps, runOn(deps, run)), {
+      worktree: run.worktree, branch: run.branch, guards: taskGuards(t, task.type), bases: [p.base, act.action.target, act.action.base], on: p.deleteBranch !== false,
+    }).catch((e: Error) => `kept the remote branch ${run.branch}: ${e.message}`)
+    return gone ? store.logTask(saved, 'engine', gone) : saved
   }
   return store.saveTask({ ...(await fresh()), step: state })
 }

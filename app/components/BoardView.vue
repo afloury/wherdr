@@ -59,6 +59,8 @@ const tagItems = computed(() => [{ label: tl('Tags', 'Étiquettes'), value: NONE
 const tags = computed(() => boardTags((data.value?.cards ?? []).filter(c => shownProject(c.project))))
 // The header's coordinator button: the project's; none on All projects (Alfred has no autopilot).
 const coordinator = computed(() => (project.value ? coordinators.value.find(c => c.project === project.value) : undefined))
+// The project's Machines view (its sheet, General tab); with several projects, the list.
+const machinesLink = computed(() => (project.value ? `/settings?section=projects&project=${encodeURIComponent(project.value)}&tab=general&target=project.machines` : '/settings?section=projects'))
 const columns = computed(() => (project.value ? data.value?.projects.find(p => p.key === project.value)?.columns ?? [] : null))
 const lanes = computed(() => boardLanes(cards.value, columns.value))
 const PHASE_LABEL: Record<string, string> = { 'your-turn': 'Your turn', 'todo': 'To do', 'working': 'Working', 'done': 'Done' }
@@ -150,6 +152,7 @@ const openArchived = (c: Card) => { keepArchivedCard(c); show(c.id) }
       </UButton>
       <USelect v-model="projectPick" :items="projectItems" size="lg" class="board-select" :aria-label="tl('Project', 'Projet')" data-testid="board-project" />
       <USelect v-if="tags.length || tag" v-model="tagPick" :items="tagItems" size="lg" class="board-select" :aria-label="tl('Tag', 'Étiquette')" data-testid="board-tag" />
+      <UButton icon="i-lucide-server" color="neutral" variant="ghost" size="lg" class="icon-btn" :to="machinesLink" :aria-label="tl('Machines')" :title="tl('Machines')" data-testid="board-machines" />
       <CoordinatorButton v-if="coordinator" :c="coordinator" open />
     </header>
     <div class="board-body">

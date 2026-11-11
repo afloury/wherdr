@@ -6,8 +6,8 @@
 // every 30 s, the coordinators' wake queue ticks (pmWakes.ts), and every
 // minute the engine makes its mechanical moves (pmMechanic.ts). Every 30 s,
 // one grouped push for new Decisions (pmDecisions.ts), and the projects'
-// automations fire (pmAutomations.ts). Every minute, one task's summary is
-// made again after a new report or verdict (pmSummary.ts). At start and every
+// automations fire (pmAutomations.ts). Every minute, one task's TL;DR is
+// written again after a significant change (pmSummary.ts). At start and every
 // 5 minutes, the processes left in the worktrees of tasks with no live agent
 // are killed (pmProcs.ts). A merge cut by the last restart goes on
 // (resumeMerges), and a shutdown first waits a little for a merge that runs.

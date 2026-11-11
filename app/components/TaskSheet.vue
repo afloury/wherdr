@@ -11,8 +11,8 @@
 // a task never started (confirmed), Unarchive for an archived one. Those stay at the top; below, tabs (the app's
 // segmented style) for the rest, in the sheet's one scroll: Description (the
 // text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR among them), Plan (each step with its
-// screenshots), History (the hand-offs between its agents and the user,
-// TaskHistory), Log (the raw lines).
+// screenshots), Comments (the worker's and the reviewer's reports, in order)
+// and History (the whole log as one timeline, the hand-offs as entries; TaskHistory).
 import { branchLine, canStart, canStop, cardStatus, linkLabel, mergeWaits, statusText, type Card } from '#shared/pm/board'
 import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
 import type { Resume } from '#shared/pm/stop'
@@ -34,7 +34,14 @@ const error = ref('')
 
 const at = computed(() => (props.card.state?.started ? props.card.state.at : -1))
 const done = computed(() => !!props.card.state?.done)
-const proofs = (id: string) => Object.entries(props.card.state?.proofs[id] ?? {}).filter(([, v]) => v)
+// Where a step's commit links to: its own link proof first, then the other steps', then the task's links
+// (a task-level link may point at another repository).
+const proofLinks = (id: string) => {
+  const given = props.card.state?.proofs ?? {}
+  const urls = [given[id]?.link, ...props.card.plan.map(p => given[p.id]?.link), ...props.card.links.map(l => l.url)]
+  return urls.filter((u): u is string => !!u).map(url => ({ label: '', url }))
+}
+const proofs = (id: string) => Object.entries(props.card.state?.proofs[id] ?? {}).filter((e): e is [string, string] => !!e[1])
 const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
 // The steps that have screenshots, to look at before the push, the PR or the merge.
 const shots = (id: string) => props.card.state?.shots?.[id] ?? []
@@ -59,13 +66,13 @@ function onDescClick(e: MouseEvent) {
   const text = btn?.closest('.code-block')?.querySelector('pre')?.textContent
   if (btn && text != null) copyCodeBlock(btn, text)
 }
-type Tab = 'todo' | 'description' | 'plan' | 'history' | 'log'
-const TAB_LABEL: Record<Tab, [string, string?]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], history: ['History'], log: ['Log', 'Journal'] }
+type Tab = 'todo' | 'description' | 'plan' | 'comments' | 'history'
+const TAB_LABEL: Record<Tab, [string, string?]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], comments: ['Comments'], history: ['History'] }
 const tabs = computed<Tab[]>(() => [
   ...(todo.value ? ['todo' as const] : []),
   ...(props.card.description || props.card.specNotes?.length || props.card.tags.length || props.card.links.length ? ['description' as const] : []),
   'plan',
-  ...(props.card.log.length ? ['history' as const, 'log' as const] : []),
+  ...(props.card.log.length ? ['comments' as const, 'history' as const] : []),
 ])
 const picked = ref<Tab>()
 // The tab picked while it is still there (the task read again), else the first.
@@ -99,6 +106,7 @@ const start = () => run(() => startTaskApi(props.card.id, undefined, props.card.
 const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
 const decide = (choice: Choice) => run(() => api('/api/pm/decide', { id: props.card.id, choice }))
 const sendBack = (note: string) => run(() => api('/api/pm/step-back', { id: props.card.id, note }))
+const restartReview = () => run(() => api('/api/pm/review-restart', { id: props.card.id }))
 // A problem reported to the coordinator: open on the card until it acts or the user withdraws it.
 const reportOpen = ref(!!props.reporting)
 // An action step that failed (a merge refused): the user runs it again.
@@ -172,7 +180,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 
       <div id="task-panel" class="task-panel" role="tabpanel" :aria-labelledby="`task-tab-${tab}`" data-testid="task-panel">
         <TaskTodo v-if="tab === 'todo' && todo" :card="card" :kind="todo" :pane="pane" :busy="busy" :pressing="pressing" :refused="refused" :waits-for="waitsFor"
-          @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" />
+          @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" @review="restartReview" @comments="picked = 'comments'" />
         <template v-else-if="tab === 'description'">
           <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
           <div v-if="descHtml" class="md-body task-md" data-testid="task-description" @click="onDescClick" v-html="descHtml" />
@@ -194,7 +202,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
               <p class="task-desc">{{ s.text }}</p>
             </details>
             <small v-if="switched && i === switchAt" class="muted" data-testid="review-switch">{{ switched }}</small>
-            <small v-for="[k, v] in proofs(s.id)" :key="k" class="muted">{{ k }}: <a v-if="/^https?:\/\//.test(v)" :href="v" target="_blank" rel="noopener">{{ v }}</a><template v-else>{{ v }}</template></small>
+            <TaskProofs :proofs="proofs(s.id)" :links="proofLinks(s.id)" />
             <TaskShots v-if="shots(s.id).length" :task="card.id" :shots="shots(s.id)" :mode="shotMode(s)" />
             <details v-if="earlier(s.id).length" data-testid="shots-earlier">
               <summary>{{ tl('Earlier screenshots') }}</summary>
@@ -203,14 +211,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
           </li>
         </ol>
 
-        <TaskHistory v-else-if="tab === 'history'" :card="card" />
-
-        <ol v-else class="task-log" data-testid="task-log">
-          <li v-for="(e, i) in [...card.log].reverse()" :key="i">
-            <span class="mono-label muted">{{ new Date(e.at).toLocaleString() }} · {{ e.by }}</span>
-            <span class="task-desc">{{ e.text }}</span>
-          </li>
-        </ol>
+        <TaskHistory v-else :card="card" :comments="tab === 'comments'" />
       </div>
     </div>
   </AppSheet>
@@ -245,7 +246,5 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-plan li { display: flex; flex-direction: column; gap: 4px; padding: 8px 0 8px 12px; border-bottom: 1px solid var(--line-soft); border-left: 2px solid transparent; }
 .task-plan li.past { color: var(--muted); }
 .task-plan li.now { border-left-color: var(--accent); }
-.task-log { list-style: none; margin: 0; padding: 0; }
-.task-log li { display: grid; gap: 2px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); }
 .task-plan summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
 </style>

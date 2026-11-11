@@ -5,7 +5,7 @@
 // workflow's `worktree`: files copied, folders shared, a setup command), where its workflow came from,
 // the machines its tasks may run on (ProjectMachines) and the home tab that
 // shows it (ProjectShownIn).
-// Workflow: ProjectWorkflow, its own entries first in the ⋯ menu. The ⋯ menu
+// Workflow: ProjectWorkflow (read only, its chart), its own entries first in the ⋯ menu. The ⋯ menu
 // removes the project. Guards: ProjectGuards. Automations: ProjectAutomations,
 // this project's only. Autopilot: CoordinatorAutopilot, the one in the
 // coordinator window (both read the shared coordinators, so a save in one
@@ -13,14 +13,13 @@
 // coordinator's proposed workflow change: a badge on Workflow, its first row
 // there opens the review (ProposalReview), at once when the URL asks (`review=1`).
 // Workflow and Autopilot start with their name, what each is and a link to the
-// other (PartHead); Workflow then draws its steps (WorkflowDiagram).
+// other (PartHead).
 import type { Project, TemplateInfo } from '#shared/pm/project'
 import { PROJECT_COLORS, shownKey } from '#shared/pm/projectKey'
 import { ARCHIVE_DAYS, archiveDays } from '#shared/pm/archive'
 import type { LogEntry } from '#shared/pm/templateText'
 import { SETUP_TIMEOUT, type Prefs, type Template, type WorktreeSetup } from '#shared/pm/workflow'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
-import { workflowFlow } from '#shared/pm/flow'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import { PROJECT_TABS, PROJECT_TAB_LABEL as TAB_LABEL, type ProjectTab } from '~/utils/projectTabs'
 import { projectTarget, uiTarget } from '#shared/uiTargets'
@@ -37,7 +36,7 @@ const ready = ref<Record<string, string>>({}) // each other machine's last readi
 const loaded = ref(false)
 const error = ref('')
 const busy = ref('')
-const form = reactive({ name: '', key: '', color: '', base: '', branchName: '', archiveAfter: '', agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' })
+const form = reactive({ name: '', key: '', color: '', base: '', branchName: '', archiveAfter: '', deleteBranch: true, agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' })
 async function load() {
   const r = await api<{ workflow: Template | null, log: LogEntry[], ready?: Record<string, string> }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
   workflow.value = r.workflow
@@ -47,7 +46,7 @@ async function load() {
   fillSetup(r.workflow?.worktree)
   loaded.value = true
 }
-const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', archiveAfter: String(archiveDays(x)), agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
+const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
 // The worktree setup: paths one per line (or comma separated). Folders to
 // share: empty is node_modules (no `share`), noShare is none (`share: []`).
 const setup = reactive({ copy: '', share: '', noShare: false, lockfile: '', command: '', timeout: '' })
@@ -65,8 +64,8 @@ async function run(what: string, fn: () => Promise<unknown>) {
   finally { busy.value = '' }
 }
 const save = () => run('save', async () => {
-  const { name, key, color, base, branchName, archiveAfter, ...prefs } = form
-  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, base, branchName, archiveAfter: Number(archiveAfter), ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}) })
+  const { name, key, color, base, branchName, archiveAfter, deleteBranch, ...prefs } = form
+  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, base, branchName, archiveAfter: Number(archiveAfter), deleteBranch, ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}) })
   // The prop is refreshed only after `changed`: the form takes the saved
   // project, and the shared lists that show its key and color are read again.
   await load()
@@ -207,6 +206,12 @@ async function remove() {
             <small class="muted">{{ tl('A done task leaves the Done column after this time; the column\'s footer lists archived tasks. Its branch, PR and log stay.') }}</small>
           </span>
 
+          <span class="field-label">{{ tl('Delete the task\'s branch after its merge') }}</span>
+          <span class="pm-field">
+            <USwitch v-model="form.deleteBranch" color="success" size="lg" :aria-label="tl('Delete the task\'s branch after its merge')" data-testid="pm-delete-branch" />
+            <small class="muted">{{ tl('Once its PR is merged, wherdr deletes the task\'s remote branch, unless a commit came after the merge, another open PR uses it, or it is protected or a base. Off: branches stay.') }}</small>
+          </span>
+
           <template v-if="workflow">
             <div class="pm-cols">
               <span class="pm-col pm-agent">
@@ -270,7 +275,7 @@ async function remove() {
             <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-refresh-cw" :loading="busy === 'vis'" :disabled="busy !== ''" data-testid="pm-visibility-check" @click="setVisibility({ check: true })">{{ tl('Check again', 'Revérifier') }}</UButton>
           </span>
           <span class="field-label">{{ tl('Template') }}</span>
-          <small class="muted" data-testid="pm-from">{{ p.from ? tl(`Based on: ${p.from.template} v${p.from.version}. Information only: changes to the template do not reach the project. To start over from a template: Workflow › ⋯.`) : tl('No template yet: start from one in the Workflow tab.') }}</small>
+          <small class="muted" data-testid="pm-from">{{ p.from ? tl(`Based on: ${p.from.template} v${p.from.version}. Information only: changes to the template do not reach the project. To change the workflow, ask the project\'s coordinator.`) : tl('No template yet: start from one in the Workflow tab.') }}</small>
         </form>
         <template v-if="tab === 'general'">
           <span class="field-label pm-later">{{ tl('Machines') }}</span>
@@ -280,7 +285,6 @@ async function remove() {
         </template>
         <template v-if="tab === 'workflow'">
           <PartHead part="workflow" :project="p.key" class="pm-part" />
-          <WorkflowDiagram v-if="workflow" :steps="workflowFlow(workflow)" class="pm-part" />
         </template>
         <button v-if="tab === 'workflow' && coordinator?.proposal" type="button" class="settings-card pm-proposal" data-testid="workflow-proposal" @click="reviewOpen = true">
           <span class="card-state blocked" aria-hidden="true"><i /></span>

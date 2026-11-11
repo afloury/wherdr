@@ -33,7 +33,9 @@
   search too) and how long it has been in its state (`8 min`, `2 h`). A second line gives its
   role, then its machine (when the list mixes several) and its last message: **DEV** (working on
   the task), **REVIEW**, **FIX** (sent back by the review, red CI or you) or **CATCH-UP** (merging
-  the base branch). Only an agent other than Claude keeps its small icon. Several agents of the
+  the base branch). The line starts with the small icon of the agent that runs the role (Claude,
+  Codex…); a reviewer's verdict reads as a short line (`Passed, 0 findings`, `2 findings: 1 major,
+  1 minor`), never its raw JSON. Several agents of the
   same task (the worker and its reviewer) share one row, in the group of the most urgent: the
   title line, then one line per agent with its own state, which opens that agent; the row's menu
   lists each agent's actions under its role. A reviewer kept between rounds shows dimmed. A
@@ -52,7 +54,9 @@ Alfred, wherdr's assistant, is always the first row of the agent list, even
 with no agent and projects off. Its row is a card of its own: its emblem (the
 wherdr ram in a bow tie, also in its conversation's header), *Your assistant ·
 all projects*, and its state (*Not started*, *Ready*, *Working*…) with its
-agent. A tap on it opens its conversation. It helps you get started and, with projects
+agent. A tap on it opens its conversation. Its card keeps a faint mauve
+wash; like other rows, it looks selected (a mauve edge and left bar) only while its
+conversation is the one open. It helps you get started and, with projects
 on, coordinates all of them when you ask it: it has no autopilot, each
 project's coordinator runs its own. The first *Start* asks which agent (Claude,
 Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept, and wherdr
@@ -163,4 +167,4 @@ Codex agents of online machines. Choosing a result opens it.
 ([Notifications](notifications.md)), the **passkey lock** (Face ID, Touch ID, Windows Hello,
 Android…) and optional [wherdr plugins](plugins.md#wherdr-plugins).
 
-Herdr sessions, Herdr plugin actions and keep-awake are v2 only.
+Herdr sessions and Herdr plugin actions are v2 only.
