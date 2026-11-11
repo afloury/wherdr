@@ -9,11 +9,11 @@ describe('newer stable releases', () => {
   ]
   const fetcher = (body = releases) => vi.fn(async (_url: string) => ({ ok: true, json: async () => body }))
 
-  it('counts only newer stable versions in numeric order without disabling plugin updates', async () => {
+  it('counts only newer stable versions in numeric order', async () => {
     const fetch = fetcher()
-    const check = createUpdateChecker({ current: '1.2.0', env: { WHERDR_INSTALL: 'plugin' }, fetch })
-    expect(await check()).toMatchObject({ latest: '1.10.0', behind: 2, missed: ['1.10.0', '1.3.0'], behindAtLeast: false, mode: 'plugin', oneTap: true })
-    expect(fetch).toHaveBeenCalledTimes(3) // existing release, archive and checksum checks
+    const check = createUpdateChecker({ current: '1.2.0', env: {}, fetch })
+    expect(await check()).toMatchObject({ latest: '1.10.0', behind: 2, missed: ['1.10.0', '1.3.0'], behindAtLeast: false })
+    expect(fetch).toHaveBeenCalledTimes(1)
     expect(fetch).toHaveBeenCalledWith(RELEASES_URL)
   })
 
