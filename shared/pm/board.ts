@@ -15,7 +15,7 @@ import { timesOf, type Times } from './times'
 import { sameFilesText } from './files'
 import { MERGE_REFUSED, ordinal } from './mergeQueue'
 import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
-import { retriesAction } from './release'
+import { retriesAction, waitsShort } from './release'
 import { recovering } from './incident'
 import { showIds } from './projectKey'
 
@@ -268,6 +268,15 @@ export function statusText(s: CardStatus, when: (at: number) => string, dated = 
 }
 const MERGES = ['github.merge', 'bitbucket.merge', 'git.verify-merged']
 const bad = (text: string): CardStatus => ({ text, tone: 'bad' })
+// Its checks red at its merge step, as "Checks failed (smoke)"; undefined otherwise.
+export function redAtMerge(c: Pick<Card, 'plan' | 'state' | 'prNow' | 'queueOut'>): string | undefined {
+  const s = c.state
+  if (!s?.started || s.done || c.plan[s.at]?.action?.kind !== 'github.merge') return
+  // The engine's last read of the PR decides (a rerun may turn it green while the fix is still handed out); without one, the queue and the handed fix.
+  const red = c.prNow ? (c.prNow.startsWith('checks failed') ? c.prNow : undefined)
+    : c.queueOut === 'checks failed' || s.agent?.kind === 'ci-to-agent' ? 'checks failed' : undefined
+  return red && `C${red.slice(1)}`
+}
 // A refused action in plain words; waiting, not bad, once the agent took it on.
 const refused = (error: string, told?: Told): CardStatus => {
   const said = refusalSaid(error, told)
@@ -289,6 +298,9 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
     const merged = c.plan.some(p => p.action && MERGES.includes(p.action.kind) && s.proofs[p.id] && Object.keys(s.proofs[p.id]!).length)
     return merged ? { text: 'merged', tone: 'ok', ...(s.since ? { at: s.since } : {}) } : undefined
   }
+  // Red checks at the merge step: the worker fixes them, or waits to (why); never "merges by itself" meanwhile.
+  const red = redAtMerge(c)
+  if (red) return !s.agent ? bad(red) : s.agent.waits ? bad(`${red}: waits for its worker, ${waitsShort(s.agent.waits)}`) : { text: `${red}: fixing: the worker is on it`, tone: 'wait' }
   if (s.agent?.waits) return { text: s.agent.waits, tone: 'bad' }
   // In the merge queue: its place in line, or why it stepped out.
   if (c.queueOut) return { text: `in merge queue, out of line: ${c.queueOut}`, tone: c.queueOut === 'checks failed' ? 'bad' : 'wait', ...(s.approved && !s.acting ? { approved: s.approved.at } : {}) }
@@ -337,3 +349,6 @@ export function mergeWaits(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'yourTur
   const pr = c.prNow && c.prNow !== 'ready to merge' && c.prNow !== 'merged' ? c.prNow : undefined
   return cardStatus(c)?.text || pr || 'waiting for its turn to merge'
 }
+
+// An approved merge that can go on now: its Merge loading. Not while its checks are red.
+export const mergeGoesNow = (c: Parameters<typeof mergeWaits>[0]) => mergeWaits(c) !== undefined && !redAtMerge(c)

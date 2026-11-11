@@ -135,6 +135,17 @@ export function placeTask(args: {
   return { hold: `Waits for room (${STRATEGY_LABELS[strategy]}): ${weight} (≈${gb(estimate.mb)}) fits nowhere — ${reasons}`, ...(best !== undefined ? { best } : {}) }
 }
 
+// placeTask's hold for room, short: "no room on machine-a (needs ≈3.4 GB: 3.1 GB
+// free, …)" for one machine. Undefined: not a hold for room.
+const ROOM_HOLD = /^Waits for room \([^)]*\): \S+ \(≈([\d.]+ GB)\) fits nowhere — (.*)$/
+export const isRoomHold = (hold: string) => ROOM_HOLD.test(hold)
+export function roomShort(hold: string): string | undefined {
+  const m = ROOM_HOLD.exec(hold)
+  if (!m) return
+  const one = m[2]!.includes('; ') ? undefined : /^(.+?): (.*)$/.exec(m[2]!)
+  return one ? `no room on ${one[1]} (needs ≈${m[1]}: ${one[2]})` : `no room (needs ≈${m[1]}): ${m[2]}`
+}
+
 // An allowed machine as `autopilot show` gives it. running: its agents at work
 // with their task's weight; unchecked: another machine than home whose
 // readiness for the project was not checked yet (it is before its first task);

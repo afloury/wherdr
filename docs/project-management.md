@@ -919,7 +919,11 @@ Until the merge ends, *Merge* stays loading, on the card in *Your turn* and in
 the task sheet, with what it waits for under it: its place in the merge queue,
 its checks running, an update with its base, or its machine coming back
 online. This comes from the approval wherdr keeps, so it is the same after a
-reload and on every device. Once merged, the task leaves *Your turn*; if the
+reload and on every device. While its checks are red, the merge cannot go on:
+*Merge* stops loading, and the card and the sheet say why instead of *merges
+by itself*: *Checks failed (smoke): fixing: the worker is on it*, or what the
+fix waits for, such as *Checks failed (smoke): waits for its worker, no room on
+machine-a (needs ≈3.4 GB: …)* or *…, its machine is offline*. Once merged, the task leaves *Your turn*; if the
 merge fails or is refused, *Try again* comes back with the reason in plain
 words.
 
@@ -1199,6 +1203,8 @@ worker ended again), the card says why it waits instead, for example *Waits
 for its machine (offline)*, *Waits for its machine (paused)* or *Waits for its agent: it ended. The coordinator, or Stop then Resume,
 continues it*, and the project's coordinator is woken once with that reason
 (its autopilot on); with no coordinator to wake, the task goes to *Your turn*.
+No room on its machine is tried again on every pass, and the coordinator is
+woken once only when that has lasted 30 minutes.
 Once the machine is back (online, or switched on again), wherdr starts the worker again by itself. Before it
 ends a task's agents, wherdr pushes the commits the branch has not pushed yet;
 if the push fails, the agents stay and the log says why.
