@@ -6,11 +6,12 @@
 // woken once. The rules are in shared/pm/watchdog.ts.
 import { LABEL, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { MACHINE_OFFLINE, MACHINE_PAUSED } from '../../shared/pm/release'
-import { AGENTLESS_WHY, agentNeeded, watchAgent, watchFailed, type AgentWatch } from '../../shared/pm/watchdog'
+import { AGENTLESS_WHY, agentNeeded, reviewRestartRefusal, reviewRestarted, watchAgent, watchFailed, type AgentWatch } from '../../shared/pm/watchdog'
 import { isPaused, type Project } from '../../shared/pm/project'
 import { showIds } from '../../shared/pm/projectKey'
 import { reviveWorker } from './pmRelease'
 import { HerdrError } from './herdr'
+import { killTerminal } from './pmProcs'
 import type { PmLaunchDeps } from './pmLaunch'
 
 // Task id → its missing agent's watch. In memory: a restart starts the minutes again.
@@ -18,6 +19,25 @@ const watches = new Map<string, AgentWatch>()
 
 const latest = (runs: Run[], task: string, role: Run['role']) =>
   runs.filter(r => r.task === task && r.role === role).sort((a, b) => b.startedAt - a.startedAt)[0]
+
+// The review started again (the user's Restart the review, a coordinator's
+// tell --fix, the watchdog): its reviewer ends, killed if still there, and the
+// next advance pass starts a new one on the branch's current head.
+export async function restartReview(deps: PmLaunchDeps, id: string, by: string, text: string): Promise<Task> {
+  const { store } = deps
+  const task = await store.task(id), p = task && (await store.projects()).find(x => x.key === task.project)
+  const t = p && await store.workflow(p.key).catch(() => null)
+  if (!task || !p || !t) throw new HerdrError('not_found', 'Unknown task')
+  const plan = taskPlan(t, task, p)
+  const why = reviewRestartRefusal(task, plan)
+  if (why) throw new HerdrError('refused', why)
+  const run = latest(await store.runs(), id, 'reviewer')
+  if (run && run.state !== 'ended') {
+    if (run.terminal) await killTerminal(deps, run.terminal).catch(() => {})
+    await store.saveRun({ ...run, state: 'ended', endedBy: 'stopped' })
+  }
+  return store.logTask(reviewRestarted((await store.task(id))!, plan, Date.now()), by, text)
+}
 
 // Why its machine takes no agent now: offline, or paused for the project.
 function machineWait(deps: PmLaunchDeps, p: Project, machine: string) {
@@ -58,15 +78,13 @@ export async function watchAgents(deps: PmLaunchDeps, wake: (task: Task, why: st
     }
     const machineWhy = machineWait(deps, p!, (run || worker)!.machine)
     if (machineWhy) { await fail(machineWhy); continue }
-    if (run && run.state !== 'ended') await store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
     if (role === 'reviewer') {
-      // Its step told again: the next advance pass starts a new reviewer in the worktree.
-      const { told: _, ...step } = task.step!
-      await store.logTask({ ...task, held: undefined, step }, 'engine', 'its reviewer was not running: started again')
+      await restartReview(deps, task.id, 'engine', 'its reviewer was not running: started again')
       watches.set(task.id, { ...watch, since: now })
       restarted.push(task.id)
       continue
     }
+    if (run && run.state !== 'ended') await store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
     let hold: string | undefined
     const started = await reviveWorker(deps, task.id, 'its agent was not running', undefined, (h) => { hold = h }, AGENTLESS_WHY)
       .then(x => x ?? null, (e: Error) => (e instanceof HerdrError && e.code === 'busy' ? undefined : e))

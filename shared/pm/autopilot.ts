@@ -287,7 +287,7 @@ export const USER_ONLY: Record<string, string> = {
   settings: 'Settings change only in wherdr, by the user',
   'autopilot set': 'The autopilot\'s goal and limits change only in wherdr, by the user',
   pacing: 'The pace of each quota account changes only in wherdr, by the user',
-  ...Object.fromEntries(['add', 'set', 'edit', 'remove', 'on', 'off', 'run'].map(v => [`automation ${v}`, 'Automations are added, changed and run only in wherdr, by the user'])),
+  ...Object.fromEntries(['add', 'set', 'edit', 'remove', 'on', 'off', 'run'].map(v => [`automation ${v}`, 'Only the user switches an automation on or off or runs it, in wherdr: propose a new one, a change or a removal with automation propose'])),
 }
 
 // `task add`: on the user's request sent from wherdr, or in a wake with the autopilot on.

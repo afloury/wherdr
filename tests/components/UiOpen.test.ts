@@ -31,17 +31,19 @@ function sideGutters(cls: string) {
   })
   return out
 }
-registerEndpoint('/api/chat', () => ({ available: true, token: 't', file: '/home/user/demo/t.jsonl', start: 0, items: [] }))
+// The conversation's messages (none by default).
+let chatItems: { role: string, text: string, ts: string }[] = []
+registerEndpoint('/api/chat', () => ({ available: true, token: 't', file: '/home/user/demo/t.jsonl', start: 0, items: chatItems }))
 
-async function openFromAlfred(room: boolean) {
+async function openFromAlfred(room: boolean, link = '#/settings') {
   sidePanelRoom.value = room
   herdrState.value = { ok: true, workspaces: [], panes: [pane] }
   const w = await mountSuspended(defineComponent({ render: () => h(UApp, null, () => h(AgentView, { paneId: pane.id })) }), { route: '/a/w1:p7', attachTo: document.body })
   expect(useRoute().fullPath).toBe('/a/w1:p7')
-  uiOpenRequest.value = { type: 'ui-open', pane: pane.id, link: '#/settings', by: 'Alfred' }
+  uiOpenRequest.value = { type: 'ui-open', pane: pane.id, link, by: 'Alfred' }
   return w
 }
-afterEach(() => { sidePanelRoom.value = false; uiOpenedBy.value = null; herdrState.value = { ok: false, workspaces: [], panes: [] } })
+afterEach(() => { chatItems = []; sidePanelRoom.value = false; uiOpenedBy.value = null; herdrState.value = { ok: false, workspaces: [], panes: [] } })
 
 it('opens Settings in the side panel beside the conversation on a wide screen', async () => {
   const w = await openFromAlfred(true)
@@ -66,5 +68,22 @@ it('shows the card on a narrow screen, in a row with the message field\'s gutter
     const composerGutters = sideGutters('composer')
     expect(composerGutters.size).toBe(3)
     expect(sideGutters('ui-open-row')).toEqual(composerGutters)
+  } finally { w.unmount() }
+})
+
+// WHR-268: the reply's card is the one element; no second bar above the field.
+it.each([true, false])('shows a place once when the reply keeps its card (wide screen: %s)', async (room) => {
+  chatItems = [
+    { role: 'user', text: 'Show me the board', ts: '2026-01-01T00:00:00Z' },
+    { role: 'assistant', text: 'Here it is.\n\n```wherdr\nopen #/board?project=WHR\n```', ts: '2026-01-01T00:00:01Z' },
+  ]
+  const w = await openFromAlfred(room, '#/board?project=WHR')
+  try {
+    await expect.poll(() => w.findAll('.ui-open-card').length).toBe(1)
+    await new Promise(r => setTimeout(r, 50))
+    expect(w.findAll('.ui-open-card')).toHaveLength(1)
+    expect(w.find('.ui-open-row').exists()).toBe(false)
+    expect(w.text()).not.toContain('Opened by Alfred')
+    expect(w.text()).toContain('Place in wherdr')
   } finally { w.unmount() }
 })

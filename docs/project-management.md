@@ -30,12 +30,14 @@ new project.
    `origin`, such as a folder you just ran `git init` in, works with `vibe`.
 3. **Choose its workflow.** The examples, each with its steps in one line, such
    as `vibe` (commit straight to a dev branch, no review). The one you choose is
-   copied into the project: that copy is the project's own workflow, changed
-   later in its [Workflow](#workflow) tab. Projects imported from v2
-   ([Migrate from v2](migrate-from-v2.md)) have none, and their tasks cannot
-   start without it. When the repository has no remote and the example you
-   pick needs one, this step says so and offers *Use vibe*, or add a remote
-   with `git remote add origin <url>`. **New › Project** warns the same way.
+   copied into the project: that copy is the project's own workflow, shown in
+   its [Workflow](#workflow) tab and changed later by asking its coordinator.
+   Projects imported from v2 ([Migrate from v2](migrate-from-v2.md)) have none,
+   and their tasks cannot start without it: open the project, then
+   *Workflow › Start from a template*. When the repository has no remote and
+   the example you pick needs one, this step says so and offers *Use vibe*, or
+   add a remote with `git remote add origin <url>`. **New › Project** warns the
+   same way.
 4. **Check its guards.** The protected branches and who merges, as the
    workflow set them ([Guards](#guards)). Change and save them, or keep the
    defaults with Next.
@@ -111,8 +113,7 @@ its folder, branches and task worktrees stay on the machine.
   **Fallback** (see [Reviewer fallback](#reviewer-fallback)).
 - **Worktree setup**: what wherdr prepares in a new task's worktree before its
   worker first starts, so the worker does not rebuild it. Saved with *Save*, in
-  the workflow's `worktree` block (also editable in Workflow › Edit as JSON, kept
-  on *Start over*):
+  the workflow's `worktree` block (shown in Workflow › JSON):
   - *Files to copy*: ignored files taken from the project's clone, such as `.env`
     or a local config, one path per line. Literal paths only; a file git tracks
     (it is already there) or the clone does not have is skipped, and the log says so.
@@ -151,6 +152,21 @@ its folder, branches and task worktrees stay on the machine.
   new tasks no longer start there, tasks already there stay. Its switch off pauses it
   for the project instead, its clone kept ([Pause a machine for a project](machines.md#pause-a-machine-for-a-project)). Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
+  Each machine's card shows, live (read again every 10 s), what the
+  coordinator's `autopilot show` sees: *Online*, *Offline* or *Paused*, its
+  available hours, its **memory** as a bar (its agents' estimates, the rest of
+  what is used, free, the reserve hatched at the end), cores and load (on macOS
+  the memory pressure), its agents at work with their task and weight, and
+  **what it takes now**: the heaviest weight that fits (*Takes standard now ·
+  heavy: …* says why not heavier), or *Takes nothing now* and why (*full: 4
+  agents (cap 4)*, *3.1 GB free, needs 3.4 GB with its reserve*, *paused for
+  this project*, *offline*). Under the placement picker, a small picture and one
+  line explain the strategy, and *Next* names the next to-do task and the
+  machine it would go to, by the pace of that task's own account on each machine,
+  or why it waits (no room anywhere, Keep the board busy off, a limit, the task it
+  is chained after, held for room, another task's files). What a machine takes is
+  weighed with the project's learned estimates, as placement weighs it. The board's header opens this block (its server icon: the
+  picked project's sheet, or Settings › Projects with several projects).
   **Placement** chooses how new tasks spread over these machines: *Heavy to the
   strongest* (the default: light and standard work at home when it fits, heavy
   work on the machine with most room), *Balance the load* (each task on the
@@ -182,10 +198,33 @@ its folder, branches and task worktrees stay on the machine.
 The **Workflow** is *how each task runs, step by step*; the
 [Autopilot](#autopilot) is *when the project works without you*. The tab
 starts with that line and a link to the Autopilot tab (who starts tasks and
-when), then draws the first task type's steps as a row of linked boxes (for
-example work → pr → review → merge), each with who holds it.
+when).
 
-The project's own workflow: its task types, and the steps of each. Each step
+The project's own workflow, read only: pick a task type and its diagram shows
+how a task of that type runs. A line on top gives its route in a few words
+(for example *Worker, with screenshots → Open a GitHub PR to v3 → Reviewer, up
+to 3 rounds → You press “Merge”*), so two types compare at a glance. The steps
+are cards laid out in rows that snake across the width (three per row on a
+computer, one column on a phone). Each step is a card with its id, its board
+column, who holds it (worker, reviewer or coordinator, with the agent and model
+from the project's agents; the engine; or you), how it ends (a report, a
+verdict, your button, or an action such as *Open a GitHub PR to v3* or *Merge
+the GitHub PR · squash · once smoke green*), its timeout, the proofs it needs
+(screenshots, a report, a link) and a sentence saying what happens there. A
+merge step shows its guard: the branch is protected and you merge, or the
+engine merges. Coloured arrows mark the path: an agent works (purple), the
+engine acts (blue), the task waits for you (orange), and a dashed red loop
+sends the work back from a review, up to its number of rounds, then you
+decide. A square travels the path (still when the system asks for reduced
+motion). *JSON* shows the whole workflow, read only, with *Copy*.
+
+Nothing in the tab edits the workflow. To create or change one, *Ask the
+coordinator* opens the project's coordinator with a first message to complete;
+it writes the new workflow (`wherdr pm template edit`) and you accept or refuse
+it (below). A project without a workflow (imported from v2) shows *Start from a
+template*: pick a template or an example to start from.
+
+What a workflow holds: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
 action, what it does: land on a branch, push, open a PR, merge a GitHub or
@@ -212,7 +251,7 @@ Green: the step ends, and the coordinator is not woken. Failed (which run and
 job, and the tail of the output) or past its timeout: the task's log and the
 coordinator get it once, and the step comes to you, or goes back to the worker
 with `"onFail": "worker"` (a timeout always comes to you). A step that had the
-coordinator watch the deploy with a recheck becomes, in *Edit as JSON*:
+coordinator watch the deploy with a recheck becomes, in the JSON:
 
 ```json
 { "id": "deploy", "column": "Deploy", "ends": "action",
@@ -224,8 +263,7 @@ or, outside GitHub, `"source": "command", "command": "./scripts/ci-status.sh dev
 A merge that first pushes the task's last commits waits up to a minute for
 GitHub to show them on the PR.
 In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
-*Add task* under [Board](#board)). Under the form, the plan of the chosen task type. *Save* checks the workflow
-and shows each problem with its line.
+*Add task* under [Board](#board)).
 
 **Bitbucket Cloud.** A worker step can open the PR with the agent's own
 Bitbucket tool (`evidence: ["link"]`). Then either a step that ends with you and
@@ -241,10 +279,8 @@ the machine that runs the task: `BITBUCKET_TOKEN` (an access token), or
 `BITBUCKET_USERNAME` with `BITBUCKET_APP_PASSWORD`, in the environment
 herdr-core runs with; wherdr never stores them.
 
-The ⋯ menu adds *Edit as JSON*, *Change log*, *Save as template* (copies the
-saved workflow into your templates; the project is untouched) and *Start over
-from a template* (pick a template or an example, read the difference, replace).
-Neither *Save* nor *Start over* changes the project's [guards](#guards).
+The ⋯ menu adds *Change log* and *Save as template* (copies the saved workflow
+into your templates; the project is untouched).
 
 When the project's coordinator proposes a change to the workflow (only after
 your request), a square marks the project's row (*1 to review*) and the
@@ -365,7 +401,23 @@ A message that sends you to a tab of the project sheet names it as
 Each automation adds a task and starts it at once, on a **schedule** (`every 2h`,
 `daily 09:00`, `mon,thu 09:00` or a cron, in this machine's time) or on an
 **event**, with an optional filter on the task's title. Each has its prompt (the
-task's description), its task type, a switch, its last firings and *Run now*.
+task's description) and its task type.
+
+You don't write automations in a form: ask the project's coordinator (or Alfred).
+The tab says so, with a button that opens that conversation. The coordinator
+proposes a new automation, a change or a removal with
+`wherdr pm automation propose`, only in a turn that comes from you. A card shows
+what the automation does, when it fires and its prompt, with *Accept* and
+*Refuse*. You see it in the conversation and at the top of the tab. A new
+automation you accept starts switched on, and a change keeps the switch and the
+past firings. The coordinator reads your answer with `wherdr pm automation list`.
+
+The tab lists each automation with its switch (only you turn it on or off), what
+triggers it in words (*every weekday at 9:00*, *when a task is merged · docs\**),
+its next firing and *Run now*. Its last five results form a short timeline,
+newest first: *Fired* with the task it added, *Waits for room*, *Skipped* (the
+[pace](quotas.md#pace) held it) or *Failed* with the reason. *What it does*
+opens the prompt.
 
 ### Autopilot tab
 
@@ -380,10 +432,10 @@ every account.
 with its version) and the built-in examples. Tap one to read it: the plan of
 each task type, then its JSON. A saved template's ⋯ menu renames it (its version
 and change log come along) or deletes it, after a confirmation. A project never
-follows the library: it starts from a copy (*Add project*, or *Workflow › ⋯ ›
-Start over from a template*), so renaming or deleting a template changes no
-project. To change a template, change a project's workflow, then *Save as
-template*.
+follows the library: it starts from a copy (*Add project*, or *Workflow › Start
+from a template* when it has none), so renaming or deleting a template changes no
+project. To change a template, have a project's coordinator change
+its workflow, then *Save as template*.
 
 ## Autopilot
 
@@ -562,7 +614,8 @@ copies it, *Copied*, without opening the task), the machine it runs on when its
 project allows several (*machine-b*), its step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done
 (*42 min*), a dot with its agent's state (worker or reviewer), where its PR stands (*PR open · waiting for checks*,
-*checks failed*, *merging*, *The PR conflicts with v3*, *merged …*), what you have to do under
+*checks failed*, *merging*, *The PR conflicts with v3*, *merged …*; *review pending*, never
+*ready to merge*, while a review is still ahead or under way), what you have to do under
 Your turn, the tasks it waits for, its first tags and its PR link. A refused
 step is said in plain words, never as a command: the commands go to the agent.
 When the engine has already asked the agent to bring a conflicting PR up to
@@ -777,6 +830,10 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   *The PR is not merged into develop yet: merge it on Bitbucket (PR link), then
   press “I merged it” again*.
 - **An agent's question or permission**: its text, and a button to open that agent.
+- **A stalled review** (past its time limit, or its reviewer stopped without
+  recording a verdict): one sentence says so, and **Restart the review** ends
+  the reviewer if it is still there and starts a new one on the PR's latest
+  commit, from the start. The step's time limit starts again.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (start it, open its agent). A failed action step (a merge GitHub
   refused) has *Try again* at the top of the sheet, which runs it again.
@@ -1133,7 +1190,9 @@ its project: `wherdr pm tell <task> "<what to do>" --fix <kind> --reason "<one
 sentence>"`, where the kind is `base` (merge the base and solve a conflict),
 `ci` (fix a red CI), `machine` (retry after a disk or memory problem) or
 `stall` (restart a stalled agent). A worker that was let go or ended on its
-own starts again with the message; a stopped or finished task is never fixed. Each fix is written to the task's log with its reason, at most
+own starts again with the message; at the review step, a reviewer that is not
+running starts the review again (the message goes to the task's log, the new
+reviewer reads its review file); a stopped or finished task is never fixed. Each fix is written to the task's log with its reason, at most
 twice per task and step; after that the block is yours, and the coordinator
 tells you. Each wake's text lists these fixes. A permission request, a merge,
 an approval, guards, settings and limits stay yours.
