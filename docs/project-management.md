@@ -16,20 +16,23 @@ is set up, the button is gone. **Settings › Projects › Set up a project** op
 it too, on the first project with a step left, and *Add project* opens it on a
 new project.
 
-1. **Turn on project management.** Off, wherdr changes nothing. This first
-   screen also offers *Let Alfred guide me*: it opens Alfred's conversation
+1. **Turn on project management.** Off, wherdr changes nothing. *Turn on* is
+   the main button; under it, a quieter *Let Alfred guide me*: it opens Alfred's conversation
    (see [Home](home.md#alfred)) and asks it to walk you through the setup.
 2. **Add a project.** Pick the machine, then a git repository found there or
    any folder (a new or empty one offers `git init`); name, key and color
    follow the folder and can be changed. Once added, wherdr checks whether the
-   repository is public; correct it if the check is wrong. With several
+   repository is public; correct it if the check is wrong (until it is
+   checked, it says *not checked* and nothing more). With several
    projects, pick the one to set up, or add another.
    **What a project needs:** a git repository (each task works in its own
    worktree), and a remote named `origin` for a workflow that pushes, opens or
    merges a PR, checks a merge or watches a pipeline. A repository without
    `origin`, such as a folder you just ran `git init` in, works with `vibe`.
 3. **Choose its workflow.** The examples, each with its steps in one line, such
-   as `vibe` (commit straight to a dev branch, no review). The one you choose is
+   as `vibe` (commit straight to a dev branch, no review). The `wherdr` example
+   (this project's own workflow) is an advanced one, offered only in
+   **Settings › Projects**. The one you choose is
    copied into the project: that copy is the project's own workflow, shown in
    its [Workflow](#workflow) tab and changed later by asking its coordinator.
    Projects imported from v2 ([Migrate from v2](migrate-from-v2.md)) have none,
@@ -40,7 +43,8 @@ new project.
    same way.
 4. **Check its guards.** The protected branches and who merges, as the
    workflow set them ([Guards](#guards)). Change and save them, or keep the
-   defaults with Next.
+   defaults with Next. Reopened before its coordinator was started, the window
+   opens on this step again rather than past it.
 5. **Start its coordinator.** Pick the agent and start it: the coordinator is
    the agent you talk to about the project. It adds tasks and follows them on
    the board. Its folder is new at its first start: wherdr answers the agent's

@@ -103,3 +103,6 @@ export const wherdr: Template = {
 }
 
 export const EXAMPLES = [vibe, company, github, common, wherdr]
+// The setup window's choices: wherdr's own workflow is an advanced example,
+// offered in Settings › Projects only.
+export const STARTER_EXAMPLES = EXAMPLES.filter(e => e !== wherdr)
