@@ -5,9 +5,10 @@
 // screenshots large (swipe between them, tap to zoom), the link to the full reports, then
 // Merge or Send back with a note. A step the user ends shows the TL;DR too. A step to merge
 // or a refused one has Open the PR when a link proof is a pull request (any host).
-// Once approved, Merge stays loading until the merge ends, what it waits for said under it.
+// Once approved, Merge stays loading until the merge ends, what it waits for said under it;
+// while its checks are red, it is on hold instead, with why (the worker fixes them, or waits to).
 import { adviceChoices } from '#shared/pm/decisions'
-import { canStart, mergeWaits, prLink, type Card } from '#shared/pm/board'
+import { canStart, mergeGoesNow, mergeWaits, prLink, type Card } from '#shared/pm/board'
 import { RESUMES, stoppedText, type Resume } from '#shared/pm/stop'
 import { shotUrl } from '#shared/pm/shots'
 import { reviewNote, workerNote } from '#shared/pm/report'
@@ -24,7 +25,9 @@ const emit = defineEmits<{ press: [], start: [], resume: [how: Resume], decide: 
 const told = computed(() => agentCatchingUp(props.card))
 // An approved merge on its way (server state, the same after a reload): what it waits for.
 const waits = computed(() => mergeWaits(props.card))
-const badge = computed(() => (waits.value !== undefined ? tl('Merge approved: it merges by itself') : stepRefusalText(props.card.yourTurn ?? '', told.value)))
+// It goes on now (Merge loading), or it is held: red checks the worker fixes or waits to fix.
+const goes = computed(() => mergeGoesNow(props.card))
+const badge = computed(() => (goes.value ? tl('Merge approved: it merges by itself') : waits.value !== undefined ? `${tl('Merge approved, on hold')}: ${waits.value}` : stepRefusalText(props.card.yourTurn ?? '', told.value)))
 const advice = computed(() => props.card.state?.yourTurn?.advice)
 const choices = computed(() => (advice.value ? adviceChoices(advice.value) : { options: [] }))
 
@@ -103,7 +106,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       </template>
       <div v-else class="task-sheet-actions todo-buttons">
         <!-- A refused action is tried again from the sheet's top (Try again). -->
-        <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy || waits !== undefined" data-testid="step-user" @click="emit('press')">{{ card.userLabel }}</UButton>
+        <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy || goes" :disabled="waits !== undefined && !goes" data-testid="step-user" @click="emit('press')">{{ card.userLabel }}</UButton>
         <UButton v-if="pr" color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" :to="pr.url" target="_blank" data-testid="todo-pr">{{ tl('Open the PR') }}</UButton>
         <UButton v-if="kind === 'review'" color="primary" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="todo-review-restart" @click="emit('review')">{{ tl('Restart the review') }}</UButton>
         <UButton v-if="kind === 'blocked' && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="emit('start')">{{ tl('Start', 'Lancer') }}</UButton>

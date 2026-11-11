@@ -23,7 +23,8 @@ export interface YourTurn { reason: 'user' | 'timeout' | 'rounds' | 'action', ba
 // idle: since when its agent sits idle, its report not in (fixWatch).
 // text: what the worker was told, to start it again with it; waits: why it cannot do it now (release.ts handedWatch);
 // revived: when the engine started it again for it; told: who was told it waits (the coordinator's wake, else the user).
-export interface AgentWork { kind: string, head?: string, at: number, was?: YourTurn, idle?: number, text?: string, waits?: string, revived?: number, told?: 'coordinator' | 'user' }
+// waitsSince: since when it waits for that (a wait for room whose numbers change counts as the same).
+export interface AgentWork { kind: string, head?: string, at: number, was?: YourTurn, idle?: number, text?: string, waits?: string, waitsSince?: number, revived?: number, told?: 'coordinator' | 'user' }
 
 export interface StepState {
   at: number // index of the current step

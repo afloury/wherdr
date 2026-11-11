@@ -5,7 +5,8 @@
 // needs it. Only agents that hold a step under way count against a machine's
 // cap. Pure: server/utils/pmRelease.ts reads the terminals and ends the agents.
 import type { Run, Task } from './run'
-import type { PlannedStep, StepState } from './steps'
+import type { AgentWork, PlannedStep, StepState } from './steps'
+import { isRoomHold, roomShort } from './placement'
 
 export const RELEASE_IDLE_MS = 10 * 60_000
 
@@ -80,11 +81,28 @@ export function handedWatch(plan: PlannedStep[], s: StepState, worker: WorkerNow
   return work.waits === AGENT_ENDED ? undefined : { waits: AGENT_ENDED }
 }
 
-// The step with why its handed work waits (undefined: it does not), and who was told.
-export const agentWaits = (s: StepState, waits: string | undefined, told?: 'coordinator' | 'user'): StepState => {
+// The step with why its handed work waits (undefined: it does not), since when, and who was told.
+export const agentWaits = (s: StepState, waits: string | undefined, told?: 'coordinator' | 'user', now = Date.now()): StepState => {
   if (!s.agent) return s
-  const { waits: _, told: __, ...work } = s.agent
-  return { ...s, agent: { ...work, ...(waits ? { waits, ...(told ? { told } : {}) } : {}) } }
+  const { waits: was, waitsSince, told: __, ...work } = s.agent
+  const same = !!was && !!waits && (was === waits || (isRoomHold(was) && isRoomHold(waits)))
+  return { ...s, agent: { ...work, ...(waits ? { waits, waitsSince: same ? waitsSince ?? now : now, ...(told ? { told } : {}) } : {}) } }
+}
+
+// Handed work that waits for room on its machine: the engine tries again each
+// pass, and wakes the coordinator once only after ROOM_WAKE_MS of it.
+export const ROOM_WAKE_MS = 30 * 60_000
+export const roomWakeDue = (work: AgentWork, now: number) =>
+  !work.told && !!work.waits && isRoomHold(work.waits) && now - (work.waitsSince ?? now) >= ROOM_WAKE_MS
+
+// Why handed work waits, as a status says it after "waits for its worker, ".
+export function waitsShort(waits: string): string {
+  if (waits === MACHINE_OFFLINE) return 'its machine is offline'
+  if (waits === MACHINE_PAUSED) return 'its machine is paused for this project'
+  if (waits === AGENT_ENDED) return 'which ended (the coordinator, or Stop then Resume, continues it)'
+  const off = /^Waits for (.+) \(offline\)$/.exec(waits)
+  if (off) return `${off[1]} is offline`
+  return roomShort(waits) ?? waits.replace(/^Waits:? /, '').replace(/^./, c => c.toLowerCase())
 }
 
 // A failed engine action (a push refused, a PR not opened) handed to the
