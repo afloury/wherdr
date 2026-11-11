@@ -214,6 +214,10 @@ describe('on a real repo', () => {
     // A CI fix outside the interface keeps it; a change to a screen does not.
     expect(await changed(put(wt, 'server/x.ts', 'fix\n'))).toBe('same')
     expect(await changed(put(wt, 'app/layouts/default.vue', 'new\n'))).toBe('changed')
+    // Over all files: the merge of the base keeps the task's own change, the CI fix moves it.
+    const own = async (to: string) => (await localSh(SCRIPT.ownChanged, [wt, 'dev', approved, to])).out
+    expect(await own(git(wt, 'rev-parse', 'HEAD~2'))).toBe('same')
+    expect(await own(git(wt, 'rev-parse', 'HEAD~1'))).toBe('changed')
   })
 
   it('lands a task on dev, refuses main, sends a conflict back and verifies the merge', async () => {
@@ -486,18 +490,16 @@ esac
     return { repo, origin, sh, f, merge, elsewhere, lagging, head: () => git(repo, 'rev-parse', 'HEAD') }
   }
 
-  it('after a catch-up push, goes back to review for the new head, then merges it', async () => {
+  it('after a clean catch-up merge of the base, merges with no new review', async () => {
     const s = setup('moved-catchup'), reviewed = s.head()
     s.elsewhere('theirs', 'dev')
     expect((await s.sh(SCRIPT.catchUp, [s.repo, 'dev', 'task/A-1'])).code).toBe(0)
-    const caught = s.head()
-    expect(await s.merge(1, reviewed)).toEqual({ ok: false, error: `merge: new commits since the review (${reviewed.slice(0, 7)}..${caught.slice(0, 7)})`, review: { since: reviewed, head: caught }, commit: caught })
-    expect(await s.merge(2, caught)).toEqual({ ok: true, link: 'https://pr/1', commit: caught })
+    expect(await s.merge(1, reviewed)).toEqual({ ok: true, link: 'https://pr/1', commit: s.head() })
   })
 
   it('after a CI fix committed but not pushed, has it reviewed, pushes it, then merges', async () => {
     const s = setup('moved-cifix'), reviewed = s.head()
-    git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'fix CI')
+    fs.writeFileSync(path.join(s.repo, 'fix.txt'), 'fix\n'); git(s.repo, 'add', '.'); git(s.repo, 'commit', '-q', '-m', 'fix CI')
     const fix = s.head()
     expect(await s.merge(1, reviewed)).toMatchObject({ ok: false, review: { since: reviewed, head: fix }, commit: fix })
     expect(await s.merge(2, fix)).toEqual({ ok: true, link: 'https://pr/1', commit: fix })

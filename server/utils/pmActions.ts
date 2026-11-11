@@ -49,6 +49,12 @@ export const actionShell = (deps: Pick<CoreAdminDeps, 'call'>, on: string | unde
     return { code: r.code, out: [r.out, r.err].filter(Boolean).join('\n') }
   }
 
+// Only merges of the base since the reviewed commit (the task's own change the same): not reviewed again.
+const onlyBase = async (deps: ActionDeps, wt: string, base: string, from: string, to: string) => {
+  const r = await run(deps, SCRIPT.ownChanged, [wt, base, from, to])
+  return r.code === 0 && lastLine(r.out) === 'same'
+}
+
 // A PR head made by GitHub's Update branch (SCRIPT.headOf says update): taken
 // into the worktree, where the project's after-merge fix runs, then pushed at
 // once so the PR does not keep the unfixed merge.
@@ -171,7 +177,7 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
           }
           if (where === 'foreign') return { ok: false, error: `merge: the PR head ${pr.headRefOid.slice(0, 7)} has commits the task's worktree never had (pushed from elsewhere): bring them into the worktree, or merge by hand` }
           // The head moved after the review (catch-up, conflict, CI fix): reviewed again first.
-          if (job.reviewed && job.reviewed !== h) return { ok: false, error: `merge: new commits since the review (${job.reviewed.slice(0, 7)}..${h.slice(0, 7)})`, review: { since: job.reviewed, head: h }, commit: h }
+          if (job.reviewed && job.reviewed !== h && !(await onlyBase(deps, wt, pr.baseRefName, job.reviewed, h))) return { ok: false, error: `merge: new commits since the review (${job.reviewed.slice(0, 7)}..${h.slice(0, 7)})`, review: { since: job.reviewed, head: h }, commit: h }
           // Approved earlier: a new look at the interface only if the task's own UI files changed since.
           if (job.approved && job.approved !== h) {
             const ui = await run(deps, SCRIPT.uiChanged, [wt, pr.baseRefName, job.approved, h])
@@ -253,7 +259,7 @@ async function bitbucketMerge(deps: ActionDeps, job: ActionJob, fail: (r: { code
     const base = pr.destination.branch.name, link = pr.links.html.href
     const refused = guardAction(job.guards, a, { branch, by: job.by, base })
     if (refused) return { ok: false, error: refused }
-    if (job.reviewed && job.reviewed !== head) return { ok: false, error: `merge: new commits since the review (${job.reviewed.slice(0, 7)}..${head.slice(0, 7)})`, review: { since: job.reviewed, head }, commit: head }
+    if (job.reviewed && job.reviewed !== head && !(await onlyBase(deps, wt, base, job.reviewed, head))) return { ok: false, error: `merge: new commits since the review (${job.reviewed.slice(0, 7)}..${head.slice(0, 7)})`, review: { since: job.reviewed, head }, commit: head }
     if (!head.startsWith(pr.source.commit.hash)) {
       if (pushed) return { ok: false, error: `merge: the PR head ${pr.source.commit.hash.slice(0, 7)} is not the task's commit` }
       const no = guardAction(job.guards, { kind: 'git.push' }, { branch, by: job.by })

@@ -39,6 +39,13 @@ const CLEAN = `[ -z "$(git status --porcelain)" ] || { echo "uncommitted changes
 const AFTER_MERGE = `a=$(git config --get wherdr.afterMerge) && { sh -c "$a" >/dev/null 2>&1 && git commit -qam "Fix the merge (wherdr.afterMerge)" >/dev/null 2>&1; git reset -q --hard; };`
 // The files that change the interface, at any depth (app/components, pages…).
 const UI_FILES = ['components', 'assets', 'pages', 'layouts'].map(d => `':(glob)**/${d}/**'`).join(' ')
+
+// A script: "same" when the task's own change (in `files`) is the same at commits $2 and $3, base $1.
+const ownChange = (files: string) => `${IN} git fetch -q origin "$1" 2>/dev/null; b="origin/$1"
+for c in "$2" "$3"; do git cat-file -e "$c^{commit}" 2>/dev/null || git fetch -q origin "$c" 2>/dev/null; done
+own() { m=$(git merge-base "$b" "$1") && git diff -U0 --no-color --no-ext-diff "$m" "$1" -- ${files} | sed '/^index /d; /^@@/d'; }
+x=$(own "$2") && y=$(own "$3") || exit 1
+[ "$x" = "$y" ] && echo same || echo changed`
 export const SCRIPT = {
   // Catch up with the target, then push the task branch onto it. A repository
   // without origin lands locally: the clone's branch $t (made when missing)
@@ -172,11 +179,9 @@ gh run view "$1" --log-failed 2>&1 | tail -n 20`,
   // Did the task's own interface change move from commit $2 to $3? Each one's
   // diff from where it left base $1, interface files only, line numbers left
   // out: what a merge of the base brought does not count. "same" or "changed".
-  uiChanged: `${IN} git fetch -q origin "$1" 2>/dev/null; b="origin/$1"
-for c in "$2" "$3"; do git cat-file -e "$c^{commit}" 2>/dev/null || git fetch -q origin "$c" 2>/dev/null; done
-own() { m=$(git merge-base "$b" "$1") && git diff -U0 --no-color --no-ext-diff "$m" "$1" -- ${UI_FILES} | sed '/^index /d; /^@@/d'; }
-x=$(own "$2") && y=$(own "$3") || exit 1
-[ "$x" = "$y" ] && echo same || echo changed`,
+  uiChanged: ownChange(UI_FILES),
+  // The same over all its files: a commit that only merges the base is not reviewed again.
+  ownChanged: ownChange('.'),
   head: `${IN} git rev-parse HEAD`,
   // One Bitbucket Cloud API call on origin's repository: method ($1), path
   // ($2), then a query (GET) or a JSON body. Credentials from the machine's
