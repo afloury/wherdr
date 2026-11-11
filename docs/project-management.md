@@ -904,6 +904,13 @@ from then, so the task comes back if its agent stops again. The Log says
 *back to work* and who sent it back. What only you can do (a merge, an answer,
 a permission, a decision) stays until you do it.
 
+A step's time limit counts only the time its agent could work. While the
+machine it runs on is offline or unreachable, while the engine waits to resume
+it after an incident, or while the task waits for room, a machine or the pace,
+its clock stops: such a task never shows *over 3h*, it shows what it waits
+for, and the limit goes on from where it stopped once the agent can work
+again. The time in step shown on the card stays the real time.
+
 ### Why agents are gone
 
 When a task's agents are gone (after a restart, or while wherdr runs), the
