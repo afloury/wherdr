@@ -6,7 +6,7 @@
 // "New tab" (`newTabSpace`): a new terminal labelled for that space, on its
 // machine.
 // On the phone it opens full screen, Launch pinned at the bottom.
-import type { MachineConfig } from '#shared/types'
+import type { MachineConfig, QueuedMessage } from '#shared/types'
 import { shortHome, type ProjectDraft } from '#shared/pm/newProject'
 import { machineOf } from '#shared/ids'
 import { selectedAgentKind, visibleAgentKinds } from '~/utils/agentChoices'
@@ -130,8 +130,11 @@ function resetForm() {
 
 // herdr-core answers once the first message was typed ('sent') or not ('skipped': a dialog
 // to answer, a blocked or busy program). Sent: the chat shows it at once; else say so.
-function afterFirstMessage(r: { pane_id: string, first_message?: string | null }, text: string) {
+// Held on the server (Codex installing or updating itself): shown as waiting in the
+// conversation, and back into its field if Codex exits (composables/useOutbox.ts).
+function afterFirstMessage(r: { pane_id: string, first_message?: string | null, queued?: QueuedMessage }, text: string) {
   if (r.first_message === 'sent') rememberFirstPrompt(r.pane_id, text)
+  else if (r.queued) outboxAdd(r.pane_id, r.queued)
   else if (r.first_message === 'queued') {
     toast(tl('The first message will be sent once you have answered the prompt.', 'Le premier message partira dès que tu auras répondu à la question.'))
   } else if (r.first_message === 'skipped') {
@@ -145,7 +148,7 @@ async function launch() {
   try {
     // A new tab is a new terminal labelled for its space (no layout call).
     const sent = prompt.value
-    const r = await api<{ pane_id: string, first_message?: string | null }>('/api/agents', {
+    const r = await api<{ pane_id: string, first_message?: string | null, queued?: QueuedMessage }>('/api/agents', {
       ...(machine.value ? { machine: machine.value } : {}),
       kind: kind.value,
       cwd: dir.value,
