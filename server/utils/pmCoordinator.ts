@@ -258,7 +258,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
       const step = currentStep(plan, state)!.id
       // The user's words: the same path as the step's button (runs its check).
       // The log keeps the user's own message (the turn's), not the coordinator's quote.
-      if (ev.kind === 'user') return { task: await store.logTask(await userStep(deps, task.id), by, `${step}: done on the user's message "${(rec?.turn?.said ?? '').slice(0, 500)}"`) }
+      if (ev.kind === 'user') return { task: await store.logTask(await userStep(deps, task.id, true), by, `${step}: done on the user's message "${(rec?.turn?.said ?? '').slice(0, 500)}"`) }
       const r = onEvent(plan, state, ev, Date.now())
       if (r.refused) throw new HerdrError('refused', r.refused)
       return { task: await store.logTask({ ...task, step: r.state }, by, `${step}: done`) }

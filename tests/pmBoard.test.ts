@@ -27,6 +27,11 @@ it('the Merged button runs the step\'s check, and a failed check stays in Your t
   const after = await userStep(deps, task.id)
   expect(after.step).toMatchObject({ at: 4, yourTurn: { reason: 'action', badge: 'Merge the PR on your Git host: No worktree: the task never started' } })
   expect(after.step?.acting).toBeUndefined()
+  // The user's own words (step done --user-said) end the step anyway; the check's answer is logged as a warning.
+  const said = await userStep(deps, task.id, true)
+  expect(said.step).toMatchObject({ at: 5 })
+  expect(said.log?.at(-1)?.text).toBe('merge: verify-merged disagreed: No worktree: the task never started')
+  await store.saveTask({ ...said, step: after.step })
   const { cards, projects } = await board(store)
   expect(projects[0]!.columns).toEqual(['To do', 'Working', 'Review', 'Deploy', 'Done'])
   expect(projects[0]!.types.find(x => x.id === 'feature')?.plan).toMatch(/ → review → /)

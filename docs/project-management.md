@@ -888,7 +888,21 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   host*, from the PR link), and its button *I merged it* checks that the branch
   is in its target; the step's own badge and button text win. Not merged yet:
   *The PR is not merged into develop yet: merge it on Bitbucket (PR link), then
-  press “I merged it” again*.
+  press “I merged it” again*. It counts as merged when:
+  - a merged PR from the branch into the target holds the task's commit, on
+    GitHub or on Bitbucket Cloud (with its credentials), squash and rebase
+    included;
+  - or the task's commit is in the target and the branch has work of its own,
+    even once its remote branch is deleted. For a task that continues an
+    existing branch (`--from-branch`), the commits that branch already had
+    ahead of the target count, whoever made them (a bot's PR branch). A branch
+    with no commit ahead of the target at any time is *nothing was merged*.
+
+  When you tell the coordinator it is merged, your word ends the step
+  (`wherdr pm step done <task> --user-said "<your words>"`) even if the check
+  disagrees: the task's log keeps *verify-merged disagreed: <why>* as a
+  warning. This holds only for a step that waits for you, never for wherdr's
+  own merge.
 - **An agent's question or permission**: its text, and a button to open that agent.
 - **A stalled review** (past its time limit, or its reviewer stopped without
   recording a verdict): one sentence says so, and **Restart the review** ends
