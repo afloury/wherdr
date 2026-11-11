@@ -5,6 +5,9 @@
 // (describeStep). The cards snake across rows (one column on a phone); an SVG
 // layer behind them draws the arrows, coloured by who acts next, the send-back
 // loops, and a square travelling the path. Above them, the type's route in one line.
+// changes: a proposal drawn on the workflow it proposes: its steps added, removed
+// (put back where they stood) and changed (which fields, before → after), and
+// what it changes for the type's tasks. compact: the chat card's, cards only.
 import { planSteps, stepLabels, type PlannedStep } from '#shared/pm/steps'
 import { taskGuards } from '#shared/pm/actions'
 import { isProtected, mayMerge } from '#shared/pm/guards'
@@ -12,13 +15,25 @@ import { reviewerPlan, workerPlan, type Task } from '#shared/pm/run'
 import { actionLabel, describeStep } from '#shared/pm/describe'
 import { DEFAULT_ROUNDS } from '#shared/pm/steps'
 import { isPrMerge, type Evidence, type Template } from '#shared/pm/workflow'
+import { stepMarks, taskImpact, type ChangeKind, type FieldChange, type WorkflowChanges } from '#shared/pm/workflowChanges'
 
-const props = defineProps<{ workflow: Template, type: string, base?: string, coordinator?: string }>()
+const props = defineProps<{ workflow: Template, type: string, base?: string, coordinator?: string, changes?: WorkflowChanges, compact?: boolean }>()
 
 type Kind = 'agent' | 'engine' | 'you' | 'edge'
 const PROOF: Record<Evidence, string> = { 'link': 'Link', 'commit': 'Commit', 'report': 'Report', 'proposed-tasks': 'Proposed tasks', 'screenshots': 'Screenshots' }
 
-const plan = computed(() => planSteps(props.workflow, { type: props.type }, props.base))
+const marks = computed(() => (props.changes ? stepMarks(props.changes, props.type) : new Map()))
+// The proposed steps, the removed ones back where they stood.
+const plan = computed(() => {
+  const steps = planSteps(props.workflow, { type: props.type }, props.base)
+  if (!marks.value.size) return steps
+  const by = new Map(steps.map(s => [s.id, s]))
+  return [...marks.value].map(([id, m]) => by.get(id) ?? ({ id, holder: m.holder, text: '' } as PlannedStep))
+})
+const DIFF: Partial<Record<ChangeKind, string>> = { added: 'Added', removed: 'Removed', changed: 'Changed', moved: 'Moved' }
+const FIELD: Record<string, string> = { holder: 'Holder', ends: 'Ends', action: 'Action', rounds: 'Rounds', timeout: 'Timeout', agent: 'Agent', model: 'Model', reviewAgent: 'Agent', reviewModel: 'Model', reviewFallbackAgent: 'Fallback agent', reviewFallbackModel: 'Fallback model', sendBack: 'Sends back to', evidence: 'Proofs' }
+const fieldText = (f: FieldChange) => (f.field === 'instructions' ? tl('Instructions edited') : `${tl(FIELD[f.field] ?? f.field)}: ${f.before ?? tl('none')} → ${f.after ?? tl('none')}`)
+const impact = computed(() => (props.changes ? tl(taskImpact(props.changes, props.type)) : ''))
 const guards = computed(() => taskGuards(props.workflow, props.type))
 const agentOf = (r: { program: string, model: string } | { reason: string }) =>
   'reason' in r ? tl('not set') : `${kindLabel(r.program)} · ${r.model}`
@@ -63,7 +78,10 @@ const nodes = computed(() => plan.value.map((s, i, all) => {
     : kind === 'agent' ? who[0] + (proofs.length ? tl(`, with ${proofs.join(', ')}`) : '')
     : s.ends === 'user' ? tl(`You press “${stepLabels(s).button}”`)
     : kind === 'engine' || kind === 'you' ? (a ? actionLabel(a, tl) : '') : ''
-  return { s, kind, who, ends, guard, facts, loop, short, say: describeStep(s, tl, { first: i === 0, last }) }
+  const m = marks.value.get(s.id)
+  const diff = m && m.kind !== 'same' ? m.kind as ChangeKind : undefined
+  const delta = diff === 'changed' || diff === 'moved' ? m!.fields.map(fieldText) : []
+  return { s, kind, who, ends, guard, facts, loop, short, diff, delta, say: describeStep(s, tl, { first: i === 0, last }) }
 }))
 // The send-back loops: from the verdict step (to) back to its sendBack step (from).
 const loops = computed(() => plan.value.flatMap((s, to) => {
@@ -132,14 +150,16 @@ const KINDS: Kind[] = ['agent', 'engine', 'you', 'edge']
 
 <template>
   <div class="wf" data-testid="wf-diagram">
-    <p v-if="nodes.length" class="wf-route" data-testid="wf-route">
+    <p v-if="impact" class="wf-impact" data-testid="wf-impact">{{ impact }}</p>
+    <p v-if="nodes.length && !compact" class="wf-route" data-testid="wf-route">
       <template v-for="(n, i) in nodes.filter(x => x.short)" :key="n.s.id"><span v-if="i" class="wf-to" aria-hidden="true">→</span><span :class="`k-${n.kind}`">{{ n.short }}</span></template>
     </p>
-    <p v-if="about" class="wf-about">{{ about }}</p>
+    <p v-if="about && !compact" class="wf-about">{{ about }}</p>
     <ul class="wf-legend" :aria-label="tl('Legend')">
-      <li v-for="[k, label] in LEGEND" :key="k" :class="`k-${k}`"><i aria-hidden="true" />{{ tl(label) }}</li>
+      <li v-for="[k, label] in (compact ? [] : LEGEND)" :key="k" :class="`k-${k}`"><i aria-hidden="true" />{{ tl(label) }}</li>
+      <template v-if="changes"><li v-for="k in (['added', 'removed', 'changed'] as const)" :key="k" :class="`d-${k}`" class="wf-legend-diff"><i aria-hidden="true" />{{ tl(DIFF[k]!) }}</li></template>
     </ul>
-    <div ref="board" class="wf-board" :class="{ 'pad-top': padTop, 'pad-side': padSide, 'one-col': cols === 1 }" :style="{ '--cols': cols }">
+    <div ref="board" class="wf-board" :class="{ 'pad-top': padTop, 'pad-side': padSide, 'one-col': cols === 1, compact }" :style="{ '--cols': cols }">
       <svg class="wf-lines" aria-hidden="true">
         <defs>
           <marker v-for="k in [...KINDS, 'loop']" :id="`${uid}-${k}`" :key="k" :class="`k-${k}`" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" /></marker>
@@ -149,21 +169,25 @@ const KINDS: Kind[] = ['agent', 'engine', 'you', 'edge']
         <rect v-if="trail" class="wf-pulse" x="-4" y="-4" width="8" height="8"><animateMotion :dur="`${edges.length * 1.1}s`" repeatCount="indefinite" :path="trail" /></rect>
       </svg>
       <ol class="wf-steps">
-        <li v-for="(n, i) in nodes" :key="n.s.id" class="wf-node" :class="`k-${n.kind}`" :data-step="n.s.id" data-testid="wf-node">
-          <div class="wf-card" :style="cell(i)">
+        <li v-for="(n, i) in nodes" :key="n.s.id" class="wf-node" :class="`k-${n.kind}`" :data-step="n.s.id" :data-diff="n.diff" data-testid="wf-node">
+          <div class="wf-card" :class="n.diff && ['diff', `d-${n.diff}`]" :style="cell(i)">
             <div class="wf-head">
               <span class="wf-n mono">{{ String(i + 1).padStart(2, '0') }}</span>
               <b class="mono">{{ n.s.id }}</b>
-              <small class="mono-label">{{ n.s.column || n.s.id }}</small>
+              <small v-if="!compact" class="mono-label">{{ n.s.column || n.s.id }}</small>
+              <span v-if="n.diff" class="wf-mark mono-label" data-testid="wf-mark">{{ tl(DIFF[n.diff]!) }}</span>
             </div>
             <p class="wf-who" data-testid="wf-who"><span class="mono-label">{{ n.who[0] }}</span><span v-if="n.who[1]" class="mono">{{ n.who[1] }}</span></p>
-            <p v-if="n.ends" class="wf-ends" data-testid="wf-ends"><span class="mono-label">{{ tl('Ends') }}</span> {{ n.ends }}</p>
-            <ul v-if="n.facts.length || n.guard || n.loop" class="wf-facts">
+            <p v-if="n.ends && (!compact || n.diff)" class="wf-ends" data-testid="wf-ends"><span class="mono-label">{{ tl('Ends') }}</span> {{ n.ends }}</p>
+            <ul v-if="n.delta.length" class="wf-delta" data-testid="wf-delta">
+              <li v-for="f in n.delta" :key="f">{{ f }}</li>
+            </ul>
+            <ul v-if="!compact && (n.facts.length || n.guard || n.loop)" class="wf-facts">
               <li v-for="f in n.facts" :key="f" class="mono-label">{{ f }}</li>
               <li v-if="n.guard" class="mono-label wf-guard" data-testid="wf-guard"><UIcon :name="n.s.guarded ? 'i-lucide-lock' : 'i-lucide-git-merge'" aria-hidden="true" />{{ n.guard }}</li>
               <li v-if="n.loop" class="mono-label wf-loop-fact" data-testid="wf-loop"><UIcon name="i-lucide-undo-2" aria-hidden="true" />{{ n.loop }}</li>
             </ul>
-            <p class="wf-say">{{ n.say }}</p>
+            <p v-if="!compact && n.diff !== 'removed'" class="wf-say">{{ n.say }}</p>
           </div>
         </li>
       </ol>
@@ -218,5 +242,19 @@ const KINDS: Kind[] = ['agent', 'engine', 'you', 'edge']
 .wf-guard { color: var(--blocked); }
 .k-engine .wf-guard { color: var(--accent); }
 .wf-facts .wf-loop-fact { color: var(--rose); border-color: color-mix(in srgb, var(--rose) 50%, var(--line)); }
+/* A proposal: what it adds, removes and changes, framed in its colour and named. */
+.d-added { --d: var(--green); }
+.d-removed { --d: var(--rose); }
+.d-changed, .d-moved { --d: var(--teal); }
+.wf-impact { margin: 0; padding: 10px 14px; border: 1px solid var(--line); border-left: 3px solid var(--teal); background: var(--bg-2); font-size: 15px; line-height: 1.4; color: var(--text-strong); overflow-wrap: anywhere; }
+.wf-legend-diff i { height: 10px; width: 10px; border: 2px solid var(--d); }
+.wf-legend .d-removed i { border-style: dashed; }
+.wf-card.diff { border-width: 3px 2px 2px; border-color: var(--k) var(--d) var(--d); }
+.wf-card.d-removed { border-style: solid dashed dashed; opacity: .7; }
+.d-removed .wf-head b { text-decoration: line-through; color: var(--muted); }
+.wf-mark { margin-left: auto; padding: 1px 6px; border: 1px solid var(--d); color: var(--d); font-size: 10px; }
+.wf-delta { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font: 12px/1.45 var(--font-mono); color: var(--teal); overflow-wrap: anywhere; }
+.wf-board.compact { gap: 30px 36px; }
+.compact .wf-card { padding: 8px 10px; gap: 4px; }
 .wf-say { margin: auto 0 0; padding-top: 2px; font-size: 13px; line-height: 1.45; color: var(--muted); }
 </style>

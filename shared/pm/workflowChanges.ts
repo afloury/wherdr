@@ -126,3 +126,36 @@ export function changeHeadline(c: WorkflowChanges): string {
   const [first, ...rest] = changeSummary(c, Infinity)
   return first ? (rest.length ? `${first} · and ${rest.length} more ${rest.length === 1 ? 'change' : 'changes'}` : first) : ''
 }
+
+// For the diagram of a proposal: each step of one task type with its mark
+// (added, removed, changed, moved) and the fields it changes. A change of the
+// worker's or reviewer's agent or model (prefs, of the type or the whole
+// workflow) marks the steps they hold.
+export interface StepMark { kind: ChangeKind, holder: string, ends?: string, fields: FieldChange[] }
+// Plain words for the fields named in taskImpact.
+const WORDS: Record<string, string> = { agent: 'agent', model: 'model', reviewAgent: 'agent', reviewModel: 'model', reviewFallbackAgent: 'fallback agent', reviewFallbackModel: 'fallback model', ends: 'ending', sendBack: 'send-back step', evidence: 'proofs' }
+const HOLDER_PREFS: Record<string, string> = { agent: 'worker', model: 'worker', reviewAgent: 'reviewer', reviewModel: 'reviewer', reviewFallbackAgent: 'reviewer', reviewFallbackModel: 'reviewer' }
+export function stepMarks(c: WorkflowChanges, type: string): Map<string, StepMark> {
+  const t = c.types.find(x => x.type === type)
+  const prefs = [...c.all, ...(t?.fields ?? [])].filter(f => HOLDER_PREFS[f.field])
+  const out = new Map<string, StepMark>()
+  for (const s of t?.steps ?? []) {
+    const own = prefs.filter(f => HOLDER_PREFS[f.field] === s.holder && s.kind !== 'added' && s.kind !== 'removed')
+    const kind = own.length && s.kind === 'same' ? 'changed' : s.kind
+    out.set(s.id, { kind, holder: s.holder, ...(s.ends ? { ends: s.ends } : {}), fields: [...s.fields, ...own] })
+  }
+  return out
+}
+
+// What changes for the tasks of one type, in one plain line:
+// "For task tasks: a new step shots; review changes its model; merge: you → automatic".
+export function taskImpact(c: WorkflowChanges, type: string): string {
+  const t = c.types.find(x => x.type === type)
+  if (t?.kind === 'added') return `A new task type ${type}${t.about ? `: ${t.about}` : ''}`
+  if (t?.kind === 'removed') return `No more ${type} tasks: the type is removed`
+  const steps = [...stepMarks(c, type)].flatMap(([id, m]) => m.kind === 'added' ? [`a new step ${id}`] : m.kind === 'removed' ? [`no more step ${id}`]
+    : m.kind === 'moved' ? [`${id} moves`] : m.kind === 'changed' ? [`${id} changes its ${[...new Set(m.fields.map(f => WORDS[f.field] ?? f.field))].join(', ')}`] : [])
+  const own = [...c.all, ...(t?.fields ?? [])].filter(f => !HOLDER_PREFS[f.field]).map(fieldLine)
+  const parts = [...steps, ...own]
+  return parts.length ? `For ${type} tasks: ${parts.join('; ')}` : ''
+}
