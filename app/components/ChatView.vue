@@ -9,8 +9,9 @@ import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolVie
 import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
-import { isUploadLine, uploadSrc } from '#shared/queuedMatch'
-import { type PendingMessage, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
+import { uploadSrc } from '#shared/queuedMatch'
+import { userMessageParts } from '~/utils/userMessage'
+import { type PendingMessage, type WaitingOn, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { CHAT_READ_MS, createFlipGuard, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
@@ -20,8 +21,9 @@ import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
 import { findReplyOrigin, parseReply, type ReplyTarget } from '#shared/replyQuote'
 import { messageId, messageOf, messageRef, pointRef, refLine, refsIn, sameRef, type Reference } from '#shared/reference'
-import { isAttachmentLine, parseAttachmentLine } from '#shared/attachments'
 import { WAKE_LABEL, wakeKindOf, type WakeKind } from '#shared/pm/wakes'
+import type { ProposalAnswer } from '#shared/pm/coordinator'
+import { proposalSpot, type PlacedBlock } from '~/utils/proposalPlace'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
 import { keepIfSame, keyedMemo, weakMemo } from '~/utils/keepIfSame'
 import { duplicateImages } from '#shared/imageDupes'
@@ -226,15 +228,26 @@ const MORE_BLOCKS = 10
 const shown = ref(Infinity)
 const hiddenBlocks = computed(() => Math.max(0, blocks.value.length - shown.value))
 const visibleBlocks = computed(() => (hiddenBlocks.value ? blocks.value.slice(hiddenBlocks.value) : blocks.value))
-// A coordinator's proposed workflow change: its card (ProposalCard) follows
-// the agent's first message since the proposal; none yet, the conversation's end
-// (an answered one without its message in view shows nowhere).
+// A coordinator's workflow changes: each card (ProposalCard) under the last
+// reply of the turn that proposed it (utils/proposalPlace.ts), the one waiting
+// last; its turn with no reply yet, the conversation's end (one not in view
+// shows nowhere). Keyed by that reply ('' for the end).
 const coord = computed(() => coordinatorOf(props.pane))
-const proposalKey = computed(() => {
-  const at = coord.value?.proposal?.at ?? coord.value?.answered?.proposedAt
-  if (at === undefined) return null
-  return blocks.value.find(b => b.k === 'assistant' && (b.ms ?? 0) >= at)?.key ?? (coord.value?.proposal ? '' : null)
+const msOf = (it: { ts?: string | null }) => (it.ts ? { ms: new Date(it.ts).getTime() } : {})
+const turnOpens = (b: PlacedBlock) => fromUser(b as Block) || b.k === 'wake'
+// When a block was written (a thought's or a job's ms is its duration).
+const blockTime = (b: PlacedBlock) => (b.k === 'thinking' || b.k === 'job' ? undefined : b.ms)
+const proposalCards = computed(() => {
+  const c = coord.value, cards = new Map<string, { key: string, answer?: ProposalAnswer }[]>()
+  const place = (at: number | undefined, key: string, answer?: ProposalAnswer) => {
+    const spot = at === undefined ? null : proposalSpot(blocks.value, at, turnOpens, blockTime)
+    if (spot !== null) cards.set(spot, [...cards.get(spot) ?? [], { key, ...(answer ? { answer } : {}) }])
+  }
+  c?.answers?.forEach((a, i) => place(a.proposedAt, `a${i}:${a.proposedAt}`, a))
+  if (c?.proposal) place(c.proposal.at, 'pending')
+  return cards
 })
+const proposalKey = computed(() => [...proposalCards.value].find(([, l]) => l.some(x => !x.answer))?.[0] ?? null)
 // The user's request it follows: the last message they sent before the card.
 const proposalSaidKey = computed(() => {
   if (proposalKey.value === null || !coord.value?.proposal?.said) return null
@@ -464,26 +477,25 @@ const NOTICE: Record<string, [string, string]> = {
   'scheduled': ['Scheduled task', 'i-lucide-clock'],
 }
 
-const UPLOAD_RE = /\/\.cache\/herdr-web\/uploads\/\S+/g
 // `in`: the folds (a wake, a run of routine wakes) that must be open for it to show.
 type Block = ({ k: 'day', key: string, label: string }
   | { k: 'who', key: string }
-  | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null, wake: WakeKind | null }
+  | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null, wake: WakeKind | null, ms?: number }
   // `rid`: its code in the references to it (shared/reference.ts messageId).
   | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean, ms?: number }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
   // `cmd`: a local '/' command the user ran.
-  | { k: 'system', key: string, text: string, full?: string, cmd?: boolean }
-  | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean }
+  | { k: 'system', key: string, text: string, full?: string, cmd?: boolean, ms?: number }
+  | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean, ms?: number }
   // The agent's turn failed (omp: usage limit, credit balance, stalled stream…).
   | { k: 'error', key: string, text: string, long: boolean }
-  | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean }
-  | { k: 'ompRun', key: string, tool: ChatItem & { omp: OmpToolView } }
+  | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean, ms?: number }
+  | { k: 'ompRun', key: string, tool: ChatItem & { omp: OmpToolView }, ms?: number }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
   | { k: 'turn', key: string, text: string, copy: string | null, reply: string | null }
   // A wake: one compact row, the coordinator's answer under it (see foldWakes).
-  | { k: 'wake', key: string, kind: WakeKind, head: string, text: string, time: string | null, at: string | null, answer: string | null, loud: boolean }
+  | { k: 'wake', key: string, kind: WakeKind, head: string, text: string, time: string | null, at: string | null, answer: string | null, loud: boolean, ms?: number }
   | { k: 'wakes', key: string, n: number, from: string | null, to: string | null }) & { in?: string[] }
 
 // Images of a transcript item (a user message, or what a tool returned),
@@ -658,18 +670,14 @@ const blocks = computed<Block[]>(() => {
     flush()
     const key = keys[i]!
     if (it.role === 'user') {
-      const uploads = it.text.match(UPLOAD_RE) || []
-      // Attached files (PDF, text…): a chip each, their line leaves the text.
-      const files = it.text.split('\n').map(parseAttachmentLine).filter((f): f is { path: string, name: string } => Boolean(f))
-      const text = it.text.replace(/^.*\/\.cache\/herdr-web\/uploads\/\S+\s*$/gm, '').split('\n').filter(l => !isAttachmentLine(l)).join('\n').trim()
+      // Attached files (PDF, text…): a chip each; their line and photo paths leave the text.
       // Images re-read from the transcript (ref = position of the message in the
-      // file), or photos stored on the server whose path stayed as text.
-      const srcs = itemImageSrcs(it)
-      for (const u of uploads) srcs.push(`/uploads/${encodeURIComponent(u.split('/').pop()!)}`)
+      // file), then photos stored on the server whose path stayed as text.
+      const { text, srcs, files } = userMessageParts(it.text, itemImageSrcs(it))
       // Reply to a specific message: the marker becomes a quote linking to the original.
       const parsed = parseReply(text)
       const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
-      out.push({ k: 'user', key, text: parsed ? parsed.body : text, pasted: it.pasted, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin, wake: wakeKindOf(text) })
+      out.push({ k: 'user', key, text: parsed ? parsed.body : text, pasted: it.pasted, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin, wake: wakeKindOf(text), ...msOf(it) })
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
@@ -681,19 +689,19 @@ const blocks = computed<Block[]>(() => {
     } else if (it.role === 'job' && it.job) {
       out.push({ k: 'job', key, id: it.job.id, tool: it.job.tool, out: it.job.out, ms: it.ms, error: Boolean(it.error) })
     } else if (it.role === 'bash' && it.omp) {
-      out.push({ k: 'ompRun', key: `s:${it.ts}:${it.text.slice(0, 40)}`, tool: { ...it, omp: it.omp } })
+      out.push({ k: 'ompRun', key: `s:${it.ts}:${it.text.slice(0, 40)}`, tool: { ...it, omp: it.omp }, ...msOf(it) })
     } else if (it.role === 'bash') {
       const o = it.out || ''
       const e = it.err || ''
       const lines = (o ? o.split('\n').length : 0) + (e ? e.split('\n').length : 0)
-      out.push({ k: 'shell', key: `s:${it.ts}:${it.text.slice(0, 40)}`, bash: it.role === 'bash', text: it.text, out: o, err: e, lines, long: lines > SHELL_LINES || o.length + e.length > 1500 })
+      out.push({ k: 'shell', key: `s:${it.ts}:${it.text.slice(0, 40)}`, bash: it.role === 'bash', text: it.text, out: o, err: e, lines, long: lines > SHELL_LINES || o.length + e.length > 1500, ...msOf(it) })
     } else if (it.role === 'notice' && it.name === 'error' && it.error) {
       // The provider's own message (often raw JSON): shown as plain text.
       out.push({ k: 'error', key, text: it.text, long: it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 })
     } else if (it.role === 'notice') {
       const [label, icon] = NOTICE[it.name || ''] || [it.name || 'Note', 'i-lucide-info']
       // A scheduled prompt starts folded: it is not what the user wrote.
-      out.push(lazyHtml({ k: 'notice' as const, key, label: t(label), icon, scheduled: it.name === 'scheduled', long: it.name === 'scheduled' || it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 }, () => md(it.text)))
+      out.push(lazyHtml({ k: 'notice' as const, key, label: t(label), icon, scheduled: it.name === 'scheduled', long: it.name === 'scheduled' || it.text.split('\n').length > SHELL_LINES || it.text.length > 1200, ...msOf(it) }, () => md(it.text)))
     } else {
       const effort = it.role === 'system' ? it.text.match(/^Effort : (low|medium|high|xhigh|max|ultracode) \(cette session\)$/) : null
       // Local "/" command: one-line system separator ("/cost → …"); a tap
@@ -701,7 +709,7 @@ const blocks = computed<Block[]>(() => {
       const full = it.role === 'cmd' ? [it.err, it.out].filter(Boolean).join('\n') : ''
       out.push({ k: 'system', key, text: effort
         ? tl(`Effort: ${effort[1]} (this session)`, `Effort : ${effort[1]} (cette session)`)
-        : it.role === 'system' ? t(it.text) : it.text, ...(full ? { full } : {}), ...(it.role === 'cmd' ? { cmd: true } : {}) })
+        : it.role === 'system' ? t(it.text) : it.text, ...(full ? { full } : {}), ...(it.role === 'cmd' ? { cmd: true, ...msOf(it) } : {}) })
     }
   })
   flush()
@@ -775,7 +783,7 @@ function foldWakes(out: Block[]): Block[] {
     const routine = fold && b.wake !== 'incident' && !changed
     if (!routine) endRun()
     else if (!run.length) runAt = res.length
-    const w: Block & { k: 'wake' } = { k: 'wake', key: b.key, kind: b.wake, head: wakeLine(b.text), text: b.text, time: b.time, at: b.at, answer: fold && last ? plainLine(last.text) : null, loud: b.wake === 'incident' || asked }
+    const w: Block & { k: 'wake' } = { k: 'wake', key: b.key, kind: b.wake, head: wakeLine(b.text), text: b.text, time: b.time, at: b.at, answer: fold && last ? plainLine(last.text) : null, loud: b.wake === 'incident' || asked, ...(b.ms ? { ms: b.ms } : {}) }
     if (routine) run.push(w)
     res.push(w)
     for (const x of turn) {
@@ -1154,8 +1162,9 @@ function onListKey(e: KeyboardEvent) {
 // messages were sent or are still in its queue (see shared/queuedPhase.ts).
 // omp: only the "!" / "$" command it runs (it stays idle meanwhile).
 // What a message waits on before the agent reads it.
-function waitingOn(p: Pane): 'stopped' | 'question' | 'working' | 'sending' {
-  if (!p.agent) return 'stopped'
+function waitingOn(p: Pane): WaitingOn {
+  if (!p.agent || p.stopped) return 'stopped'
+  if (p.installing) return 'installing'
   if (p.prompt || p.status === 'blocked') return 'question'
   return p.status === 'working' ? 'working' : 'sending'
 }
@@ -1175,13 +1184,12 @@ function queuedNow() {
   // Agent idle, nothing holding it: Claude's own queue is empty by now.
   const idle = waitFor.value === 'sending'
   return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle, input: props.pane.draft?.text }).map((q) => {
-    const lines = q.raw.split('\n')
-    const text = lines.filter(l => !isUploadLine(l) && !isAttachmentLine(l)).join('\n').trim()
+    const { text, files } = userMessageParts(q.raw)
     const parsed = parseReply(text)
     return {
       ...q,
       srcs: q.photos.map(uploadSrc),
-      files: lines.map(parseAttachmentLine).filter((f): f is { path: string, name: string } => Boolean(f)),
+      files,
       text,
       body: parsed ? parsed.body : text,
       reply: parsed?.reply || null,
@@ -1217,6 +1225,7 @@ function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' 
     case 'read': return t('Read by the agent')
     case 'input': return t('Not sent yet · waiting in the agent’s input')
     case 'stopped': return t('Queued · ') + t('agent stopped')
+    case 'installing': return t('Queued · ') + tl('sent when Codex is ready')
     case 'question': return t('Queued · ') + t('after you answer the question')
     case 'agent-queue':
       if (l.agent === 'claude') return t('Queued by Claude · sent when it finishes')
@@ -1601,7 +1610,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   </button>
                   <ReadAloudButton :id="`${paneId}:${b.key}`" :text="b.text" />
                 </div>
-                <ProposalCard v-if="coord && b.key === proposalKey" :c="coord" :can-goto="!!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" />
+                <template v-if="coord"><ProposalCard v-for="p in proposalCards.get(b.key)" :key="p.key" :c="coord" :answer="p.answer" :can-goto="!p.answer && !!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" /></template>
               </template>
 
               <UChatReasoning v-else-if="b.k === 'thinking'" class="omp-thinking" :text="b.text"
@@ -1737,7 +1746,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
               <p>{{ t('No messages yet.') }}</p>
             </div>
-            <ProposalCard v-if="coord && proposalKey === ''" :c="coord" :can-goto="!!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" />
+            <template v-if="coord"><ProposalCard v-for="p in proposalCards.get('')" :key="p.key" :c="coord" :answer="p.answer" :can-goto="!p.answer && !!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" /></template>
             <div v-if="loadError" class="chat-empty"><p>{{ loadError }}</p></div>
           </template>
         </div>
@@ -1816,6 +1825,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
           </div>
           <!-- herdr-core: text left unsent in Claude's own input box, Claude's queue. -->
           <UnsentInput v-if="!readOnly && hasDraft" :pane="unsentPane" :shown="inputShown(queuedList, pane.draft?.text)" />
+          <CodexRestartCard v-if="!readOnly && pane.stopped" :pane-id="pane.id" />
         </div>
 
         <ChatStatusLine :get="readStatus" />

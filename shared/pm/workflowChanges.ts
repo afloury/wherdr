@@ -10,8 +10,9 @@ export interface FieldChange { field: string, before?: string, after?: string }
 // moved: kept, in another place among the kept steps (its fields may have changed too).
 export type ChangeKind = 'added' | 'removed' | 'changed' | 'moved' | 'same'
 export interface StepChange { id: string, kind: ChangeKind, holder: string, ends?: string, fields: FieldChange[] }
-// steps: the new list in order, removed steps where they were.
-export interface TypeChange { type: string, kind: 'added' | 'removed' | 'changed', fields: FieldChange[], steps: StepChange[] }
+// steps: the new list in order, removed steps where they were; about: an added
+// type in a few words ("6 steps, PR to develop, you merge").
+export interface TypeChange { type: string, kind: 'added' | 'removed' | 'changed', fields: FieldChange[], steps: StepChange[], about?: string }
 // all: the workflow's own fields (guards, instructions, prefs, worktree), for every type.
 export interface WorkflowChanges { all: FieldChange[], types: TypeChange[] }
 
@@ -85,6 +86,13 @@ function stepChanges(oldSteps: Step[], newSteps: Step[]): StepChange[] {
   return out
 }
 
+function typeAbout(t: Template, tt: TaskType) {
+  const steps = stepsOf(t, tt)
+  const pr = steps.find(s => s.action?.kind === 'github.pr')?.action
+  const merge = tt.guards?.merge?.others ?? t.guards?.merge?.others
+  return [`${steps.length} ${steps.length === 1 ? 'step' : 'steps'}`, pr && (pr.base ? `PR to ${pr.base}` : 'PR'), merge && (merge === 'user' ? 'you merge' : 'automatic merge')].filter(Boolean).join(', ')
+}
+
 // What `next` changes in `old` (types left as they were are not listed).
 export function workflowChanges(old: Template | null, next: Template): WorkflowChanges {
   const o = old ?? { id: next.id, taskTypes: {} }
@@ -94,7 +102,7 @@ export function workflowChanges(old: Template | null, next: Template): WorkflowC
     const fields = compare(ownFields(a), ownFields(b))
     const steps = stepChanges(a ? stepsOf(o, a) : [], b ? stepsOf(next, b) : [])
     const kind = !a ? 'added' : !b ? 'removed' : 'changed'
-    if (kind !== 'changed' || fields.length || steps.some(s => s.kind !== 'same')) types.push({ type, kind, fields, steps })
+    if (kind !== 'changed' || fields.length || steps.some(s => s.kind !== 'same')) types.push({ type, kind, fields, steps, ...(kind === 'added' ? { about: typeAbout(next, b!) } : {}) })
   }
   return { all: compare(ownFields(o), ownFields(next)), types }
 }
@@ -106,7 +114,7 @@ const stepLine = (s: StepChange) => (s.kind === 'added' ? `+ ${s.id}` : s.kind =
 export function changeSummary(c: WorkflowChanges, max = 2): string[] {
   const lines = [
     ...(c.all.length ? [`all types: ${c.all.map(fieldLine).join(', ')}`] : []),
-    ...c.types.map(t => (t.kind === 'added' ? `new type ${t.type}` : t.kind === 'removed' ? `type ${t.type} removed`
+    ...c.types.map(t => (t.kind === 'added' ? `+ type ${t.type}${t.about ? ` (${t.about})` : ''}` : t.kind === 'removed' ? `type ${t.type} removed`
       : `${t.type}: ${[...t.fields.map(fieldLine), ...t.steps.filter(s => s.kind !== 'same').map(stepLine)].join(', ')}`)),
   ]
   return lines.length > max ? [...lines.slice(0, max - 1), `and ${lines.length - max + 1} more changes`] : lines

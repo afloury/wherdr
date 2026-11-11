@@ -31,15 +31,38 @@ const IN = 'cd "$1" || exit 1; shift;'
 // Does merged PR head $p hold HEAD ($h)? A head pushed from elsewhere is fetched first.
 const HOLDS = `{ [ "$p" = "$h" ] || { git cat-file -e "$p^{commit}" 2>/dev/null || git fetch -q origin "$p" 2>/dev/null; git merge-base --is-ancestor "$h" "$p" 2>/dev/null; }; }`
 const CLEAN = `[ -z "$(git status --porcelain)" ] || { echo "uncommitted changes: commit them, then say you are done"; exit ${CODE.SEND_BACK}; };`
+// After a merge, the project's own fix (git config wherdr.afterMerge, run at the
+// worktree's root), committed: merges done where its merge drivers do not run
+// (GitHub's Update branch) are fixed before the push. A failed fix leaves HEAD.
+const AFTER_MERGE = `a=$(git config --get wherdr.afterMerge) && { sh -c "$a" >/dev/null 2>&1 && git commit -qam "Fix the merge (wherdr.afterMerge)" >/dev/null 2>&1; git reset -q --hard; };`
 // The files that change the interface, at any depth (app/components, pages…).
 const UI_FILES = ['components', 'assets', 'pages', 'layouts'].map(d => `':(glob)**/${d}/**'`).join(' ')
+
+// A script: "same" when the task's own change (in `files`) is the same at commits $2 and $3, base $1.
+const ownChange = (files: string) => `${IN} git fetch -q origin "$1" 2>/dev/null; b="origin/$1"
+for c in "$2" "$3"; do git cat-file -e "$c^{commit}" 2>/dev/null || git fetch -q origin "$c" 2>/dev/null; done
+own() { m=$(git merge-base "$b" "$1") && git diff -U0 --no-color --no-ext-diff "$m" "$1" -- ${files} | sed '/^index /d; /^@@/d'; }
+x=$(own "$2") && y=$(own "$3") || exit 1
+[ "$x" = "$y" ] && echo same || echo changed`
 export const SCRIPT = {
-  // Catch up with the target, then push the task branch onto it.
+  // Catch up with the target, then push the task branch onto it. A repository
+  // without origin lands locally: the clone's branch $t (made when missing)
+  // moves to the task's commit, unless a folder has it checked out.
   land: `${IN} ${CLEAN} t=$1
+if ! git remote get-url origin >/dev/null 2>&1; then
+  old=$(git rev-parse -q --verify "refs/heads/$t")
+  if [ -n "$old" ] && ! git merge -q --no-edit "$old" >/dev/null 2>&1; then
+    f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict in $f"; exit ${CODE.SEND_BACK}; fi
+  w=$(git worktree list --porcelain | awk -v b="branch refs/heads/$t" '/^worktree /{ p=substr($0, 10) } $0 == b { print p }')
+  [ -z "$w" ] || { echo "$t is checked out in $w: switch that folder to another branch, then try again"; exit 1; }
+  git update-ref "refs/heads/$t" HEAD "$old" || exit 1
+  git rev-parse HEAD; exit 0
+fi
 if git ls-remote -q --exit-code --heads origin "$t" >/dev/null; then
   git fetch -q origin "$t" 2>&1 || exit 1
   if ! git merge -q --no-edit "origin/$t" >/dev/null 2>&1; then
     f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict in $f"; exit ${CODE.SEND_BACK}; fi
+  ${AFTER_MERGE}
 fi
 git push -q origin "HEAD:refs/heads/$t" 2>&1 || exit 1
 git rev-parse HEAD`,
@@ -115,19 +138,24 @@ echo "$why"; exit ${CODE.NOT_MERGED}`,
   catchUp: `${IN} ${CLEAN} git fetch -q origin "$1" 2>&1 || exit 1
 if ! git merge -q --no-edit "origin/$1" >/dev/null 2>&1; then
   f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with $1 in $f"; exit ${CODE.SEND_BACK}; fi
+${AFTER_MERGE}
 git push -q origin "HEAD:refs/heads/$2" 2>&1 || exit 1; git rev-parse HEAD`,
   // A push refused because the task branch ($1) is behind its remote: the
   // worktree takes the remote's commits (a fast-forward, else a merge), to push again.
   sync: `${IN} ${CLEAN} git fetch -q origin "$1" 2>&1 || exit 1
-if git merge-base --is-ancestor HEAD FETCH_HEAD; then git merge -q --ff-only FETCH_HEAD 2>&1 || exit 1; echo "fast-forwarded to origin/$1"; exit 0; fi
+if git merge-base --is-ancestor HEAD FETCH_HEAD; then git merge -q --ff-only FETCH_HEAD 2>&1 || exit 1; ${AFTER_MERGE} echo "fast-forwarded to origin/$1"; exit 0; fi
 if ! git merge -q --no-edit FETCH_HEAD >/dev/null 2>&1; then
   f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with origin/$1 in $f"; exit ${CODE.SEND_BACK}; fi
+${AFTER_MERGE}
 echo "merged origin/$1"`,
   // Where the PR head ($1) stands against the task's commit: same; behind (in
-  // its history: the task's later commits are not pushed yet); or foreign (a
-  // commit the task's worktree never had: pushed from elsewhere).
+  // its history: the task's later commits are not pushed yet); update (GitHub's
+  // Update branch: a merge of the base, $2, into a head the worktree has); or
+  // foreign (a commit the task's worktree never had: pushed from elsewhere).
   headOf: `${IN} p=$1; git cat-file -e "$p^{commit}" 2>/dev/null || git fetch -q origin "$p" 2>/dev/null
-if [ "$(git rev-parse HEAD)" = "$p" ]; then echo same; elif git merge-base --is-ancestor "$p" HEAD 2>/dev/null; then echo behind; else echo foreign; fi`,
+if [ "$(git rev-parse HEAD)" = "$p" ]; then echo same; elif git merge-base --is-ancestor "$p" HEAD 2>/dev/null; then echo behind
+elif [ -n "$2" ] && git rev-parse -q --verify "$p^2" >/dev/null && git merge-base --is-ancestor "$p^1" HEAD 2>/dev/null \
+  && git fetch -q origin "$2" 2>/dev/null && git merge-base --is-ancestor "$p^2" FETCH_HEAD; then echo update; else echo foreign; fi`,
   // The remote task branch's tip ($1), as origin has it now: empty when it has none.
   remoteHead: `${IN} r=$(git ls-remote origin "refs/heads/$1" 2>&1) || { echo "$r"; exit 1; }; echo "$r" | cut -f1`,
   // Runs again the failed or cancelled workflow runs of a commit.
@@ -149,11 +177,9 @@ gh run view "$1" --log-failed 2>&1 | tail -n 20`,
   // Did the task's own interface change move from commit $2 to $3? Each one's
   // diff from where it left base $1, interface files only, line numbers left
   // out: what a merge of the base brought does not count. "same" or "changed".
-  uiChanged: `${IN} git fetch -q origin "$1" 2>/dev/null; b="origin/$1"
-for c in "$2" "$3"; do git cat-file -e "$c^{commit}" 2>/dev/null || git fetch -q origin "$c" 2>/dev/null; done
-own() { m=$(git merge-base "$b" "$1") && git diff -U0 --no-color --no-ext-diff "$m" "$1" -- ${UI_FILES} | sed '/^index /d; /^@@/d'; }
-x=$(own "$2") && y=$(own "$3") || exit 1
-[ "$x" = "$y" ] && echo same || echo changed`,
+  uiChanged: ownChange(UI_FILES),
+  // The same over all its files: a commit that only merges the base is not reviewed again.
+  ownChanged: ownChange('.'),
   head: `${IN} git rev-parse HEAD`,
   // One Bitbucket Cloud API call on origin's repository: method ($1), path
   // ($2), then a query (GET) or a JSON body. Credentials from the machine's

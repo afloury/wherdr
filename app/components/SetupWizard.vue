@@ -9,8 +9,9 @@ import type { PmOverview } from '#shared/pm/project'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import type { Template } from '#shared/pm/workflow'
 import { EXAMPLES } from '#shared/pm/examples'
-import { MAIN, isCoordinatorProgram } from '#shared/pm/coordinator'
-import { SETUP_STEPS, setupDone, setupProject, setupResume, workflowLine, type SetupStepId } from '#shared/pm/setup'
+import { needsRemote, type FolderProbe } from '#shared/pm/newProject'
+import { isCoordinatorProgram } from '#shared/pm/coordinator'
+import { SETUP_STEPS, coordinatorStart, setupDone, setupProject, setupResume, workflowLine, type SetupStepId } from '#shared/pm/setup'
 
 const open = defineModel<boolean>('open', { default: false })
 const props = defineProps<{ project?: string, adding?: boolean }>()
@@ -24,11 +25,12 @@ const index = ref(0)
 const busy = ref(false)
 const error = ref('')
 
-const done = computed(() => setupDone(data.value, key.value, coordinators.value))
+const done = computed(() => setupDone(data.value, key.value, coordinators.value, started.value))
 const step = computed<SetupStepId | undefined>(() => SETUP_STEPS[index.value])
 const p = computed(() => data.value?.projects.find(x => x.key === key.value))
 const coord = computed(() => coordinators.value.find(c => c.project === key.value))
-const running = computed(() => !!coord.value && !!coordinatorPane(coord.value))
+const pane = computed(() => (coord.value ? coordinatorPane(coord.value) : undefined))
+const started = computed(() => coordinatorStart(pane.value))
 
 async function load() {
   const [o] = await Promise.all([api<PmOverview>('/api/pm/overview'), loadCoordinators()])
@@ -67,12 +69,28 @@ watch(key, (k, old) => { if (old && k) run(async () => {}) })
 // 3. Its workflow: a copy of an example.
 const example = ref(EXAMPLES[0]!.id)
 const applyExample = () => run(() => api('/api/pm/project-apply', { key: key.value, template: `example:${example.value}` }))
+// A repository without origin (a git init folder): an example that pushes or
+// opens pull requests cannot finish a task there; vibe lands locally.
+const remote = ref<boolean>()
+watch(() => step.value === 'workflow' && p.value, async (x) => {
+  remote.value = undefined
+  if (!x) return
+  try { remote.value = (await api<FolderProbe>(`/api/pm/folder?machine=${encodeURIComponent(x.machine)}&path=${encodeURIComponent(x.path)}`)).remote }
+  catch {}
+})
+const needsOrigin = computed(() => remote.value === false && needsRemote(EXAMPLES.find(e => e.id === example.value)!))
 
 // 5. Its coordinator, started here; its autopilot, optional, under it.
 const agents = computed(() => offerCoordinators(undefined, key.value))
 const agent = ref('')
 watch(agents, a => { if (!a.some(x => x === agent.value)) agent.value = a[0] ?? '' }, { immediate: true })
 const startCoordinator = () => run(async () => { if (isCoordinatorProgram(agent.value)) await launchCoordinator(key.value!, { program: agent.value }) })
+// It waits on a question (a login, a dialog): its conversation, to answer it.
+function openPane() {
+  if (!pane.value) return
+  open.value = false
+  navigateTo(panePath(pane.value.id))
+}
 
 // 6. A first task, of one of its types.
 const task = reactive({ title: '', type: '' })
@@ -84,15 +102,9 @@ const addTask = () => run(async () => {
 })
 
 // Instead: Alfred's conversation, with the setup asked of it.
-const ALFRED_PROMPT = 'Help me set up project management in wherdr, one question at a time: turn it on, add a project, choose its workflow from an example, check its guards, start its coordinator and add a first task.'
-const askAlfred = () => run(async () => {
-  await loadAlfred()
-  const program = alfred.value?.program ?? offerCoordinators(appConfig.value.kinds)[0]
-  const pane = alfredPane.value ?? (program ? await launchCoordinator(MAIN, { program }) : undefined)
-  if (!pane) throw new Error('Alfred could not start: check Settings › Agents.')
-  await sendMessage(pane, pane.id, ALFRED_PROMPT)
+const toAlfred = () => run(async () => {
+  await askAlfred(ALFRED_SETUP_PROMPT)
   open.value = false
-  await navigateTo(panePath(pane.id))
 })
 
 const TITLE: Record<SetupStepId, string> = {
@@ -105,7 +117,7 @@ const TITLE: Record<SetupStepId, string> = {
 }
 const BODY: Record<SetupStepId, string> = {
   enable: 'Tasks then follow the workflow of their project. Off, nothing is changed.',
-  project: 'A git repository on one of your machines: each task gets its own worktree and pull request. wherdr checks whether it is public.',
+  project: 'A git repository on one of your machines: each task gets its own worktree. Pushes and pull requests need a remote (origin). wherdr checks whether it is public.',
   workflow: 'The steps a task goes through, and who does each one. The project gets its own copy, to change later in its Workflow tab.',
   guards: 'The branches no agent merges into on its own, and who merges. The workflow’s defaults are shown; Next keeps them.',
   coordinator: 'The agent you talk to about the project: it adds tasks and follows them on the board.',
@@ -129,7 +141,7 @@ const BODY: Record<SetupStepId, string> = {
       <template v-else-if="step === 'enable'">
         <UButton v-if="!done.enable" size="xl" color="primary" class="hw-cta" icon="i-lucide-power" :loading="busy" data-testid="setup-enable" @click="run(() => api('/api/pm/enabled', { enabled: true }))">{{ tl('Turn on') }}</UButton>
         <p v-else class="setup-ok" data-testid="setup-ok">{{ tl('Project management is on.') }}</p>
-        <UButton size="xl" color="neutral" variant="outline" icon="i-lucide-message-circle" :loading="busy" data-testid="setup-alfred" @click="askAlfred">{{ tl('Let Alfred guide me') }}</UButton>
+        <UButton size="xl" color="neutral" variant="outline" icon="i-lucide-message-circle" :loading="busy" data-testid="setup-alfred" @click="toAlfred">{{ tl('Let Alfred guide me') }}</UButton>
       </template>
 
       <template v-else-if="step === 'project'">
@@ -151,6 +163,11 @@ const BODY: Record<SetupStepId, string> = {
               <b>{{ e.id }}</b><small class="mono">{{ workflowLine(e) }}</small>
             </button>
           </div>
+          <p v-if="needsOrigin" class="setup-warn" data-testid="setup-no-remote">
+            {{ tl(`This repository has no remote (origin): ${example} pushes or opens pull requests, so its tasks cannot finish. Add one with`) }}
+            <code>git remote add origin &lt;url&gt;</code>{{ tl(', or use vibe, which merges into a local branch.') }}
+            <UButton size="md" color="neutral" variant="outline" data-testid="setup-use-vibe" @click="example = 'vibe'">{{ tl('Use vibe') }}</UButton>
+          </p>
           <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-copy" :loading="busy" data-testid="setup-apply" @click="applyExample">{{ tl(`Use ${example}`) }}</UButton>
         </template>
       </template>
@@ -158,10 +175,15 @@ const BODY: Record<SetupStepId, string> = {
       <ProjectGuards v-else-if="step === 'guards' && p && workflow" :project="p" :workflow="workflow" @changed="run(async () => {})" />
 
       <template v-else-if="step === 'coordinator'">
-        <template v-if="!running">
+        <template v-if="started === 'none'">
           <AgentPicker v-if="agents.length" v-model="agent" :programs="agents" />
           <p v-else class="muted" data-testid="setup-no-agent">{{ tl('No offered agent can coordinate: check Settings › Agents.') }}</p>
           <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-play" :loading="busy" :disabled="!agent" data-testid="setup-start" @click="startCoordinator">{{ agent ? tl(`Start with ${kindLabel(agent)}`) : tl('Start') }}</UButton>
+        </template>
+        <p v-else-if="started === 'starting'" class="muted" data-testid="setup-starting">{{ tl('Its coordinator is starting…') }}</p>
+        <template v-else-if="started === 'asks'">
+          <p class="setup-ok" data-testid="setup-asks">{{ tl('Its coordinator asks a question before it starts: answer it in its conversation.') }}</p>
+          <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-message-circle" data-testid="setup-open" @click="openPane">{{ tl('Answer its question') }}</UButton>
         </template>
         <template v-else-if="coord">
           <p class="setup-ok" data-testid="setup-ok">{{ tl('Its coordinator runs.') }}</p>
@@ -206,6 +228,7 @@ const BODY: Record<SetupStepId, string> = {
 .setup-progress i.done { background: var(--done); }
 .setup-progress i.here { box-shadow: inset 0 -2px 0 var(--accent); }
 .setup-ok { color: var(--text-2); }
+.setup-warn { display: grid; gap: 8px; justify-items: start; padding: 10px 12px; border-left: 2px solid var(--blocked); color: var(--text-2); }
 .setup-choices { display: grid; border: 1px solid var(--line); }
 .setup-choices button { display: grid; gap: 2px; min-height: 48px; padding: 10px 12px; text-align: left; color: var(--text-2); position: relative; }
 .setup-choices button + button { border-top: 1px solid var(--line); }

@@ -8,6 +8,8 @@ import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, run
 import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
 import { CREATE_SCRIPT } from '../server/utils/pmLaunch'
 import { execFileSync } from 'node:child_process'
+import { trustKeys } from '../shared/pm/run'
+import { coordinatorStart, setupDone } from '../shared/pm/setup'
 import { MAIN, parseCommand, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
 import { EXAMPLES, common, company as example, github } from '../shared/pm/examples'
@@ -117,8 +119,8 @@ describe('the main coordinator (WHR-398)', () => {
     expect(alfred).toMatchObject({ main: true })
     expect(alfred).not.toHaveProperty('autopilot')
     await noteTurn(store, MAIN, 'wake')
-    await refused(cli(['task', 'start', st.id], undefined, main), 'its own autopilot')
-    await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST'], undefined, main), 'its own autopilot')
+    await refused(cli(['task', 'start', st.id], undefined, main), 'only on a request from the user, sent from wherdr')
+    await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST'], undefined, main), 'only on a request from the user, sent from wherdr')
     vi.stubGlobal('defineApi', (h: unknown) => h)
     const route = (await import('../server/api/pm/autopilot.post')).default as unknown as (e: unknown, b: unknown) => Promise<unknown>
     await refused(route({}, { project: MAIN, autopilot: { on: true } }), 'Alfred has no autopilot')
@@ -130,6 +132,7 @@ describe('the main coordinator (WHR-398)', () => {
     const runs: Record<string, unknown>[] = [], killed: unknown[] = []
     const call = async (method: string, params: Record<string, unknown>) => {
       if (method === 'terminal.kill') return killed.push(params.terminal), {}
+      if (method !== 'terminal.run') return {}
       runs.push(params)
       return { address: `host/t${runs.length}` }
     }
@@ -156,7 +159,7 @@ describe('the main coordinator (WHR-398)', () => {
     expect(await alfredView(d)).toEqual({ name: 'Jeeves', program: 'codex', ran: 'codex', terminal: 'host/t2' })
     // No program given: the one picked last.
     await startCoordinator(d, MAIN, {}, { local: 'http://127.0.0.1:7690' })
-    expect(runs[2]!.line).toMatch(/exec 'codex' '-C'/)
+    expect(runs[2]!.line).toMatch(/exec 'codex' '-c' 'check_for_update_on_startup=false' '-C'/)
     await expect(startCoordinator(d, MAIN, { program: 'cline' }, { local: 'http://127.0.0.1:7690' })).rejects.toThrow('program')
     const view = await coordinatorsView(store)
     expect(view.map(c => c.project)).toEqual([MAIN, 'CO', 'ST'])
@@ -183,10 +186,15 @@ describe('the main coordinator (WHR-398)', () => {
   it('runs Alfred with projects off: its record is saved, its instructions say how to switch them on', async () => {
     await store.setEnabled(false)
     const home = path.join(dir, 'alfred')
+    // .output/server/index.mjs started directly, no port set: Nitro listens on 3000 (WHR-244).
+    vi.stubEnv('NITRO_PORT', '')
+    vi.stubEnv('PORT', '')
     const d = { store, call: async () => ({ address: 'host/t1' }), machines: () => [], alfredHome: home } as never
     await startCoordinator(d, MAIN, { program: 'claude', model: 'opus' }, { local: 'http://127.0.0.1:7690' })
     expect(await alfredView(d)).toMatchObject({ name: 'Alfred', program: 'claude', terminal: 'host/t1' })
-    expect(await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')).toContain('Project management is off')
+    const agents = await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')
+    expect(agents).toContain('Project management is off')
+    expect(agents).toContain('This wherdr answers at http://127.0.0.1:3000 on its machine')
     await expect(store.saveCoordinator({ project: 'CO', tokenHash: '' })).rejects.toThrow('switched off')
   })
 })
@@ -259,6 +267,20 @@ describe('template edit', () => {
     expect(await store.workflowLog('CO')).toEqual(log)
     expect(await cli(['template', 'show'])).toMatchObject({ lastProposal: 'refused' })
     await refused(answerProposal(deps(), 'CO', true), 'No template change waits for you')
+  })
+
+  it('each answer sums up its own proposal only; one replaced before an answer says so', async () => {
+    // The user changed a reviewer pref in the interface before.
+    await store.saveWorkflow('CO', { ...structuredClone(company), prefs: { reviewModel: 'gpt-x' } })
+    await noteTurn(store, 'CO', 'user', 'add a v2 type')
+    const withV2 = (instructions?: string) => { const t = structuredClone(company); t.prefs = { reviewModel: 'gpt-x' }; t.taskTypes.v2 = { steps: [{ id: 'todo' }, { id: 'done' }] }; if (instructions) t.instructions = instructions; return JSON.stringify(t) }
+    await cli(['template', 'edit'], withV2('First try.'))
+    await cli(['template', 'edit'], withV2())
+    expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.answers).toEqual([expect.objectContaining({ outcome: 'replaced', by: 'coordinator CO', summary: ['all types: instructions edited', '+ type v2 (2 steps)'] })])
+    await answerProposal(deps(), 'CO', true)
+    const answers = (await coordinatorsView(store)).find(c => c.project === 'CO')!.answers!
+    expect(answers.map(a => a.outcome)).toEqual(['replaced', 'accepted'])
+    expect(answers[1]!.summary).toEqual(['+ type v2 (2 steps)'])
   })
 
   it('never changes a guard with the token, even in a user turn', async () => {
@@ -378,6 +400,7 @@ describe('role files', () => {
       // The repository's remote and gh's answer: a public GitHub repository.
       if (method === 'machine.exec' && argv?.[2] === REMOTE_SCRIPT) return { code: 0, stdout: Buffer.from('git@github.com:o/co.git\n{"visibility":"PUBLIC"}').toString('base64') }
       if (method === 'machine.exec') return written.push(argv![4]!), scripts.set(argv![4]!, argv![2]!), { code: 0, stdout: '' }
+      if (method === 'terminal.get' || method === 'terminal.read') return {} // no terminal to watch for a trust dialog
       runs.push({ method, ...params })
       return { address: `host/t${runs.length + 4}` }
     }
@@ -402,6 +425,41 @@ describe('role files', () => {
     expect((await store.coordinator('CO'))!).toMatchObject({ terminal: 'host/t5', version: pkg.version })
     // Its repository's visibility, checked once at its first start.
     expect((await store.projects()).find(p => p.key === 'CO')!.visibility).toMatchObject({ value: 'public', by: 'check' })
+  })
+
+  it('answer the trust dialog of the coordinator\'s own new folder at its first start, and no other screen', async () => {
+    const { deps } = fakeCore()
+    const fixture = (name: string) => fs.readFile(new URL(`./fixtures/${name}.txt`, import.meta.url), 'utf8')
+    const folder = '/h/.wherdr/pm/coordinators/CO'
+    let screen = (await fixture('claude-trust-folder')).replace('/home/user/projects/new-folder', folder)
+    const keys: unknown[] = []
+    const call = deps.call as (m: string, p: Record<string, unknown>) => Promise<unknown>
+    const d = { ...deps, pollMs: 1, call: async (m: string, p: Record<string, unknown>) => {
+      if (m === 'terminal.get') return { state: 'live', status: null }
+      if (m === 'terminal.read') return { text: screen }
+      if (m === 'terminal.keys') return keys.push(p.keys), {}
+      return call(m, p)
+    } } as typeof deps
+    await startCoordinator(d, 'CO', { program: 'claude' }, urls)
+    await vi.waitFor(() => expect(keys).toEqual([['down', 'enter']]))
+    // Whatever order or wording the dialog has (Claude's older one, Codex's); never a folder of the user's own.
+    expect(trustKeys((await fixture('claude-trust')).replace('/home/user/code/example', folder), folder)).toEqual(['enter'])
+    expect(trustKeys((await fixture('codex-trust-folder')).replace('/home/user/code/example', folder), folder)).toEqual(['enter'])
+    expect(trustKeys(await fixture('claude-trust-folder'), folder)).toBeUndefined()
+    expect(trustKeys(`${folder}\n❯ 1. Yes\n  2. No`, folder)).toBeUndefined()
+    expect(trustKeys((await fixture('claude-trust-folder')).replace('/home/user/projects/new-folder', `${folder}-other`), folder)).toBeUndefined()
+    expect(trustKeys((await fixture('codex-trust')).replace('/home/user/code/example', folder), folder)).toEqual(['enter'])
+    expect(trustKeys((await fixture('claude-trust-folder')).replace('/home/user/projects/new-folder', `/tmp/team ${folder}`), folder)).toBeUndefined()
+    expect(trustKeys((await fixture('codex-trust')).replace('/home/user/code/example', `/tmp/team ${folder}`), folder)).toBeUndefined()
+    // Step 5 follows the agent: starting, asking (the dialog left unanswered), then running.
+    expect([undefined, { status: null }, { status: 'unknown' }, { status: 'blocked' }, { status: null, screen: {} }, { status: 'idle' }].map(x => coordinatorStart(x as never)))
+      .toEqual(['none', 'starting', 'starting', 'asks', 'asks', 'runs'])
+    // Next and the wizard's resume wait on it: step 5 is done only once it runs.
+    const o = { enabled: true, projects: [{ key: 'CO', name: 'CO', machine: '', path: '/src', addedAt: 1, from: { template: 'vibe', version: 1 } }], tasks: [] }
+    const coords = [{ project: 'CO', terminal: 'host/t1' }]
+    expect((['none', 'asks', 'starting', 'runs'] as const).map(s => setupDone(o, 'CO', coords, s).coordinator)).toEqual([false, false, false, true])
+    expect(setupDone(o, 'CO', coords).coordinator).toBe(true)
+    screen = ''
   })
 
   it('start with the project\'s default agent, remember the agent that ran, and a new conversation replaces the old one', async () => {
@@ -433,7 +491,7 @@ describe('role files', () => {
     await startCoordinator(deps, 'CO', { resume: true }, urls, ['A task was reported'])
     expect(runs[1]).toMatchObject({ cwd: '/h/.wherdr/pm/coordinators/CO', labels: { 'wherdr.coordinator': 'CO' } })
     // Its message is typed once it is ready: a word after `resume --last` would be read as a session.
-    expect(runs[1]!.line).toMatch(/exec 'codex' '-C' '\/h\/\.wherdr\/pm\/coordinators\/CO' .*'permissions\.wherdr\.network\.enabled=true' 'resume' '--last'$/)
+    expect(runs[1]!.line).toMatch(/exec 'codex' '-c' 'check_for_update_on_startup=false' '-C' '\/h\/\.wherdr\/pm\/coordinators\/CO' .*'permissions\.wherdr\.network\.enabled=true' 'resume' '--last'$/)
     expect(await store.coordinator('CO')).toMatchObject({ ran: { program: 'codex' }, agent: { program: 'claude' }, terminal: 'host/t6' })
     await startCoordinator(deps, 'CO', {}, urls)
     await startCoordinator(deps, 'CO', { resume: true }, urls)
@@ -856,7 +914,7 @@ describe('commands of lot 10', () => {
     await refused(cli(['task', 'add', 'X', '--type', 'study']), 'No task type "study": feature')
     await refused(cli(['task', 'add', 'X', '--type', 'feature', '--after', 'ST-1']), 'after: tasks of the same project')
     await noteTurn(store, 'CO', 'wake')
-    await refused(cli(['task', 'add', 'Next', '--type', 'feature']), 'only with the autopilot on')
+    await refused(cli(['task', 'add', 'Next', '--type', 'feature']), 'a request from the user, sent from wherdr')
     await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true } })
     expect((await cli(['task', 'add', 'Next', '--type', 'feature', '--after', 'CO-1'])).task).toMatchObject({ id: 'CO-3', after: 'CO-1' })
   })

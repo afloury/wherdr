@@ -8,8 +8,8 @@ import { runAction, watch, type ActionDeps, type ActionJob } from '../server/uti
 import { WORKTREE_SCRIPT } from '../server/utils/pmLaunch'
 import { initialState, onEvent, planSteps, reviewedCommit } from '../shared/pm/steps'
 import { dueText } from '../shared/pm/advance'
-import { github } from '../shared/pm/examples'
-import type { Template } from '../shared/pm/workflow'
+import { github, vibe } from '../shared/pm/examples'
+import type { Step, Template } from '../shared/pm/workflow'
 
 const t: Template = {
   id: 'p', guards: { protected: ['main'], merge: { protected: 'user', others: 'engine' } },
@@ -214,6 +214,10 @@ describe('on a real repo', () => {
     // A CI fix outside the interface keeps it; a change to a screen does not.
     expect(await changed(put(wt, 'server/x.ts', 'fix\n'))).toBe('same')
     expect(await changed(put(wt, 'app/layouts/default.vue', 'new\n'))).toBe('changed')
+    // Over all files: the merge of the base keeps the task's own change, the CI fix moves it.
+    const own = async (to: string) => (await localSh(SCRIPT.ownChanged, [wt, 'dev', approved, to])).out
+    expect(await own(git(wt, 'rev-parse', 'HEAD~2'))).toBe('same')
+    expect(await own(git(wt, 'rev-parse', 'HEAD~1'))).toBe('changed')
   })
 
   it('lands a task on dev, refuses main, sends a conflict back and verifies the merge', async () => {
@@ -251,6 +255,31 @@ describe('on a real repo', () => {
       .toMatchObject({ ok: true, alert: expect.stringMatching(/is on main without a step of yours/) })
     expect(await runAction(deps, at(7, { step: 'check', by: 'user', action: { kind: 'git.verify-merged', target: 'main' } })))
       .toEqual({ ok: true, commit: head })
+  })
+
+  it('lands vibe\'s step locally on a fresh git init folder, with no remote', async () => {
+    const repo = path.join(tmp, 'fresh'), wt = path.join(tmp, 'fresh-wt')
+    git(tmp, 'init', '-q', '-b', 'main', repo); git(repo, 'commit', '-q', '--allow-empty', '-m', 'init')
+    const land = vibe.taskTypes.simple!.steps.find((s): s is Step => typeof s !== 'string' && s.id === 'land')!.action!
+    expect((await localSh(WORKTREE_SCRIPT, [repo, wt, 'task/A-1', ''])).code).toBe(0)
+    const deps: ActionDeps = { store: { receipt: async () => null, saveReceipt: async () => {} }, sh: localSh }
+    const at = (n: number) => job({ worktree: wt, attempt: n, action: land })
+
+    fs.writeFileSync(path.join(wt, 'b.txt'), 'task\n'); git(wt, 'add', '.'); git(wt, 'commit', '-qm', 'task')
+    expect(await runAction(deps, at(1))).toEqual({ ok: true, commit: git(wt, 'rev-parse', 'HEAD') })
+    expect(git(repo, 'rev-parse', 'dev')).toBe(git(wt, 'rev-parse', 'HEAD')) // dev made at the task's commit
+
+    // dev moved meanwhile: merged into the task first; the same file changed is sent back.
+    git(repo, 'checkout', '-q', 'dev'); fs.writeFileSync(path.join(repo, 'c.txt'), 'theirs\n'); git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'theirs')
+    fs.writeFileSync(path.join(wt, 'b.txt'), 'mine\n'); git(wt, 'commit', '-qam', 'mine')
+    expect(await runAction(deps, at(2))).toMatchObject({ ok: false, error: expect.stringMatching(/^land: dev is checked out in .*: switch that folder/) })
+    git(repo, 'checkout', '-q', 'main'); git(repo, 'tag', 'dev', 'main') // a tag of the same name is not the branch
+    expect(await runAction(deps, at(3))).toMatchObject({ ok: true })
+    expect(git(repo, 'show', 'refs/heads/dev:c.txt')).toBe('theirs')
+    expect(git(repo, 'show', 'refs/heads/dev:b.txt')).toBe('mine')
+    git(repo, 'update-ref', 'refs/heads/dev', git(repo, 'commit-tree', '-p', 'refs/heads/dev', '-m', 'x', git(repo, 'rev-parse', 'main^{tree}')))
+    fs.writeFileSync(path.join(wt, 'b.txt'), 'again\n'); git(wt, 'commit', '-qam', 'again')
+    expect(await runAction(deps, at(4))).toEqual({ ok: false, error: 'land: conflict in b.txt', toAgent: true })
   })
 
   it('sees a gh error printed on stderr even when only stdout comes back, and tries again', async () => {
@@ -461,18 +490,16 @@ esac
     return { repo, origin, sh, f, merge, elsewhere, lagging, head: () => git(repo, 'rev-parse', 'HEAD') }
   }
 
-  it('after a catch-up push, goes back to review for the new head, then merges it', async () => {
+  it('after a clean catch-up merge of the base, merges with no new review', async () => {
     const s = setup('moved-catchup'), reviewed = s.head()
     s.elsewhere('theirs', 'dev')
     expect((await s.sh(SCRIPT.catchUp, [s.repo, 'dev', 'task/A-1'])).code).toBe(0)
-    const caught = s.head()
-    expect(await s.merge(1, reviewed)).toEqual({ ok: false, error: `merge: new commits since the review (${reviewed.slice(0, 7)}..${caught.slice(0, 7)})`, review: { since: reviewed, head: caught }, commit: caught })
-    expect(await s.merge(2, caught)).toEqual({ ok: true, link: 'https://pr/1', commit: caught })
+    expect(await s.merge(1, reviewed)).toEqual({ ok: true, link: 'https://pr/1', commit: s.head() })
   })
 
   it('after a CI fix committed but not pushed, has it reviewed, pushes it, then merges', async () => {
     const s = setup('moved-cifix'), reviewed = s.head()
-    git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'fix CI')
+    fs.writeFileSync(path.join(s.repo, 'fix.txt'), 'fix\n'); git(s.repo, 'add', '.'); git(s.repo, 'commit', '-q', '-m', 'fix CI')
     const fix = s.head()
     expect(await s.merge(1, reviewed)).toMatchObject({ ok: false, review: { since: reviewed, head: fix }, commit: fix })
     expect(await s.merge(2, fix)).toEqual({ ok: true, link: 'https://pr/1', commit: fix })
@@ -490,6 +517,32 @@ esac
     git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'again')
     const again = s.head()
     expect(await s.merge(2, again)).toEqual({ ok: false, error: `merge: GitHub still shows the PR head at ${fix.slice(0, 7)} a minute after origin/task/A-1 moved to ${again.slice(0, 7)}: try the step again in a few minutes` })
+  })
+
+  // GitHub's Update branch runs no local merge driver: its union merge lists an
+  // index entry both sides changed twice. The merge step (or the engine's
+  // take-update, when not merging) fixes it in the worktree and pushes it.
+  it('takes a GitHub update into the worktree, fixes its merge and pushes it, then has it reviewed', async () => {
+    const s = setup('moved-update'), other = path.join(tmp, 'moved-update', 'gh')
+    const file = (cwd: string, text?: string) => text === undefined ? fs.readFileSync(path.join(cwd, 'docs/llms.txt'), 'utf8') : fs.writeFileSync(path.join(cwd, 'docs/llms.txt'), text)
+    git(s.repo, 'checkout', '-q', 'dev'); fs.mkdirSync(path.join(s.repo, 'docs'))
+    fs.writeFileSync(path.join(s.repo, '.gitattributes'), 'docs/llms.txt merge=union\n'); file(s.repo, '- [A](docs/a.md): a.\n')
+    git(s.repo, 'add', '.'); git(s.repo, 'commit', '-qm', 'index'); git(s.repo, 'push', '-q', 'origin', 'HEAD:dev')
+    git(s.repo, 'checkout', '-q', 'task/A-1'); git(s.repo, 'merge', '-q', '--no-edit', 'dev')
+    file(s.repo, '- [A](docs/a.md): a, task.\n'); git(s.repo, 'commit', '-qam', 'task'); git(s.repo, 'push', '-q', 'origin', 'HEAD:task/A-1')
+    git(s.repo, 'config', 'wherdr.afterMerge', `node ${path.resolve('scripts/llms-merge.mjs')} fix`)
+    const reviewed = s.head()
+    // On GitHub: dev changes A too, then Update branch merges dev with union.
+    git(tmp, 'clone', '-q', '-b', 'dev', s.origin, other)
+    file(other, '- [A](docs/a.md): a, dev.\n'); git(other, 'commit', '-qam', 'dev'); git(other, 'push', '-q', 'origin', 'HEAD:dev')
+    git(other, 'checkout', '-q', 'task/A-1'); git(other, 'merge', '-q', '--no-edit', 'dev'); git(other, 'push', '-q', 'origin', 'HEAD:task/A-1')
+    expect(file(other)).toBe('- [A](docs/a.md): a, task.\n- [A](docs/a.md): a, dev.\n')
+    // The fix is pushed at once, before the new head goes back to review.
+    const r = await s.merge(1, reviewed), fixed = s.head()
+    expect(file(s.repo)).toBe('- [A](docs/a.md): a, task.\n')
+    expect(git(s.repo, 'log', '-1', '--format=%s')).toBe('Fix the merge (wherdr.afterMerge)')
+    expect(git(s.repo, '--git-dir', s.origin, 'rev-parse', 'task/A-1')).toBe(fixed)
+    expect(r).toMatchObject({ ok: false, review: { since: reviewed, head: fixed } })
   })
 
   it('refuses a head pushed from outside the task\'s worktree', async () => {

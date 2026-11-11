@@ -32,13 +32,18 @@ export const FIRST_MESSAGE = 'I\'m Alfred, wherdr\'s assistant. Would you like t
 
 // The message Alfred starts with: the greeting on its very first start, else
 // a short hello after its start routine. v2: the user comes from wherdr v2, so
-// the greeting also offers to set up its projects.
-export const startPrompt = (first: boolean, name: string, v2 = false) => (first
-  ? `Follow "At start" in AGENTS.md, then ${v2 ? 'run `wherdr alfred v2` and ' : ''}say exactly: "${FIRST_MESSAGE}"${v2 ? ' In the same message, when some of those v2 projects are not v3 projects yet, add one short line: you see they come from wherdr v2, and you can set up those projects with them (see "Coming from wherdr v2" in AGENTS.md).' : ''}`
+// the greeting also offers to set up its projects. Else, none: wherdr has no
+// project yet, so the greeting offers to set up the first one.
+const V2_OFFER = ' In the same message, when some of those v2 projects are not v3 projects yet, add one short line: you see they come from wherdr v2, and you can set up those projects with them (see "Coming from wherdr v2" in AGENTS.md).'
+const FIRST_PROJECT_OFFER = ' In the same message, add one or two short sentences: there is no project yet, and you can set up the first one with them, here one question at a time, or in the setup window (see "The first project" in AGENTS.md).'
+export const startPrompt = (first: boolean, name: string, v2 = false, none = false) => (first
+  ? `Follow "At start" in AGENTS.md, then ${v2 ? 'run `wherdr alfred v2` and ' : ''}say exactly: "${FIRST_MESSAGE}"${v2 ? V2_OFFER : none ? FIRST_PROJECT_OFFER : ''}`
   : `Follow "At start" in AGENTS.md, then greet the user in one short line as ${name}.`)
 
 export interface AlfredContext {
   home: string, version: string, docs: string, docFiles: string[], pm: boolean
+  // Where this wherdr answers: on its machine, and its published address (tailnet), if any.
+  address: { local: string, remote?: string }
   v2?: boolean // wherdr v2's herdr-projects board on this machine has projects for Alfred to offer
   projects: Pick<Project, 'key' | 'name' | 'path' | 'from'>[]
 }
@@ -52,9 +57,20 @@ const V2_SECTION = [
   '2. The machine its repository is on (`wherdr alfred machines`). Its folder is the one on the machine v2 ran on (this one; `here` says whether it is there): on another machine, ask for its path there. Then `project add`, with the suggested key and name unless the user wants others.',
   '3. Its template: show the saved templates and the examples (`wherdr alfred templates`), suggest the one that fits best, taking into account its v2 settings to redo (`left`: reviewer, merge…), and say the user can change it later in Settings › Projects. Then `project template`.',
   '4. Whether to start its coordinator (`coordinator start`).',
-  '5. Its open v2 tasks, if any: list them and ask which to add again, then add each with `wherdr pm task add --project <KEY>`, its description starting with "From v2 <its v2 id>.".',
-  '6. Anything else its v2 settings call for: protected branches and who merges (`project guards`), other machines its tasks may run on (`project machine add`).',
+  '5. What its v2 coordinator knew. v2 keeps no memory file, and v2 still runs beside v3. When the project has a `handover` (its v2 coordinator exists), offer once: the user pastes `handover`, in a code block, to that coordinator in v2, then pastes its answer back here. Declined: nothing, and do not ask again. Never read v2\'s conversations. Its `goalLine`, when it has one (its v2 autopilot goal), goes in too, alone if there is no note.',
+  '   Add them with `wherdr alfred project memory <KEY> < note.md` (the goal line, then the note): show its dry run, the lines that will end its new coordinator\'s memory.md, and run it again with `--apply` only after the user\'s yes.',
+  '6. Its open v2 tasks, if any: list them with their stage and ask which to add again, then add each with `wherdr pm task add --project <KEY>`, its description starting with its `intro` ("From v2 <its v2 id>.", then the branch and PR an under-way or waiting task continues), and `--from-branch <its branch>` when it has one: its worker continues that branch and its PR when the remote still has it, else starts from the base and says so.',
+  '7. Anything else its v2 settings call for: protected branches and who merges (`project guards`), other machines its tasks may run on (`project machine add`).',
   'End with what was set up, and what is left to do by hand: the migration report (`report` in the answer) lists it (machines it could not add, settings to redo), and the v2 settings each project had are in `left`.', '',
+]
+
+// The first project of a new user (no project, not from v2): the setup window
+// does the same steps; Alfred opens it or walks them through.
+const FIRST_PROJECT_SECTION = [
+  '## The first project', '',
+  'wherdr has no project yet. When the user wants one, ask which they prefer:',
+  '- The setup window: open it with `wherdr alfred ui open --target projects.setup` (its "Set up a project" button, highlighted), and stay there for their questions.',
+  '- Here with you, one question at a time, each change shown first and made after their yes: turn project management on, the machine and folder of its repository (`wherdr alfred machines`, then `project add`), its workflow from a template (`wherdr alfred templates`, then `project template`), its guards (`project guards`), its coordinator (`coordinator start`), and a first task.', '',
 ]
 
 // wherdr's files in Alfred's home, path → text: rewritten at each start, so an
@@ -79,7 +95,9 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     '## wherdr', '',
     'wherdr is the web and phone interface of herdr: it lists the agents (Claude, Codex…) running in terminals on the user\'s machines, shows their conversations, and notifies when one needs the user.',
     `Its documentation, for this version (${c.version}), is in \`${c.docs}\`. Pages: ${c.docFiles.join(', ') || '(none found)'}.`,
-    `Quote a file as inline code with its absolute path (\`${c.docs}/overview.md\`): the user's interface makes it a link.`, '',
+    `Quote a file as inline code with its absolute path (\`${c.docs}/overview.md\`): the user's interface makes it a link.`,
+    `This wherdr answers at ${c.address.local} on its machine${c.address.remote ? ` and at ${c.address.remote} from the user's other devices` : ''}. When the user asks for its address or port, give these, never the defaults the docs quote.`,
+    'Commands for the wherdr server itself (an update, a restart, a `git pull` of its install) would run in your home if you ran them: never run them, and give them to the user as text to copy, in a ```text block that names the folder they run in, never in a shell block (its *Run* button would run it here).', '',
     ...docsRule(c.docs, '`wherdr alfred help`, and `wherdr pm help` for the board', { cmd: 'wherdr alfred ui open', places: 'one of these places' }, uiGuide('alfred', { pm: c.pm })),
     '## What you may do', '',
     '- Read the docs, files and settings, and run commands that only read, to answer.',
@@ -100,7 +118,7 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     'You live on the machine that hosts wherdr and are always available. You help with wherdr, and you can start tasks or act on projects on any machine.',
     'You do no coding task yourself and work on no particular project: when the user asks for such work, start an agent or a task that does it in the right place (the project\'s machine).',
     'You have no autopilot and act only when the user asks: each project\'s coordinator runs its project\'s autopilot.', '',
-    ...(c.v2 ? V2_SECTION : []),
+    ...(c.v2 ? V2_SECTION : c.projects.length ? [] : FIRST_PROJECT_SECTION),
     ...(c.pm ? pmSection : ['## Projects', '', `Project management is off: the user switches it on in ${projectPlace(undefined, 'general', true)}. You then coordinate their projects too.`, '']),
   ].join('\n')
   return { 'AGENTS.md': agents, ...ROLE_POINTERS }

@@ -12,6 +12,8 @@ import { pick, selectLabels } from '../helpers/select'
 
 const posts: [string, Record<string, unknown>][] = []
 registerEndpoint('/api/pm/project-update', { method: 'POST', handler: async (e) => { posts.push(['update', await readBody(e)]); return {} } })
+// Laptop is a Mac: its room is macOS's available estimate, by its pressure.
+registerEndpoint('/api/machine/memory', () => ({ machines: [{ key: 'a', mem: { total: 18432, available: 8479, swapTotal: 0, swapFree: 0, pressure: 'normal' } }] }))
 registerEndpoint('/api/pm/project-machine-check', { method: 'POST', handler: async (e) => { posts.push(['check', await readBody(e)]); return { items: [], at: 1, refused: 'gh login: not logged in' } } })
 
 const m = (key: string, label: string, status: MachineInfo['status'] = 'online') => ({ key, label, local: !key, status, error: null }) as MachineInfo
@@ -23,7 +25,8 @@ it('adds a connected machine with its clone, shows its check, and removes one', 
   const project = { key: 'WEB', name: 'Web', machine: '', path: '~/project', machines: ['', 'a'], clones: { a: '~/web' } } as Project
   const b = w = await mountSuspended(ProjectMachines, { props: { project } })
   expect(b.text()).toContain('Host Home')
-  expect(b.findAll('[data-testid="pm-machine"]').map(x => x.text().replace(/\u200e/g, ' ').trim())).toEqual(['Laptop ~/web Not checked yet'])
+  await vi.waitFor(() => expect(b.find('[data-testid="pm-machine-memory"]').text()).toBe('pressure normal, ≈8.3 GB available of 18.0 GB'))
+  expect(b.findAll('[data-testid="pm-machine-ready"]').map(x => x.text())).toEqual(['Not checked yet'])
   await b.setProps({ ready: { a: '' } })
   expect(b.find('[data-testid="pm-machine-ready"]').text()).toBe('Ready')
   expect(selectLabels(b, 'pm-machine-pick')).toEqual(['Builder'])

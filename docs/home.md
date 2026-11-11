@@ -70,6 +70,13 @@ shows it as soon as its turn ends. Alfred reads and changes projects, coordinato
 [`wherdr alfred`](alfred.md): it shows you each
 change first and makes it only after your yes.
 
+With no project yet, Alfred's first message also offers to set up the first one
+with you: here, one question at a time, or in the setup window, which it can open
+for you (Settings › Projects › *Set up a project*). A user coming from wherdr v2 gets
+the offer to set up their v2 projects instead. Home's empty list says so too: *Set up
+a project with Alfred* opens Alfred's conversation with the setup asked of it, and
+*Open the setup window* opens the same window.
+
 ### Coordinators
 
 Under Alfred, while project management is on, one row per running project coordinator, its

@@ -27,6 +27,7 @@ Changing (show, then do):
 | --- | --- |
 | `wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]` | adds a project: a git folder inside the home folder of a machine, not already a project (on this machine, checked before the yes too) |
 | `wherdr alfred project template <KEY> <id\|none>` | gives the project a template (a saved one or `example:<id>`), or none |
+| `wherdr alfred project memory <KEY> < note.md` | adds the lines it is given (at most 30) to the end of the project coordinator's `memory.md`, created when missing: a v2 handover note and goal, for instance ([set up your v2 projects](migrate-from-v2.md#set-up-your-v2-projects-with-alfred)) |
 | `wherdr alfred project guards <KEY> [--protect <branch,branch\|none>] [--merge-protected user\|engine] [--merge-others user\|engine] [--contributor-prs off\|others\|all]` | the project's [guards](project-management.md#guards): protected branches, who merges into them and into the others (`user`: you, `engine`: wherdr), and whether its coordinator may merge an outside contributor's PR after your yes; without an option, only shown |
 | `wherdr alfred project machine add <KEY> <machine> --clone <folder>` | lets the project's tasks run on another machine (its key or label), in its clone of the repository there; once applied, the machine's [readiness check](project-management.md#board) runs and its result is in the answer |
 | `wherdr alfred project machine remove <KEY> <machine>` | the project's tasks no longer start on that machine (tasks already there stay) |
@@ -69,5 +70,11 @@ The version includes the commit wherdr was built from (`3.0.0+1a2b3c4`), so a re
 new commit counts as an update too.
 
 Alfred and the coordinators never explain wherdr from memory: they read `docs/llms.txt` (the
-docs index) first, then only the sections that answer. `wherdr alfred help` and `wherdr pm help`
+docs index) first, then only the sections that answer. These are the docs of the build that runs, wherever
+wherdr was started from (see `WHERDR_ROOT` in [Configuration](configuration.md#configuration)).
+
+Alfred answers with this server's own address and port (and its published address, if any),
+not the defaults the docs quote. Commands meant for the server itself (an update, a restart, a
+`git pull` of its install) come as text to copy, never with *Run*, which would run them in
+Alfred's own folder. `wherdr alfred help` and `wherdr pm help`
 list the commands of the wherdr that runs now.

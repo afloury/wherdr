@@ -24,18 +24,29 @@ new project.
    follow the folder and can be changed. Once added, wherdr checks whether the
    repository is public; correct it if the check is wrong. With several
    projects, pick the one to set up, or add another.
+   **What a project needs:** a git repository (each task works in its own
+   worktree), and a remote named `origin` for a workflow that pushes, opens or
+   merges a PR, checks a merge or watches a pipeline. A repository without
+   `origin`, such as a folder you just ran `git init` in, works with `vibe`.
 3. **Choose its workflow.** The examples, each with its steps in one line, such
    as `vibe` (commit straight to a dev branch, no review). The one you choose is
    copied into the project: that copy is the project's own workflow, changed
    later in its [Workflow](#workflow) tab. Projects imported from v2
    ([Migrate from v2](migrate-from-v2.md)) have none, and their tasks cannot
-   start without it.
+   start without it. When the repository has no remote and the example you
+   pick needs one, this step says so and offers *Use vibe*, or add a remote
+   with `git remote add origin <url>`. **New › Project** warns the same way.
 4. **Check its guards.** The protected branches and who merges, as the
    workflow set them ([Guards](#guards)). Change and save them, or keep the
    defaults with Next.
 5. **Start its coordinator.** Pick the agent and start it: the coordinator is
    the agent you talk to about the project. It adds tasks and follows them on
-   the board. Its [autopilot](#autopilot) can be set under it (optional).
+   the board. Its folder is new at its first start: wherdr answers the agent's
+   "trust this folder?" question for it (that folder only, never yours), as for
+   Alfred's. The step says *starting* until the agent is ready, then that it
+   runs; if the agent still asks something (a login, say), *Answer its
+   question* opens its conversation; Next waits until it runs. Its [autopilot](#autopilot) can be set
+   under it (optional).
    It keeps a memory of its own, `memory.md` in its folder: your decisions
    and preferences, read at each start. wherdr never rewrites it, so the
    coordinator remembers them after a restart or a change of agent (Claude,
@@ -134,7 +145,9 @@ its folder, branches and task worktrees stay on the machine.
   machines and takes the path of the repository's clone there (`~/project`); once
   saved, wherdr runs that machine's readiness check (see *Start on…* under
   [Board](#board)) and shows *Ready* or what is missing. Each machine shows its
-  last check (*Not checked yet* before the first); ↻ runs it again. ✕ removes a machine:
+  last check (*Not checked yet* before the first); ↻ runs it again. Each machine also
+  shows its memory as placement reads it: *5.2 GB free of 16.0 GB*, on macOS
+  *pressure normal, ≈8.3 GB available of 18.0 GB*. ✕ removes a machine:
   new tasks no longer start there, tasks already there stay. Its switch off pauses it
   for the project instead, its clone kept ([Pause a machine for a project](machines.md#pause-a-machine-for-a-project)). Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
@@ -144,7 +157,8 @@ its folder, branches and task worktrees stay on the machine.
   machine with the largest share of memory and cores left after it) or *Home
   first* (other machines only once home is full). A machine fits a task when
   its free memory covers the task's estimate plus the machine's reserve
-  (Settings › Machines). An idle machine (no wherdr agent at work there) always
+  (Settings › Machines; on macOS the memory macOS reports available, its free
+  percentage of the RAM, which counts what it can reclaim or compress). An idle machine (no wherdr agent at work there) always
   takes one task its RAM can hold, even with less free memory than that: the
   reserve only holds its second task and beyond; on macOS a *critical* memory
   pressure still holds every task. A task that waits for room names it, and so does the
@@ -177,6 +191,10 @@ or none), how it ends (a report, a verdict, you, or an action) and, for an
 action, what it does: land on a branch, push, open a PR, merge a GitHub or
 Bitbucket PR, check that a branch was merged, or watch a pipeline, with its
 branch, merge method and required checks.
+Landing merges the target into the task first (a conflict goes back to the
+agent), then pushes it to the target on `origin`. In a repository without
+`origin` it moves the local target branch instead (made when missing), unless
+that branch is checked out in a folder: switch that folder to another branch.
 
 A **pipeline watch** (`pipeline.watch`) has the engine follow CI or a deploy
 by itself, so no agent is woken only to read *still running*. It checks every
@@ -241,13 +259,17 @@ diff. A proposal made before the workflow changed again is refused, and the
 review says so: ask the coordinator to propose again. The *Decisions* view links to this review. [Alfred](alfred.md) can propose
 a change too, on your request in its chat: you answer it in the same review.
 
-In the coordinator's conversation, a *Workflow change* card follows the message
-that made the proposal: what changes in one line, the steps of the first
+In the coordinator's conversation, a *Workflow change* card sits under the last
+reply of the turn that made the proposal (never a later one): what that
+proposal changes in one line (from the workflow it was made against, so a change
+made before it never shows; an added task type with its steps, PR target and
+who merges), the steps of the first
 changed task type before and after (the steps added or handed to someone else
 are outlined), who proposed it, your request with its
 time and *Go to message* (back to it in the conversation), *Accept*, *Refuse*
 and *See all changes* (the review). Once answered, the card shows the outcome, by whom and
-when.
+when; each proposal keeps its own card, one the coordinator replaced before you
+answered says *Replaced*.
 
 #### Reviewer fallback
 
@@ -271,15 +293,34 @@ The fallback follows the reviewer's rules; *Save* refuses one that breaks them,
 or one of the two prefs without the other.
 
 Before it starts a reviewer, wherdr reads the review agent's account (the
-reading of the home screen and pacing): at its limit and not yet reset, the
+reading of the home screen and pacing): at its limit and not yet reset, its
+5-hour window at 90 % or more, or held by its [pace](quotas.md#pace), the
 fallback reviews instead. A reviewer that hits its limit during a review (an
 *account limit* [incident](#why-agents-are-gone)) is replaced at once by the
-fallback, which reviews from the start. Each switch is in the task's log
+fallback, which reviews from the start. So is a Codex reviewer that stays open
+on its *You've hit your usage limit* message, even when the quota reading shows
+no numbers: its account counts as out until the reset time the message gives,
+and the reviews waiting on it, or a new round, go to the fallback until then. Each switch is in the task's log
 (*review: Codex out of quota until 14:52, reviewed by claude claude-opus-5-5*)
 and on the review step of the task sheet's Plan. The next review uses the
 review agent again once its quota is back. Leave both out (as in the example
 templates) for no fallback: nothing changes, the review waits for the review
 agent.
+
+#### Review queue and re-reviews
+
+One reviewer account runs a few reviews at once: 3 while its 5-hour window is
+under half used, else 2. The other reviews wait their turn, oldest first, and
+their card says so (*Review waits: 2 ahead on Codex*); started reviews finish
+before new ones start. A hand-over to the fallback after a mid-review limit
+does not wait. `autopilot show` lists each reviewer account with reviews
+running or waiting: its 5-hour and weekly use, and its queue.
+
+A review round after a send-back reviews only the commits since the last round
+(with that round's findings), not the whole change again. Before a merge, new
+commits since the review go back to a short re-review of those commits only;
+commits that only merge the base, the task's own change unchanged, are not
+reviewed again (the same rule as for your approval).
 
 ### Guards
 
@@ -831,6 +872,15 @@ the mechanical blocks itself and wakes it only when that fails:
 - **a push refused because the branch is behind its remote**: wherdr brings the
   remote's commits into the task's worktree (a fast-forward, else a merge; a
   conflict goes to the worker), then pushes again;
+- **a merge a file's own merge driver did not handle** (GitHub's *Update
+  branch* runs none): when the clone's git config sets `wherdr.afterMerge`, a
+  command, wherdr runs it at the worktree's root after each merge it makes or
+  brings in (a catch-up, a sync, a landing) and commits what it changed before
+  pushing. wherdr's own repository sets it with `npm install`, so
+  `docs/llms.txt` keeps one line per entry. A PR updated on GitHub is taken
+  into the worktree, fixed and pushed at once, also while its merge waits for
+  you or for its turn in the queue; as after a catch-up, a merge the engine
+  makes has the new head reviewed again;
 - **an action interrupted** by a restart of wherdr: run again (a merge done
   meanwhile is recorded as merged);
 - **a stalled agent** (below): nudged, then restarted once.
@@ -985,12 +1035,23 @@ inherited from the agent (`CLAUDE_CODE_TMPDIR`, set to the task's
 `.wherdr-tmp`), wherever they run, never by their folder alone. macOS hides
 that from its own programs (`sh`, `zsh`, `sleep`): those go with the marked
 process they run under or share a process group with, or, once re-parented to
-`launchd` with their folder in that task's worktree, on their own. It kills
-them and says so in the task's log (*killed 7 leftover processes, 6 h old*). Your
-own shell, editor, apps and daemons are never touched, even when they run in a
-worktree, nor the processes of a task whose agent runs. The machine's line in
-Settings › Machines then says *n leftover processes killed*
-(since wherdr started).
+`launchd` with their folder in that task's worktree (or in a worktree removed
+since), on their own. It kills them and says so in the task's log (*killed 2
+leftover processes, 4 h old, 90 % CPU*). Your own shell, editor, apps and
+daemons are left alone by this sweep, even when they run in a worktree, and so
+are the processes of a task whose agent runs.
+
+Before removing a task's worktree, wherdr kills every process still working in
+it, yours included, so nothing runs on in a deleted folder; the task's log
+says how many.
+
+A CPU guard watches the processes of a task (marked, or working in its
+worktree): one above 80 % CPU for more than 20 minutes after the task's agent
+ended is killed and logged on the task; while the agent runs, its coordinator
+is told once instead.
+
+The machine's line in Settings › Machines says *n leftover processes killed*
+(since wherdr started), all three counted.
 
 The wherdr template tells its workers to run a test command that could hang
 with a timeout (`timeout 600 …`) and to leave no background job running when

@@ -3,7 +3,7 @@
 // A change is only described unless the call says --apply; Alfred applies it
 // after the user's yes. Nothing here removes data.
 import path from 'node:path'
-import { CHANGES, SETTING_TARGETS, SETTING_VALUES, alfredCommandList, dryRun, parseAlfredCommand, workflowEditRefusal, type AlfredPlan } from '../../shared/pm/alfredCli'
+import { CHANGES, SETTING_TARGETS, SETTING_VALUES, alfredCommandList, dryRun, memoryLines, parseAlfredCommand, workflowEditRefusal, type AlfredPlan } from '../../shared/pm/alfredCli'
 import { GUARDED_PROGRAMS, MAIN, templateDiff, type CoordinatorAgent } from '../../shared/pm/coordinator'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges } from '../../shared/pm/templateText'
@@ -12,7 +12,7 @@ import { offeredAgents, readAgentOrder, readHiddenAgents } from '../../shared/ag
 import { allowedMachines, cleanProjectInput, cleanProjectUpdate, machinesOf } from '../../shared/pm/project'
 import { keyClash, projectOf as findProject, shownKey } from '../../shared/pm/projectKey'
 import { HerdrError } from './herdr'
-import { alfredTokenOk, coordinatorsView, noteTurn, startCoordinator, v2Projects, type CoordinatorUrls } from './pmCoordinator'
+import { alfredTokenOk, appendCoordinatorMemory, coordinatorsView, noteTurn, startCoordinator, v2Projects, type CoordinatorUrls } from './pmCoordinator'
 import type { V2Candidate } from './v2Board'
 import { sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { lastWords } from './pmRead'
@@ -153,8 +153,10 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       // repository, not already a project): read-only, so run before the
       // user's yes on this machine; on another, only once the user asked.
       const remote = remoteOf(project.machine)
-      const folder = remote ? project.path : await deps.check(project.machine, project.path)
-      if (projects.some(p => p.machine === project.machine && p.path === folder)) throw new HerdrError('exists', 'This folder is already a project')
+      const checked = remote ? project.path : await deps.check(project.machine, project.path)
+      const folder = typeof checked === 'string' ? checked : checked.path
+      const same = projects.find(p => p.machine === project.machine && p.path === folder)
+      if (same) throw new HerdrError('exists', `This folder is already a project: ${shownKey(same)}`)
       return change({
         change: [`add project ${project.key} "${project.name}"`,
           remote ? `folder ${folder} on ${machineName(project.machine)} (checked when applied: inside the home folder, a git repository, not already a project)` : `folder ${folder} on ${machineName(project.machine)} (checked: a git repository)`,
@@ -168,6 +170,13 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       await knownTemplate(cmd.template)
       if (!cmd.template && !p.from) return { unchanged: true, project: p.key, template: 'none' }
       return change({ change: [`project ${p.key} template: ${p.from?.template ?? 'none'} → ${cmd.template || 'none'}`] }, () => store.setTemplate(p.key, cmd.template))
+    }
+    case 'project memory': {
+      await needPm()
+      const p = projectOf(cmd.key)
+      const lines = memoryLines(input)
+      if ('error' in lines) throw new HerdrError('bad_input', lines.error)
+      return change({ change: [`add to the end of the memory.md of ${p.key}'s coordinator, on ${machineName(p.machine)}:`, ...lines], remote: remoteOf(p.machine) }, () => appendCoordinatorMemory(deps, p.key, lines))
     }
     case 'project workflow edit': {
       await needPm()
@@ -203,7 +212,7 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       const turn = await alfredTurn()
       await noteTurn(store, p.key, turn?.kind === 'user' ? 'user' : 'wake', turn?.said)
       const text = `From ${ALFRED}: ${cmd.text}`
-      if (started) void sendFirstMessage(deps, terminal, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, terminal, text) : r)).catch(() => {})
+      if (started) void sendFirstMessage(deps, terminal, text).then(r => (r === 'dialog' || r === 'installing' ? sendAfterDialog(deps, terminal, text) : r)).catch(() => {})
       else await deps.call('terminal.send', { terminal, text }, 30000)
       await store.logProject(p.key, { by: ALFRED, text: `told the coordinator: ${cmd.text.slice(0, 300)}`, ...(turn?.said ? { said: turn.said } : {}) })
       return { told: p.key, ...(started ? { started: `its coordinator was not running: started on ${machineName(p.machine)}, the message goes once it is ready` } : {}), next: `Read its answer later with wherdr alfred last ${p.key}` }

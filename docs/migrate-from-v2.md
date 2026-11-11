@@ -95,14 +95,27 @@ The import brings none of your v2 projects: you choose which ones come over, and
 message, [Alfred](home.md#alfred) sees that this machine has a herdr-projects board with projects and offers
 to set them up with you, one project at a time. It reads the board then (`wherdr alfred v2`, read
 only): each project's suggested key, folder (and whether it is on this machine), `workspace.from`
-as the base branch, its open tasks (done and archived ones are left out), and the board settings
+as the base branch, its open tasks with their stage, branch and PR (done and archived ones are left out), and the board settings
 to redo in its template (reviewer, merge, worker…). Alfred asks you to switch Projects on first when they are off.
 
 - which projects to bring over (none or some is fine);
 - the machine its repository is on, and its folder there when that is not the machine v2 ran on;
 - its template, starting from a saved template or an example, with the v2 settings to redo in mind;
 - whether to start its coordinator;
+- what its v2 coordinator knew. v2 coordinators keep no memory file, so when the project's v2
+  coordinator exists, Alfred offers once a handover: a prompt to paste to it in v2 ("Write a handover
+  note, at most 25 lines: decisions and preferences, conventions, open work and where it stands, what
+  to avoid."). Paste its answer back to Alfred: it shows the lines it will add to the end of the new
+  coordinator's `memory.md` and adds them after your yes. Declined, nothing happens. The v2
+  coordinator's autopilot goal, when it has one, comes as one line of that `memory.md` too
+  (`wherdr alfred project memory`). v2's conversations are never read;
 - which of its open v2 tasks to add again (each description starts with "From v2 WHR-37.");
+  each comes back as a task to do, whatever its v2 stage;
+- for an under-way or waiting task, its branch and PR are kept: its description starts with
+  "From v2 WHR-37. Continue from branch `feat/x` / PR #12.", and its worker starts from that
+  branch, so it pushes to the same PR, when the remote still has the branch. When the remote
+  no longer has it, the worker starts from the base branch, and the task's history and its
+  instructions say so. When the remote cannot be reached, the task waits and starts again later;
 - its guards and the other machines its tasks may run on, when its v2 settings call for them.
 
 Alfred shows each change before making it, and makes it only after your yes. You can also ask it
@@ -160,6 +173,12 @@ v2 is never touched. Once on, re-runs of the installer keep it.
 
 Nothing changes for v2: keep using its address (for example `https://<machine>.<tailnet>.ts.net:8103`).
 To stop v3 for a while: `systemctl --user stop wherdr-v3`; `start` brings it back.
+
+v3 is not a Herdr plugin and never replaces the v2 plugin. On a v3 commit, `herdr plugin install`
+and `herdr plugin update` of wherdr fail at the build, before changing anything: Herdr keeps the
+v2 plugin it had, and the build output says how to install v3. `herdr plugin install` with
+`--ref 2.x` installs v2 from its branch. The `curl … | sh` installer of the v3 tree installs
+nothing either: it prints the commands of [By hand](#by-hand).
 
 ## Uninstall v3
 
