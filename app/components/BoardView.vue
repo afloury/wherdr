@@ -167,9 +167,10 @@ const openArchived = (c: Card) => { keepArchivedCard(c); show(c.id) }
           </span>
           <small class="mono-label board-card-id"><ProjectBadge :text="c.shown" :color="c.color" copy /><template v-if="c.machine"> · <span data-testid="board-machine">{{ c.machine }}</span></template><template v-if="timeOf(c)"> · <span data-testid="board-time">{{ timeOf(c) }}</span></template><template v-else-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
-          <span v-if="turnText(c)" class="board-badge" data-testid="board-badge">{{ turnText(c) }}</span>
-          <!-- An approved merge on its way: Merge loading until it ends, what it waits for on the status line above; stuck on its worker, no spinner (the sheet's Start the worker). -->
-          <span v-else-if="mergeStuck(c)" class="board-badge" :title="tl(mergeStuck(c)!)" data-testid="board-merge-stuck"><UIcon name="i-lucide-triangle-alert" aria-hidden="true" />{{ tl('Merge waits for its worker') }}</span>
+          <!-- A merge stuck on its worker (even in Your turn): no spinner, the sheet's Start the worker. -->
+          <span v-if="mergeStuck(c)" class="board-badge" :title="tl(mergeStuck(c)!)" data-testid="board-merge-stuck"><UIcon name="i-lucide-triangle-alert" aria-hidden="true" />{{ tl('Merge waits for its worker') }}</span>
+          <span v-else-if="turnText(c)" class="board-badge" data-testid="board-badge">{{ turnText(c) }}</span>
+          <!-- An approved merge on its way: Merge loading until it ends, what it waits for on the status line above. -->
           <span v-else-if="mergeWaits(c) !== undefined" class="board-badge board-merging" role="status" :aria-label="`${c.userLabel || tl('Merge')}: ${mergeWaits(c)}`" data-testid="board-merging"><UIcon name="i-lucide-loader-circle" class="spin" aria-hidden="true" />{{ c.userLabel || tl('Merge') }}</span>
           <small v-if="c.report" class="board-status wait" :title="c.report.text" data-testid="board-report">{{ tl('Problem reported') }} {{ fmtTime(c.report.at) }}</small>
           <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).map(id => shownTaskId(data?.projects ?? [], id)).join(', ') }}</small>

@@ -26,7 +26,7 @@ const told = computed(() => agentCatchingUp(props.card))
 const waits = computed(() => mergeWaits(props.card))
 // It waits on something the engine cannot do alone: said plainly, with Start the worker, no spinner.
 const stuck = computed(() => mergeStuck(props.card))
-const badge = computed(() => (waits.value !== undefined ? (stuck.value ? tl('Merge approved: it waits for its worker') : tl('Merge approved: it merges by itself')) : stepRefusalText(props.card.yourTurn ?? '', told.value)))
+const badge = computed(() => (stuck.value ? tl(waits.value !== undefined ? 'Merge approved: it waits for its worker' : 'The merge waits for its worker') : waits.value !== undefined ? tl('Merge approved: it merges by itself') : stepRefusalText(props.card.yourTurn ?? '', told.value)))
 const advice = computed(() => props.card.state?.yourTurn?.advice)
 const choices = computed(() => (advice.value ? adviceChoices(advice.value) : { options: [] }))
 

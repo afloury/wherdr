@@ -322,13 +322,16 @@ const CATCH_UP_STUCK_MS = 3 * 60_000
 // An approved merge that waits on something the engine cannot do by itself (a
 // conflict or red checks no agent is on, its worker ended, its machine down):
 // what, in plain words. The user's way out is Start the worker
-// (pmMechanic.ts startWorkerFor). undefined: the merge goes on alone.
+// (pmMechanic.ts startWorkerFor). undefined: the merge goes on alone. Work
+// handed to its worker that waits counts even once it is the user's turn (no
+// coordinator took it over: agent.told 'user').
 export function mergeStuck(c: Parameters<typeof mergeWaits>[0], now = Date.now()): string | undefined {
-  if (mergeWaits(c) === undefined) return
-  const s = c.state!
-  if (s.agent?.waits === AGENT_ENDED) return 'Its worker ended before finishing what the merge needs. Start it again to finish; the merge then goes on.'
-  if (s.agent?.waits) return `${s.agent.waits}. Start the worker again to go on with the merge.`
-  if (s.agent) return
+  const s = c.state
+  const handed = !!s?.agent?.waits && !s.done && !c.stopped && waitsToMerge(c.plan[s.at])
+  if (!handed && mergeWaits(c) === undefined) return
+  if (s!.agent?.waits === AGENT_ENDED) return 'Its worker ended before finishing what the merge needs. Start it again to finish; the merge then goes on.'
+  if (s!.agent?.waits) return `${s!.agent.waits}. Start the worker again to go on with the merge.`
+  if (!s || s.agent) return
   if (s.catchUp && now - s.catchUp.at >= CATCH_UP_STUCK_MS) return `Its PR conflicts with ${s.catchUp.base} and no agent is solving it. Start the worker to solve the conflict; the merge then goes on.`
   if (c.prNow?.startsWith('checks failed')) return 'Its PR\'s checks failed and no agent is fixing them. Start the worker to fix them; the merge then goes on.'
 }
