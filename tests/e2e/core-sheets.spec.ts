@@ -42,7 +42,8 @@ const bottom = (page: Page) => page.evaluate(() => {
   const edge = sheet.getBoundingClientRect().bottom - parseFloat(getComputedStyle(sheet).borderBottomWidth)
   const shown = [...body.querySelectorAll('*')].filter(el => el.getBoundingClientRect().height > 0)
   const last = Math.max(...shown.map(el => el.getBoundingClientRect().bottom))
-  return { band: Math.round(edge - body.getBoundingClientRect().bottom), clipped: last > body.getBoundingClientRect().bottom + 1 }
+  // `|| 0`: a sub-pixel difference rounds to -0, which toEqual tells from 0.
+  return { band: Math.round(edge - body.getBoundingClientRect().bottom) || 0, clipped: last > body.getBoundingClientRect().bottom + 1 }
 })
 
 test('sheets: no sideways scroll, one scroll, long texts', async ({ page, browser }, info) => {
