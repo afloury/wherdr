@@ -1,6 +1,7 @@
 // WHR-403: Alfred's row at the top of the agent list: not started (the first
 // tap asks for its agent), running (its agent shown), renamed (identity.md's name).
 // WHR-119: its own card (emblem, what it is, its state square).
+// WHR-265: the card looks selected (mauve edge, wash) only while its conversation is open.
 import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
@@ -84,13 +85,17 @@ it('running and renamed: its name, its current agent, one tap opens the conversa
   // Its conversation open: selected like an agent card; another one opened: not any more.
   const open = w!.find('[data-testid="alfred-open"]')
   expect(open.attributes('aria-current')).toBeUndefined()
+  const card = () => w!.find('.alfred-card').classes()
+  expect(card()).not.toContain('sel')
   curPane.value = 'w:p1'
   await nextTick()
   expect(w!.find('[data-testid="alfred"]').classes()).toContain('sel')
+  expect(card()).toContain('sel')
   expect(open.attributes('aria-current')).toBe('page')
   curPane.value = 'w:p2'
   await nextTick()
   expect(w!.find('[data-testid="alfred"]').classes()).not.toContain('sel')
+  expect(card()).not.toContain('sel')
   expect(open.attributes('aria-current')).toBeUndefined()
   curPane.value = null
   // Renamed during a turn: the new name shows as soon as the turn ends, not at the next poll.

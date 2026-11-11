@@ -111,8 +111,10 @@ onUnmounted(() => clearInterval(timer))
 </template>
 
 <style scoped>
-/* A card of its own: a faint mauve wash, a mauve edge when its conversation is open. */
-.alfred-card { position: relative; margin-bottom: 20px; border: 1px solid color-mix(in srgb, var(--mauve) 35%, var(--line)); background: linear-gradient(135deg, color-mix(in srgb, var(--mauve) 8%, var(--surface)), var(--surface) 70%); }
+/* A card of its own, with the same neutral edge as the other cards; only when its
+   conversation is open: the mauve edge, wash and left bar of a selected row. */
+.alfred-card { position: relative; margin-bottom: 20px; border: 1px solid var(--line); background: var(--surface); }
+.alfred-card.sel { border-color: color-mix(in srgb, var(--mauve) 35%, var(--line)); background: linear-gradient(135deg, color-mix(in srgb, var(--mauve) 8%, var(--surface)), var(--surface) 70%); }
 .alfred-card::before { content: ''; position: absolute; z-index: 1; left: -1px; top: -1px; bottom: -1px; width: 2px; background: transparent; }
 .alfred-card.sel::before { background: var(--mauve); }
 .alfred-card.banner { flex: none; margin: 0; border-width: 0 0 1px; background: var(--surface); }
