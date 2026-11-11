@@ -185,14 +185,15 @@ const AGENT_ROLES: AgentRole[] = ['worker', 'reviewer']
 // reviewer, who has nothing to change). run: its latest run of that role, if
 // still running; released: a worker the engine let go while the task waited
 // for the user (release.ts), started again with the message.
-// fix: a mechanical fix also starts again a worker that ended on its own (a
-// crash, a machine problem), never one a stop ended; and a reviewer not
-// running at its step (review: the review starts again, pmWatchdog.ts).
-export function tellTarget(runs: Run[], task: string, holder: Holder | undefined, to?: AgentRole, fix = false) {
+// fix: a mechanical fix also starts again, at any step, a worker that ended
+// however it ended (a crash, a machine problem, a stop), as long as its
+// worktree is there (worktree false: removed); and a reviewer not running at
+// its step (review: the review starts again, pmWatchdog.ts).
+export function tellTarget(runs: Run[], task: string, holder: Holder | undefined, to?: AgentRole, fix = false, worktree = true) {
   const role = to ?? (holder === 'reviewer' ? 'reviewer' : 'worker')
   const last = runs.filter(r => r.task === task && r.role === role).sort((a, b) => b.startedAt - a.startedAt)[0]
   const run = last?.state !== 'ended' && last?.terminal ? last : undefined
-  return { role, run, released: !run && role === 'worker' && !!last && (wasReleased(last) || (fix && last.endedBy !== 'stopped')), review: !run && role === 'reviewer' && fix && holder === 'reviewer' }
+  return { role, run, released: !run && role === 'worker' && !!last && (wasReleased(last) || (fix && worktree)), review: !run && role === 'reviewer' && fix && holder === 'reviewer' }
 }
 
 const TASK_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/

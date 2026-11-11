@@ -3,4 +3,5 @@
 // GET pm/agents: each running task agent's task and role, for its sidebar row (WHR-82).
 // pm/task-check: Check on GitHub, a stuck merge step's PR read now (WHR-114).
 // pm/review-restart: Restart the review, a review that stopped without a verdict (WHR-272).
-export default ['GET pm/board', 'GET pm/handle', 'GET pm/agents', 'pm/step-user', 'pm/step-back', 'pm/report', 'pm/task-check', 'pm/review-restart'] as string[]
+// pm/worker-start: Start the worker, a merge that waits on it (WHR-278).
+export default ['GET pm/board', 'GET pm/handle', 'GET pm/agents', 'pm/step-user', 'pm/step-back', 'pm/report', 'pm/task-check', 'pm/review-restart', 'pm/worker-start'] as string[]

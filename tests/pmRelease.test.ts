@@ -223,6 +223,26 @@ describe('work the engine handed the worker', () => {
   const redSmoke = (env: Awaited<ReturnType<typeof setup>>['env']) => { env.pr = { mergeStateStatus: 'CLEAN', statusCheckRollup: [{ name: 'smoke', status: 'COMPLETED', conclusion: 'FAILURE' }] } }
   const sentTexts = (env: Awaited<ReturnType<typeof setup>>['env']) => env.calls.filter(c => c[0] === 'terminal.send').map(c => String(c[1].text))
 
+  it('a conflict at the merge step starts again a worker a stop ended once the task goes on', async () => {
+    const { store, deps, env, log } = await setup()
+    await store.saveRun({ ...(await store.runs())[0]!, state: 'ended', endedBy: 'stopped' }) // stopped, then started again: held by nobody
+    await mechanicTick(deps, 0)
+    expect(env.calls.filter(c => c[0] === 'terminal.run')).toHaveLength(2)
+    expect(await log()).toContain('catch-up: started the worker again with it')
+    expect((await store.task('WH-1'))!.step!.agent).toMatchObject({ kind: 'catch-up', text: expect.stringContaining('Merge origin/v3') })
+  })
+
+  it('the user\'s Send back at the merge step starts again a worker that ended', async () => {
+    const { store, deps, env, log } = await setup()
+    await store.saveRun({ ...(await store.runs())[0]!, state: 'ended', endedBy: 'stopped' })
+    const t = (await store.task('WH-1'))!, plan = (await store.workflow('WH'))!
+    const { taskPlan } = await import('../shared/pm/run')
+    await store.saveTask({ ...t, step: onEvent(taskPlan(plan, t), t.step!, { kind: 'back', note: 'make the button blue' }, 50).state })
+    await advanceTick(deps)
+    expect(env.calls.filter(c => c[0] === 'terminal.run')).toHaveLength(2)
+    expect((await log()).at(-1)).toMatch(/^started the worker again in its worktree: \w+ needs it$/)
+  })
+
   it('a CI fix sent to a worker that ended starts it again with that fix', async () => {
     const { store, deps, env, log } = await setup()
     redSmoke(env)

@@ -91,9 +91,12 @@ describe('mechanical moves', () => {
       // A second catch-up is refused while one runs; the conflict sent to the agent waits for its commit.
       expect(onEvent(visual, up, { kind: 'catch-up', base: 'v3', head: 'abc1234' }, 6).refused).toBeTruthy()
       const sent = { mech: { 'catch-up:abc1234': 1 } }
-      expect(nextMove(at(up, { pr: dirty, task: task({ step: up, ...sent }) }))).toBeUndefined()
+      expect(nextMove(at(up, { pr: dirty, now: 60_000, task: task({ step: up, ...sent }) }))).toBeUndefined()
       expect(nextMove(at(up, { head: 'def5678', agentBusy: true, task: task({ step: up, ...sent }) }))).toBeUndefined()
       expect(nextMove(at(up, { head: 'def5678', task: task({ step: up, ...sent }) }))?.key).toBe('catch-up:def5678')
+      // Its conflict reached no worker (it could not start): tried again, spaced out; handed, it waits for the worker.
+      expect(nextMove(at(up, { pr: dirty, now: 3 * 60_000, task: task({ step: up, ...sent }) }))?.key).toBe('catch-up:abc1234:2')
+      expect(nextMove(at({ ...up, agent: { kind: 'catch-up', at: 1 } }, { pr: dirty, now: 3 * 60_000, task: task({ step: { ...up, agent: { kind: 'catch-up', at: 1 } }, ...sent }) }))).toBeUndefined()
       // The agent's resolution is reviewed again; a clean merge of the base is not, and the user's turn comes back.
       expect(onEvent(visual, up, { kind: 'caught-up', head: 'fff0000', review: { since: 'abc1234', head: 'fff0000' } }, 7).state).toMatchObject({ at: 2, rereview: { since: 'abc1234' } })
       const clean = onEvent(visual, up, { kind: 'caught-up', head: 'fff0000' }, 7).state

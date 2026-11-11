@@ -415,7 +415,9 @@ it('tell goes to the step\'s agent, else the worker; --to picks one', () => {
   expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'exit' })], 'CO-1', 'none')).toEqual({ role: 'worker', run: undefined, released: false, review: false })
   // A fix starts again a worker that ended, not only one let go.
   expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'exit' })], 'CO-1', 'none', undefined, true)).toEqual({ role: 'worker', run: undefined, released: true, review: false })
-  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'stopped' })], 'CO-1', 'none', undefined, true)).toEqual({ role: 'worker', run: undefined, released: false, review: false })
+  // At any step (the merge: held by nobody), however it ended, a stop too; only a removed worktree is not running.
+  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'stopped' })], 'CO-1', 'none', undefined, true)).toEqual({ role: 'worker', run: undefined, released: true, review: false })
+  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'exit' })], 'CO-1', 'none', undefined, true, false)).toEqual({ role: 'worker', run: undefined, released: false, review: false })
   // A fix at the review step, its reviewer not running: the review starts again; without a fix it is not running.
   const gone = [run('r', 'reviewer', 1, { state: 'ended', endedBy: 'exit' })]
   expect(tellTarget(gone, 'CO-1', 'reviewer', undefined, true)).toMatchObject({ role: 'reviewer', run: undefined, review: true })

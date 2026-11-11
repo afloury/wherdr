@@ -2,10 +2,11 @@
 // the files or folders it plans to change (its worker writes them to its
 // files marker, or the coordinator gives them with `task add --files`), and
 // the engine reads what each started task changed (git diff since its branch
-// started). A new start that touches what a started task, not done yet,
-// touches waits behind it, unless the user starts it anyway. Pure:
+// started). A new start that touches what a started task, its work or review
+// still ahead, touches waits behind it, unless the user starts it anyway. Pure:
 // server/utils/pmFiles.ts reads the worktrees and starts the waiting tasks.
 import type { Task } from './run'
+import type { PlannedStep } from './steps'
 
 const MAX = 200
 
@@ -24,19 +25,28 @@ const covers = (dir: string, p: string) => p === dir || p.startsWith(`${dir}/`)
 export const overlap = (a: string, b: string) => covers(a, b) || covers(b, a)
 export const shared = (mine: string[], theirs: string[]) => mine.filter(m => theirs.some(t => overlap(m, t)))
 
-// What a started task touches: what it declared and what it changed.
-const footprint = (t: Pick<Task, 'files' | 'changed'>) => [...t.files ?? [], ...t.changed ?? []]
+// Generated index files whose conflicts the engine solves itself (the llms
+// merge): never a reason to wait.
+const MERGED_ALONE = ['docs/llms.txt']
+const counted = (paths: string[]) => paths.filter(f => !MERGED_ALONE.includes(f))
 
-// Still holds its files: started, not done (working, waiting for the user or for its merge, stopped).
-const holds = (t: Task) => !!t.step?.started && !t.step.done
+// What a started task touches: what it declared and what it changed.
+const footprint = (t: Pick<Task, 'files' | 'changed'>) => counted([...t.files ?? [], ...t.changed ?? []])
+
+// Still holds its files: started, not done, its work or review still ahead or
+// under way (stopped too); not once it only waits for its merge (merging).
+const holds = (t: Task, merging: (t: Task) => boolean) => !!t.step?.started && !t.step.done && !merging(t)
+
+// A task past its work and review: no worker or reviewer step from its current one on.
+export const pastAgents = (plan: Pick<PlannedStep, 'holder'>[], at: number) => plan.slice(at).every(p => p.holder !== 'worker' && p.holder !== 'reviewer')
 
 // The task a start of `task` waits behind: a started task of the same project
 // that touches what `task` declared, with the paths in common. None: it may start.
-export function fileConflict(task: Task, tasks: Task[]): { task: string, files: string[] } | undefined {
-  const mine = task.files ?? []
+export function fileConflict(task: Task, tasks: Task[], merging: (t: Task) => boolean = () => false): { task: string, files: string[] } | undefined {
+  const mine = counted(task.files ?? [])
   if (!mine.length) return
   for (const other of tasks) {
-    if (other.id === task.id || other.project !== task.project || !holds(other)) continue
+    if (other.id === task.id || other.project !== task.project || !holds(other, merging)) continue
     const files = shared(mine, footprint(other))
     if (files.length) return { task: other.id, files: files.slice(0, 5) }
   }

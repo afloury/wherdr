@@ -759,10 +759,12 @@ Tasks that change the same files do not run at the same time. At the start of
 its work, the worker writes the files or folders it plans to change to
 `files.txt` beside its instructions file (a folder covers what is in it); the
 coordinator can name them ahead with `task add … --files app,docs/board.md`.
-Every 5 minutes wherdr reads, for each started task not done yet (running,
-waiting for you or for its merge, or stopped), those declared paths and the
-files its branch changed (`git diff` since the branch started, new files
-included).
+Every 5 minutes wherdr reads, for each started task not done yet, those
+declared paths and the files its branch changed (`git diff` since the branch
+started, new files included). Only a task whose work or review is still ahead
+or under way (stopped too) holds its files: once it only waits for its merge,
+the tasks behind it start. `docs/llms.txt`, whose conflicts wherdr solves
+itself, never makes a task wait.
 
 When a task starts for the first time (by you, the coordinator or an *after*
 chain), and its declared paths overlap what such a task declared or changed, it
@@ -907,10 +909,18 @@ back` or `report close`), you send the step back, or you *Withdraw* it.
 While a merge waits for you, wherdr watches its PR. When the PR starts to
 conflict with its base, or falls behind it under a branch rule that wants it up
 to date, wherdr merges the base into the branch at once (or asks the task's
-agent to resolve the conflicts, starting it again if it was ended). The card
+agent to resolve the conflicts, starting it again if it was ended, however it
+ended; if it could not start, the update is tried again a few times). The card
 says *updating with* the base and leaves *Your turn* until the PR is clean
 again; an agent's conflict resolution gets a short re-review first. One update
 runs at a time per task.
+
+When an approved merge waits on something wherdr cannot do by itself (a
+conflict or red checks no agent is on, its worker ended, its machine offline or
+paused), Merge stops loading: the card says *Merge waits for its worker*, and
+the sheet says in one sentence what it waits for, with **Start the worker**,
+which starts the worker again in its worktree (or sends to it, if it runs) with
+what to do. The merge goes on once its work is in.
 
 Clicking *Merge* is an approval of the task's screenshots that stays: the log
 records who approved, when and at which commit. Later updates keep it: the base
@@ -1189,7 +1199,8 @@ its agents were ended and started again.
 
 The same goes when you answer and the task moves on: a review decision (*pass*,
 say), *Send back*, *Try again* or a merge you confirm hands the next step to
-its worker or reviewer, which wherdr starts again at once. As a safety net,
+its worker or reviewer, which wherdr starts again at once, also a worker that
+had ended (on its own, or by a stop the task went on from). As a safety net,
 wherdr also watches every task under way: when the agent that holds its
 current step has not been running for 3 minutes (released, ended on its own,
 or gone in a wherdr restart), wherdr starts it again in its worktree, with a
@@ -1236,8 +1247,9 @@ question, or, with the autopilot on, to unblock a mechanical block of a task of
 its project: `wherdr pm tell <task> "<what to do>" --fix <kind> --reason "<one
 sentence>"`, where the kind is `base` (merge the base and solve a conflict),
 `ci` (fix a red CI), `machine` (retry after a disk or memory problem) or
-`stall` (restart a stalled agent). A worker that was let go or ended on its
-own starts again with the message; at the review step, a reviewer that is not
+`stall` (restart a stalled agent). At any step, a worker that was let go or
+ended (on its own or by a stop) starts again with the message, as long as the
+task still has its worktree; at the review step, a reviewer that is not
 running starts the review again (the message goes to the task's log, the new
 reviewer reads its review file); a stopped or finished task is never fixed. Each fix is written to the task's log with its reason, at most
 twice per task and step; after that the block is yours, and the coordinator
