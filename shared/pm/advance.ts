@@ -57,10 +57,11 @@ export function parseRead(out: string): SignalRead {
 }
 
 // What the task keeps of an accepted report or verdict: its commits and files
-// (with those a verdict read), and a worker's report as it arrived (Comments).
+// (with those a verdict read), and a worker's report as it arrived (Comments):
+// every accepted one, an empty one too, so each keeps its own "done" line.
 export function signalKept(task: Task, step: string, ev: { kind: string }, read: SignalRead): Partial<Task> {
   const reviewed = ev.kind === 'verdict' ? read.work?.commits : task.work?.reviewed
-  const report = ev.kind === 'report' && read.note ? [...(task.workReports ?? []), { step, text: read.note.slice(0, 8000) }].slice(-20) : undefined
+  const report = ev.kind === 'report' ? [...(task.workReports ?? []), { step, text: read.note.slice(0, 8000) }].slice(-20) : undefined
   return { ...(read.work ? { work: { ...read.work, ...(reviewed ? { reviewed } : {}) } } : {}), ...(report ? { workReports: report } : {}) }
 }
 

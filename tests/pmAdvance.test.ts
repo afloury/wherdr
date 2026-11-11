@@ -7,6 +7,7 @@ import { initialState, onEvent, planSteps, type StepEvent, type StepState } from
 import { company, github, vibe, common } from '../shared/pm/examples'
 import type { Template } from '../shared/pm/workflow'
 import type { Task } from '../shared/pm/run'
+import { taskHistory } from '../shared/pm/history'
 
 const read = (more: Partial<SignalRead> = {}): SignalRead => ({ head: 'abc1234', diffLines: 12, note: '', verdict: '', ...more })
 const major = '{"findings":[{"id":"no-test","severity":"major","title":"No test","proof":"npm test: 0 tests"}]}'
@@ -147,6 +148,14 @@ describe('end signals', () => {
     expect(b).toEqual({ work: { ...w('1'), reviewed: '1' } })
     const c = signalKept({ ...base, ...a, ...b }, 'work', { kind: 'report' }, read({ note: 'Second', work: w('2') }))
     expect(c).toEqual({ work: { ...w('2'), reviewed: '1' }, workReports: [{ step: 'work', text: 'First' }, { step: 'work', text: 'Second' }] })
+
+    // An empty report keeps its place: the earlier one stays on its own "done".
+    const d = signalKept({ ...base, ...c }, 'work', { kind: 'report' }, read({ note: '', work: w('3') }))
+    expect(d.workReports!.map(r => r.text)).toEqual(['First', 'Second', ''])
+    const log = ['work: done', 'review: verdict, 0 finding(s)', 'work: done'].map((text, i) => ({ at: i, by: i === 1 ? 'reviewer x' : 'worker x', text }))
+    const reports = [{ step: 'work', text: 'Original report' }, { step: 'work', text: '' }]
+    expect(taskHistory(log, [{ id: 'work' }, { id: 'review' }], { proofs: {} }, false, reports).filter(e => e.who === 'worker').map(e => e.text))
+      .toEqual(['Original report', 'Reported done.'])
   })
 
   it('a verdict that does not parse is sent back to the reviewer, with how to answer', () => {
