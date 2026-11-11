@@ -7,7 +7,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
 import { MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, PROPOSAL_ANSWERS } from '../../shared/pm/coordinator'
-import { initialState, onEvent, planSteps, currentStep } from '../../shared/pm/steps'
+import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
 import { validateTemplate } from '../../shared/pm/workflow'
@@ -262,6 +262,17 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
       const r = onEvent(plan, state, ev, Date.now())
       if (r.refused) throw new HerdrError('refused', r.refused)
       return { task: await store.logTask({ ...task, step: r.state }, by, `${step}: done`) }
+    }
+    case 'step wait': {
+      const task = await taskOf(cmd.task)
+      const plan = planOf(needPlan(), task, p)
+      const r = waitStep(plan, task.step ?? initialState(), cmd.for ? { ms: durationMs(cmd.for) } : { untilUser: true }, Date.now())
+      if ('refused' in r) throw new HerdrError('refused', r.refused)
+      const step = currentStep(plan, r.state)!.id
+      const logged = await store.logTask({ ...task, step: r.state }, by, `${step}: next recheck ${cmd.for ? `in ${cmd.for}` : 'when the user writes or acts on the task'}. ${cmd.reason}`)
+      // Its own log line is no news: the backoff does not start over for it.
+      const seen = logged.step?.news, at = logged.log?.at(-1)?.at ?? 0
+      return { task: seen && at > seen.at ? await store.saveTask({ ...logged, step: { ...logged.step!, news: { ...seen, at } } }) : logged }
     }
     case 'ack': {
       const r = ackWakes(await store.wakes(), scope, cmd.wakes, Date.now())

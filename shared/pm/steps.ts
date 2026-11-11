@@ -33,6 +33,9 @@ export interface StepState {
   deadline?: number // absolute time, from the step's timeout
   paused?: number // since when the step's clock is stopped: its holder cannot work (pauseClock)
   recheckAt?: number // absolute time, for a step with recheck
+  rechecks?: number // rechecks sent with no news since: each one doubles the next interval (recheckEvery)
+  news?: News // the task's news as the last tick saw it (recheckNews)
+  waitUser?: number // since when rechecks wait for the user (step wait --until-user)
   told?: number // the `since` of the step whose instructions were delivered to its holder
   fix?: string // what the worker must fix, when an engine action sent the task back to it
   rereview?: Rereview // the PR head moved after the review: only that change is reviewed again
@@ -209,7 +212,7 @@ function act(s: StepState, step: PlannedStep, effects: Effect[], now: number): S
 // Enters step i: a step with no end is passed through (the last one is done).
 function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, effects: Effect[]): StepState {
   const step = plan[i]
-  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, paused: undefined, recheckAt: undefined, acting: undefined, watch: undefined, yourTurn: undefined, agent: undefined, fix: undefined, rereview: undefined, catchUp: undefined }
+  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, paused: undefined, recheckAt: undefined, rechecks: undefined, news: undefined, waitUser: undefined, acting: undefined, watch: undefined, yourTurn: undefined, agent: undefined, fix: undefined, rereview: undefined, catchUp: undefined }
   if (!step) return effects.push({ kind: 'done' }), { ...s, done: true }
   if (!step.ends) return i === plan.length - 1 ? (effects.push({ kind: 'done' }), { ...s, done: true }) : enter(plan, s, i + 1, now, effects)
   if (step.timeout) s.deadline = now + durationMs(step.timeout)
@@ -416,7 +419,8 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       let s = state
       if (s.recheckAt !== undefined && now >= s.recheckAt && hasAgent(step)) {
         effects.push({ kind: 'instruct', step: step.id, holder: step.holder!, text: `Check again: ${step.text}` })
-        s = { ...s, recheckAt: now + durationMs(step.recheck!) }
+        const n = (s.rechecks ?? 0) + 1
+        s = { ...s, rechecks: n, recheckAt: now + recheckEvery(step.recheck!, n) }
       }
       if (s.deadline !== undefined && s.paused === undefined && now >= s.deadline && !s.yourTurn)
         s = { ...s, yourTurn: { reason: 'timeout', badge: `Check ${step.id}: over ${step.timeout}` } }
@@ -424,6 +428,52 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
     }
   }
 }
+
+// A recheck interval after n rechecks with no news: the step's own, doubled
+// each time, up to an hour (a step's own longer interval stays).
+export const RECHECK_CAP = 3_600_000
+export const recheckEvery = (recheck: string, n: number) => {
+  const base = durationMs(recheck)
+  return Math.max(base, Math.min(base * 2 ** n, RECHECK_CAP))
+}
+
+// What counts as news on a task: its newest log entry (a commit, a tell, a
+// report, the user's button…), the user's last message to the coordinator,
+// and its CI as last read. user: the user's last message or action alone.
+export interface News { at: number, user?: number, ci?: string }
+
+// News since the last tick: the rechecks start over from the step's own
+// interval. A wait for the user ends only on the user's own message or action.
+// The first look only notes it.
+export function recheckNews(plan: PlannedStep[], s: StepState, news: News, now: number): StepState {
+  if (!s.started || s.done) return s
+  const step = currentStep(plan, s)
+  if (!step?.recheck) return s
+  const seen = s.news
+  if (seen && news.at <= seen.at && news.ci === seen.ci) return s
+  if (!seen) return { ...s, news }
+  if (s.waitUser !== undefined && !((news.user ?? 0) > s.waitUser)) return { ...s, news }
+  return { ...s, news, rechecks: 0, waitUser: undefined, recheckAt: now + durationMs(step.recheck) }
+}
+
+export const WAIT_MAX = 86_400_000
+// The coordinator postpones its next recheck (`step wait`): `ms` sets it, or
+// none until the user writes or acts on the task (recheckNews ends it).
+export function waitStep(plan: PlannedStep[], s: StepState, wait: { ms: number } | { untilUser: true }, now: number): { state: StepState } | { refused: string } {
+  const step = currentStep(plan, s)
+  if (!s.started || s.done || !step) return { refused: 'The task has no step running' }
+  if (step.holder !== 'coordinator' || !step.recheck) return { refused: `Step "${step.id}" is not one you hold with a recheck` }
+  if ('ms' in wait) {
+    if (!(wait.ms > 0 && wait.ms <= WAIT_MAX)) return { refused: '--for is a duration up to 1d' }
+    return { state: { ...s, waitUser: undefined, recheckAt: now + wait.ms } }
+  }
+  return { state: { ...s, waitUser: now, recheckAt: undefined } }
+}
+
+// When the step's next recheck is due, for its sheet: a time, or 'user' while
+// it waits for the user; undefined: none.
+export const nextRecheck = (s: StepState | undefined): number | 'user' | undefined =>
+  !s?.started || s.done ? undefined : s.waitUser !== undefined ? 'user' : s.recheckAt
 
 // The step's clock stops while its holder cannot work (its machine offline or
 // unreachable, an incident not over, the task waiting for room): that time

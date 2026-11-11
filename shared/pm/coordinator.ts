@@ -115,6 +115,7 @@ export type Command =
   | { name: 'task tag', task: string, text: string }
   | { name: 'task link', task: string, url: string, label: string }
   | { name: 'step done', task: string, userSaid?: string, link?: string }
+  | { name: 'step wait', task: string, for?: string, untilUser?: true, reason: string }
   | { name: 'task decide', task: string, choice: Choice, reason: string }
   | { name: 'ack', wakes: string[] } | { name: 'automation show', id: string }
   | { name: 'automation propose', id?: string, remove?: true } // a new or changed one comes as the call's input (JSON)
@@ -148,6 +149,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task tag <task> <text>', does: 'a short tag on the card (a ticket key, a client)' },
   { usage: 'task link <task> <url> --label <label>', does: 'a link on the card (PR, ticket, pipeline)' },
   { usage: 'step done <task> [--link <url>]', does: 'end the task\'s current step when you hold it (holder: coordinator)' },
+  { usage: 'step wait <task> (--for <duration> | --until-user) --reason "<one sentence>"', does: 'when a recheck of a step you hold finds nothing new, postpone the next one: --for sets it (30m, 2h, up to 1d), --until-user stops rechecks until the user writes to you or acts on the task. Without it, each recheck with no news doubles the next interval, up to 1h; any news on the task starts it over. Written to the task\'s log' },
   { usage: 'step done <task> --user-said "<their words>"', does: 'end a step that waits for the user, with the user\'s own words; only in a turn that comes from the user' },
   { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options. Also pass when each remaining finding contradicts a spec change recorded on the task (task edit, task note, tell --spec), the reason citing it (its date YYYY-MM-DD or its words); never before a merge only the user may do nor on a critical finding with proof. Written to the task\'s log and shown in the user\'s Decisions: tell the user in your next message' },
   { usage: 'ack <wake> [<wake>…]', does: 'say you handled a wake (each wake ends with its id); unacked, it comes back once, then the user is told' },
@@ -227,7 +229,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] as string
     if (!a.startsWith('--')) { words.push(a); continue }
-    if (a === '--spec' || a === '--archived' || a === '--remove') { flags[a.slice(2)] = 'yes'; continue } // the options without a value
+    if (a === '--spec' || a === '--archived' || a === '--remove' || a === '--until-user') { flags[a.slice(2)] = 'yes'; continue } // the options without a value
     const v = argv[i + 1] as string | undefined
     if (v === undefined) return { error: `${a} needs a value` }
     flags[a.slice(2)] = v
@@ -237,7 +239,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files', 'from-branch'], 'task start': ['on'], 'list': ['archived'], 'automation propose': ['remove'], 'incidents': ['since'], 'ui open': ['target'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' || w0 === 'list' ? w0 : verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'step wait': ['for', 'until-user', 'reason'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files', 'from-branch'], 'task start': ['on'], 'list': ['archived'], 'automation propose': ['remove'], 'incidents': ['since'], 'ui open': ['target'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' || w0 === 'list' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (w0 === 'incidents') {
@@ -322,6 +324,13 @@ function parseWords(argv: unknown): Command | { error: string } {
     const reason = (flags.reason ?? '').trim()
     if (!TASK_RE.test(task) || w3 || !reason) return usage(verb)
     return reason.length <= 300 && !reason.includes('\n') ? { name: verb, task, reason } : { error: '--reason is one sentence (300 characters at most)' }
+  }
+  if (verb === 'step wait') {
+    const reason = (flags.reason ?? '').trim(), d = flags.for?.trim()
+    if (!TASK_RE.test(task) || w3 || !reason || (d === undefined) === !flags['until-user']) return usage(verb)
+    if (d !== undefined && !/^\d{1,4}[smhd]$/.test(d)) return { error: '--for is a duration: 30m, 2h, 1d' }
+    if (reason.length > 300 || reason.includes('\n')) return { error: '--reason is one sentence (300 characters at most)' }
+    return { name: verb, task, ...(d ? { for: d } : { untilUser: true as const }), reason }
   }
   if (verb !== 'task tag' && verb !== 'task link' && verb !== 'step done' && verb !== 'task decide') return { error: `unknown command: ${words.join(' ') || '(none)'} (see wherdr pm help)` }
   if (!TASK_RE.test(task) || rest.length) return usage(verb)
@@ -567,7 +576,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
       : `You coordinate project ${p.key} only. Its repository is ${p.path}: read it, never change it; task agents do the work in their own worktrees.`,
     'Wakes are messages sent by wherdr, not the user; the first line names who sends it. The server knows which, and refuses what a wake may not do:',
     '- "Autopilot:": your autopilot (its schedule, an agent\'s question, a choice after N send-backs, the routine events the user turned on, the user\'s "run now");',
-    '- "Step check: <task> (<step>)": a step you hold, at its start, recheck or timeout; it comes even with the autopilot off;',
+    '- "Step check: <task> (<step>)": a step you hold, at its start, recheck or timeout; it comes even with the autopilot off. When a recheck finds nothing new, postpone the next one (`step wait`);',
     '- "Engine:": the engine gave up on a block after failed fixes, with what it tried;',
     '- "Incident: <incident>, wake <id>": agents were gone (a restart, a machine offline, a crash, an account limit): once per incident, the engine\'s facts: the cause and its evidence, what it resumed, what still waits and why, what needs you or the user. It comes even with the autopilot off. The engine resumes the rest by itself: tell the user what needs them, start again what needs you, then ack;',
     '- "Health check:": every few hours, a short summary of your project (tasks done since the last check, waiting for the user, stuck for long, machines idle while to-do tasks wait). When nothing in it is wrong, ack at once with no further work: look into a line only when it needs you.',
@@ -600,7 +609,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     'You are the one who writes this project\'s workflow: wherdr only shows it to the user, who asks you for every change and accepts or refuses your proposal.',
     'wherdr imposes no workflow: it knows ordered steps, who holds each (worker, reviewer, coordinator, none), how it ends (report, verdict, user, action), the proofs it needs (evidence) and the user\'s guards. What an agent must do is plain text in `instructions`.',
     `The project's working branch (set by the user in ${projectPlace(p.key, 'general', true)}) is where tasks start; a \`github.pr\`, \`git.land\` or \`git.verify-merged\` step without its own branch uses it, and \`{base}\` in any instructions becomes its name. Prefer these to a branch written in the workflow.`,
-    'When the user says "after each task, create the PR with my Bitbucket tool, then wait until I say it is merged", write a worker step with that instruction and `evidence: ["link"]`, then a step `{ holder: "none", ends: "user", action: { kind: "git.verify-merged", target } }` (its badge and button say the user merges on their Git host, then presses "I merged it"). To have wherdr merge it on Bitbucket Cloud instead, the step is `{ holder: "none", ends: "action", action: { kind: "bitbucket.merge" } }` (a merge commit, once the builds of the PR are green; a protected base waits for the user; the machine needs BITBUCKET_TOKEN, or BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD). "Watch the deploy" is a step you hold: `holder: "coordinator", ends: "report", recheck: "5m"`.',
+    'When the user says "after each task, create the PR with my Bitbucket tool, then wait until I say it is merged", write a worker step with that instruction and `evidence: ["link"]`, then a step `{ holder: "none", ends: "user", action: { kind: "git.verify-merged", target } }` (its badge and button say the user merges on their Git host, then presses "I merged it"). To have wherdr merge it on Bitbucket Cloud instead, the step is `{ holder: "none", ends: "action", action: { kind: "bitbucket.merge" } }` (a merge commit, once the builds of the PR are green; a protected base waits for the user; the machine needs BITBUCKET_TOKEN, or BITBUCKET_USERNAME and BITBUCKET_APP_PASSWORD). "Watch the deploy": when the pipeline can be polled, use the engine\'s `pipeline.watch` action (GitHub, or `source: "command"` for any CI with a CLI); it costs no model turn. Keep a step you hold (`holder: "coordinator", ends: "report", recheck: "5m"`) only for what needs judgment.',
     'Read the project\'s workflow (`template show`), write the new one and run `template edit`: wherdr shows the user its diff, to accept or refuse; `template show` tells you which. Examples to copy from:', '',
     ...examples.map(e => `\`\`\`json\n${JSON.stringify(e)}\n\`\`\``), '',
     '## A problem the user reports', '',

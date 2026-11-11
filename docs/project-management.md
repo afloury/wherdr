@@ -562,7 +562,15 @@ stays a full reply, with its answer buttons:
   rounds), the routine events you turned on and *Run now*;
 - **Step check** (`Step check: CO-1 (deploy)`): a step the coordinator holds,
   such as *watch the deploy*, at its start, each `recheck` and its timeout. It
-  comes even with the autopilot off;
+  comes even with the autopilot off. Each recheck with no news on the task
+  doubles the next interval (5m, 10m, 20m, 40m, then every hour); any news (a
+  commit, its CI, a `tell`, your message to the coordinator, the step ending)
+  starts it over from the step's own `recheck`. When a recheck finds nothing
+  new, the coordinator postpones the next one with `wherdr pm step wait <task>
+  --for 2h` or `--until-user` (no recheck until you write to it or act on the
+  task), with a reason written to the task's log. The task sheet shows when the
+  next recheck is due. A pipeline that can be polled is better watched by the
+  engine (`pipeline.watch`, above), which costs no model turn;
 - **Engine**: wherdr gave up on a block after failed fixes
   ([What wherdr fixes on its own](#what-wherdr-fixes-on-its-own));
 - **Health check**: every 3 hours by default (the autopilot's *Health check*
