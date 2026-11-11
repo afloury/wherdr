@@ -29,8 +29,9 @@ in the project's [Workflow](#workflow) tab for advanced use.
    follow the folder and can be changed. Once added, wherdr checks whether the
    repository is public; correct it if the check is wrong (until it is
    checked, it says *not checked* and nothing more). Then pick its
-   coordinator's agent; it runs with that agent's default model, which you
-   change in its conversation. With several projects, pick the one to set up,
+   coordinator's agent and, for Claude or Codex, its model (empty: the agent's
+   default; you can also change it later in its conversation). Both are kept as
+   the project's coordinator default, so a restart uses them again. With several projects, pick the one to set up,
    or add another.
    **What a project needs:** a git repository (each task works in its own
    worktree), and a remote named `origin` for a workflow that pushes, opens or

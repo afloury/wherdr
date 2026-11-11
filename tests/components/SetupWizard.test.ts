@@ -21,6 +21,7 @@ registerEndpoint('/api/pm/coordinator-start', { method: 'POST', handler: async (
   herdrState.value = { ok: true, panes: [coordPane('idle')], workspaces: [] }
   return { terminal: 'host/t1' }
 } })
+registerEndpoint('/api/pm/coordinator-agent', { method: 'POST', handler: async (e) => { sent.push({ agent: await readBody(e) }); return {} } })
 for (const url of ['/api/prompt', '/api/input']) registerEndpoint(url, { method: 'POST', handler: async (e) => { sent.push({ message: (await readBody(e)).text }); return {} } })
 registerEndpoint('/api/pm/enabled', { method: 'POST', handler: () => { overview = { ...overview, enabled: true }; return overview } })
 
@@ -68,7 +69,7 @@ it('three steps; no Back on the first, and Next waits for the step to be done', 
   expect($('setup-back')).toBeTruthy()
 })
 
-it('a project without a workflow: its agent picked in step 2, then step 3 starts its coordinator and opens its conversation', async () => {
+it('a project without a workflow: its agent and model picked in step 2, then step 3 starts its coordinator and opens its conversation', async () => {
   appConfig.value = { ...appConfig.value, kinds: ['claude', 'codex'] }
   overview = { enabled: true, projects: [project('WEB')], templates: [], tasks: [] }
   await wizard()
@@ -78,12 +79,15 @@ it('a project without a workflow: its agent picked in step 2, then step 3 starts
   await click('setup-back')
   await vi.waitFor(() => expect(stepShown()).toBe('project'))
   document.querySelector<HTMLElement>('[data-agent="codex"]')!.click()
+  const model = $('setup-model')!.querySelector('input') ?? $('setup-model') as HTMLInputElement
+  model.value = 'gpt-5-codex'
+  model.dispatchEvent(new Event('input'))
   await click('setup-next')
   await vi.waitFor(() => expect($('setup-meet')!.textContent).toContain('Start with Codex'))
   await click('setup-meet')
   await vi.waitFor(() => expect(useRouter().currentRoute.value.path).toBe('/a/w1:p1'))
-  expect(sent[0]).toEqual({ start: { project: 'WEB', program: 'codex' } })
-  expect(sent[1]!.message).toContain('ask me a few questions')
+  // Kept as its default, then started with it.
+  expect(sent).toEqual([{ agent: { project: 'WEB', program: 'codex', model: 'gpt-5-codex' } }, { start: { project: 'WEB', program: 'codex', model: 'gpt-5-codex' } }, { message: expect.stringContaining('ask me a few questions') }])
 })
 
 it('a project without a workflow is set up once its coordinator runs; the board button is then gone', async () => {

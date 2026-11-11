@@ -115,13 +115,14 @@ export async function askAlfred(text: string) {
 }
 
 // The setup window's last step: the project's coordinator, started with the
-// agent picked and asked to set up how the user works, then its conversation.
-// Already running: only opened, not asked again.
+// agent and model picked (kept as its default) and asked to set up how the
+// user works, then its conversation. Already running: only opened, not asked again.
 export const COORDINATOR_SETUP_PROMPT = 'Look at this project, then ask me a few questions, one at a time, to set up how we work on it: the checks before a merge, the reviews, the pace. Then propose its workflow.'
 export async function meetCoordinator(project: string, agent?: CoordinatorAgent) {
   const c = coordinators.value.find(x => x.project === project)
   let pane = c ? coordinatorPane(c) : undefined
   if (!pane) {
+    if (agent) await api('/api/pm/coordinator-agent', { project, ...agent })
     pane = await launchCoordinator(project, agent)
     if (!pane) throw new Error('The coordinator could not start: check Settings › Agents.')
     await sendMessage(pane, pane.id, COORDINATOR_SETUP_PROMPT)

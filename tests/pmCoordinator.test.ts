@@ -463,7 +463,7 @@ describe('role files', () => {
     // Its memory is its own: created only when missing, so a restart or another program keeps it.
     expect(scripts.get('/h/.wherdr/pm/coordinators/CO/memory.md')).toBe(CREATE_SCRIPT)
     expect(runs[0]).toMatchObject({ cwd: '/h/.wherdr/pm/coordinators/CO', labels: { 'wherdr.coordinator': 'CO' }, env: { DISABLE_AUTOUPDATER: '1', WHERDR_URL: urls.local } })
-    expect(runs[0]!.line).toContain(`export PATH='/h/.wherdr/pm/coordinators/CO/bin':"$PATH"; exec 'claude' '--add-dir' '/src/co'`)
+    expect(runs[0]!.line).toContain(`export PATH='/h/.wherdr/pm/coordinators/CO/bin':"$PATH"; exec 'claude' '--model' 'opus' '--add-dir' '/src/co'`)
     const fresh = (runs[0]!.env as { WHERDR_PM_TOKEN: string }).WHERDR_PM_TOKEN
     await refused(cli(['list']), 'Unknown coordinator token')
     await expect(cli(['list'], undefined, fresh)).resolves.toBeTruthy()
@@ -513,7 +513,10 @@ describe('role files', () => {
     expect((await coordinatorsView(store)).find(c => c.project === 'CO')!.agent).toBeUndefined()
     await setCoordinatorAgent(store, 'CO', { program: 'claude', model: 'sonnet' })
     await startCoordinator(deps, 'CO', {}, urls)
-    expect(runs[0]!.line).toMatch(/exec 'claude' '--add-dir' '\/src\/co'$/)
+    // Its model chosen with it (the setup window's step 2), kept for a resume; an invalid one is dropped.
+    expect(runs[0]!.line).toMatch(/exec 'claude' '--model' 'sonnet' '--add-dir' '\/src\/co'$/)
+    expect(await store.coordinator('CO')).toMatchObject({ ran: { program: 'claude', model: 'sonnet' } })
+    expect((await setCoordinatorAgent(store, 'CO', { program: 'claude', model: '-rf /' })).agent).toEqual({ program: 'claude' })
     await setCoordinatorAgent(store, 'CO', { program: 'codex' })
     // The default and the agent of the kept conversation stay apart, and survive a new token.
     expect((await coordinatorsView(store)).find(c => c.project === 'CO')).toMatchObject({ agent: { program: 'codex' }, ran: { program: 'claude' }, terminal: 'host/t5' })

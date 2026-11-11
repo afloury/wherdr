@@ -57,7 +57,7 @@ watch(open, (o) => {
 }, { immediate: true })
 
 // 2. A project: added here (SetupProject), then its repository's visibility,
-// which the user may correct, and its coordinator's agent.
+// which the user may correct, and its coordinator's agent and model.
 function addProject() { fresh.value = true; key.value = undefined }
 function added(k: string) { fresh.value = false; key.value = k; run(async () => {}) }
 const VISIBILITY = [{ label: 'Repository: not checked', value: 'unknown', disabled: true }, { label: 'Public repository', value: 'public' }, { label: 'Private repository', value: 'private' }]
@@ -68,12 +68,14 @@ const projectItems = computed(() => (data.value?.projects ?? []).filter(x => x.g
 watch(key, (k, old) => { if (old && k) run(async () => {}) })
 const agents = computed(() => offerCoordinators(undefined, key.value))
 const agent = ref('')
+const model = ref('') // empty: the agent's default
 watch(agents, a => { if (!a.some(x => x === agent.value)) agent.value = a[0] ?? '' }, { immediate: true })
 
 // 3. Its coordinator: started with that agent, asked to set up how the user
 // works, then its conversation; while it runs, its conversation only.
 const meet = () => run(async () => {
-  await meetCoordinator(key.value!, isCoordinatorProgram(agent.value) ? { program: agent.value } : undefined)
+  const m = model.value.trim()
+  await meetCoordinator(key.value!, isCoordinatorProgram(agent.value) ? { program: agent.value, ...(m ? { model: m } : {}) } : undefined)
   open.value = false
 })
 
@@ -124,7 +126,9 @@ const BODY: Record<SetupStepId, string> = {
           <template v-if="!coord?.terminal && agents.length">
             <span class="field-label">{{ tl('Its coordinator') }}</span>
             <AgentPicker v-model="agent" :programs="agents" />
-            <small class="muted">{{ tl('It runs with the agent’s default model: change it in its conversation.') }}</small>
+            <label class="field-label" for="setupModel">{{ tl('Model') }}</label>
+            <UInput id="setupModel" v-model="model" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off" :spellcheck="false" maxlength="64" :placeholder="tl('default model')" data-testid="setup-model" />
+            <small class="muted">{{ tl('Empty: the agent’s default model, also changed later in its conversation.') }}</small>
           </template>
           <UButton size="xl" color="neutral" variant="outline" icon="i-lucide-plus" data-testid="setup-another" @click="addProject">{{ tl('Add another project') }}</UButton>
         </template>
