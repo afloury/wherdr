@@ -6,7 +6,7 @@ import { uiOpenArgs } from '../uiOpen'
 import type { SyncedSetting } from '../settings'
 import type { UiTargetId } from '../uiTargets'
 import { MERGE_BY, type MergeBy, type Template } from './workflow'
-import { sameGuards, type Turn } from './coordinator'
+import { MEMORY_CAP, sameGuards, type Turn } from './coordinator'
 import { READY_SORTS } from '../spaces'
 import { THEMES } from '../../app/utils/themes'
 import { FOCUS_BORDERS } from '../../app/utils/focusBorder'
@@ -49,6 +49,9 @@ export type AlfredCommand =
   // Changes: a dry run unless apply; propose: a card in the reply, the user clicks Apply.
   | { name: 'project add', apply: boolean, propose?: true, input: { key: string, machine: string, path: string, name?: string, template?: string } }
   | { name: 'project template', apply: boolean, propose?: true, key: string, template: string } // '' clears it
+  // Lines added to the end of the project coordinator's memory.md (the text comes as
+  // the call's input, so no card: the parser refuses --propose).
+  | { name: 'project memory', apply: boolean, propose?: true, key: string }
   | { name: 'coordinator start', apply: boolean, propose?: true, key: string, program?: 'claude' | 'codex', resume?: true }
   // No change given: the project's guards are shown.
   | { name: 'project guards', apply: boolean, propose?: true, key: string, change: { protect?: string[], mergeProtected?: MergeBy, mergeOthers?: MergeBy, contributorPrs?: 'off' | 'others' | 'all' } }
@@ -74,6 +77,7 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]', does: 'add a project: a git folder on a machine' },
   { usage: 'project template <KEY> <id|none>', does: 'replace the project\'s workflow with a copy of a template or example:<id> (its guards come with it), or none' },
   { usage: 'project workflow edit <KEY> < workflow.json', does: 'propose a new workflow for the project (the whole JSON on stdin, guards unchanged): the user accepts or refuses it in wherdr, like a coordinator\'s proposal. Only in a turn that comes from the user' },
+  { usage: 'project memory <KEY> < note.md', does: 'add the lines on stdin (at most 30, blank ones left out) to the end of the project coordinator\'s memory.md, on its machine; it is created when missing. For what the user wants it to know (a v2 handover note, a goal)' },
   { usage: 'project guards <KEY> [--protect <branch,branch|none>] [--merge-protected user|engine] [--merge-others user|engine] [--contributor-prs off|others|all]', does: 'the project\'s guards: protected branches, who merges into them and into the others (user: the user, engine: wherdr), and whether its coordinator may merge an outside contributor\'s PR after the user\'s yes (others: not into a branch reserved for the user; all: into any); without an option, shown only. A project coordinator never changes them' },
   { usage: 'project machine add <KEY> <machine> --clone <folder>', does: 'let the project\'s tasks run on another machine (its key or label), in its clone of the repo there; once applied, the machine\'s readiness check runs and its result is in the answer' },
   { usage: 'project machine remove <KEY> <machine>', does: 'the project\'s tasks no longer start on that machine (tasks already there stay)' },
@@ -92,7 +96,7 @@ const FLAGS: Record<string, string[]> = {
   'ui open': ['target', 'project'],
 }
 
-export const CHANGES = ['project add', 'project template', 'project guards', 'project machine', 'coordinator start']
+export const CHANGES = ['project add', 'project template', 'project memory', 'project guards', 'project machine', 'coordinator start']
 const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMANDS.filter(c => c.usage.startsWith(verb)).map(c => c.usage).join(' | ')}${CHANGES.some(v => verb.startsWith(v)) ? ' [--apply]' : ''}` })
 
 // argv after `wherdr alfred` → a command, or the reason it is not one.
@@ -126,6 +130,7 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
   if (apply && verb === 'setting set') return { error: 'A setting is never changed by Alfred: setting set --propose puts a card the user applies' }
   if (apply && !CHANGES.includes(verb)) return { error: '--apply is for a change only' }
   if (propose && verb !== 'setting set' && !CHANGES.includes(verb)) return { error: `--propose is for setting set and the changes (${CHANGES.join(', ')}) only` }
+  if (propose && verb === 'project memory') return { error: 'project memory has no card: show its lines, then --apply after the user\'s yes' }
   if (propose && apply) return { error: '--propose or --apply, not both' }
   if (resume && verb !== 'coordinator start') return { error: '--resume is for coordinator start only' }
   const key = (k: string | undefined) => (k && KEY_RE.test(k) ? k.toUpperCase() : '')
@@ -139,7 +144,7 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
     if (text.length > 4000) return { error: 'The message is over 4000 characters' }
     return { name: 'tell', key: key(w1), text }
   }
-  if (w0 === 'project' && words.length === 2 && !['add', 'template', 'workflow', 'guards', 'machine'].includes(w1)) return key(w1) ? { name: 'project', key: key(w1) } : usage('project <KEY>')
+  if (w0 === 'project' && words.length === 2 && !['add', 'template', 'memory', 'workflow', 'guards', 'machine'].includes(w1)) return key(w1) ? { name: 'project', key: key(w1) } : usage('project <KEY>')
   if (verb === 'ui open') return uiOpenArgs(w2, w3, flags.target, usage(verb), flags.project)
   if (verb === 'ui targets') return w2 ? usage(verb) : { name: verb }
   if (verb === 'coordinator open') return key(w2) && !w3 ? { name: verb, key: key(w2) } : usage(verb)
@@ -154,6 +159,7 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
     if (w3 !== 'none' && !ID_RE.test(w3)) return { error: 'The template is a template id, example:<id>, or none' }
     return { name: verb, apply, key: key(w2), template: w3 === 'none' ? '' : w3 }
   }
+  if (verb === 'project memory') return key(w2) && !w3 ? { name: verb, apply, key: key(w2) } : usage(verb)
   if (verb === 'project workflow' && w2 === 'edit') {
     if (!key(w3) || rest.length) return { error: 'usage: wherdr alfred project workflow edit <KEY> < workflow.json' }
     return { name: 'project workflow edit', key: key(w3) }
@@ -187,6 +193,16 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
     return { name: verb, propose, key: w2, value: w3 }
   }
   return { error: `unknown command: ${words.join(' ') || '(none)'} (see wherdr alfred help)` }
+}
+
+// The lines `project memory` adds: the input's, blank ones left out.
+export const MEMORY_LINES = 30
+export function memoryLines(input: unknown): string[] | { error: string } {
+  const lines = String(input ?? '').split(/\r?\n/).map(l => l.trimEnd()).filter(l => l.trim())
+  if (!lines.length) return { error: 'No lines to add: give them on stdin' }
+  if (lines.length > MEMORY_LINES) return { error: `${lines.length} lines: at most ${MEMORY_LINES}; ask for a shorter note` }
+  if (lines.join('\n').length > MEMORY_CAP) return { error: `Over ${MEMORY_CAP} characters: ask for a shorter note` }
+  return lines
 }
 
 // What a change does, shown before it is made: the lines, the command that

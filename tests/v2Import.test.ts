@@ -8,7 +8,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanProjectInput } from '../shared/pm/project'
 import { detectV2, keptDirs, v3AppDir, mapMachines, mapSettings, parseArgs as importArgs, parseEnvFile, parseUnit, remapMachineSettings, runImport, sshProblem, v3MachineKey } from '../scripts/v2-import.mjs'
-import { mapCandidates, readBoard } from '../server/utils/v2Board'
+import { HANDOVER_PROMPT, goalLine, mapCandidates, readBoard } from '../server/utils/v2Board'
 import { EXIT, buildCommand, buildTuning, deployUnits, hcTarget, hcUnit, main, parseArgs, pickHttpsPort, unitProtections, updateScript, v3Unit } from '../scripts/install-v3-beside-v2.mjs'
 
 const FIX = path.resolve(__dirname, 'fixtures/v2-install')
@@ -88,9 +88,26 @@ describe('import mapping', () => {
     expect(r.projects.map((p: { key: string, here: boolean }) => [p.key, p.here])).toEqual([['APP', true], ['GONE', false], ['MYDOCS', true], ['SITE2', true]])
     expect(r.projects[0]).toMatchObject({ name: 'app', path: '/home/user/code/app', base: 'develop', left: ['merge.by', 'reviewer.agent'] })
     for (const p of r.projects) expect(cleanProjectInput({ ...p, machine: '' }).errors).toEqual([])
-    // Open tasks only, by the name v2 showed (site's key "x" is not valid: site/1).
-    expect(r.projects[0].tasks).toEqual([{ v2: 'APP-1', stage: 'todo', title: 'Fix the login form', description: 'The form loses focus.' }, { v2: 'APP-2', stage: 'progress', title: 'Add dark mode', description: '' }])
+    // Open tasks only, by the name v2 showed (site's key "x" is not valid: site/1); an under-way one keeps its stage, branch and PR.
+    expect(r.projects[0].tasks).toEqual([
+      { v2: 'APP-1', stage: 'todo', title: 'Fix the login form', description: 'The form loses focus.', intro: 'From v2 APP-1.' },
+      { v2: 'APP-2', stage: 'progress', title: 'Add dark mode', description: '', branch: 'feature/c++', pr: 12, intro: 'From v2 APP-2. Continue from branch `feature/c++` / PR #12.' },
+    ])
     expect(r.projects[3].tasks.map((t: { v2: string }) => t.v2)).toEqual(['site/1'])
+    // Any branch git takes is kept, however long; one git refuses is dropped.
+    const long = `feature/${'a'.repeat(193)}`
+    const one = (branch: string) => mapCandidates({ ...board, tasks: [{ repo: 'app', n: 3, stage: 'progress', branch }] }, [], exists).projects[0].tasks[0].branch
+    expect([one(long), one('a..b')]).toEqual([long, undefined])
+  })
+
+  it('offers a handover only for a project whose v2 coordinator exists, and carries its autopilot goal as one line', () => {
+    const r = mapCandidates(board, [], exists).projects
+    expect(r.map(p => [p.key, p.handover ?? null, p.goalLine ?? null])).toEqual([
+      ['APP', HANDOVER_PROMPT, '- Goal from v2\'s autopilot: Ship the release'],
+      ['GONE', null, null], ['MYDOCS', null, null],
+      ['SITE', null, '- Goal from v2\'s autopilot: Keep the docs current'],
+    ])
+    expect(goalLine({ autopilot: { goal: 'none' } })).toBeUndefined()
   })
 
   it('carries the settings v3 reads, never over a v3 value', () => {

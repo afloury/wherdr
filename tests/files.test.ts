@@ -213,7 +213,8 @@ describe('files named in a conversation', () => {
   })
 
   it('refuses a file over the limit without sending its content', async () => {
-    const run = (...args: string[]) => execFileSync('sh', ['-c', READ_SCRIPT, 'sh', root, 'big.txt', ...args]).toString('utf8')
+    // Ends within its limit (macOS's sh once spun forever on the exit after the size).
+    const run = (...args: string[]) => execFileSync('sh', ['-c', READ_SCRIPT, 'sh', root, 'big.txt', ...args], { timeout: 5000 }).toString('utf8')
     expect(run('10', '1')).toBe('300000\n')
     expect(run('10')).toBe('300000\nline\nline\n')
     const calls: string[][] = []

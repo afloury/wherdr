@@ -3,18 +3,39 @@
 // open tasks. The install reads nothing of it; nothing here writes.
 import fs from 'node:fs'
 import path from 'node:path'
+import { isGitBranch } from '../../shared/pm/project'
 
 type Obj = Record<string, any>
-export interface BoardTask { repo: string, n?: unknown, id?: unknown, stage?: unknown, title?: unknown, description?: unknown, archivedAt?: unknown }
-export interface Board { repos: Record<string, unknown>, settings: Record<string, Obj>, tasks: BoardTask[] }
-export interface V2Candidate { key: string, name: string, path: string, here: boolean, base?: string, left: string[], tasks: { v2: string, stage: string, title: string, description: string }[] }
+export interface BoardTask { repo: string, n?: unknown, id?: unknown, stage?: unknown, title?: unknown, description?: unknown, archivedAt?: unknown, branch?: unknown, pr?: unknown }
+// coordinators: config.json's coordinators.projects.<repo> (its autopilot goal);
+// coordinated: the repos whose v2 coordinator exists (it was ever talked to).
+export interface Board { repos: Record<string, unknown>, settings: Record<string, Obj>, tasks: BoardTask[], coordinators?: Record<string, Obj>, coordinated?: string[] }
+// handover: the prompt the user pastes to the project's v2 coordinator, when it
+// exists; goalLine: its v2 autopilot goal, as one line of the new coordinator's memory.md.
+export interface V2Candidate { key: string, name: string, path: string, here: boolean, base?: string, left: string[], tasks: V2Task[], handover?: string, goalLine?: string }
+// An open v2 task: its stage, and its branch and PR when it was under way.
+// intro: how its description starts when Alfred adds it again.
+export interface V2Task { v2: string, stage: string, title: string, description: string, branch?: string, pr?: number, intro: string }
 
 const isObj = (v: unknown): v is Obj => !!v && typeof v === 'object' && !Array.isArray(v)
 const readJson = (f: string): unknown => { try { return JSON.parse(fs.readFileSync(f, 'utf8')) } catch { return null } }
 const list = (d: string) => { try { return fs.readdirSync(d) } catch { return [] } }
 
-// repos.json { name: path }, settings/config.json repos.<name> (key and per-repo settings),
-// data/tasks/<repo>/<n>/task.json.
+// The prompt for a v2 project coordinator: what the new one should know.
+export const HANDOVER_PROMPT = 'Write a handover note, at most 25 lines: decisions and preferences, conventions, open work and where it stands, what to avoid.'
+
+// The repos whose v2 coordinator exists: data/coordinator/<session>/projects/<folder>/state.json
+// (its repo in the state, else the folder's name).
+function coordinated(hpDir: string) {
+  const top = path.join(hpDir, 'data', 'coordinator')
+  return list(top).flatMap(session => list(path.join(top, session, 'projects')).flatMap((n) => {
+    const st = readJson(path.join(top, session, 'projects', n, 'state.json'))
+    return isObj(st) ? [typeof st.repo === 'string' && st.repo ? st.repo : n] : []
+  }))
+}
+
+// repos.json { name: path }, settings/config.json repos.<name> (key and per-repo settings)
+// and coordinators.projects.<name>, data/tasks/<repo>/<n>/task.json.
 export function readBoard(hpDir: string): Board | null {
   const repos = readJson(path.join(hpDir, 'data', 'repos.json'))
   if (!isObj(repos)) return null
@@ -27,7 +48,8 @@ export function readBoard(hpDir: string): Board | null {
       if (isObj(t)) tasks.push({ ...t, repo })
     }
   }
-  return { repos, settings: isObj(config) && isObj(config.repos) ? config.repos : {}, tasks }
+  const coordinators = isObj(config) && isObj(config.coordinators) && isObj(config.coordinators.projects) ? config.coordinators.projects : {}
+  return { repos, settings: isObj(config) && isObj(config.repos) ? config.repos : {}, tasks, coordinators, coordinated: coordinated(hpDir) }
 }
 
 // Same rules as shared/pm/project.ts (KEY_RE, BRANCH_RE).
@@ -53,6 +75,34 @@ export function v2TaskName(board: Board, t: BoardTask) {
   return KEY_RE.test(key) && Number.isInteger(n) && n > 0 ? `${key}-${n}` : String(t.id || `${t.repo}/${t.n}`)
 }
 
+// v2 keeps the PR as its URL (…/pull/12); a number or "#12" is read too.
+function prNumber(v: unknown): number | undefined {
+  const m = typeof v === 'number' ? [, String(v)] : typeof v === 'string' ? v.trim().match(/(?:\/pull\/|^#?)(\d{1,7})$/) : null
+  const n = Number(m?.[1])
+  return Number.isInteger(n) && n > 0 ? n : undefined
+}
+
+// The text an added-again task's description starts with: where it comes from,
+// and the branch and PR its worker continues from.
+export function v2Intro(v2: string, branch?: string, pr?: number) {
+  const from = [branch && `branch \`${branch}\``, pr && `PR #${pr}`].filter(Boolean).join(' / ')
+  return `From v2 ${v2}.${from ? ` Continue from ${from}.` : ''}`
+}
+
+// A v2 coordinator's autopilot goal (nested or dotted), as one memory.md line; "none" is no goal.
+export function goalLine(co: Obj | undefined) {
+  const g = isObj(co?.autopilot) ? co.autopilot.goal : co?.['autopilot.goal']
+  const text = typeof g === 'string' ? g.replace(/\s+/g, ' ').trim().slice(0, 500) : ''
+  return text && text !== 'none' ? `- Goal from v2's autopilot: ${text}` : undefined
+}
+
+function v2Task(board: Board, t: BoardTask): V2Task {
+  const v2 = v2TaskName(board, t)
+  const branch = typeof t.branch === 'string' && isGitBranch(t.branch.trim()) ? t.branch.trim() : undefined
+  const pr = prNumber(t.pr)
+  return { v2, stage: String(t.stage || 'todo'), title: String(t.title || '').trim().slice(0, 200) || `Task ${v2}`, description: String(t.description || '').slice(0, 20000), ...(branch ? { branch } : {}), ...(pr ? { pr } : {}), intro: v2Intro(v2, branch, pr) }
+}
+
 // Board repos → candidates for v3 projects. None is added here: Alfred offers
 // them to the user. Each: a suggested key (free in v3), its folder on this
 // machine and whether it is there, its base branch, the v2 settings to redo in
@@ -70,8 +120,12 @@ export function mapCandidates(board: Board, existing: { key: string }[] = [], ex
     const left = flat(s).filter(k => k !== 'repo.key' && !(k === 'workspace.from' && base))
     const tasks = board.tasks
       .filter(t => t.repo === name && !t.archivedAt && !DONE_STAGES.has(String(t.stage || 'todo')))
-      .map(t => ({ v2: v2TaskName(board, t), stage: String(t.stage || 'todo'), title: String(t.title || '').trim().slice(0, 200) || `Task ${v2TaskName(board, t)}`, description: String(t.description || '').slice(0, 20000) }))
-    projects.push({ key, name: name.slice(0, 80), path: folder, here: exists(folder), ...(base ? { base } : {}), left, tasks })
+      .map(t => v2Task(board, t))
+    const goal = goalLine(board.coordinators?.[name])
+    projects.push({
+      key, name: name.slice(0, 80), path: folder, here: exists(folder), ...(base ? { base } : {}), left, tasks,
+      ...(board.coordinated?.includes(name) ? { handover: HANDOVER_PROMPT } : {}), ...(goal ? { goalLine: goal } : {}),
+    })
   }
   return { projects, skipped }
 }

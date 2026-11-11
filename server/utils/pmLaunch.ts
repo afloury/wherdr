@@ -32,14 +32,20 @@ import { interruptTask } from './pmRecovery'
 // would check out a new local base branch instead of the task's), not
 // tracking it: the agent's git status must not read as being on the base. Records where the
 // branch started (its fork from the base), once: verify counts only the
-// commits made on it since.
+// commits made on it since. $5: where a new branch starts instead (origin/<branch>
+// of a task that continues one); a local branch of that name that it is ahead of
+// is moved up to it (a stale local copy would not push), one with commits of its
+// own is kept.
 export const WORKTREE_SCRIPT = `repo=$1 dir=$2 branch=$3 base=$4
 [ -e "$dir/.git" ] && exit 0
 mkdir -p "$(dirname "$dir")" || exit 1
 from=$base
 if [ -n "$base" ] && git -C "$repo" rev-parse -q --verify "refs/remotes/origin/$base" >/dev/null; then
   git -C "$repo" fetch -q origin "$base" 2>/dev/null; from=origin/$base; fi
-if git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then git -C "$repo" worktree add "$dir" "$branch" 2>&1
+[ -z "$5" ] || from=$5
+if [ -n "$5" ] && git -C "$repo" merge-base --is-ancestor "refs/heads/$branch" "$5" 2>/dev/null; then
+  git -C "$repo" worktree add --no-track -B "$branch" "$dir" "$5" 2>&1 && base=HEAD
+elif git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then git -C "$repo" worktree add "$dir" "$branch" 2>&1
 else git -C "$repo" worktree add --no-track -b "$branch" "$dir" \${from:+"$from"} 2>&1 && base=HEAD; fi || exit 1
 k="branch.$branch.wherdrstart"
 [ -z "$base" ] || git -C "$repo" config "$k" >/dev/null || git -C "$repo" config "$k" "$(git -C "$dir" merge-base HEAD "$base")"`
@@ -55,6 +61,11 @@ if ! grep -qxF "/$name/" "$x" 2>/dev/null; then
   printf '/%s/\\n' "$name" >> "$x" || exit 1
 fi
 df -Pk /tmp | awk 'NR==2 {print $4}'`
+// A branch to continue, fetched now. Exits 2 only when the remote answers and no
+// longer has it; any other failure (remote unreachable…) is not that.
+export const FETCH_BRANCH_SCRIPT = `git -C "$1" ls-remote -q --exit-code origin "refs/heads/$2" >/dev/null 2>&1; c=$?
+[ $c = 2 ] && exit 2; [ $c = 0 ] || { echo "origin unreachable (git ls-remote exit $c)"; exit 1; }
+git -C "$1" fetch -q origin "+refs/heads/$2:refs/remotes/origin/$2" 2>&1 || exit 1`
 export const WRITE_SCRIPT = 'mkdir -p "$(dirname "$1")" && cat > "$1"'
 // The same, only when the file is missing: an agent's own file is never overwritten.
 // An existing file still reads its input, so the writer never hits a closed pipe.
@@ -174,11 +185,18 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   if (!repo) return wait(store, task, `wherdr knows no clone of the project on ${label}: allow that machine again in the project's settings`)
   // A new task on another machine than home: refused (left as it was) while that machine is not ready.
   if (task.machine === undefined && !task.run && machine !== p.machine) await ensureReady(deps, p, t, task, machine, repo)
+  // A task that continues a branch (a v2 task's): at its first start, that branch when the remote still has it, else the base, saying so.
+  // Any other fetch failure waits and tries again: the branch may still be there.
+  const fetched = !task.branch && !task.run && task.fromBranch ? await exec(deps, on, FETCH_BRANCH_SCRIPT, [repo, task.fromBranch]) : undefined
+  if (fetched && fetched.code !== 0 && fetched.code !== 2) return wait(store, task, `Could not fetch branch \`${task.fromBranch}\` to continue: ${fetched.out.split('\n').slice(-2).join(' ') || 'timeout'}`)
+  const cont = fetched?.code === 0
+  const contLine = fetched?.code === 2 ? `Branch \`${task.fromBranch}\` is no longer on the remote: this task starts from the base branch instead.` : ''
+  if (contLine) task = await store.logTask(task, 'engine', contLine)
   // Named at the first start (a task started before has task/<id>): a later title, tag or template change leaves it alone.
-  const paths = taskPaths(home, task.id, task.branch || (task.run ? undefined : branchFor(p.branchName, { ...task, id: shownTaskId([p], task.id) })))
+  const paths = taskPaths(home, task.id, task.branch || (cont ? task.fromBranch : task.run ? undefined : branchFor(p.branchName, { ...task, id: shownTaskId([p], task.id) })))
   // Recorded at the first start: changing the project's branch later leaves this task alone.
   const base = taskBase(task, p) ?? ''
-  const wt = await exec(deps, on, WORKTREE_SCRIPT, [repo, paths.worktree, paths.branch, base])
+  const wt = await exec(deps, on, WORKTREE_SCRIPT, [repo, paths.worktree, paths.branch, base, cont ? `origin/${task.fromBranch}` : ''])
   if (wt.code !== 0) return wait(store, task, `git worktree failed: ${wt.out.split('\n').slice(-3).join(' ') || 'timeout'}`)
   // Its worktree is there now: the task stays on this machine.
   if (task.machine !== machine) task = await store.saveTask({ ...task, machine })
@@ -193,7 +211,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const shotToken = shotStep(t, task.type) ? task.shotToken || randomBytes(16).toString('hex') : undefined
   const leakCheck = isPublic(p) ? (await readLeakCheck(deps, on, paths).catch(() => ({ check: undefined }))).check : undefined
   const text = showIds([p], instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(machine, deps.origin), token: shotToken } : undefined, leakCheck)
-    + ['', ...filesSection(runFiles(paths.instructions).files, task.files), ...(depsLine ? [depsLine, ''] : []), ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n'))
+    + ['', ...filesSection(runFiles(paths.instructions).files, task.files), ...(depsLine ? [depsLine, ''] : []), ...(contLine ? [contLine, ''] : []), ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n'))
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 
   // The engine's start: the task enters its first step (the worker's); the

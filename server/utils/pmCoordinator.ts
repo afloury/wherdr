@@ -21,7 +21,7 @@ import { automationLine } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
 import { allowedMachines, machineNamed, taskMachine, type Project } from '../../shared/pm/project'
 import { projectOf, showIds, shownKey, shownTaskId } from '../../shared/pm/projectKey'
-import { taskPlan, waitOf, type Task } from '../../shared/pm/run'
+import { taskPlan, trustKeys, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { CREATE_SCRIPT, WRITE_SCRIPT, exec, startTask } from './pmLaunch'
@@ -40,6 +40,8 @@ import { DONE_CMD } from '../../shared/pm/advance'
 import { READ_LINES, lastWords } from './pmRead'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceLine } from '../../shared/pm/pace'
+import { readQuotas } from './quotas'
+import { quotaByKey, reviewAccount, reviewQueueLines, runningReviews } from '../../shared/pm/reviewQueue'
 import { forgetMemory } from './pmMemory'
 import { projectEstimates } from './pmPeaks'
 import { goesTo, machineLines, paceOf, placeFor, slotsOf } from './pmPlace'
@@ -280,6 +282,12 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
         const n = busyNext(xap, tasks, await store.runs(), now, { pace: pace?.verdict, holds: await slotsOf(store, [x]) })
         return { on: keepsBusy(xap), next: 'task' in n ? `${n.task.id} (${n.task.title}), once a machine has room` : n.why }
       }
+      // Each reviewer account with reviews running or waiting: its use and its queue.
+      const reviews = async () => {
+        const q = await readQuotas().catch(() => null), tasks = await store.tasks()
+        const lines = reviewQueueLines(tasks, runningReviews(tasks, await store.runs(), r => reviewAccount(q, r.program, r.machine).key), k => quotaByKey(q, k), now)
+        return Object.keys(lines).length ? lines : 'none running or waiting'
+      }
       const weights = async (x: Project, tpl: Template | null) => ({ estimates: weightsLine(await projectEstimates(store, x.key)), types: Object.fromEntries(Object.keys(tpl?.taskTypes ?? {}).map(type => [type, weightText(weightOf(tpl, { type }))])) })
       return {
         autopilot: ap, lookForWork: !!ap.lookForWork, lastOpenIncident: await lastOpenIncident(store, key),
@@ -288,11 +296,12 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
         pacing: key ? await line(key) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await line(x.key)]))),
         machines: key ? await lines(p!) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await lines(x)]))),
         keepBusy: key ? await busy(p!) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, await busy(x)]))),
+        reviews: await reviews(),
         weights: key ? await weights(p!, t) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, weights(x, await store.workflow(x.key))]))),
         // Wakes not sent, newest first: what and why.
         skippedWakes: [...(pilotRec?.skips ?? [])].reverse().map(x => ({ at: new Date(x.at).toISOString(), what: x.what, why: x.why })),
         today: { ...limitsLeft(ap, mine, await store.runs(), now, await slotsOf(store, p ? [p] : projects)), skippedWakes: today(pilotRec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(pilotRec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
-        note: 'Only the user changes these, in wherdr. keepBusy: with it on, the engine itself starts the next to-do task in board order (oldest first) while a machine has room, within the limits, hours and pace; next says which, or why none. With nothing to do and lookForWork off, scheduled wakes are skipped, and so are they while nothing you could act on changed since your last wake (no task startable now, no new block, no answer); a health check repeating the last one\'s lines (within 12 h), a question you already answered with tell, and an engine wake for a block that is only an offline or paused machine (the incident covers it; the engine resumes the task itself and wakes you if that fails) are skipped too. skippedWakes lists the last ones, what and why; today.skippedWakes counts today\'s skipped scheduled wakes. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines by its placement strategy (Heavy to the strongest: heavy work on the strongest, light and standard work at home when it fits; Balance the load: each task on the machine with most room; Home first: home until it is full; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. perDay, atOnce and hours hold automatic work only: a start the user asks for goes past them, and still counts in them. perDay null: no daily limit; atOnce null is Auto: as many tasks as the machines take (both the defaults of a new project). Whatever the counts, pacing and machine room still hold automatic work. machines: each allowed machine, its agents at work by weight, its available hours (automatic starts skip it outside them, heavy work in its last 2 hours) and the heaviest weight it takes now (or why none: offline, away, full…); weights: what placement counts per weight (learned from the measured peaks of the project after 3 runs of that weight, else the default), and the weight each task type gets. lastOpenIncident: the last time agents were gone and why, from facts (wherdr pm incidents lists them all); null when none is open',
+        note: 'Only the user changes these, in wherdr. keepBusy: with it on, the engine itself starts the next to-do task in board order (oldest first) while a machine has room, within the limits, hours and pace; next says which, or why none. With nothing to do and lookForWork off, scheduled wakes are skipped, and so are they while nothing you could act on changed since your last wake (no task startable now, no new block, no answer); a health check repeating the last one\'s lines (within 12 h), a question you already answered with tell, and an engine wake for a block that is only an offline or paused machine (the incident covers it; the engine resumes the task itself and wakes you if that fails) are skipped too. skippedWakes lists the last ones, what and why; today.skippedWakes counts today\'s skipped scheduled wakes. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines by its placement strategy (Heavy to the strongest: heavy work on the strongest, light and standard work at home when it fits; Balance the load: each task on the machine with most room; Home first: home until it is full; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. perDay, atOnce and hours hold automatic work only: a start the user asks for goes past them, and still counts in them. perDay null: no daily limit; atOnce null is Auto: as many tasks as the machines take (both the defaults of a new project). Whatever the counts, pacing and machine room still hold automatic work. machines: each allowed machine, its agents at work by weight, its available hours (automatic starts skip it outside them, heavy work in its last 2 hours) and the heaviest weight it takes now (or why none: offline, away, full…); weights: what placement counts per weight (learned from the measured peaks of the project after 3 runs of that weight, else the default), and the weight each task type gets. lastOpenIncident: the last time agents were gone and why, from facts (wherdr pm incidents lists them all); null when none is open. reviews: each reviewer account with reviews running or waiting, its 5-hour and weekly use, and how many it runs at once; the others wait their turn, oldest first',
       }
     }
     case 'incidents': {
@@ -428,7 +437,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
       // Added in the user's turn: their request, never held by the pace.
-      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', files: cmd.files ?? [], ...(cmd.weight ? { weight: cmd.weight } : {}), origin: turn === 'user' ? 'user' : 'coordinator', addedBy: scope })
+      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', files: cmd.files ?? [], ...(cmd.weight ? { weight: cmd.weight } : {}), ...(cmd.fromBranch ? { fromBranch: cmd.fromBranch } : {}), origin: turn === 'user' ? 'user' : 'coordinator', addedBy: scope })
       const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
       if (look) await store.saveCoordinator({ ...rec!, lookAdded: bump(rec!.lookAdded, Date.now()) })
       return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}`) }
@@ -608,6 +617,20 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   return { p, local: !!m.local, on, folder, first: false, v2: false, none: false }
 }
 
+// Lines added to the end of a project coordinator's memory.md, on the
+// project's machine (created first when missing, with a line break before them).
+const APPEND_SCRIPT = 'mkdir -p "$(dirname "$1")" && { [ -e "$1" ] || printf \'%s\' "$2" > "$1"; } && { [ -z "$(tail -c 1 "$1")" ] || echo >> "$1"; } && cat >> "$1"'
+export async function appendCoordinatorMemory(deps: Deps, key: string, lines: string[]) {
+  const p = (await deps.store.projects()).find(x => x.key === key)
+  if (!p) throw new HerdrError('not_found', 'Unknown project')
+  const { on } = machineOn(deps, p.machine)
+  const home = await homeOf(deps, on)
+  if (!home) throw new HerdrError('core', 'Home folder not found on the project\'s machine')
+  const file = `${home}/.wherdr/pm/coordinators/${key}/memory.md`
+  if ((await exec(deps, on, APPEND_SCRIPT, [file, OWN_ROLE_FILES['memory.md']!], `${lines.join('\n')}\n`)).code !== 0) throw new HerdrError('core', 'Could not write memory.md')
+  return { file, added: lines.length }
+}
+
 // wherdr's docs on its own machine: the running build's, so an update brings new ones.
 const docsDir = () => findDocsDir()
 
@@ -725,8 +748,10 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
     labels: { 'wherdr.install': await deps.store.install(), 'wherdr.coordinator': key },
     line: `${PATH_SETUP}; export PATH=${quote(`${c.folder}/bin`)}:"$PATH"; exec ${argv.map(quote).join(' ')}`,
   }, 30000)
+  // Its folder is wherdr's own, new at its first start: its trust dialog is answered here.
+  void answerOwnTrust(deps, address, c.folder).catch(() => {})
   // Typed once the program is ready (in the background: it may wait on a dialog).
-  if (!asArg) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
+  if (!asArg) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' || r === 'installing' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
   // version: what this session knows (takeUpdateNotice tells it of an update).
   const { told: _told, ...rec } = (await deps.store.coordinator(key))!
@@ -734,4 +759,21 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   // This conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
   return { terminal: address, folder: c.folder }
+}
+
+// The folder trust dialog (Claude's, Codex's) on the coordinator's own folder,
+// which wherdr made: answered once, so a first start does not stop on it.
+// Watches until the agent is ready or gone, at most readyWatchMs (30 s).
+export async function answerOwnTrust(deps: CoreAdminDeps, address: string, folder: string) {
+  const end = Date.now() + (deps.readyWatchMs ?? 30_000)
+  while (Date.now() < end) {
+    const t = await deps.call<{ state?: string, status?: string | { state?: string } | null }>('terminal.get', { terminal: address }, 3000).catch(() => null)
+    const state = typeof t?.status === 'string' ? t.status : t?.status?.state
+    if (!t?.state || t.state === 'finished' || state === 'idle' || state === 'working') return false
+    const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: address, lines: 30 }, 3000).catch(() => null))?.text || '')
+    const keys = trustKeys(screen, folder)
+    if (keys) return deps.call('terminal.keys', { terminal: address, keys }, 10000).then(() => true)
+    await new Promise(r => setTimeout(r, deps.pollMs ?? 500))
+  }
+  return false
 }

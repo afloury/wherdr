@@ -17,7 +17,8 @@ export interface Finding {
 
 // One send-back: the findings that sent it back, the diff size the server
 // measured then, and the findings the worker contested in its answer.
-export interface Round { findings: Finding[], diffLines?: number, disputed?: string[] }
+// head: the commit the round read; the next round reviews only what came after it.
+export interface Round { findings: Finding[], diffLines?: number, disputed?: string[], head?: string }
 
 export const REVIEW_FORMAT = [
   'End with your verdict as JSON, nothing else on those lines:',
@@ -117,6 +118,7 @@ export const sendBackText = (step: string, fs: Finding[]) =>
 export function reviewText(text: string, prev?: Round) {
   if (!prev) return [text, REVIEW_FORMAT].filter(Boolean).join('\n\n')
   const contested = prev.disputed?.length ? [`The agent contests: ${prev.disputed.join(', ')}.`] : []
-  return [text, 'Check only these findings of the last round; raise nothing new unless it is critical:', ...prev.findings.map(line), ...contested, REVIEW_FORMAT]
+  const delta = prev.head ? [`Review only what came after the last round (${prev.head.slice(0, 7)}): list it with \`git log --oneline ${prev.head}..HEAD\`; for a merge of the base branch, \`git show --remerge-diff <commit>\` shows only how its conflicts were resolved; for any other commit, \`git show <commit>\`. What the base branch brought is not reviewed again.`] : []
+  return [text, ...delta, 'Check only these findings of the last round; raise nothing new unless it is critical:', ...prev.findings.map(line), ...contested, REVIEW_FORMAT]
     .filter(Boolean).join('\n')
 }
