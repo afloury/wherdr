@@ -5,7 +5,7 @@
 // stop. All of it is read again from the task's state, so a restart loses
 // nothing (shared/pm/advance.ts holds the rules).
 import { randomUUID } from 'node:crypto'
-import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent } from '../../shared/pm/advance'
+import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent, signalKept } from '../../shared/pm/advance'
 import { onEvent, type PlannedStep } from '../../shared/pm/steps'
 import { followedBranch } from '../../shared/pm/branchName'
 import { LABEL, agentEnv, agentLine, duplicateAgents, prefOf, programName, quotaOut, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
@@ -31,14 +31,20 @@ import type { Incident } from '../../shared/pm/incident'
 import { interruptTask } from './pmRecovery'
 import { killTerminal } from './pmProcs'
 
-// The task's commit, its diff size since the branch started, the worker's note, the verdict file.
-export const SIGNAL_READ_SCRIPT = `wt=$1 b=$2
+// The task's commit, its diff size since the branch started, the worker's note, the verdict file,
+// its branch, then its own commits (no merges) and files per line count since its fork from the base ($5).
+export const SIGNAL_READ_SCRIPT = `wt=$1 b=$2 base=$5
 git -C "$wt" rev-parse -q --verify HEAD; echo "${READ_SEP}"
 s=$(git -C "$wt" config "branch.$b.wherdrstart")
 git -C "$wt" diff --numstat \${s:+"$s"} HEAD 2>/dev/null | awk '{n+=$1+$2} END {print n+0}'; echo "${READ_SEP}"
 cat "$3" 2>/dev/null; echo; echo "${READ_SEP}"
 cat "$4" 2>/dev/null; echo; echo "${READ_SEP}"
-git -C "$wt" symbolic-ref -q --short HEAD`
+git -C "$wt" symbolic-ref -q --short HEAD; echo "${READ_SEP}"
+m=
+[ -n "$base" ] && { m=$(git -C "$wt" merge-base HEAD "origin/$base" 2>/dev/null) || m=$(git -C "$wt" merge-base HEAD "$base" 2>/dev/null); }
+[ -n "$m" ] || m=$s
+git -C "$wt" log --no-merges --format='%at %s' \${m:+"$m..HEAD"} 2>/dev/null | cksum; echo "${READ_SEP}"
+git -C "$wt" diff --numstat \${m:+"$m"} HEAD 2>/dev/null`
 // The task moves to the branch its worker pushed: its start point goes with it.
 const FOLLOW_SCRIPT = `s=$(git -C "$1" config "branch.$2.wherdrstart") && git -C "$1" config "branch.$3.wherdrstart" "$s"; exit 0`
 
@@ -121,7 +127,7 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   if (!c || c.task.step!.done) return
   const step = c.plan[c.task.step!.at]
   const files = runFiles(latest(await deps.store.runs(), run.task, 'worker')?.instructions ?? run.instructions)
-  const r = await exec(deps, c.on, SIGNAL_READ_SCRIPT, [run.worktree, run.branch, files.note, files.verdict])
+  const r = await exec(deps, c.on, SIGNAL_READ_SCRIPT, [run.worktree, run.branch, files.note, files.verdict, c.task.base ?? ''])
   const read = parseRead(r.out)
   const ev = signalEvent(step, run.role, read)
   const moved = ev && 'kind' in ev && ev.kind === 'report' ? followedBranch(run.branch, read, c.task.branchStart ?? `task/${c.task.id}`) : undefined
@@ -148,7 +154,8 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   // A proof is missing: the agent is told which, the step stays.
   if (res.refused) return void await Promise.all([tell(`${res.refused}\n\nWhen done: ${DONE_CMD}`), deps.store.logTask(c.task, 'engine', `${step!.id}: ${res.refused}`)])
   const what = ev.kind === 'verdict' ? `verdict, ${ev.findings.length} finding(s)` : 'done'
-  await deps.store.logTask({ ...(await deps.store.task(run.task))!, step: res.state }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
+  const fresh = await deps.store.task(run.task)
+  await deps.store.logTask({ ...fresh!, step: res.state, ...signalKept(fresh!, step!.id, ev, read) }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
 }
 
 // The worker pushed another branch than the task's: the engine pushes, opens

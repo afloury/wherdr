@@ -10,6 +10,7 @@ import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
 import type { Report } from './report'
+import type { WorkReport } from './history'
 import { timesOf, type Times } from './times'
 import { sameFilesText } from './files'
 import { MERGE_REFUSED, ordinal } from './mergeQueue'
@@ -53,7 +54,9 @@ export interface Card {
   queueOut?: string // why it stepped out of the queue's line
   asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
   report?: Report // a problem the user reported, open (report.ts)
-  summary?: string // how it went, in a few lines (summary.ts)
+  workReports?: WorkReport[] // the worker's reports as they arrived (Comments, history.ts)
+  tldr?: string // what the user needs to decide, in a few lines (summary.ts)
+  tldrWaits?: true // a new TL;DR waits for the pace: the notes show instead
   times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
   archived?: number // when it was archived: off the board, in the Done column's archived list (archive.ts)
 }
@@ -126,13 +129,14 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     log: (task.log ?? []).slice(-30),
     plan,
     ...(s ? { state: s } : {}),
+    ...(task.workReports?.length ? { workReports: task.workReports } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
     ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
     // Waiting for the engine to resume it after an incident, or for its agent to start again (watchdog.ts): shown as a wait, not the user's turn.
     ...(task.held && (task.state === 'todo' || task.state === 'working') ? { held: task.held } : recovering(task) ? { held: task.held || task.waiting || 'Waiting' } : {}),
     ...(task.sameFiles && task.state === 'todo' ? { sameFiles: task.sameFiles } : {}),
     ...(task.report ? { report: task.report } : {}),
-    ...(task.summary?.text ? { summary: task.summary.text } : {}),
+    ...(task.tldrHeld ? { tldrWaits: true as const } : task.tldr?.text ? { tldr: task.tldr.text } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
     ...(s?.started ? { times: timesOf(task, plan, runs, now) } : {}),
@@ -162,7 +166,8 @@ export function shownTexts(projects: Parameters<typeof showIds>[0], c: Card): Ca
     ...c, description: show(c.description), ...(c.specNotes ? { specNotes: c.specNotes.map(n => ({ ...n, text: show(n.text) })) } : {}), log: c.log.map(e => ({ ...e, text: show(e.text) })),
     ...(c.yourTurn ? { yourTurn: show(c.yourTurn) } : {}), ...(c.stall ? { stall: { ...c.stall, reason: show(c.stall.reason) } } : {}),
     ...(c.stopped ? { stopped: { ...c.stopped, why: show(c.stopped.why) } } : {}), ...(c.asks ? { asks: { ...c.asks, text: show(c.asks.text) } } : {}),
-    ...(c.queueOut ? { queueOut: show(c.queueOut) } : {}), ...(c.held ? { held: show(c.held) } : {}), ...(c.summary ? { summary: show(c.summary) } : {}),
+    ...(c.queueOut ? { queueOut: show(c.queueOut) } : {}), ...(c.held ? { held: show(c.held) } : {}), ...(c.tldr ? { tldr: show(c.tldr) } : {}),
+    ...(c.workReports ? { workReports: c.workReports.map(r => ({ ...r, text: show(r.text) })) } : {}),
   }
 }
 

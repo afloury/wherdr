@@ -772,27 +772,36 @@ with this version: an older task shows only its total. Below, tabs: **Descriptio
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
 and screenshots: a report in Markdown, folded with *Show more*, shown once when
 another proof repeats it; a commit as a short sha linked to the commit on the
-Git host when the task has a PR; a link labelled, *PR #12*), **History** and **Log**, all in the sheet's one scroll. A refused merge says why under its button.
+Git host when the task has a PR; a link labelled, *PR #12*), **Comments** and **History**, all in the sheet's one scroll. A refused merge says why under its button.
 
-**History** reads the task as a conversation, oldest first: the worker's *Done*
-(its closing report on its last one), the reviewer's *Sent back* (the findings,
-with their weight) or *Passed* (what it left as minor), the worker's *Fixed*
-(and the findings it contested), wherdr's catch-ups and CI fixes, the
-coordinator's and your actions. Each entry says who, when and, for an agent,
+**Comments** reads the agents' reports like a PR's conversation, oldest first:
+the worker's *Done* (its report, each one as it arrived), the reviewer's *Sent
+back* (the findings, with their weight) or *Passed* (what it left as minor),
+the worker's *Fixed* (and the findings it contested). Each says who, when and
 its program and model; its text is Markdown, folded past a few lines with
-*Show more*. Only the worker's last report is kept, so an earlier *Done* says
-just that. **Log** keeps the raw lines, newest first.
+*Show more*. A task from before this version kept only its worker's last
+report, so its earlier *Done* says just that.
 
-At the top of **History**, and of the worker's note in **To do**, a
-**Summary** says in 3 to 6 lines how the task went: what was built, the main
-review findings and how they were solved, what is left. Claude Haiku writes it
-through the `claude` CLI on the wherdr machine (`claude -p`, safe mode, no
-tools), from the task's title, the worker's reports and the reviewer's
-findings only: no description, no proof, no file contents, and home paths,
-e-mail addresses and tokens masked. It is made once per round, again when a
-new report or verdict arrives, one task a minute, and skipped while the pace
-of this machine's Claude account holds automatic work. A task whose last
-report is more than a day old keeps its summary as it is.
+**History** is the task's whole log in one timeline, oldest first: the same
+hand-offs, wherdr's catch-ups and CI fixes, the coordinator's and your
+actions, and wherdr's routine lines, lighter.
+
+<a id="tldr"></a>**TL;DR.** On a task waiting for you, **To do** starts with a
+few lines for you to decide: what changed for you, how it was checked, the
+review findings fixed or left, the risks, what the screenshots show, what
+*Merge* does (which branch it goes to); *Full reports in Comments* below it.
+Claude Haiku writes it through the `claude` CLI on the wherdr machine
+(`claude -p`, safe mode, no tools), from the task's title, description,
+reports and verdicts, the files it changed with their line counts (never
+their contents), its step and what its merge does; home paths, e-mail
+addresses and tokens masked. It is written again only on a significant
+change: a report or verdict that comes with new commits of the task's own or
+new findings, or the first verdict on new commits. A merge or catch-up with
+the base, a rebase, a CI re-run, a report that changes no code (the PR
+opened) or a kept approval leaves it as it is. One task a minute; while the pace of this
+machine's Claude account holds automatic work it waits, and **To do** shows
+the worker's and the reviewer's notes with *TL;DR waits for the pace*. A task
+whose last report is more than a day old keeps its TL;DR as it is.
 
 **Check on GitHub** shows on a task with a PR at its merge step, or archived:
 wherdr reads the PR now, for a merge stuck after a guard refusal, a PR merged
@@ -807,7 +816,7 @@ when you ask them to unblock a task.
 ### A task waiting for you
 
 Open a task under *Your turn* and its sheet starts on **To do**: what the task
-needs from you and the buttons for it, before its Description, Plan and Log.
+needs from you and the buttons for it, before its Description, Plan, Comments and History.
 
 A tap on a card under *Your turn*, or on an entry of the home's **Tasks to
 handle**, goes where you act: when the task's agent (worker or reviewer, on any
@@ -816,16 +825,15 @@ its question last; anything else opens the sheet on **To do**. The sheet stays
 one tap away: *Open the task* in the card's menu, or the small icon at the end
 of the entry. An agent that is not on screen here opens the sheet instead.
 
-- <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: the **Worker's note** (its closing report: what
+- <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: its [TL;DR](#tldr); then its screenshots large (swipe between them on
+  the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop),
+  *Full reports in Comments*, then *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
+  With no TL;DR yet, the **Worker's note** (its closing report: what
   was done, why it is done, what was tested) and the **Reviewer's note** (the
   verdict, what it sent back and was fixed during the rounds, what it left as
-  minor), each in Markdown, folded to a few lines with *Show more* (the
-  task's [summary](#task-sheet) above the worker's note), full
-  width, one above the other (on a phone, *Worker* / *Reviewer* tabs above
-  one note); then its screenshots large (swipe between them on
-  the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop), then
-  *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
-  A step you end (*Deployed*, …) shows the same two notes under its badge.
+  minor) show in its place, each in Markdown, folded to a few lines with *Show more*, full
+  width, one above the other (on a phone, *Worker* / *Reviewer* tabs above one note).
+  A step you end (*Deployed*, …) shows the same under its badge.
   When the agent reworks the task after its review (new commits since the
   review), its new screenshots replace the shown ones, marked *after rework*;
   the earlier set stays in the Plan tab under *Earlier screenshots*. The merge
@@ -966,7 +974,7 @@ the mechanical blocks itself and wakes it only when that fails:
 These blocks do not wake the coordinator. After 2 failed tries on the same
 step (or 15 minutes with nothing left to try), wherdr wakes it once (an
 *Engine* wake, whatever the autopilot's events) and says what it tried. Every try, and giving
-up, is written to the task's **Log**. Any other failure (a refused merge, a
+up, is written to the task's **History**. Any other failure (a refused merge, a
 check that waits for you) goes to *Tasks to handle*, and wakes the coordinator
 only when its *Task stuck* event is on.
 
@@ -989,7 +997,7 @@ shows the reason, and wherdr:
   *Your turn* and in the sidebar's **Tasks to handle**, with the reason, and
   sends a notification (it needs the *Needs you* level).
 
-The task's **Log** lists each of these: the stall, the nudge, the restart, the
+The task's **History** lists each of these: the stall, the nudge, the restart, the
 hand-over to you and the notification.
 
 A step that runs past its time limit (*Check work: over 3h*, *Check review:

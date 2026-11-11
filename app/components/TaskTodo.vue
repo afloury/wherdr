@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // The task sheet's "To do" tab: what a task waiting for the user needs from
 // them, and the buttons for it, nothing else (taskTodo picks the case). A
-// visual merge shows its screenshots large (swipe between them, tap to zoom),
-// the worker's and the reviewer's notes (full width, folded, Markdown), then Merge or Send
-// back with a note. A step the user ends shows the two notes too. A step to merge
+// visual merge shows its TL;DR (TaskTldr: else the worker's and the reviewer's notes), its
+// screenshots large (swipe between them, tap to zoom), the link to the full reports, then
+// Merge or Send back with a note. A step the user ends shows the TL;DR too. A step to merge
 // or a refused one has Open the PR when a link proof is a pull request (any host).
 // Once approved, Merge stays loading until the merge ends, what it waits for said under it.
 import { adviceChoices } from '#shared/pm/decisions'
@@ -18,7 +18,7 @@ import type { WaitKind } from '#shared/pm/run'
 import type { TodoKind } from '~/utils/taskTodo'
 
 const props = defineProps<{ card: Card, kind: TodoKind, pane?: Pane, busy: boolean, pressing: boolean, refused: string, waitsFor?: string[] }>()
-const emit = defineEmits<{ press: [], start: [], resume: [how: Resume], decide: [choice: Choice], back: [note: string], review: [] }>()
+const emit = defineEmits<{ press: [], start: [], resume: [how: Resume], decide: [choice: Choice], back: [note: string], review: [], comments: [] }>()
 
 // Where the engine's catch-up of a conflict stands: the agent on it, or done.
 const told = computed(() => agentCatchingUp(props.card))
@@ -53,16 +53,17 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
   <div class="todo" :data-todo="kind" data-testid="task-todo">
     <template v-if="kind === 'merge'">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
-      <TaskNotes v-if="notes.worker || notes.review" :worker="notes.worker" :review="notes.review" :summary="card.summary" />
-      <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
-      <ul class="todo-shots" data-testid="todo-shots">
-        <li v-for="(src, i) in shots" :key="src">
-          <button type="button" class="todo-shot" :aria-label="tl(`Screenshot ${i + 1}, full size`)" data-testid="shot" @click="openLightbox(shots, i)">
-            <img :src="src" alt="" decoding="async" @load="loaded(src, $event)">
-          </button>
-          <span v-if="shape[src]" class="mono-label muted">{{ shape[src] === 'phone' ? tl('Phone', 'Téléphone') : tl('Desktop', 'Ordinateur') }}</span>
-        </li>
-      </ul>
+      <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="emit('comments')">
+        <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
+        <ul class="todo-shots" data-testid="todo-shots">
+          <li v-for="(src, i) in shots" :key="src">
+            <button type="button" class="todo-shot" :aria-label="tl(`Screenshot ${i + 1}, full size`)" data-testid="shot" @click="openLightbox(shots, i)">
+              <img :src="src" alt="" decoding="async" @load="loaded(src, $event)">
+            </button>
+            <span v-if="shape[src]" class="mono-label muted">{{ shape[src] === 'phone' ? tl('Phone', 'Téléphone') : tl('Desktop', 'Ordinateur') }}</span>
+          </li>
+        </ul>
+      </TaskTldr>
     </template>
 
     <template v-else-if="kind === 'decide' && advice">
@@ -82,7 +83,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
 
     <template v-else-if="!refused">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
-      <TaskNotes v-if="notes.worker || notes.review" :worker="notes.worker" :review="notes.review" :summary="card.summary" />
+      <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="emit('comments')" />
     </template>
 
     <div class="todo-actions">

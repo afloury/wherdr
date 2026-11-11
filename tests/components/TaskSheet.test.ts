@@ -228,3 +228,45 @@ it('links a step\'s commit to the repository of its own PR, not a task-level lin
   expect(w.get('[data-proof="commit"] a').attributes('href')).toBe(`https://github.com/example/task/commit/${sha}`)
   w.unmount()
 })
+
+it('To do shows the TL;DR, the screenshots under it, then a link to Comments (the reports in order); History merges the log', async () => {
+  const report = 'Built **it**.'
+  const log = [
+    { at: 1, by: 'worker claude opus', text: 'work: done' },
+    { at: 2, by: 'engine', text: 'review: sent to the reviewer' },
+    { at: 3, by: 'reviewer codex gpt', text: 'review: verdict, 1 finding(s)' },
+    { at: 4, by: 'worker claude opus', text: 'work: done' },
+    { at: 5, by: 'reviewer codex gpt', text: 'review: verdict, 0 finding(s)' },
+  ]
+  const workReports = [{ step: 'work', text: 'First *try*.' }, { step: 'work', text: report }]
+  const c = waiting({
+    description: 'Do it', log, workReports, yourTurn: 'Look at the screenshots, then merge', userLabel: 'Merge', tldr: '- Adds a **CSV** export.\n- Merge goes to v3.',
+    state: at(4, { yourTurn: { reason: 'user', badge: 'Look at the screenshots, then merge' }, proofs: { work: { report } }, reviews: { review: [{ findings: [{ id: 'f', severity: 'major', title: 'Cut', proof: 'p' }] }] }, minor: { review: [] },
+      shots: { work: [{ file: 'aaaaaaaaaaaa.png', phase: 'after', at: 1 }] } }),
+  })
+  const w = await mountSuspended(TaskSheet, { props: { card: c }, global: { stubs } })
+  expect(w.findAll('[role="tab"]').map(t => t.attributes('data-tab'))).toEqual(['todo', 'description', 'plan', 'comments', 'history'])
+  const todo = w.get('[data-testid="task-todo"]').html()
+  expect(w.get('[data-testid="todo-tldr"] strong').text()).toBe('CSV')
+  expect(w.find('[data-testid="todo-notes"]').exists()).toBe(false)
+  expect(todo.indexOf('todo-tldr')).toBeLessThan(todo.indexOf('todo-shots'))
+  expect(todo.indexOf('todo-shots')).toBeLessThan(todo.indexOf('todo-comments'))
+  await w.get('[data-testid="todo-comments"]').trigger('click')
+  expect(w.get('[role="tab"][aria-selected="true"]').attributes('data-tab')).toBe('comments')
+  const comments = w.get('[data-testid="task-comments"]')
+  // Every report as it arrived, the first one too.
+  expect(comments.findAll(':scope > li').map(li => li.attributes('data-label'))).toEqual(['Done', 'Sent back', 'Fixed', 'Passed'])
+  expect(comments.findAll(':scope > li')[0]!.find('em').text()).toBe('try')
+  expect(comments.findAll(':scope > li')[2]!.find('strong').text()).toBe('it')
+  await w.get('[data-tab="history"]').trigger('click')
+  const history = w.get('[data-testid="task-history"]')
+  expect(history.findAll(':scope > li').map(li => li.attributes('data-label') ?? 'line')).toEqual(['Done', 'line', 'Sent back', 'Fixed', 'Passed'])
+  expect(history.get('li.routine').text()).toContain('review: sent to the reviewer')
+  expect(w.find('[data-testid="task-summary"]').exists()).toBe(false)
+  w.unmount()
+  // A new TL;DR waiting for the pace: the notes, with a word.
+  const held = await mountSuspended(TaskSheet, { props: { card: { ...c, tldr: undefined, tldrWaits: true } }, global: { stubs } })
+  expect(held.get('[data-testid="todo-tldr-waits"]').text()).toBe('TL;DR waits for the pace')
+  expect(held.find('[data-testid="todo-worker-note"]').exists()).toBe(true)
+  held.unmount()
+})
