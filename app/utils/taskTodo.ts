@@ -3,12 +3,13 @@
 // merge: a step of the user's after screenshots (look, then merge or send back).
 // decide: the choice after N send-backs. stopped: how to go on. step: a step
 // that ends with the user's button. ask: the agent's question or permission.
-// refused: a failed engine action (a merge refused). blocked: anything else
-// that waits (overdue, a task it starts after failed). An approved merge on its
-// way stays merge or step, its button loading (mergeWaits).
+// refused: a failed engine action (a merge refused). review: a review over its
+// time limit or whose reviewer stopped, with no verdict (Restart the review).
+// blocked: anything else that waits (overdue, a task it starts after failed).
+// An approved merge on its way stays merge or step, its button loading (mergeWaits).
 import { mergeWaits, type Card } from '#shared/pm/board'
 
-export type TodoKind = 'merge' | 'decide' | 'stopped' | 'step' | 'ask' | 'refused' | 'blocked'
+export type TodoKind = 'merge' | 'decide' | 'stopped' | 'step' | 'ask' | 'refused' | 'review' | 'blocked'
 
 // The steps before the current one with screenshots, newest first.
 export const shotSteps = (c: Pick<Card, 'plan' | 'state'>) =>
@@ -23,6 +24,7 @@ export function taskTodo(c: Card): TodoKind | undefined {
   if (reason === 'rounds' && c.state?.yourTurn?.advice) return 'decide'
   if (reason === 'action') return 'refused'
   if (c.asks) return 'ask'
+  if (c.holder === 'reviewer' && (reason === 'timeout' || (!reason && c.stall && !c.terminal))) return 'review'
   if (reason === 'user' && c.userLabel) return shotSteps(c).length ? 'merge' : 'step'
   return 'blocked'
 }

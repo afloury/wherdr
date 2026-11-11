@@ -562,7 +562,8 @@ copies it, *Copied*, without opening the task), the machine it runs on when its
 project allows several (*machine-b*), its step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done
 (*42 min*), a dot with its agent's state (worker or reviewer), where its PR stands (*PR open · waiting for checks*,
-*checks failed*, *merging*, *The PR conflicts with v3*, *merged …*), what you have to do under
+*checks failed*, *merging*, *The PR conflicts with v3*, *merged …*; *review pending*, never
+*ready to merge*, while a review is still ahead or under way), what you have to do under
 Your turn, the tasks it waits for, its first tags and its PR link. A refused
 step is said in plain words, never as a command: the commands go to the agent.
 When the engine has already asked the agent to bring a conflicting PR up to
@@ -777,6 +778,10 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   *The PR is not merged into develop yet: merge it on Bitbucket (PR link), then
   press “I merged it” again*.
 - **An agent's question or permission**: its text, and a button to open that agent.
+- **A stalled review** (past its time limit, or its reviewer stopped without
+  recording a verdict): one sentence says so, and **Restart the review** ends
+  the reviewer if it is still there and starts a new one on the PR's latest
+  commit, from the start. The step's time limit starts again.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (start it, open its agent). A failed action step (a merge GitHub
   refused) has *Try again* at the top of the sheet, which runs it again.
@@ -1127,7 +1132,9 @@ its project: `wherdr pm tell <task> "<what to do>" --fix <kind> --reason "<one
 sentence>"`, where the kind is `base` (merge the base and solve a conflict),
 `ci` (fix a red CI), `machine` (retry after a disk or memory problem) or
 `stall` (restart a stalled agent). A worker that was let go or ended on its
-own starts again with the message; a stopped or finished task is never fixed. Each fix is written to the task's log with its reason, at most
+own starts again with the message; at the review step, a reviewer that is not
+running starts the review again (the message goes to the task's log, the new
+reviewer reads its review file); a stopped or finished task is never fixed. Each fix is written to the task's log with its reason, at most
 twice per task and step; after that the block is yours, and the coordinator
 tells you. Each wake's text lists these fixes. A permission request, a merge,
 an approval, guards, settings and limits stay yours.

@@ -5,6 +5,7 @@
 import type { Task } from './run'
 import type { PlannedStep } from './steps'
 import { waitsForUser, waitsInQueue } from './release'
+import { backToWork } from './blocked'
 
 export const AGENTLESS_MS = 3 * 60_000
 
@@ -38,4 +39,22 @@ export function watchAgent(prev: AgentWatch | undefined, missing: boolean, now: 
 export function watchFailed(w: AgentWatch, now: number): { watch: AgentWatch, wake: boolean } {
   const fails = w.fails + 1, wake = fails >= 2 && !w.woke
   return { watch: { since: now, fails, ...(w.woke || wake ? { woke: true as const } : {}) }, wake }
+}
+
+// Why the review cannot start again now; undefined: it can (its step is the
+// reviewer's, under way, the task working, no engine action running).
+export function reviewRestartRefusal(task: Task, plan: PlannedStep[]): string | undefined {
+  const s = task.step
+  if (task.stopped) return 'The task was stopped: start it again instead'
+  if (!s?.started || s.done || plan[s.at]?.holder !== 'reviewer') return 'The task is not at its review step'
+  if (task.state !== 'working' || s.acting) return 'The task is busy with something else now'
+}
+
+// The review started again: its timeout in Your turn goes (the step's clock
+// starts again) and its holder is told again, so the next advance pass starts
+// a new reviewer on the branch's current head (its old run ended by the caller).
+export function reviewRestarted(task: Task, plan: PlannedStep[], now: number): Task {
+  const back = backToWork(task, plan, now) ?? task
+  const { told: _, ...step } = back.step!
+  return { ...back, held: undefined, step: step.yourTurn?.reason === 'timeout' ? { ...step, yourTurn: undefined } : step }
 }

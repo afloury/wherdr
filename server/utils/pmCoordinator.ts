@@ -35,6 +35,7 @@ import { removeTask, resumeTask, stopTask } from './pmStop'
 import { checkOnGithub } from './pmGhCheck'
 import { noteBack } from './pmStall'
 import { reviveWorker } from './pmRelease'
+import { restartReview } from './pmWatchdog'
 import { handFix } from '../../shared/pm/release'
 import { DONE_CMD } from '../../shared/pm/advance'
 import { READ_LINES, lastWords } from './pmRead'
@@ -322,7 +323,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
       // --spec: the message is also a spec note, for the reviewer's next round.
       const noted = (x: Task) => (cmd.spec ? store.logTask({ ...x, specNotes: [...(x.specNotes ?? []), { at: Date.now(), by, text: cmd.text }] }, by, `spec change: ${cmd.text.slice(0, 300)}`) : x)
       const holder = t && !task.step?.done ? currentStep(planOf(t, task, p), task.step ?? initialState())?.holder : undefined
-      const { role, run, released } = tellTarget(await store.runs(), task.id, holder, cmd.to, !!cmd.fix)
+      const { role, run, released, review } = tellTarget(await store.runs(), task.id, holder, cmd.to, !!cmd.fix)
       // A failed step action handed over with a fix: the worker reports it done, then the engine tries it again.
       const fixesAction = !!(cmd.fix && t && handFix(planOf(t, task, p), task.step, cmd.fix, Date.now()))
       const said = `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}${fixesAction ? `\n\nWhen done: ${DONE_CMD}` : ''}`
@@ -342,6 +343,14 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
         if (started?.state !== 'working') throw new HerdrError('refused', 'The task\'s worker could not start again now (short on memory?): try again later')
         const told = await noted(await handed(await store.logTask(fixed(started), by, `told the worker, started again${fixNote}: ${cmd.text.slice(0, 300)}`)))
         return { task: t ? await noteBack(store, told, planOf(t, told, p), by, `the ${by} told the worker`) : told, sentTo: 'worker (started again with your message)' }
+      }
+      // A reviewer not running at its step, with a fix: the review starts again (the message logged; the new reviewer reads its review file).
+      if (review) {
+        const why = tellRefusal(task, wake, fix)
+        if (why) throw new HerdrError('refused', why)
+        const restarted = await restartReview(deps, task.id, by, `the reviewer was not running: the review starts again${fixNote}: ${cmd.text.slice(0, 300)}`)
+        const told = await noted(cmd.fix && wake ? await store.saveTask(fixed(restarted)) : restarted)
+        return { task: t ? await noteBack(store, told, planOf(t, told, p), by, `the ${by} restarted the review`) : told, sentTo: 'reviewer (the review starts again; your message is in the task\'s log, not sent to it)' }
       }
       if (!run?.terminal) throw new HerdrError('not_found', `The task's ${role} is not running${cmd.to ? '' : ` (--to ${role === 'worker' ? 'reviewer' : 'worker'} picks the other agent)`}`)
       // What the agent waits for now, from its terminal: a permission prompt is never typed into.

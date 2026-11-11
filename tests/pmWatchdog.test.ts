@@ -8,7 +8,7 @@ import { releaseIdle } from '../server/utils/pmRelease'
 import { advanceTick } from '../server/utils/pmAdvance'
 import { userDecide } from '../server/utils/pmBoard'
 import { MACHINE_OFFLINE, MACHINE_PAUSED, RELEASE_IDLE_MS } from '../shared/pm/release'
-import { watchAgents } from '../server/utils/pmWatchdog'
+import { restartReview, watchAgents } from '../server/utils/pmWatchdog'
 import { AGENTLESS_MS } from '../shared/pm/watchdog'
 import type { Task } from '../shared/pm/run'
 import type { Template } from '../shared/pm/workflow'
@@ -85,6 +85,24 @@ describe('released agents start again', () => {
     expect(starts()).toBe(2)
     expect(await log()).toContain('started the worker again in its worktree: its agent was not running')
     expect(await watchAgents(deps, wake, 3 * AGENTLESS_MS)).toEqual([]) // it runs
+  })
+
+  it('Restart the review: the reviewer past its time ends, a new one starts on the next pass; refused off the review step', async () => {
+    const { store, deps, env, starts, log } = await setup()
+    await expect(restartReview(deps, 'WH-1', 'user', 'restarted the review')).rejects.toThrow('The task is not at its review step')
+    const task = (await store.task('WH-1'))!, now = Date.now()
+    await store.saveTask({ ...task, step: { ...task.step!, at: 2, since: now, told: now, yourTurn: { reason: 'timeout', badge: 'Check review: over 45m' } } })
+    await store.saveRun({ id: 'rv', task: 'WH-1', role: 'reviewer', program: 'claude', model: 'opus', machine: 'm1', worktree: '/w', branch: 'task/WH-1', instructions: '/i', attempt: 1, state: 'running', startedAt: 1, terminal: 'm1/rv' })
+    env.live.add('m1/rv')
+    const after = await restartReview(deps, 'WH-1', 'user', 'restarted the review')
+    expect(after.step).toMatchObject({ at: 2 })
+    expect(after.step!.told ?? after.step!.yourTurn).toBeUndefined()
+    expect(env.live.has('m1/rv')).toBe(false)
+    expect((await store.runs()).find(r => r.id === 'rv')).toMatchObject({ state: 'ended', endedBy: 'stopped' })
+    await advanceTick(deps)
+    expect(starts()).toBe(2)
+    expect((await store.runs()).filter(r => r.role === 'reviewer' && r.state !== 'ended')).toHaveLength(1)
+    expect(await log()).toContain('restarted the review')
   })
 
   it('a machine offline or paused: the status says why, its coordinator is woken once, never in a loop', async () => {
