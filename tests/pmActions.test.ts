@@ -407,10 +407,13 @@ describe('verify-merged', () => {
       expect((await localSh(WORKTREE_SCRIPT, [s.repo, wt, b, 'dev', `origin/${b}`])).code).toBe(0)
       return { wt, verify: () => runAction({ ...fakeDeps([]).deps, sh: s.sh }, job({ worktree: wt, branch: b, step: 'check', by: 'user', action: { kind: 'git.verify-merged', target: 'dev' } })) }
     }
-    const bot = await take('bot/deps'), empty = await take('bot/empty')
+    // A local copy ahead of origin's (its commits kept) is taken over too.
+    git(s.repo, 'branch', 'bot/ahead', 'origin/bot/deps'); git(s.repo, 'push', '-q', 'origin', 'origin/dev:refs/heads/bot/ahead'); git(s.repo, 'fetch', '-q')
+    const bot = await take('bot/deps'), empty = await take('bot/empty'), ahead = await take('bot/ahead')
     expect(git(s.repo, 'config', 'branch.bot/deps.wherdrstart')).toBe(git(s.repo, 'rev-parse', 'origin/dev'))
-    git(s.repo, 'push', '-q', 'origin', 'origin/bot/deps:refs/heads/dev', ':refs/heads/bot/deps', ':refs/heads/bot/empty')
+    git(s.repo, 'push', '-q', 'origin', 'origin/bot/deps:refs/heads/dev', ':refs/heads/bot/deps', ':refs/heads/bot/empty', ':refs/heads/bot/ahead')
     expect(await bot.verify()).toMatchObject({ ok: true, commit: git(bot.wt, 'rev-parse', 'HEAD') })
+    expect(await ahead.verify()).toMatchObject({ ok: true, commit: git(ahead.wt, 'rev-parse', 'HEAD') })
     expect(await empty.verify()).toMatchObject({ ok: false, error: 'verify-merged: bot/empty has no commit of its own: nothing was merged' })
   })
 
@@ -422,9 +425,12 @@ describe('verify-merged', () => {
       asked.push(args[3]!)
       return { code: 0, out: `${JSON.stringify({ values: [{ state: 'MERGED', source: { commit: { hash: head.slice(0, 12) } }, links: { html: { href: 'https://bitbucket.example/pr/7' } } }] })}\n200` }
     }
-    const r = await runAction({ ...fakeDeps([]).deps, sh }, job({ worktree: s.wt, step: 'check', by: 'user', action: { kind: 'git.verify-merged', target: 'dev' } }))
-    expect(r).toMatchObject({ ok: true, commit: head, link: 'https://bitbucket.example/pr/7' })
-    expect(asked).toEqual(['q=source.branch.name="task/A-1" AND destination.branch.name="dev"'])
+    const verify = () => runAction({ ...fakeDeps([]).deps, sh }, job({ worktree: s.wt, step: 'check', by: 'user', action: { kind: 'git.verify-merged', target: 'dev' } }))
+    expect(await verify()).toMatchObject({ ok: true, commit: head, link: 'https://bitbucket.example/pr/7' })
+    // gh logged out: GitHub cannot answer, Bitbucket still does.
+    fs.writeFileSync(`${s.merged}.err`, 'To get started with GitHub CLI, please run:  gh auth login\n')
+    expect(await verify()).toMatchObject({ ok: true, commit: head })
+    expect(asked).toEqual(Array(2).fill('q=source.branch.name="task/A-1" AND destination.branch.name="dev"'))
   })
 })
 

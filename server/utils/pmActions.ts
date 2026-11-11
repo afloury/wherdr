@@ -139,7 +139,8 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
     case 'git.verify-merged': {
       const r = await run(deps, SCRIPT.verify, [wt, a.target!, branch])
       if (r.code === 0) return { ok: true, commit: lastLine(r.out) }
-      return (r.code === CODE.NOT_MERGED && await bitbucketMerged(deps, wt, branch, a.target!)) || fail(r)
+      // Not merged by git, or GitHub could not answer (gh logged out on a Bitbucket repository): Bitbucket may know.
+      return ((r.code === CODE.NOT_MERGED || /\(GitHub not checked: /.test(r.out)) && await bitbucketMerged(deps, wt, branch, a.target!)) || fail(r)
     }
     case 'github.pr': {
       const r = await run(deps, SCRIPT.pr, [wt, branch, a.base!, `${job.shown ?? job.task.id}: ${job.task.title}`], job.task.description || job.task.title)

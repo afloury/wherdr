@@ -35,7 +35,7 @@ import { interruptTask } from './pmRecovery'
 // commits made on it since. $5: where a new branch starts instead (origin/<branch>
 // of a task that continues one); a local branch of that name that it is ahead of
 // is moved up to it (a stale local copy would not push), one with commits of its
-// own is kept. A branch taken over starts at its fork from the base, and its tip
+// own is kept. A branch taken over (moved up or kept) starts at its fork from the base, and its tip
 // then is recorded (branch.<b>.wherdrtaken): the commits it had ahead are the task's.
 export const WORKTREE_SCRIPT = `repo=$1 dir=$2 branch=$3 base=$4
 [ -e "$dir/.git" ] && exit 0
@@ -48,7 +48,7 @@ if [ -n "$5" ] && git -C "$repo" merge-base --is-ancestor "refs/heads/$branch" "
   git -C "$repo" worktree add --no-track -B "$branch" "$dir" "$5" 2>&1 && base=HEAD
 elif git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null; then git -C "$repo" worktree add "$dir" "$branch" 2>&1
 else git -C "$repo" worktree add --no-track -b "$branch" "$dir" \${from:+"$from"} 2>&1 && base=HEAD; fi || exit 1
-if [ -n "$5" ] && [ -n "$tgt" ] && [ "$base" = HEAD ]; then base=$tgt
+if [ -n "$5" ] && [ -n "$tgt" ]; then base=$tgt
   git -C "$repo" config "branch.$branch.wherdrtaken" >/dev/null || git -C "$repo" config "branch.$branch.wherdrtaken" "$(git -C "$dir" rev-parse HEAD)"; fi
 k="branch.$branch.wherdrstart"
 [ -z "$base" ] || git -C "$repo" config "$k" >/dev/null || git -C "$repo" config "$k" "$(git -C "$dir" merge-base HEAD "$base")"`
