@@ -15,7 +15,7 @@ import { timesOf, type Times } from './times'
 import { sameFilesText } from './files'
 import { MERGE_REFUSED, ordinal } from './mergeQueue'
 import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
-import { retriesAction } from './release'
+import { AGENT_ENDED, retriesAction } from './release'
 import { recovering } from './incident'
 import { showIds } from './projectKey'
 
@@ -314,4 +314,21 @@ export function mergeWaits(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'yourTur
   if (!s?.approved || s.done || c.stopped || c.yourTurn || !waitsToMerge(c.plan[s.at])) return
   const pr = c.prNow && c.prNow !== 'ready to merge' && c.prNow !== 'merged' ? c.prNow : undefined
   return cardStatus(c)?.text || pr || 'waiting for its turn to merge'
+}
+
+// How long an update with the base may run before its conflict counts as stuck.
+const CATCH_UP_STUCK_MS = 3 * 60_000
+
+// An approved merge that waits on something the engine cannot do by itself (a
+// conflict or red checks no agent is on, its worker ended, its machine down):
+// what, in plain words. The user's way out is Start the worker
+// (pmMechanic.ts startWorkerFor). undefined: the merge goes on alone.
+export function mergeStuck(c: Parameters<typeof mergeWaits>[0], now = Date.now()): string | undefined {
+  if (mergeWaits(c) === undefined) return
+  const s = c.state!
+  if (s.agent?.waits === AGENT_ENDED) return 'Its worker ended before finishing what the merge needs. Start it again to finish; the merge then goes on.'
+  if (s.agent?.waits) return `${s.agent.waits}. Start the worker again to go on with the merge.`
+  if (s.agent) return
+  if (s.catchUp && now - s.catchUp.at >= CATCH_UP_STUCK_MS) return `Its PR conflicts with ${s.catchUp.base} and no agent is solving it. Start the worker to solve the conflict; the merge then goes on.`
+  if (c.prNow?.startsWith('checks failed')) return 'Its PR\'s checks failed and no agent is fixing them. Start the worker to fix them; the merge then goes on.'
 }

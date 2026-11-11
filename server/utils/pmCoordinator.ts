@@ -338,7 +338,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
       // --spec: the message is also a spec note, for the reviewer's next round.
       const noted = (x: Task) => (cmd.spec ? store.logTask({ ...x, specNotes: [...(x.specNotes ?? []), { at: Date.now(), by, text: cmd.text }] }, by, `spec change: ${cmd.text.slice(0, 300)}`) : x)
       const holder = t && !task.step?.done ? currentStep(planOf(t, task, p), task.step ?? initialState())?.holder : undefined
-      const { role, run, released, review } = tellTarget(await store.runs(), task.id, holder, cmd.to, !!cmd.fix)
+      const { role, run, released, review } = tellTarget(await store.runs(), task.id, holder, cmd.to, !!cmd.fix, !task.cleanup?.done)
       // A failed step action handed over with a fix: the worker reports it done, then the engine tries it again.
       const fixesAction = !!(cmd.fix && t && handFix(planOf(t, task, p), task.step, cmd.fix, Date.now()))
       const said = `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}${fixesAction ? `\n\nWhen done: ${DONE_CMD}` : ''}`

@@ -121,7 +121,14 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   const mergeStep = step.action?.kind === 'github.merge' && (step.ends === 'action' || (waits && !!s.approved))
   if (pr.merged) return mergeStep ? pick(`merged:${pr.url}`, { kind: 'merge', url: pr.url, base: pr.baseRefName }) : undefined
   // One catch-up at a time: run again once the agent committed its conflict resolution (a new head).
-  if (waits && s.catchUp) return f.agentBusy ? undefined : pick(`catch-up:${head}`, { kind: 'catch-up', base: s.catchUp.base })
+  if (waits && s.catchUp) {
+    if (f.agentBusy) return
+    const tries = catchUps(task, head)
+    if (!tries.length) return pick(`catch-up:${head}`, { kind: 'catch-up', base: s.catchUp.base })
+    // Its conflict reached no worker (it could not start): tried again, spaced out, a few times.
+    return s.agent || tries.length >= CATCH_UP_TRIES || (f.now ?? Date.now()) - Math.max(...tries) < CATCH_UP_GAP_MS ? undefined
+      : pick(`catch-up:${head}:${tries.length + 1}`, { kind: 'catch-up', base: s.catchUp.base })
+  }
   // The PR head is not the task's commit (a CI fix not pushed, a push from
   // elsewhere): the merge step pushes it and has it reviewed again, or says why not.
   if (pr.headRefOid !== head) {

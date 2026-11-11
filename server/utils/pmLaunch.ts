@@ -18,7 +18,7 @@ import { cloneOn, taskMachine } from '../../shared/pm/project'
 import { ensureVisibility, readLeakCheck } from './pmVisibility'
 import { prepareWorktree } from './pmDeps'
 import { ensureReady } from './pmReady'
-import { fileConflict, filesSection } from '../../shared/pm/files'
+import { fileConflict, filesSection, pastAgents } from '../../shared/pm/files'
 import { branchFor } from '../../shared/pm/branchName'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 import { LABEL, TMP_DIR, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type Run, type Task } from '../../shared/pm/run'
@@ -122,6 +122,17 @@ async function liveWorker(deps: PmLaunchDeps, id: string) {
   }
 }
 
+// Tasks that only wait for their merge (past their work and review), from each
+// one's plan: their files no longer hold others (shared/pm/files.ts).
+export async function mergingOf(store: PmStore): Promise<(t: Task) => boolean> {
+  const projects = await store.projects()
+  const flows = new Map(await Promise.all(projects.map(async p => [p.key, await store.workflow(p.key).catch(() => null)] as const)))
+  return (t) => {
+    const flow = flows.get(t.project)
+    return !!flow && !!t.step && pastAgents(taskPlan(flow, t, projects.find(p => p.key === t.project)), t.step.at)
+  }
+}
+
 const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind, held: undefined, sameFiles: undefined })
 
 // Starts the worker of a task to do (or waiting, to try again). Any reason it
@@ -152,7 +163,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   if (!found) throw new HerdrError('not_found', 'Unknown project')
   const placed = taskMachine(task, found, asked)
   if ('refused' in placed) throw new HerdrError('refused', placed.refused)
-  const same = task.step?.started || revive || anyway ? undefined : fileConflict(task, await store.tasks())
+  const same = task.step?.started || revive || anyway ? undefined : fileConflict(task, await store.tasks(), await mergingOf(store))
   if (same) {
     if (task.state === 'todo' && task.sameFiles === same.task) return task
     return store.logTask({ ...task, state: 'todo', waiting: undefined, waitKind: undefined, sameFiles: same.task }, 'engine', `waits for ${same.task}: same files (${same.files.join(', ')})`)

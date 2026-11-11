@@ -218,6 +218,22 @@ it('an approved merge keeps Merge loading with what it waits for, until it merge
   failed.unmount()
 })
 
+// An approved merge stuck on a conflict no agent solves: no spinner, why in plain words, Start the worker.
+let startedWorker: unknown
+registerEndpoint('/api/pm/worker-start', { method: 'POST', handler: async (e) => { startedWorker = await readBody(e); return { task: {} } } })
+it('an approved merge stuck on its conflict offers Start the worker instead of a spinner', async () => {
+  const w = await mountSuspended(TaskSheet, { props: { card: approvedCard({ catchUp: { base: 'v3', from: 'abc1234', at: 0 } }) }, global: { stubs } })
+  expect(w.get('[data-testid="step-user"]').html()).not.toContain('animate-spin')
+  expect(w.find('[data-testid="step-user-waits"]').exists()).toBe(false)
+  expect(w.get('[data-testid="step-user-stuck"]').text()).toBe('Its PR conflicts with v3 and no agent is solving it. Start the worker to solve the conflict; the merge then goes on.')
+  await w.get('[data-testid="todo-worker-start"]').trigger('click')
+  await vi.waitFor(() => expect(startedWorker).toEqual({ id: 'WHR-3' }))
+  // Its worker on it: no button, the merge waits as before.
+  await w.setProps({ card: approvedCard({ catchUp: { base: 'v3', from: 'abc1234', at: 0 }, agent: { kind: 'catch-up', at: 1 } }) })
+  expect(w.find('[data-testid="todo-worker-start"]').exists()).toBe(false)
+  w.unmount()
+})
+
 it('links a step\'s commit to the repository of its own PR, not a task-level link to another one', async () => {
   const sha = '0123456789abcdef0123456789abcdef01234567'
   const c: Card = { ...card, yourTurn: undefined, userLabel: undefined, plan: planSteps(wherdr, { type: 'simple' }),
