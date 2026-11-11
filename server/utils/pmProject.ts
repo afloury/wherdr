@@ -45,7 +45,7 @@ export async function projectView(store: PmStore, key: string) {
   // ready: each other allowed machine's last readiness check ('' ready, its failures otherwise; none never checked).
   const ready = Object.fromEntries(allowedMachines(p).slice(1).flatMap(m => { const r = lastReadiness(p.key, m); return r === undefined ? [] : [[m, r]] }))
   return {
-    project: p, workflow: await store.workflow(p.key), log: await store.workflowLog(p.key), ready,
+    project: p, workflow: await store.savedWorkflow(p.key), log: await store.workflowLog(p.key), ready,
     ...(proposal ? { proposal: { diff: proposal.diff, at: proposal.at, base: proposal.base, ...(proposal.said ? { said: proposal.said } : {}) } } : {}),
   }
 }

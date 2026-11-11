@@ -126,6 +126,15 @@ export interface Template {
   taskTypes: Record<string, TaskType>
 }
 
+// A project's workflow until the user accepts one (a template copy or the
+// coordinator's proposal): one type `task`, todo → work → done. Never saved;
+// version 0 marks it (a saved workflow starts at 1).
+export const defaultWorkflow = (key: string): Template => ({
+  id: key.toLowerCase(), version: 0, prefs: { agent: 'claude', model: 'sonnet' },
+  taskTypes: { task: { steps: [{ id: 'todo', column: 'To do' }, { id: 'work', column: 'Working', holder: 'worker', ends: 'report' }, { id: 'done', column: 'Done' }] } },
+})
+export const isDefaultWorkflow = (t?: Template | null) => t?.version === 0
+
 // What a task brings at creation. No step rules (rounds, sendBack, holder…):
 // only the template changes those.
 export interface TaskInput {

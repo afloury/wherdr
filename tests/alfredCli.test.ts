@@ -301,7 +301,6 @@ describe('Alfred and a project\'s workflow and coordinator', () => {
   it('proposes a workflow change only in the user\'s turn; the user accepts it in the same review', async () => {
     await expect(run(['project', 'workflow', 'edit', 'WEB'], '{}')).rejects.toThrow('only for a turn that comes from the user')
     await turn('user', 'add a docs step')
-    await expect(run(['project', 'workflow', 'edit', 'WEB'], '{}')).rejects.toThrow('Project WEB has no workflow')
     await run(['project', 'template', 'WEB', 'example:company', '--apply'])
     const wf = (await store.workflow('WEB'))!
     await expect(run(['project', 'workflow', 'edit', 'NOPE'], JSON.stringify(wf))).rejects.toThrow('Unknown project NOPE')
