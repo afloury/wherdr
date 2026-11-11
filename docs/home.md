@@ -33,7 +33,9 @@
   search too) and how long it has been in its state (`8 min`, `2 h`). A second line gives its
   role, then its machine (when the list mixes several) and its last message: **DEV** (working on
   the task), **REVIEW**, **FIX** (sent back by the review, red CI or you) or **CATCH-UP** (merging
-  the base branch). Only an agent other than Claude keeps its small icon. Several agents of the
+  the base branch). The line starts with the small icon of the agent that runs the role (Claude,
+  Codex…); a reviewer's verdict reads as a short line (`Passed, 0 findings`, `2 findings: 1 major,
+  1 minor`), never its raw JSON. Several agents of the
   same task (the worker and its reviewer) share one row, in the group of the most urgent: the
   title line, then one line per agent with its own state, which opens that agent; the row's menu
   lists each agent's actions under its role. A reviewer kept between rounds shows dimmed. A

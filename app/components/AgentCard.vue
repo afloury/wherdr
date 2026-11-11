@@ -24,6 +24,7 @@ import { interactionWindowFor } from '~/utils/interactionWindow'
 import { individualAgentTitle, isIndividualAgentRow } from '~/utils/homeAgentRows'
 import { stateDuration } from '~/utils/taskAgentRow'
 import type { AgentRole } from '#shared/pm/taskAgents'
+import { SEVERITIES, verdictGlance } from '#shared/pm/verdict'
 
 // `machineBadge`: the machine's name on a card of the State grouping.
 // `agents`: every agent of the card's task when it has several (`pane` is the most urgent).
@@ -59,8 +60,17 @@ const agentLines = computed(() => !task.value ? [] : (grouped.value ? props.agen
   const agent = taskAgentOf(p)
   // The lead's message is already below when its answers show.
   const message = p.id === props.pane.id ? (more.value ? '' : preview.value) : p.preview
-  return { pane: p, role: agent?.role, reserve: agent?.reserve, rest: [machine, message].filter(Boolean).join(' · ') }
+  return { pane: p, role: agent?.role, reserve: agent?.reserve, rest: [machine, message && verdictLine(message)].filter(Boolean).join(' · ') }
 }))
+// A reviewer's verdict JSON, as a short line: 'Passed, 0 findings', '2 findings: 1 major, 1 minor'.
+function verdictLine(text: string): string {
+  const v = verdictGlance(text)
+  if (!v) return text
+  if (!v.complete) return v.title || tl('Verdict with findings')
+  if (!v.total) return tl('Passed, 0 findings')
+  if (v.total === 1) return `${tl(`1 ${SEVERITIES.find(s => v.count[s])} finding`)}: ${v.title}`
+  return `${tl(`${v.total} findings`)}: ${[...SEVERITIES].reverse().filter(s => v.count[s]).map(s => `${v.count[s]} ${tl(s)}`).join(', ')}`
+}
 // Normal mode: the current activity on a second line, unless the answers show below.
 const activityLine = computed(() => !task.value && !compactList.value && !more.value ? preview.value || '' : '')
 const subtitle = computed(() => conversationSubtitle(props.pane, ws.value))
@@ -245,7 +255,7 @@ onUnmounted(list.unmount)
         :role="grouped ? 'button' : undefined" :tabindex="grouped ? 0 : undefined"
         @click="grouped && ($event.stopPropagation(), openPane(l.pane))" @keydown.enter.self="grouped && ($event.stopPropagation(), openPane(l.pane))"
       >
-        <AgentAvatar v-if="l.pane.agent && l.pane.agent !== 'claude'" :agent="l.pane.agent" />
+        <AgentAvatar v-if="l.pane.agent" :agent="l.pane.agent" />
         <span class="task-agent-text"><b v-if="l.role" class="task-role" :class="l.role" :title="l.reserve ? tl('Reviewer kept for the next round') : roleTitleOf(l.role)" data-testid="agent-role">{{ tl(l.role) }}</b><template v-if="l.role && l.rest"> · </template>{{ l.rest }}</span>
         <span v-if="grouped" class="card-state" :class="statusKey(l.pane)" :title="statusLabel(l.pane)" role="img" :aria-label="statusLabel(l.pane)"><i /></span>
       </div>
