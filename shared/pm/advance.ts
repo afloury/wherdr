@@ -43,12 +43,17 @@ export function reviewFile(task: Pick<Task, 'id' | 'title' | 'description' | 'sp
 
 // What the engine read after a signal: the task's commit, the size of its
 // diff, the worker's note and the reviewer's verdict file.
-export interface SignalRead { head?: string, diffLines?: number, note: string, verdict: string, branch?: string } // branch: the worktree's checked-out one
+// branch: the worktree's checked-out one; work: its own commits and files since its fork from the base (Task.work).
+export interface SignalRead { head?: string, diffLines?: number, note: string, verdict: string, branch?: string, work?: Work }
 export const READ_SEP = '--wherdr-read--'
+export type Work = NonNullable<Task['work']>
 export function parseRead(out: string): SignalRead {
-  const [head = '', lines = '', note = '', verdict = '', branch = ''] = out.split(`${READ_SEP}\n`)
+  const [head = '', lines = '', note = '', verdict = '', branch = '', commits = '', numstat = ''] = out.split(`${READ_SEP}\n`)
   const n = Number.parseInt(lines, 10)
-  return { ...(head.trim() ? { head: head.trim() } : {}), ...(Number.isFinite(n) ? { diffLines: n } : {}), note: note.trim(), verdict: verdict.trim(), ...(branch.trim() ? { branch: branch.trim() } : {}) }
+  const files = numstat.split('\n').map(l => l.split('\t')).filter(c => c.length >= 3)
+    .map(([a, d, ...p]) => ({ path: p.join('\t'), add: Number(a) || 0, del: Number(d) || 0 })).slice(0, 200)
+  return { ...(head.trim() ? { head: head.trim() } : {}), ...(Number.isFinite(n) ? { diffLines: n } : {}), note: note.trim(), verdict: verdict.trim(), ...(branch.trim() ? { branch: branch.trim() } : {}),
+    ...(commits.trim() ? { work: { commits: commits.trim(), files } } : {}) }
 }
 
 // The note gives the proofs a report needs: itself, and its first link

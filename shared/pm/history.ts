@@ -3,12 +3,15 @@ import type { Round } from './verdict'
 
 // The task's hand-offs between its agents and the user, oldest first, built
 // from what the task keeps: its log, the worker's last report, the review's
-// send-back rounds and its passing verdict. The raw log stays its own tab.
+// send-back rounds and its passing verdict. With `all`, the engine's routine
+// lines too, marked `routine`: the sheet's History is the whole log in one timeline.
 
 export type Who = 'worker' | 'reviewer' | 'user' | 'coordinator' | 'engine'
 // label: what the entry is (Done, Sent back…), empty for a plain log line;
 // agent: the program and model behind a worker or reviewer; text: Markdown.
-export interface HistoryEntry { at: number, who: Who, agent?: string, label: string, text: string }
+export interface HistoryEntry { at: number, who: Who, agent?: string, label: string, text: string, routine?: true }
+// The labels of the agents' reports and verdicts (the sheet's Comments).
+export const REPORTS = new Set(['Done', 'Fixed', 'Sent back', 'Passed'])
 
 type LogEntry = { at: number, by: string, text: string }
 type Planned = { id: string }
@@ -29,7 +32,7 @@ function whoOf(by: string): { who: Who, agent?: string } {
 
 const list = (fs: Round['findings'], sev = true) => fs.map(f => findingLine(f, sev)).join('\n')
 
-export function taskHistory(log: LogEntry[], plan: Planned[], s?: State): HistoryEntry[] {
+export function taskHistory(log: LogEntry[], plan: Planned[], s?: State, all = false): HistoryEntry[] {
   const known = new Set(plan.map(p => p.id))
   // Each review step's verdicts, newest first: its passing one (the last, when
   // kept) and its send-backs, matched from the end on their number of findings.
@@ -54,8 +57,8 @@ export function taskHistory(log: LogEntry[], plan: Planned[], s?: State): Histor
   let sentBack: Round | undefined
   log.forEach((e, i) => {
     const { who, agent } = whoOf(e.by)
-    if (who === 'engine' && !ENGINE_KEPT.test(e.text)) return
     const base = { at: e.at, who, ...(agent ? { agent } : {}) }
+    if (who === 'engine' && !ENGINE_KEPT.test(e.text)) return void (all && out.push({ ...base, label: '', text: e.text, routine: true }))
     const done = who === 'worker' ? DONE.exec(e.text) : null
     if (done) {
       const report = lastDone.get(done[1]!) === i ? s?.proofs[done[1]!]?.report?.trim() : undefined
