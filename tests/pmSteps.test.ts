@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { EXAMPLES, common, company, github, vibe, wherdr } from '../shared/pm/examples'
-import { currentStep, initialState, onEvent, pauseClock, planSteps, stepLabels, withBase, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
+import { currentStep, initialState, nextRecheck, type News, onEvent, pauseClock, planSteps, recheckNews, waitStep, stepLabels, withBase, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
 import { validateTemplate, type Template } from '../shared/pm/workflow'
 import type { Finding } from '../shared/pm/verdict'
 import { taskBase } from '../shared/pm/run'
@@ -302,5 +302,48 @@ describe('step engine, study and feature split', () => {
       expect(run(2.5 * H, () => false).yourTurn).toBeUndefined()
       expect(run(3 * H, () => false).yourTurn).toEqual({ reason: 'timeout', badge: 'Check work: over 3h' })
     })
+  })
+})
+
+describe('a coordinator step\'s rechecks', () => {
+  const t: Template = { id: 'watch', taskTypes: { deploy: { steps: [{ id: 'deploy', holder: 'coordinator', ends: 'report', recheck: '5m' }] } } }
+  const plan = planSteps(t, { type: 'deploy' })
+  const start = () => onEvent(plan, initialState(), { kind: 'start' }, 0).state
+  // Ticks every minute until `until`, the news unchanged unless `news` says; the minutes a recheck went.
+  const run = (s: StepState, from: number, until: number, news: (m: number) => News | number = () => 0) => {
+    const at: number[] = []
+    for (let m = from; m <= until; m++) {
+      const n = news(m)
+      s = recheckNews(plan, s, typeof n === 'number' ? { at: n * MIN } : n, m * MIN)
+      const r = onEvent(plan, s, { kind: 'tick' }, m * MIN)
+      if (r.effects.length) at.push(m)
+      s = r.state
+    }
+    return { s, at }
+  }
+
+  it('back off while nothing changes: 5m, 10m, 20m, 40m, then every hour', () => {
+    expect(run(start(), 1, 300).at).toEqual([5, 15, 35, 75, 135, 195, 255])
+  })
+
+  it('start over from the step\'s own interval on news; a wait for the user ends only on the user\'s own', () => {
+    // News at minute 40 (a commit, a tell): the next recheck is 5 minutes after it.
+    expect(run(start(), 1, 60, m => (m >= 40 ? 40 : 0)).at).toEqual([5, 15, 35, 45, 55])
+    const waiting = waitStep(plan, run(start(), 1, 10).s, { untilUser: true }, 10 * MIN)
+    if (!('state' in waiting)) throw new Error(waiting.refused)
+    expect(nextRecheck(waiting.state)).toBe('user')
+    expect(run(waiting.state, 11, 200).at).toEqual([])
+    // The engine's news (a CI run that finished, its log) leaves it waiting.
+    expect(run(waiting.state, 11, 200, m => ({ at: (m >= 50 ? 50 : 0) * MIN, ci: m >= 50 ? 'abc:false:false' : 'abc:false:true' })).at).toEqual([])
+    expect(run(waiting.state, 11, 200, m => (m >= 100 ? { at: 100 * MIN, user: 100 * MIN } : { at: 0 })).at).toEqual([105, 115, 135, 175])
+  })
+
+  it('wait --for sets the next recheck; refused on a step without rechecks', () => {
+    const r = waitStep(plan, start(), { ms: 90 * MIN }, 5 * MIN)
+    if (!('state' in r)) throw new Error(r.refused)
+    expect(nextRecheck(r.state)).toBe(95 * MIN)
+    expect(run(r.state, 6, 100).at).toEqual([95])
+    const study = planSteps(common, { type: 'study' })
+    expect(waitStep(study, onEvent(study, initialState(), { kind: 'start' }, 0).state, { ms: MIN }, 0)).toEqual({ refused: 'Step "work" is not one you hold with a recheck' })
   })
 })
