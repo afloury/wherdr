@@ -1,9 +1,9 @@
 <script setup lang="ts">
 // The task sheet's "To do" tab: what a task waiting for the user needs from
 // them, and the buttons for it, nothing else (taskTodo picks the case). A
-// visual merge shows its screenshots large (swipe between them, tap to zoom),
-// the worker's and the reviewer's notes (full width, folded, Markdown), then Merge or Send
-// back with a note. A step the user ends shows the two notes too. A step to merge
+// visual merge shows its TL;DR (TaskTldr: else the worker's and the reviewer's notes), its
+// screenshots large (swipe between them, tap to zoom), the link to the full reports, then
+// Merge or Send back with a note. A step the user ends shows the TL;DR too. A step to merge
 // or a refused one has Open the PR when a link proof is a pull request (any host).
 // Once approved, Merge stays loading until the merge ends, what it waits for said under it.
 import { adviceChoices } from '#shared/pm/decisions'
@@ -18,7 +18,7 @@ import type { WaitKind } from '#shared/pm/run'
 import type { TodoKind } from '~/utils/taskTodo'
 
 const props = defineProps<{ card: Card, kind: TodoKind, pane?: Pane, busy: boolean, pressing: boolean, refused: string, waitsFor?: string[] }>()
-const emit = defineEmits<{ press: [], start: [], resume: [how: Resume], decide: [choice: Choice], back: [note: string] }>()
+const emit = defineEmits<{ press: [], start: [], resume: [how: Resume], decide: [choice: Choice], back: [note: string], review: [], comments: [] }>()
 
 // Where the engine's catch-up of a conflict stands: the agent on it, or done.
 const told = computed(() => agentCatchingUp(props.card))
@@ -41,6 +41,10 @@ const notes = computed(() => (props.kind === 'merge' || props.kind === 'step') &
   : {})
 const pr = computed(() => (props.kind === 'merge' || props.kind === 'step' || props.kind === 'refused' ? prLink(props.card) : undefined))
 const note = ref('')
+// A stalled review in one plain sentence: its reviewer gone, or still there past the step's time limit.
+const reviewSay = computed(() => (props.card.terminal
+  ? tl(`The review has run over ${props.card.plan[props.card.state?.at ?? 0]?.timeout ?? 'its time limit'} without a verdict. Restart it to review the PR's latest commit from the start.`)
+  : tl('The reviewer stopped without giving a verdict. Restart the review to review the PR\'s latest commit again.')))
 
 const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent asks a question', 'Son agent pose une question'], permission: ['Its agent asks for a permission', 'Son agent demande une autorisation'], auth: ['Its agent needs its login again', 'Son agent doit se reconnecter'] }
 </script>
@@ -49,16 +53,17 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
   <div class="todo" :data-todo="kind" data-testid="task-todo">
     <template v-if="kind === 'merge'">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
-      <TaskNotes v-if="notes.worker || notes.review" :worker="notes.worker" :review="notes.review" :summary="card.summary" />
-      <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
-      <ul class="todo-shots" data-testid="todo-shots">
-        <li v-for="(src, i) in shots" :key="src">
-          <button type="button" class="todo-shot" :aria-label="tl(`Screenshot ${i + 1}, full size`)" data-testid="shot" @click="openLightbox(shots, i)">
-            <img :src="src" alt="" decoding="async" @load="loaded(src, $event)">
-          </button>
-          <span v-if="shape[src]" class="mono-label muted">{{ shape[src] === 'phone' ? tl('Phone', 'Téléphone') : tl('Desktop', 'Ordinateur') }}</span>
-        </li>
-      </ul>
+      <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="emit('comments')">
+        <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
+        <ul class="todo-shots" data-testid="todo-shots">
+          <li v-for="(src, i) in shots" :key="src">
+            <button type="button" class="todo-shot" :aria-label="tl(`Screenshot ${i + 1}, full size`)" data-testid="shot" @click="openLightbox(shots, i)">
+              <img :src="src" alt="" decoding="async" @load="loaded(src, $event)">
+            </button>
+            <span v-if="shape[src]" class="mono-label muted">{{ shape[src] === 'phone' ? tl('Phone', 'Téléphone') : tl('Desktop', 'Ordinateur') }}</span>
+          </li>
+        </ul>
+      </TaskTldr>
     </template>
 
     <template v-else-if="kind === 'decide' && advice">
@@ -74,9 +79,11 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       <p v-if="!pane" class="muted">{{ tl('Its agent is not on screen here: open it from its machine.') }}</p>
     </template>
 
+    <p v-else-if="kind === 'review'" class="todo-say" data-testid="task-badge">{{ reviewSay }}</p>
+
     <template v-else-if="!refused">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
-      <TaskNotes v-if="notes.worker || notes.review" :worker="notes.worker" :review="notes.review" :summary="card.summary" />
+      <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="emit('comments')" />
     </template>
 
     <div class="todo-actions">
@@ -98,6 +105,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
         <!-- A refused action is tried again from the sheet's top (Try again). -->
         <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy || waits !== undefined" data-testid="step-user" @click="emit('press')">{{ card.userLabel }}</UButton>
         <UButton v-if="pr" color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" :to="pr.url" target="_blank" data-testid="todo-pr">{{ tl('Open the PR') }}</UButton>
+        <UButton v-if="kind === 'review'" color="primary" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="todo-review-restart" @click="emit('review')">{{ tl('Restart the review') }}</UButton>
         <UButton v-if="kind === 'blocked' && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="emit('start')">{{ tl('Start', 'Lancer') }}</UButton>
         <UButton v-if="pane && kind !== 'merge' && kind !== 'step'" :color="kind === 'ask' ? 'primary' : 'neutral'" :variant="kind === 'ask' ? 'solid' : 'outline'" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)" data-testid="todo-agent">
           {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}

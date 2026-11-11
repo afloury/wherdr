@@ -70,6 +70,9 @@ it('the card says where its PR and merge stand: waiting for checks, merging, fai
   expect(cardStatus({ ...at(2), prNow: waiting })).toEqual({ text: 'PR open · waiting for checks (smoke)', tone: 'wait' })
   expect(cardStatus({ ...at(3, { acting: true }), prNow: waiting })).toEqual({ text: 'PR open · waiting for checks (smoke)', tone: 'wait' })
   expect(cardStatus({ ...at(3, { acting: true }), prNow: 'ready to merge' })).toEqual({ text: 'merging', tone: 'wait' })
+  // Mergeable on GitHub, the review not approved yet: never 'ready to merge'.
+  expect(cardStatus({ ...at(2), prNow: 'ready to merge' })).toEqual({ text: 'PR open · review pending', tone: 'wait' })
+  expect(cardStatus({ ...at(3), prNow: 'ready to merge' })).toEqual({ text: 'PR open · ready to merge', tone: 'wait' })
   const failed = (error: string) => at(3, { yourTurn: { reason: 'action', badge: `merge: ${error}`, error } })
   expect(cardStatus(failed('merge: 1 check(s) failed'))).toEqual({ text: 'checks failed', tone: 'bad' })
   expect(cardStatus(failed('merge: the PR head is not the task\'s commit'))).toEqual({ text: 'The PR is not at the task\'s latest commit', tone: 'bad' })

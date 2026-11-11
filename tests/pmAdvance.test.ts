@@ -2,11 +2,12 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DONE_CMD, READ_SEP, chainState, dueText, parseRead, proofsOf, runsNow, signalEvent, type SignalRead } from '../shared/pm/advance'
+import { DONE_CMD, READ_SEP, chainState, dueText, parseRead, proofsOf, runsNow, signalEvent, signalKept, type SignalRead } from '../shared/pm/advance'
 import { initialState, onEvent, planSteps, type StepEvent, type StepState } from '../shared/pm/steps'
 import { company, github, vibe, common } from '../shared/pm/examples'
 import type { Template } from '../shared/pm/workflow'
 import type { Task } from '../shared/pm/run'
+import { taskHistory } from '../shared/pm/history'
 
 const read = (more: Partial<SignalRead> = {}): SignalRead => ({ head: 'abc1234', diffLines: 12, note: '', verdict: '', ...more })
 const major = '{"findings":[{"id":"no-test","severity":"major","title":"No test","proof":"npm test: 0 tests"}]}'
@@ -133,6 +134,28 @@ describe('end signals', () => {
     expect(r).toEqual({ head: 'abc1234', diffLines: 42, note: 'See https://github.com/o/r/pull/3.', verdict: '{"findings":[]}' })
     expect(proofsOf(r)).toMatchObject({ link: 'https://github.com/o/r/pull/3', commit: 'abc1234', report: r.note })
     expect(proofsOf(read({ head: undefined }))).toEqual({})
+    // Then the branch, its own commits' fingerprint and its files with their line counts (binary: 0).
+    const w = parseRead(['abc1234', '42', '', '', 'task/X-1\n', '123 45\n', '3\t1\tsrc/a.ts\n-\t-\tlogo.png\n'].join(`${READ_SEP}\n`))
+    expect(w.work).toEqual({ commits: '123 45', files: [{ path: 'src/a.ts', add: 3, del: 1 }, { path: 'logo.png', add: 0, del: 0 }] })
+  })
+
+  it('keeps each worker report as it arrives, and the commits a verdict read', () => {
+    const w = (commits: string) => ({ commits, files: [] })
+    const base = { id: 'X-1', project: 'X', title: 't', description: '', type: 'feature', state: 'working' } as Task
+    const a = signalKept(base, 'work', { kind: 'report' }, read({ note: 'First', work: w('1') }))
+    expect(a).toEqual({ work: w('1'), workReports: [{ step: 'work', text: 'First' }] })
+    const b = signalKept({ ...base, ...a }, 'review', { kind: 'verdict' }, read({ verdict: '{}', work: w('1') }))
+    expect(b).toEqual({ work: { ...w('1'), reviewed: '1' } })
+    const c = signalKept({ ...base, ...a, ...b }, 'work', { kind: 'report' }, read({ note: 'Second', work: w('2') }))
+    expect(c).toEqual({ work: { ...w('2'), reviewed: '1' }, workReports: [{ step: 'work', text: 'First' }, { step: 'work', text: 'Second' }] })
+
+    // An empty report keeps its place: the earlier one stays on its own "done".
+    const d = signalKept({ ...base, ...c }, 'work', { kind: 'report' }, read({ note: '', work: w('3') }))
+    expect(d.workReports!.map(r => r.text)).toEqual(['First', 'Second', ''])
+    const log = ['work: done', 'review: verdict, 0 finding(s)', 'work: done'].map((text, i) => ({ at: i, by: i === 1 ? 'reviewer x' : 'worker x', text }))
+    const reports = [{ step: 'work', text: 'Original report' }, { step: 'work', text: '' }]
+    expect(taskHistory(log, [{ id: 'work' }, { id: 'review' }], { proofs: {} }, false, reports).filter(e => e.who === 'worker').map(e => e.text))
+      .toEqual(['Original report', 'Reported done.'])
   })
 
   it('a verdict that does not parse is sent back to the reviewer, with how to answer', () => {

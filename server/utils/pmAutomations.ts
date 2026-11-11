@@ -2,7 +2,7 @@
 // that is due, or an event on a task, adds a task from the project's
 // template and starts it at once (shared/pm/automations.ts). The user's
 // "run now" goes through `fireAutomation` too.
-import { addFiring, firesOn, firingTask, taskEvents, type Automation, type Firing } from '../../shared/pm/automations'
+import { addFiring, answerAutomation, firesOn, firingTask, taskEvents, type Automation, type Firing } from '../../shared/pm/automations'
 import { due, parseSchedule } from '../../shared/pm/schedule'
 import type { Project } from '../../shared/pm/project'
 import { HerdrError } from './herdr'
@@ -12,7 +12,7 @@ import { goesTo, paceOf, placeFor } from './pmPlace'
 import { startTask, type PmLaunchDeps } from './pmLaunch'
 
 // Adds the firing's task and starts it; a refusal stays on the firing.
-async function fire(deps: PmLaunchDeps, p: Project, a: Automation, f: Omit<Firing, 'task' | 'error'>): Promise<Firing> {
+async function fire(deps: PmLaunchDeps, p: Project, a: Automation, f: Omit<Firing, 'task' | 'error' | 'held'>): Promise<Firing> {
   const t = p ? await deps.store.workflow(p.key) : null
   if (!t) return { ...f, error: 'The project has no template' }
   // A schedule or an event is automatic work: held by the worker account's pace,
@@ -23,7 +23,7 @@ async function fire(deps: PmLaunchDeps, p: Project, a: Automation, f: Omit<Firin
     const task = await deps.store.addTask(firingTask(a, p.key, Object.keys(t.taskTypes)[0]!, f.at, f.cause))
     // No room on any allowed machine: the task is added and waits for it (the engine starts it then). "Run now" goes.
     const { on, short: held } = goesTo(await placeFor(deps, task, { waits: pace?.waits }))
-    if (held && f.by !== 'user') return { ...f, task: (await deps.store.logTask({ ...task, held }, 'engine', held)).id, error: held }
+    if (held && f.by !== 'user') return { ...f, task: (await deps.store.logTask({ ...task, held }, 'engine', held)).id, error: held, held: true }
     if (on !== undefined) forgetMemory(on)
     const started = await startTask(deps, task.id, on !== undefined ? { on } : {}).catch((e: Error) => ({ ...task, state: 'waiting' as const, waiting: e.message }))
     return { ...f, task: task.id, ...(started.state === 'waiting' ? { error: started.waiting ?? 'Not started' } : {}) }
@@ -73,3 +73,11 @@ export async function fireAutomation(deps: PmLaunchDeps, key: string, id: string
   await record(deps, key, [[id, f]], 'keep')
   return f
 }
+
+// The user's Accept or Refuse on a proposal of the coordinator or Alfred.
+export const answerAutomationProposal = (deps: Pick<PmLaunchDeps, 'store'>, key: string, id: string, accept: boolean) =>
+  deps.store.changeAutomations(key, (f) => {
+    const r = answerAutomation(f, id, accept, Date.now())
+    if ('error' in r) throw new HerdrError('refused', r.error)
+    return { file: { ...f, ...r }, out: { accepted: accept } }
+  })

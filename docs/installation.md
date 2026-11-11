@@ -51,6 +51,33 @@ HC_SOCKET=/path/to/hc.sock npm start
 are environment variables ([Configuration](configuration.md#configuration)); `DATA_DIR` defaults
 to `./data`, in the checkout.
 
+### The hc socket
+
+`HC_SOCKET` is the socket of the hc session wherdr drives. An hc session named `<session>`
+(`default` unless you name one with `HC_SESSION`) listens by default on:
+
+- Linux: `$XDG_RUNTIME_DIR/herdr-core/<session>.sock`, usually
+  `/run/user/<uid>/herdr-core/default.sock`;
+- macOS (no `XDG_RUNTIME_DIR`): `~/.local/state/herdr-core/<session>/<session>.sock`, so
+  `~/.local/state/herdr-core/default/default.sock`.
+
+A `socket` set in hc's `config.toml` replaces it. Give wherdr the full path (a service does not
+expand `~`).
+
+### v2 and v3 on one computer
+
+wherdr v2 and a v3 started by hand both listen on `127.0.0.1:7683`: the second one to start
+fails, or you open the other one without noticing. Start v3 on another port (`PORT=7684 npm
+start`, or `Environment=PORT=7684` in its unit). The [install script](migrate-from-v2.md#by-hand)
+does it for you (`7684`).
+
+### On macOS
+
+The script needs `systemd --user`, so on macOS install by hand: the steps above, with the macOS
+socket path. To keep wherdr running, use a LaunchAgent (below). Machines added to hc over SSH
+work the same; a Mac that sleeps stops its agents, which
+[Keep awake](machines.md#manage-machines) prevents while you need them.
+
 ### Keep it running
 
 Run it with your usual service manager. On Linux, a `systemd --user` unit such as

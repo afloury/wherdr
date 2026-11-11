@@ -115,7 +115,11 @@ export async function askAlfred(text: string) {
 }
 
 // One tap: its conversation while it runs, else a new one with its default agent.
-export async function openCoordinator(c: CoordinatorView) {
+// draft: a first message offered in its field, unless the user already wrote one.
+export async function openCoordinator(c: CoordinatorView, draft?: string) {
   const p = coordinatorPane(c) ?? await launchCoordinator(c.project, coordinatorAgent(c))
-  if (p) await navigateTo(panePath(p.id))
+  if (!p) return
+  const d = draft ? useDraft(p.id) : null
+  if (d && !d.text.trim()) d.text = draft!
+  await navigateTo(panePath(p.id))
 }

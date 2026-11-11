@@ -111,16 +111,20 @@ onUnmounted(() => clearInterval(timer))
 </template>
 
 <style scoped>
-/* A card of its own: a faint mauve wash, a mauve edge when its conversation is open. */
-.alfred-card { position: relative; margin-bottom: 20px; border: 1px solid color-mix(in srgb, var(--mauve) 35%, var(--line)); background: linear-gradient(135deg, color-mix(in srgb, var(--mauve) 8%, var(--surface)), var(--surface) 70%); }
+/* A card of its own: a faint mauve wash, and the same neutral edge as the other
+   cards; the mauve edge and left bar only while its conversation is open, on
+   top of the same wash (nothing paints over it when selected). */
+.alfred-card { position: relative; margin-bottom: 20px; border: 1px solid var(--line); background: linear-gradient(135deg, color-mix(in srgb, var(--mauve) 8%, var(--surface)), var(--surface) 70%); }
+.alfred-card.sel { border-color: color-mix(in srgb, var(--mauve) 35%, var(--line)); }
 .alfred-card::before { content: ''; position: absolute; z-index: 1; left: -1px; top: -1px; bottom: -1px; width: 2px; background: transparent; }
 .alfred-card.sel::before { background: var(--mauve); }
 .alfred-card.banner { flex: none; margin: 0; border-width: 0 0 1px; background: var(--surface); }
 .alfred-card.banner .alfred-open { min-height: 52px; padding: 8px 16px; }
 .alfred { display: flex; align-items: stretch; }
-.alfred.sel { background: color-mix(in srgb, var(--surface-2) 80%, transparent); }
 .alfred-open { display: flex; flex: 1; align-items: center; gap: 12px; min-width: 0; min-height: 64px; padding: 10px 12px; color: var(--text); text-align: left; cursor: pointer; }
-.alfred-open:hover:not(:disabled) { background: color-mix(in srgb, var(--surface-2) 70%, transparent); }
+/* Hover only where a pointer hovers (a tap leaves it stuck on a phone), and light
+   enough that the wash shows through. */
+@media (hover: hover) { .alfred-open:hover:not(:disabled) { background: color-mix(in srgb, var(--surface-2) 40%, transparent); } }
 .alfred-open:disabled { cursor: progress; }
 .alfred-open:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .alfred-mark { display: grid; flex: none; place-items: center; width: 40px; height: 40px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }

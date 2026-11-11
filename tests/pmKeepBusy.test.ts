@@ -9,6 +9,7 @@ import { createPmStore } from '../server/utils/pmStore'
 import { HerdrError } from '../server/utils/herdr'
 import { startTask } from '../server/utils/pmLaunch'
 import { startNext } from '../server/utils/pmMechanic'
+import { machinesNow } from '../server/utils/pmPlace'
 
 vi.mock('../server/utils/pmLaunch', async orig => ({ ...(await orig<typeof import('../server/utils/pmLaunch')>()), startTask: vi.fn() }))
 
@@ -67,6 +68,26 @@ describe('keep the board busy', () => {
       expect(await startNext(deps)).toEqual([])
       expect(startTask).toHaveBeenCalledTimes(2)
       expect((await store.task(second.id))!.log ?? []).toEqual([])
+    } finally { await fs.rm(dir, { recursive: true, force: true }) }
+  })
+
+  it('shows the next task in the Machines view, or why it waits when only a chained one is left', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-busy-'))
+    try {
+      const store = createPmStore(dir)
+      await store.setEnabled(true)
+      await store.saveTemplate(github)
+      const p = await store.addProject({ key: 'AA', machine: 'm1', path: '/src/AA', template: 'github' }, async (_m, x) => x)
+      await store.saveCoordinator({ project: 'AA', tokenHash: '', autopilot: ap })
+      const first = await store.addTask({ project: 'AA', title: 'First', type: 'simple' })
+      const meminfo = `MemTotal: ${64 * 1024 * 1024} kB\nMemAvailable: ${60 * 1024 * 1024} kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n`
+      const call = async (method: string) => (method === 'machine.exec' ? { code: 0, stdout: Buffer.from(meminfo).toString('base64') } : {})
+      const deps = { store, call, machines: () => [{ key: 'm1', local: false, label: 'box', status: 'online' }] } as never
+      expect((await machinesNow(deps, p)).next).toEqual({ task: first.id, title: 'First', weight: expect.any(String), on: 'box' })
+      // Under way, with a to-do task chained after it: Next names that one and its wait, not "no task".
+      await store.saveTask({ ...first, state: 'working', step: { at: 1, started: true, proofs: {}, rounds: {} } })
+      const second = await store.addTask({ project: 'AA', title: 'Second', type: 'simple', after: first.id })
+      expect((await machinesNow(deps, p)).next).toMatchObject({ task: second.id, why: expect.stringContaining(first.id) })
     } finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
 })
