@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // An automation the coordinator or Alfred proposed (`wherdr pm automation
-// propose`): new, changed or removed, what it does (its prompt), when it fires;
+// propose`): new, changed or removed, what it does (its whole prompt: Accept
+// saves all of it), when it fires;
 // Accept / Refuse while it waits, else its outcome. In the conversation that
 // proposed it (ChatView) and in the project's Automations tab.
 import type { AutomationProposal } from '#shared/pm/automations'
@@ -48,7 +49,7 @@ async function send(accept: boolean) {
 .ap-title { color: var(--text); }
 .ap-name, .ap-prompt { overflow-wrap: anywhere; }
 .ap-when { color: var(--accent); }
-.ap-prompt { margin: 0; white-space: pre-wrap; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.ap-prompt { margin: 0; white-space: pre-wrap; }
 .ap-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 8px; padding-top: 4px; }
 .ap-outcome { margin: 0; font: 12px/1.4 var(--font-mono); }
 .ap-outcome.ok { color: var(--green); }

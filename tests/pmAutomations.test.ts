@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanAutomation, firesOn, firingTask, globMatch, scheduleWords, taskEvents, type Automation } from '../shared/pm/automations'
+import { cleanAutomation, firesOn, firingKind, firingTask, globMatch, scheduleWords, taskEvents, type Automation } from '../shared/pm/automations'
 import type { Task } from '../shared/pm/run'
 import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
@@ -68,6 +68,9 @@ describe('automations', () => {
     expect(firesOn({ ...a, filter: undefined }, ev(task('CO-1', { auto: 'a' })))).toBe(false)
     expect(firesOn({ ...a, filter: undefined }, ev(task('CO-1', { auto: 'other' })))).toBe(false)
     expect(firesOn({ ...a, event: 'failed' }, ev(task('CO-1', { title: 'Docs' })))).toBe(false)
+    // A task added then a start that failed is a failure; held for room, it waits.
+    expect([{ error: 'boom', task: 'CO-1' }, { error: 'No room', task: 'CO-1', held: true as const }, { error: 'paced: limit' }, {}].map(f => firingKind({ at: 0, by: 'schedule', ...f })))
+      .toEqual(['failed', 'waits', 'skipped', 'fired'])
     expect(firingTask(auto({ type: 'study' }), 'CO', 'feature', at(5, 4, 17), 'CO-1 (Fix): merged'))
       .toEqual({ project: 'CO', title: 'A · 2026-11-05 04:17', type: 'study', auto: 'a', origin: 'automation', addedBy: 'automation', description: 'Do it\n\nTriggered by CO-1 (Fix): merged.' })
   })
@@ -160,7 +163,13 @@ describe('the engine', () => {
     await propose(['clean'], { name: 'Clean', prompt: 'Remove dead tests', schedule: '0 9 * * 1-5' })
     await answer(true)
     expect((await store.automations('CO')).automations[0]).toMatchObject({ prompt: 'Remove dead tests', on: false, firings: [{ task: 'CO-1' }] })
-    expect(scheduleWords('0 9 * * 1-5')).toBe('every weekday at 9:00')
+    expect(Object.fromEntries(['0 9 * * 1-5', 'daily 09:00', 'mon,thu 09:00', '0 9,14 * * *', '0 9 1 * *', '*/15 * * * *', '0 */2 * * *', '30 9-17 * * 1-5', '5,20 * * * *', '0 0 * 1 *', 'every 2h']
+      .map(x => [x, scheduleWords(x)]))).toEqual({
+      '0 9 * * 1-5': 'every weekday at 9:00', 'daily 09:00': 'every day at 9:00', 'mon,thu 09:00': 'every Monday and Thursday at 9:00',
+      '0 9,14 * * *': 'every day at 9:00 and 14:00', '0 9 1 * *': 'at 9:00 on day 1 of the month', '*/15 * * * *': 'every 15 minutes',
+      '0 */2 * * *': 'every 2 hours at :00', '30 9-17 * * 1-5': 'every hour at :30 from 9:00 to 17:59 on weekdays', '5,20 * * * *': 'at minutes 5 and 20',
+      '0 0 * 1 *': 'every day at 0:00 in January', 'every 2h': 'every 2 hours',
+    })
     // A removal; the outcomes stay for automation list.
     await propose(['docs-check', '--remove'])
     await answer(true)

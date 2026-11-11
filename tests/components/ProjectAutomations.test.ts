@@ -7,7 +7,7 @@ import type { Automation, AutomationProposal } from '#shared/pm/automations'
 const posts: [string, Record<string, unknown>][] = []
 let list: Automation[] = []
 let proposals: AutomationProposal[] = []
-registerEndpoint('/api/pm/automations', () => ({ automations: list, proposals }))
+registerEndpoint('/api/pm/automations', () => ({ automations: list, proposals, next: { clean: at + 86_400_000, watch: at } }))
 for (const url of ['/api/pm/automation', '/api/pm/automation-proposal']) {
   registerEndpoint(url, { method: 'POST', handler: async (e) => {
     const b = await readBody(e)
@@ -44,11 +44,16 @@ it('lists each automation: its trigger in words, its next firing, its last resul
   await vi.waitFor(() => expect(posts[1]).toEqual(['/api/pm/automation', { project: 'W3', id: 'clean', runNow: true }]))
 })
 
-it('shows a waiting proposal with what it does and when; Accept answers it', async () => {
+it('shows a proposal made while the tab is open, with its whole prompt; Accept answers it', async () => {
   list = []
-  proposals = [{ id: 'p1-docs', project: 'W3', action: 'add', automation: watch, at, by: 'W3' }]
+  vi.useFakeTimers({ toFake: ['setInterval'] })
   const b = await mount()
+  await vi.waitFor(() => expect(b.find('[data-testid="automations-empty"]').exists()).toBe(true))
+  proposals = [{ id: 'p1-docs', project: 'W3', action: 'add', automation: { ...watch, prompt: 'Check the docs\n2\n3\n4\n5\nsixth line' }, at, by: 'W3' }]
+  vi.advanceTimersByTime(15_000)
+  vi.useRealTimers()
   await vi.waitFor(() => expect(b.find('[data-testid="automation-proposal"]').exists()).toBe(true))
+  expect(b.find('.ap-prompt').text()).toContain('sixth line')
   const card = b.find('[data-testid="automation-proposal"]')
   expect(card.text()).toContain('New automation')
   expect(card.text()).toContain('Check the docs')

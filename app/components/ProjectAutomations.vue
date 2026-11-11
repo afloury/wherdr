@@ -4,11 +4,13 @@
 // Refuse (AutomationProposalCard); then each automation, its switch, what fires
 // it in words, its next firing and its last results as a short timeline, and
 // Run now. No form: the user asks the project's coordinator (or Alfred).
-import { firingKind, nextFiring, type Automation, type AutomationProposal, type Firing } from '#shared/pm/automations'
+import { firingKind, type Automation, type AutomationProposal, type Firing } from '#shared/pm/automations'
 
 const props = defineProps<{ project: string, name: string }>()
 const list = ref<Automation[]>([])
 const proposals = ref<AutomationProposal[]>([])
+// Each schedule's next firing, from the server (its time zone runs them).
+const nextAt = ref<Record<string, number>>({})
 const busy = ref('')
 const error = ref('')
 const TIMELINE = 5
@@ -16,13 +18,16 @@ const KIND: Record<ReturnType<typeof firingKind>, string> = { fired: 'Fired', wa
 const timeline = (a: Automation) => [...(a.firings ?? [])].slice(-TIMELINE).reverse()
 const result = (f: Firing) => [f.task, firingKind(f) === 'fired' ? '' : f.error].filter(Boolean).join(' · ')
 const when = (at: number) => new Date(at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
-const next = (a: Automation) => nextFiring(a, Date.now())
 
 async function load() {
-  try { ({ automations: list.value, proposals: proposals.value } = await api<{ automations: Automation[], proposals: AutomationProposal[] }>(`/api/pm/automations?project=${encodeURIComponent(props.project)}`)) }
+  try { ({ automations: list.value, proposals: proposals.value, next: nextAt.value } = await api<{ automations: Automation[], proposals: AutomationProposal[], next: Record<string, number> }>(`/api/pm/automations?project=${encodeURIComponent(props.project)}`)) }
   catch (e) { error.value = (e as Error).message }
 }
-onMounted(load)
+// Read again while open: a new proposal or a firing shows without a reload.
+const REFRESH_MS = 15_000
+let timer: ReturnType<typeof setInterval> | undefined
+onMounted(() => { void load(); timer = setInterval(() => { if (!busy.value && document.visibilityState === 'visible') void load() }, REFRESH_MS) })
+onUnmounted(() => clearInterval(timer))
 
 async function run(what: string, fn: () => Promise<unknown>) {
   if (busy.value) return
@@ -57,7 +62,7 @@ const ask = () => run('ask', async () => { if (coordinator.value) await openCoor
           <div class="pa-id">
             <b>{{ a.name }}</b>
             <small class="mono-label" data-testid="automation-trigger">{{ automationTrigger(a) }}</small>
-            <small v-if="next(a)" class="muted" data-testid="automation-next">{{ tl('Next') }} {{ when(next(a)!) }}</small>
+            <small v-if="a.on && nextAt[a.id]" class="muted" data-testid="automation-next">{{ tl('Next') }} {{ when(nextAt[a.id]!) }}</small>
           </div>
           <UButton color="neutral" variant="ghost" size="lg" icon="i-lucide-play" :loading="busy === `run:${a.id}`" :disabled="!!busy" :aria-label="tl(`Run ${a.name} now`)" data-testid="automation-run" @click="runNow(a)" />
         </div>

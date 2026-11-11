@@ -11,7 +11,8 @@ import { isPrUrl } from './board'
 export const AUTOMATION_EVENTS = ['added', 'approval', 'review-failed', 'failed', 'needs-you', 'merged'] as const
 export type AutomationEvent = typeof AUTOMATION_EVENTS[number]
 
-export interface Firing { at: number, by: 'schedule' | 'event' | 'user', cause?: string, task?: string, error?: string }
+// held: its task was added and waits for a machine with room (error says why).
+export interface Firing { at: number, by: 'schedule' | 'event' | 'user', cause?: string, task?: string, error?: string, held?: true }
 
 export interface Automation {
   id: string
@@ -178,7 +179,18 @@ export function answerAutomation(file: { automations: Automation[], proposals?: 
 }
 
 const DAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
-// "every weekday at 9:00", "every 2 hours"; a cron it cannot say stays as written.
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+const and = (l: (string | number)[]) => l.join(', ').replace(/, ([^,]*)$/, ' and $1')
+const clock = (h: number, m: number) => `${h}:${String(m).padStart(2, '0')}`
+// k when the list is 0, k, 2k… up to `hi` (a */k field), else 0.
+const stepOf = (l: number[], hi: number) => {
+  const k = l[1] ?? 0
+  return l.length > 1 && l[0] === 0 && k > 1 && l.length === Math.floor(hi / k) + 1 && l.every((v, i) => v === i * k) ? k : 0
+}
+const span = (l: number[]) => l.length > 1 && l.every((v, i) => !i || v === l[i - 1]! + 1)
+
+// "every weekday at 9:00", "every 15 minutes", "every hour at :30 from 9:00
+// to 17:59 on weekdays": a schedule in words, a cron too.
 export function scheduleWords(raw: string) {
   const s = parseSchedule(raw)
   if ('error' in s) return raw
@@ -186,13 +198,22 @@ export function scheduleWords(raw: string) {
     const m = s.every / 60_000
     return m % 60 ? `every ${m === 1 ? 'minute' : `${m} minutes`}` : `every ${m === 60 ? 'hour' : `${m / 60} hours`}`
   }
-  if (s.min.length !== 1 || s.hour.length !== 1 || s.dom || s.mon) return raw
-  const at = `at ${s.hour[0]}:${String(s.min[0]).padStart(2, '0')}`, d = s.dow?.join(',')
-  const days = !d || d === '0,1,2,3,4,5,6' ? 'day' : d === '1,2,3,4,5' ? 'weekday' : d === '0,6' ? 'Saturday and Sunday' : s.dow!.map(x => DAY_NAMES[x]).join(', ').replace(/, ([^,]*)$/, ' and $1')
-  return `every ${days} ${at}`
+  const { min, hour } = s, d = s.dow?.join(',')
+  const allHours = hour.length === 24, hs = stepOf(hour, 23), ms = stepOf(min, 59)
+  const days = !s.dow || d === '0,1,2,3,4,5,6' ? '' : d === '1,2,3,4,5' ? 'weekday' : d === '0,6' ? 'Saturday and Sunday' : and(s.dow.map(x => DAY_NAMES[x]!))
+  const dates = [s.dom ? `on day ${and(s.dom)} of the month` : '', s.mon ? `in ${and(s.mon.map(x => MONTHS[x - 1]!))}` : ''].filter(Boolean).join(' ')
+  // At set times of the day: "every Monday at 9:00 and 14:00".
+  if (min.length === 1 && !allHours && !hs && hour.length <= 4 && !span(hour))
+    return [`every ${days || (s.dom ? '' : 'day')}`.trim(), `at ${and(hour.map(h => clock(h, min[0]!)))}`, dates].filter(x => x && x !== 'every').join(' ')
+  const often = min.length === 60 ? 'every minute' : ms ? `every ${ms} minutes`
+    : min.length === 1 ? `every ${hs ? `${hs} hours` : 'hour'} at :${String(min[0]).padStart(2, '0')}`
+    : `at minutes ${and(min)}`
+  const hours = allHours || (min.length === 1 && hs) ? '' : span(hour) ? `from ${clock(hour[0]!, 0)} to ${clock(hour.at(-1)!, 59)}` : hs ? `every ${hs} hours` : `in the hours ${and(hour.map(h => clock(h, 0)))}`
+  return [often, hours, days ? `on ${days === 'weekday' ? 'weekdays' : days}` : '', dates].filter(Boolean).join(' ')
 }
 
-// When a switched-on schedule fires next (a missed slot: at the next tick).
+// When a switched-on schedule fires next (a missed slot: at the next tick), in
+// the server's time zone: the server computes it for the tab.
 export function nextFiring(a: Automation, now: number) {
   const s = a.on && a.schedule ? parseSchedule(a.schedule) : null
   const n = s && !('error' in s) ? nextRun(s, a.last ?? now) : null
@@ -200,5 +221,6 @@ export function nextFiring(a: Automation, now: number) {
 }
 
 // A firing as the timeline shows it: a task added and started, added and
-// waiting for room, skipped (the pace held it), or failed.
-export const firingKind = (f: Firing) => (!f.error ? 'fired' : f.task ? 'waits' : f.error.startsWith('paced') ? 'skipped' : 'failed')
+// waiting for room (held), skipped (the pace held it), or failed (a start
+// that failed, its task added or not).
+export const firingKind = (f: Firing) => (!f.error ? 'fired' : f.held ? 'waits' : !f.task && f.error.startsWith('paced') ? 'skipped' : 'failed')
