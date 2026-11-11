@@ -1,0 +1,311 @@
+// Runs one engine action in a task's worktree, on its project's machine:
+// guard first, receipt before, transient errors tried again (1, 2, 4, 8 min),
+// then the alert when the task's commit sits on a protected branch that no
+// step of the user and no guarded action put it on.
+import { PATH_SETUP, type CoreAdminDeps } from './coreCreate'
+import { exec } from './pmLaunch'
+import type { PmStore } from './pmStore'
+import { mayMerge } from '../../shared/pm/guards'
+import { BB_STRATEGY, CODE, RETRY_MS, SCRIPT, bbReady, commandState, guardAction, isTransient, leaks, prReady, receiptId, runsState, type ActionResult, type GhRun, type PrInfo } from '../../shared/pm/actions'
+import type { ResolvedGuards } from '../../shared/pm/guards'
+import type { BbStatus } from '../../shared/pm/actions'
+import { isPrMerge, type MergeBy, type StepAction } from '../../shared/pm/workflow'
+
+type Shell = (script: string, args: string[], input?: string) => Promise<{ code: number | null, out: string }>
+export interface ActionDeps {
+  store: Pick<PmStore, 'receipt' | 'saveReceipt'>
+  sh: Shell
+  sleep?: (ms: number) => Promise<void>
+}
+export interface ActionJob {
+  task: { id: string, title: string, description: string, project?: string }
+  shown?: string // the task id as the user sees it, for the PR title
+  step: string
+  attempt: number // from the step engine's action effect
+  action: StepAction
+  by: MergeBy // 'user' when the user's gesture started it
+  guards: ResolvedGuards
+  worktree: string
+  branch: string
+  allowed?: string[] // protected branches the task already reached through you
+  reviewed?: string // a PR merge: the commit the last review passed
+  approved?: string // github.merge: the commit the user approved; the interface changed since → asked again
+  halted?: () => Promise<boolean> // the task was stopped meanwhile: no merge
+}
+
+// A merge cut by a restart (wherdr reloading after a merge, an update) asks
+// GitHub where its PR stands, at most this many times, then goes to the user.
+export const MERGE_RESUMES = 2
+// The merges running now: a shutdown waits for them (server/plugins/pm.ts).
+const merging = new Set<Promise<unknown>>()
+export const mergesSettled = (ms: number) =>
+  Promise.race([Promise.allSettled([...merging]), pause(ms)]).then(() => merging.size === 0)
+
+// The shell of a project's machine, through herdr-core. stderr is kept: a
+// transient error is often only there.
+export const actionShell = (deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined): Shell =>
+  async (script, args, input) => {
+    const r = await exec(deps, on, `${PATH_SETUP}\n${script}`, args, input)
+    return { code: r.code, out: [r.out, r.err].filter(Boolean).join('\n') }
+  }
+
+// A PR head made by GitHub's Update branch (SCRIPT.headOf says update): taken
+// into the worktree, where the project's after-merge fix runs, then pushed at
+// once so the PR does not keep the unfixed merge.
+export async function takeUpdate(sh: Shell, wt: string, branch: string, guards: ResolvedGuards, by: MergeBy):
+Promise<{ ok: true, head: string } | { ok: false, error: string, toAgent?: boolean }> {
+  const failed = (r: { code: number | null, out: string }) => ({ ok: false as const, error: lastLine(r.out) || `exit code ${r.code}`, ...(r.code === CODE.SEND_BACK ? { toAgent: true } : {}) })
+  const y = await sh(SCRIPT.sync, [wt, branch])
+  if (y.code !== 0) return failed(y)
+  const no = guardAction(guards, { kind: 'git.push' }, { branch, by })
+  if (no) return { ok: false, error: no }
+  const up = await sh(SCRIPT.push, [wt, branch])
+  return up.code === 0 ? { ok: true, head: lastLine(up.out) } : failed(up)
+}
+
+// GitHub's words for a PR in conflict with its base.
+const CONFLICT = /not mergeable|merge conflict|cannot be cleanly created/i
+const lastLine = (out: string) => out.trim().split('\n').pop()?.trim().slice(0, 300) || ''
+const pause = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
+// After a push, how long to wait for GitHub to show the new PR head: about a minute.
+const LAG_MS = [2_000, 4_000, 8_000, 15_000, 15_000, 15_000]
+
+export async function runAction(deps: ActionDeps, job: ActionJob): Promise<ActionResult> {
+  const { store } = deps
+  const id = receiptId(job.task.id, job.step, job.attempt)
+  const base = { id, task: job.task.id, step: job.step, action: job.action }
+  // A watch only reads: no receipt, each poll is a new one.
+  if (job.action.kind === 'pipeline.watch') return watch(deps, job)
+  const prev = await store.receipt(id)
+  if (prev?.state === 'done') return prev.result!
+  const merge = isPrMerge(job.action.kind)
+  const resumes = prev ? (prev.resumes ?? 0) + 1 : 0
+  if (prev && (!merge || prev.state !== 'pending' || resumes > MERGE_RESUMES)) {
+    await store.saveReceipt({ ...prev, state: 'uncertain' })
+    const why = merge && resumes > MERGE_RESUMES ? `interrupted ${MERGE_RESUMES + 1} times` : 'interrupted before its result was known'
+    return { ok: false, error: `${job.action.kind} was ${why}: check by hand, then try again` }
+  }
+  // Resumed, it keeps who started it: your gesture still counts for the guards.
+  if (prev?.by) job = { ...job, by: prev.by }
+  const refused = guardAction(job.guards, job.action, { branch: job.branch, by: job.by, project: job.task.project })
+  if (refused) return finish({ ok: false, error: refused })
+  await store.saveReceipt({ ...base, by: job.by, state: 'pending', at: Date.now(), ...(resumes ? { resumes } : {}) })
+  const running = perform(deps, job, resumes > 0)
+  if (!merge) return finish(await running)
+  merging.add(running)
+  try { return await finish(await running) } finally { merging.delete(running) }
+
+  async function finish({ reached, ...result }: Done) {
+    if (result.ok) {
+      const alert = await leakAlert(deps, job, result, reached ?? []).catch(() => undefined)
+      if (alert) result = { ...result, alert: [result.alert, alert].filter(Boolean).join('. ') }
+    }
+    await store.saveReceipt({ ...base, state: 'done', result, at: Date.now() })
+    return result
+  }
+}
+
+// Runs a script in the worktree; a transient error is tried again.
+async function run(deps: ActionDeps, script: string, args: string[], input?: string) {
+  for (let i = 0; ; i++) {
+    const r = await deps.sh(script, args, input)
+    if (r.code === 0 || !isTransient(r.code, r.out) || i >= RETRY_MS.length) return r
+    await (deps.sleep ?? pause)(RETRY_MS[i]!)
+  }
+}
+
+// reached: the protected branch a guarded merge put the commit on.
+type Done = ActionResult & { reached?: string[] }
+
+// resumed: an interrupted merge run again, which first finds where GitHub left its PR.
+async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promise<Done> {
+  const { action: a, worktree: wt, branch } = job
+  const name = a.kind.split('.')[1]
+  const fail = (r: { code: number | null, out: string }): ActionResult =>
+    ({ ok: false, error: `${name}: ${r.code === null ? 'timed out' : lastLine(r.out) || `exit code ${r.code}`}`, ...(r.code === CODE.SEND_BACK ? { toAgent: true } : {}) })
+  const commit = async (script: string, args: string[]) => {
+    const r = await run(deps, script, [wt, ...args])
+    return r.code === 0 ? { ok: true, commit: lastLine(r.out) } : fail(r)
+  }
+  switch (a.kind) {
+    case 'git.land': return commit(SCRIPT.land, [a.target!])
+    case 'git.push': return commit(SCRIPT.push, [branch])
+    case 'git.verify-merged': return commit(SCRIPT.verify, [a.target!, branch])
+    case 'github.pr': {
+      const r = await run(deps, SCRIPT.pr, [wt, branch, a.base!, `${job.shown ?? job.task.id}: ${job.task.title}`], job.task.description || job.task.title)
+      return r.code === 0 ? { ok: true, link: lastLine(r.out) } : fail(r)
+    }
+    case 'github.merge': {
+      // lag: waits for GitHub to show a fresh push; ci: waits for its checks. Counted apart.
+      let pushed = false, synced = false, lag = 0, ci = 0
+      for (;;) {
+        const r = await run(deps, SCRIPT.prInfo, [wt, branch])
+        if (r.code !== 0) return fail(r)
+        const lines = r.out.split('\n'), head = lines[0] ?? ''
+        let pr: PrInfo | undefined
+        try { pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] }
+        catch { return { ok: false, error: 'merge: unreadable PR details' } }
+        // Merged on GitHub already (by hand, or a merge answered with an error): done.
+        // Its base counts as reached only where this step could have merged:
+        // a protected branch merged outside your gesture still raises the alert.
+        if (pr?.merged) {
+          const reached = mayMerge(job.guards, pr.baseRefName, job.by) ? [pr.baseRefName] : []
+          if (!pr.stray) return { ok: true, link: pr.url, commit: head.trim(), reached, note: resumed ? 'merged before the restart' : 'already merged on GitHub' }
+          // Merged at a head without the task's commit: what GitHub merged is recorded, and what it left out is said.
+          const h = head.trim().slice(0, 7), m = pr.headRefOid.slice(0, 7)
+          return { ok: true, link: pr.url, commit: pr.headRefOid, reached, note: `already merged on GitHub at ${m}, without the task's commit ${h}`,
+            alert: `${job.task.id}'s commit ${h} was not merged: its PR was merged on GitHub at ${m} without it. Its later commits need a new branch` }
+        }
+        const refused = pr && guardAction(job.guards, a, { branch, by: job.by, base: pr.baseRefName })
+        if (refused) return { ok: false, error: refused }
+        if (pr) {
+          const h = head.trim(), at = await run(deps, SCRIPT.headOf, [wt, pr.headRefOid, pr.baseRefName])
+          if (at.code !== 0) return fail(at)
+          const where = lastLine(at.out)
+          // Updated on GitHub (Update branch): fixed in the worktree and pushed, then looked at again.
+          if (where === 'update' && !synced) {
+            synced = true
+            const u = await takeUpdate((sc, ar, i) => run(deps, sc, ar, i), wt, branch, job.guards, job.by)
+            if (!u.ok) return { ok: false, error: `merge: ${u.error}`, ...(u.toAgent ? { toAgent: true } : {}) }
+            continue
+          }
+          if (where === 'foreign') return { ok: false, error: `merge: the PR head ${pr.headRefOid.slice(0, 7)} has commits the task's worktree never had (pushed from elsewhere): bring them into the worktree, or merge by hand` }
+          // The head moved after the review (catch-up, conflict, CI fix): reviewed again first.
+          if (job.reviewed && job.reviewed !== h) return { ok: false, error: `merge: new commits since the review (${job.reviewed.slice(0, 7)}..${h.slice(0, 7)})`, review: { since: job.reviewed, head: h }, commit: h }
+          // Approved earlier: a new look at the interface only if the task's own UI files changed since.
+          if (job.approved && job.approved !== h) {
+            const ui = await run(deps, SCRIPT.uiChanged, [wt, pr.baseRefName, job.approved, h])
+            if (ui.code !== 0 || lastLine(ui.out) !== 'same') return { ok: false, error: `merge: the interface changed since your approval (${job.approved.slice(0, 7)}..${h.slice(0, 7)})`, unapproved: true, commit: h }
+          }
+          if (where === 'behind') {
+            if (pushed) {
+              // GitHub's API can lag a fresh push: the remote branch is the truth.
+              const rb = await run(deps, SCRIPT.remoteHead, [wt, branch])
+              if (rb.code !== 0) return fail(rb)
+              const remote = lastLine(rb.out)
+              if (remote !== h) return { ok: false, error: `merge: the push did not move origin/${branch} (at ${remote.slice(0, 7) || 'nothing'}, the task at ${h.slice(0, 7)}): push the branch by hand, then try the step again` }
+              if (lag < LAG_MS.length) { await (deps.sleep ?? pause)(LAG_MS[lag++]!); continue }
+              return { ok: false, error: `merge: GitHub still shows the PR head at ${pr.headRefOid.slice(0, 7)} a minute after origin/${branch} moved to ${h.slice(0, 7)}: try the step again in a few minutes` }
+            }
+            const no = guardAction(job.guards, { kind: 'git.push' }, { branch, by: job.by })
+            if (no) return { ok: false, error: no }
+            const up = await run(deps, SCRIPT.push, [wt, branch])
+            if (up.code !== 0) return fail(up)
+            pushed = true
+            continue
+          }
+        }
+        if (!pr) {
+          const c = await run(deps, SCRIPT.prClosed, [wt, branch])
+          const url = c.code === 0 ? lastLine(c.out) : ''
+          if (url) return { ok: false, error: `merge: the PR was closed without being merged (${url}): reopen it, or open a new one` }
+        }
+        // Conflicting or behind its base: no check runs on it, it needs a catch-up first.
+        const stale = { DIRTY: 'conflicts with', BEHIND: 'is behind' }[pr?.mergeStateStatus ?? '']
+        if (pr && stale) return { ok: false, error: `merge: the PR ${stale} ${pr.baseRefName}`, catchUp: pr.baseRefName, commit: head.trim() }
+        const ready = prReady(pr, head.trim(), a.checks)
+        if (!ready.ok && ready.later && ci < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[ci++]!); continue }
+        if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
+        if (await job.halted?.()) return { ok: false, error: 'merge: the task was stopped' }
+        const m = await run(deps, SCRIPT.merge, [wt, pr!.url, head.trim(), a.method ?? ''])
+        if (m.code === 0) return { ok: true, link: pr!.url, commit: head.trim(), reached: [pr!.baseRefName] }
+        // GitHub's refusal ends with the commands to fix it: those are the agent's (the catch-up), not the error's.
+        const stuck = CONFLICT.test(m.out) ? 'conflicts with' : /not up to date/i.test(m.out) ? 'is behind' : undefined
+        return stuck ? { ok: false, error: `merge: the PR ${stuck} ${pr!.baseRefName}`, catchUp: pr!.baseRefName, commit: head.trim() } : fail(m)
+      }
+    }
+    case 'pipeline.watch': return watch(deps, job)
+    case 'bitbucket.merge': return bitbucketMerge(deps, job, fail)
+  }
+}
+
+interface BbPr { id: number, state: string, destination: { branch: { name: string } }, source: { commit: { hash: string } }, links: { html: { href: string } } }
+
+// As github.merge, through the Bitbucket Cloud API: the task's open PR, its
+// guard on the PR's destination, its head pushed when behind, its build
+// statuses waited for, then a merge commit unless the step names a method.
+// Bitbucket gives a commit's first 12 characters.
+async function bitbucketMerge(deps: ActionDeps, job: ActionJob, fail: (r: { code: number | null, out: string }) => ActionResult): Promise<Done> {
+  const { action: a, worktree: wt, branch } = job
+  const api = async <T>(method: string, path: string, arg: string) => {
+    const r = await run(deps, SCRIPT.bitbucket, [wt, method, path, arg])
+    if (r.code !== 0) return { error: fail(r) }
+    const lines = r.out.trim().split('\n'), status = Number(lines.pop())
+    try { return { status, body: JSON.parse(lines.pop() || '{}') as T & { error?: { message?: string } } } }
+    catch { return { error: { ok: false, error: 'merge: unreadable Bitbucket answer' } } }
+  }
+  const refusal = (r: { status: number, body: { error?: { message?: string } } }) => ({ ok: false, error: `merge: ${r.body.error?.message || `Bitbucket answered ${r.status}`}` })
+  let pushed = false
+  for (let i = 0; ; i++) {
+    const h = await run(deps, SCRIPT.head, [wt])
+    if (h.code !== 0) return fail(h)
+    const head = lastLine(h.out)
+    const list = await api<{ values?: BbPr[] }>('GET', '/pullrequests?state=OPEN&state=MERGED&sort=-updated_on&pagelen=50', `q=source.branch.name="${branch}"`)
+    if ('error' in list) return list.error!
+    if (list.status !== 200) return refusal(list)
+    const prs = list.body.values ?? [], pr = prs.find(p => p.state === 'OPEN')
+    if (!pr) {
+      const done = prs.find(p => p.state === 'MERGED' && head.startsWith(p.source.commit.hash))
+      if (!done) return { ok: false, error: 'merge: no open PR for this task' }
+      const base = done.destination.branch.name
+      return { ok: true, link: done.links.html.href, commit: head, reached: mayMerge(job.guards, base, job.by) ? [base] : [], note: 'already merged on Bitbucket' }
+    }
+    const base = pr.destination.branch.name, link = pr.links.html.href
+    const refused = guardAction(job.guards, a, { branch, by: job.by, base })
+    if (refused) return { ok: false, error: refused }
+    if (job.reviewed && job.reviewed !== head) return { ok: false, error: `merge: new commits since the review (${job.reviewed.slice(0, 7)}..${head.slice(0, 7)})`, review: { since: job.reviewed, head }, commit: head }
+    if (!head.startsWith(pr.source.commit.hash)) {
+      if (pushed) return { ok: false, error: `merge: the PR head ${pr.source.commit.hash.slice(0, 7)} is not the task's commit` }
+      const no = guardAction(job.guards, { kind: 'git.push' }, { branch, by: job.by })
+      if (no) return { ok: false, error: no }
+      const up = await run(deps, SCRIPT.push, [wt, branch])
+      if (up.code !== 0) return fail(up)
+      pushed = true
+      continue
+    }
+    const st = await api<{ values?: BbStatus[] }>('GET', `/commit/${head}/statuses`, 'pagelen=100')
+    if ('error' in st) return st.error!
+    if (st.status !== 200) return refusal(st)
+    const ready = bbReady(st.body.values ?? [], a.checks)
+    if (!ready.ok && ready.later && i < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[i]!); continue }
+    if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
+    if (await job.halted?.()) return { ok: false, error: 'merge: the task was stopped' }
+    const body = JSON.stringify({ type: 'pullrequest', merge_strategy: BB_STRATEGY[a.method ?? 'merge'], close_source_branch: false })
+    const m = await api<object>('POST', `/pullrequests/${pr.id}/merge`, body)
+    if ('error' in m) return m.error!
+    return m.status === 200 ? { ok: true, link, commit: head, reached: [base] } : refusal(m)
+  }
+}
+
+// One poll of a pipeline: done, failed (with which run and job, and the tail
+// of the output), or later. An error that passes by itself is a later too.
+export async function watch(deps: Pick<ActionDeps, 'sh'>, job: Pick<ActionJob, 'action' | 'worktree'>): Promise<ActionResult> {
+  const a = job.action
+  if (a.source === 'command') {
+    const r = await deps.sh(SCRIPT.watchCommand, [job.worktree, a.command!])
+    return commandState(r.code, r.out)
+  }
+  const r = await deps.sh(SCRIPT.ghRuns, [job.worktree, a.branch ?? '', a.workflow ?? ''])
+  if (r.code !== 0) return isTransient(r.code, r.out) ? { ok: false, later: true } : { ok: false, error: `pipeline: ${lastLine(r.out) || `exit code ${r.code}`}` }
+  let runs: GhRun[]
+  try { runs = JSON.parse(r.out.trim().split('\n').pop() || '[]') }
+  catch { return { ok: false, later: true } }
+  const st = runsState(runs)
+  if (st.state === 'running') return { ok: false, later: true }
+  if (st.state === 'done') return { ok: true, link: st.link }
+  const f = await deps.sh(SCRIPT.ghFailed, [job.worktree, String(st.run.databaseId)])
+  const [jobs = '', ...tail] = f.out.split('\n')
+  return { ok: false, error: `pipeline: ${st.run.workflowName || 'a run'} failed${jobs.trim() ? ` (${jobs.trim()})` : ''}: ${st.run.url}`, ...(tail.join('\n').trim() ? { detail: tail.join('\n').trim().slice(-2000) } : {}) }
+}
+
+// Only after a success: a failed action reached nothing new.
+async function leakAlert(deps: ActionDeps, job: ActionJob, result: ActionResult, merged: string[]) {
+  const r = await deps.sh(SCRIPT.contains, [job.worktree])
+  if (r.code !== 0) return
+  const a = job.action
+  // What this action itself reached went through its guard; verify-merged only
+  // confirms a merge when you said it was done.
+  const reached = a.kind === 'git.land' || (a.kind === 'git.verify-merged' && job.by === 'user') ? [a.target!] : []
+  const found = leaks(job.guards, r.out.split('\n').map(s => s.trim()).filter(Boolean), [...(job.allowed ?? []), ...reached, ...merged])
+  if (found.length) return `${job.task.id}'s commit ${result.commit?.slice(0, 7) || '?'} is on ${found.join(', ')} without a step of yours`
+}

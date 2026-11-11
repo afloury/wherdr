@@ -5,12 +5,22 @@
 // stay under the root. Nothing here writes.
 //
 // A file path written in a conversation (shared/filePaths.ts) is previewed and
-// downloaded the same way, with the machine's home folder as the root, like
-// Reveal in Finder (server/utils/reveal.ts).
+// downloaded the same way, with the folder the chosen level allows as the
+// root (shared/chatFiles.ts: home, a temporary folder, or /).
+//
+// Never shown, whatever the root: wherdr's own data folder (DATA_DIR: the
+// lock's signing secret, push keys), its settings (wherdr.env, which can hold
+// the OpenRouter key, and wherdr.json), ~/.ssh and ~/.config/herdr. Checked on
+// the machine once symlinks are resolved (exit 9), and before that on the
+// written path for a clear error. Only a written path, with "Also show
+// protected files" on, skips them ($5 = 1).
 import { execFile } from 'node:child_process'
 import path from 'node:path'
+import { DATA_DIR, WHERDR_DIR } from './env'
+import { shq } from './fsx'
 import type { FileEntry, FilePreview, FilesListing } from '../../shared/types'
-import { posixResolve, resolveAgentPath } from '../../shared/filePaths'
+import { insideRoot, posixResolve, resolveAgentPath } from '../../shared/filePaths'
+import { chatFilesRoots, type ChatFilesPolicy } from '../../shared/chatFiles'
 import { gitToplevel } from './changes'
 import { HerdrError } from './herdr'
 import type { Machine } from './machines'
@@ -81,10 +91,34 @@ printf '=\\0'
 if stat -f %z / >/dev/null 2>&1; then stat -f %z -- "$@"; else stat -c %s -- "$@"; fi 2>/dev/null
 exit 0`
 
-// The file $2 resolved under the root into $f, then opened on fd 3.
+// Folders and files never read (see the top): resolved on the machine itself.
+const PROTECTED_HOME = ['.ssh', '.config/herdr']
+// wherdr's settings, in its folder on this machine ($WHERDR_DIR) and in
+// ~/wherdr on every machine.
+const PROTECTED_FILES = ['wherdr.env', 'wherdr.json']
+const wherdrFiles = () => PROTECTED_FILES.map(f => path.join(path.resolve(WHERDR_DIR), f))
+export const protectedPaths = (home: string | undefined) => [
+  ...(home ? [...PROTECTED_HOME, ...PROTECTED_FILES.map(f => `wherdr/${f}`)].map(d => path.posix.join(posixResolve('/', home), d)) : []),
+  path.resolve(DATA_DIR), ...wherdrFiles(),
+]
+// A file: the same one (-ef: through symlinks and hard links too).
+const PROTECTED = `protected_path() {
+  for pp in ${PROTECTED_HOME.map(d => `"$HOME/${d}"`).join(' ')} ${shq(path.resolve(DATA_DIR))}; do
+    pd=$(cd "$pp" 2>/dev/null && pwd -P) || continue
+    case "$1/" in "\${pd%/}/"*) return 0 ;; esac
+  done
+  for pf in ${PROTECTED_FILES.map(f => `"$HOME/wherdr/${f}"`).join(' ')} ${wherdrFiles().map(shq).join(' ')}; do
+    [ "$1" -ef "$pf" ] && return 0
+  done
+  return 1
+}`
+
+// The file $2 resolved under the root into $f, then opened on fd 3 ($5 = 1:
+// protected files too).
 // Symlinks resolved one link at a time (readlink, cd -P: realpath is missing
 // before macOS 13).
 export const OPEN_FILE = `${RESOLVE}
+${PROTECTED}
 case "$2" in */*) d=\${2%/*} ;; *) d=. ;; esac
 b=\${2##*/}
 dir=$(cd "$root" && cd -- "./$d" 2>/dev/null && pwd -P) || { echo "not found" >&2; exit 4; }
@@ -99,9 +133,12 @@ while [ -L "$f" ]; do
 done
 [ -e "$f" ] || { echo "not found" >&2; exit 4; }
 under "$f" || { echo "outside" >&2; exit 5; }
+[ "$5" = 1 ] || ! protected_path "$f" || { echo "protected" >&2; exit 9; }
 [ -f "$f" ] || { echo "not a file" >&2; exit 6; }
 [ -r "$f" ] || { echo "permission denied" >&2; exit 7; }
-command exec 3< "$f" || { echo "permission denied" >&2; exit 7; }
+# \`command exec\` keeps dash alive when the open fails; macOS's bash 3.2 (its
+# sh) then spins at 100 % CPU on any later \`exit\`, and never exits on it anyway.
+if [ -n "\${BASH_VERSION-}" ]; then exec 3< "$f"; else command exec 3< "$f"; fi 2>/dev/null || { echo "permission denied" >&2; exit 7; }
 # "<inode> <size> <mtime> <version>" of the opened file, from its metadata:
 # never a read (BusyBox's wc -c reads every byte). <version>: modification
 # and change times to the nanosecond (GNU/BusyBox, then BSD). Without the
@@ -120,6 +157,7 @@ echo $s
 [ -n "$4" ] && [ "$s" -ge "$3" ] && exit 0
 head -c "$3" <&3`
 
+export const PROTECTED_MESSAGE = 'This file is protected: wherdr never shows its own data and settings, ~/.ssh or ~/.config/herdr'
 export const MACOS_SSH_DENIED = 'macOS blocks access to this folder. On the Mac: System Settings › General › Sharing › Remote Login ⓘ › “Allow full disk access for remote users”.'
 export const MACOS_LOCAL_DENIED = 'macOS blocks access to this folder. Allow the app that runs wherdr in System Settings › Privacy & Security › Full Disk Access.'
 
@@ -154,6 +192,7 @@ export function shellError(m: Machine, code: number | null, stderr: string): Her
   if (r.code === 7) return new HerdrError('denied', 'Permission denied')
   // macOS privacy protection (Documents, Desktop…): `[ -r . ]` passes, the listing is refused.
   if (r.code === 8) return new HerdrError('denied', m.exec ? MACOS_SSH_DENIED : MACOS_LOCAL_DENIED)
+  if (r.code === 9) return new HerdrError('protected', PROTECTED_MESSAGE)
   if (r.code === 124) return new HerdrError('timeout', 'The folder took too long to read')
   if (r.code === 255 || r.code === null) return new HerdrError('unreachable', 'Machine unreachable')
   return new HerdrError('remote', r.stderr.trim().split('\n').pop() || `code ${r.code}`)
@@ -219,33 +258,51 @@ export function cutAt(b: Buffer, max: number) {
   return i
 }
 
+const HOME_ONLY: ChatFilesPolicy = { level: 'home', protected: false }
+const OUTSIDE = {
+  home: 'Only files in your home folder can be shown',
+  temp: 'Only files in your home folder and the agents’ temporary folders can be shown',
+}
+
 // Root and path under it of a file written in a conversation: resolved against
-// the agent's folder, and under the machine's home folder (checked again on
-// the machine once symlinks are resolved).
-export function writtenTarget(m: Machine, cwd: string | null | undefined, written: unknown): { root: string, rel: string, abs: string } {
+// the agent's folder, and under a folder the policy allows (checked again on
+// the machine once symlinks are resolved). `show`: the script's protected
+// switch ($5).
+export function writtenTarget(m: Machine, cwd: string | null | undefined, written: unknown, policy: ChatFilesPolicy = HOME_ONLY): { root: string, rel: string, abs: string, show: string } {
   const w = String(written ?? '')
-  const abs = w.length > 1024 ? null : resolveAgentPath(w, cwd, m.home)
-  if (!abs) throw new HerdrError('outside_home', 'Only files in your home folder can be shown')
-  const root = posixResolve('/', m.home)
+  const roots = chatFilesRoots(posixResolve('/', m.home), policy.level)
+  const abs = w.length > 1024 ? null : resolveAgentPath(w, cwd, m.home, roots)
+  if (!abs && policy.level === 'all') throw new HerdrError('not_found', 'File not found')
+  if (!abs) throw new HerdrError('outside_home', `${OUTSIDE[policy.level as 'home' | 'temp']} (Settings › Security › Files shown from conversations)`)
+  const root = roots.find(r => insideRoot(r, abs))!
   const rel = path.posix.relative(root, abs)
   if (!rel) throw new HerdrError('not_file', 'Not a file')
-  return { root, rel, abs }
+  if (!policy.protected) refuseProtected(m, abs)
+  return { root, rel, abs, show: policy.protected ? '1' : '' }
+}
+
+// Early, on the path as written (the machine checks again once symlinks are resolved).
+export function refuseProtected(m: Machine, abs: string) {
+  for (const d of protectedPaths(m.home)) {
+    if (abs === d || abs.startsWith(d.replace(/\/+$/, '') + '/')) throw new HerdrError('protected', PROTECTED_MESSAGE)
+  }
 }
 
 // Size and first `max` bytes of a file (`whole`: no bytes at all when it has `max` or more).
-async function readHead(m: Machine, root: string, rel: string, max: number, opts?: RunOpts & { whole?: boolean }) {
-  const out = await run(m, READ_SCRIPT, [root, rel, String(max), ...(opts?.whole ? ['1'] : [])], opts)
+async function readHead(m: Machine, root: string, rel: string, max: number, opts?: RunOpts & { whole?: boolean, show?: string }) {
+  const whole = opts?.whole ? '1' : ''
+  const out = await run(m, READ_SCRIPT, [root, rel, String(max), ...(opts?.show ? [whole, opts.show] : whole ? [whole] : [])], opts)
   const nl = out.indexOf(10)
   return { size: Number(out.subarray(0, nl).toString('utf8')) || 0, body: out.subarray(nl + 1) }
 }
 
 // `shown`: the path given back to the client (relative to the project in the
 // file browser, absolute for a path written in a conversation).
-async function previewAt(m: Machine, root: string, rel: string, shown: string): Promise<FilePreview> {
+async function previewAt(m: Machine, root: string, rel: string, shown: string, show?: string): Promise<FilePreview> {
   const ext = path.posix.extname(rel).slice(1).toLowerCase()
   const mime = IMAGE_TYPES[ext]
   const video = VIDEO_TYPES[ext]
-  const { size, body } = await readHead(m, root, rel, mime ? IMAGE_BYTES + 1 : ext === 'pdf' ? PDF_HEAD : video ? VIDEO_HEAD : TEXT_BYTES + 1)
+  const { size, body } = await readHead(m, root, rel, mime ? IMAGE_BYTES + 1 : ext === 'pdf' ? PDF_HEAD : video ? VIDEO_HEAD : TEXT_BYTES + 1, { show })
   if (video) return { path: shown, size, kind: isVideo(rel, body) ? 'video' : 'binary', truncated: false }
   if (ext === 'pdf') {
     if (!isPdf(rel, body)) return { path: shown, size, kind: 'binary', truncated: false }
@@ -264,17 +321,19 @@ async function previewAt(m: Machine, root: string, rel: string, shown: string): 
 export async function readFilePreview(m: Machine, cwd: string, rel: unknown): Promise<FilePreview> {
   const p = cleanRelative(rel)
   if (!p) throw new HerdrError('not_file', 'Not a file')
-  return previewAt(m, await rootOf(m, cwd), p, p)
+  const root = await rootOf(m, cwd)
+  refuseProtected(m, path.posix.join(root, p))
+  return previewAt(m, root, p, p)
 }
 
-export async function readWrittenPreview(m: Machine, cwd: string | null | undefined, written: unknown): Promise<FilePreview> {
-  const t = writtenTarget(m, cwd, written)
-  return previewAt(m, t.root, t.rel, t.abs)
+export async function readWrittenPreview(m: Machine, cwd: string | null | undefined, written: unknown, policy?: ChatFilesPolicy): Promise<FilePreview> {
+  const t = writtenTarget(m, cwd, written, policy)
+  return previewAt(m, t.root, t.rel, t.abs, t.show)
 }
 
 // The whole file, for a download: refused beyond DOWNLOAD_BYTES rather than cut.
-async function bytesAt(m: Machine, root: string, rel: string) {
-  const { size, body } = await readHead(m, root, rel, DOWNLOAD_BYTES + 1, { timeoutMs: 120000, maxBytes: DOWNLOAD_BYTES + 1, whole: true })
+async function bytesAt(m: Machine, root: string, rel: string, show?: string) {
+  const { size, body } = await readHead(m, root, rel, DOWNLOAD_BYTES + 1, { timeoutMs: 120000, maxBytes: DOWNLOAD_BYTES + 1, whole: true, show })
   if (size > DOWNLOAD_BYTES || body.length > DOWNLOAD_BYTES) throw new HerdrError('too_large', 'File too large to download (50 MB max)')
   return { name: path.posix.basename(rel), body }
 }
@@ -282,12 +341,14 @@ async function bytesAt(m: Machine, root: string, rel: string) {
 export async function readFileBytes(m: Machine, cwd: string, rel: unknown) {
   const p = cleanRelative(rel)
   if (!p) throw new HerdrError('not_file', 'Not a file')
-  return bytesAt(m, await rootOf(m, cwd), p)
+  const root = await rootOf(m, cwd)
+  refuseProtected(m, path.posix.join(root, p))
+  return bytesAt(m, root, p)
 }
 
-export async function readWrittenBytes(m: Machine, cwd: string | null | undefined, written: unknown) {
-  const t = writtenTarget(m, cwd, written)
-  return bytesAt(m, t.root, t.rel)
+export async function readWrittenBytes(m: Machine, cwd: string | null | undefined, written: unknown, policy?: ChatFilesPolicy) {
+  const t = writtenTarget(m, cwd, written, policy)
+  return bytesAt(m, t.root, t.rel, t.show)
 }
 
 // Content-Disposition of a download (or of a PDF shown `inline`): an ASCII
