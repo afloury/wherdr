@@ -698,7 +698,9 @@ waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
 *Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
 with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
-and screenshots), **History** and **Log**, all in the sheet's one scroll. A refused merge says why under its button.
+and screenshots: a report in Markdown, folded with *Show more*, shown once when
+another proof repeats it; a commit as a short sha linked to the commit on the
+Git host when the task has a PR; a link labelled, *PR #12*), **History** and **Log**, all in the sheet's one scroll. A refused merge says why under its button.
 
 **History** reads the task as a conversation, oldest first: the worker's *Done*
 (its closing report on its last one), the reviewer's *Sent back* (the findings,
@@ -922,6 +924,13 @@ working again. The step's time limit and the stall's 30 minutes start again
 from then, so the task comes back if its agent stops again. The Log says
 *back to work* and who sent it back. What only you can do (a merge, an answer,
 a permission, a decision) stays until you do it.
+
+A step's time limit counts only the time its agent could work. While the
+machine it runs on is offline or unreachable, while the engine waits to resume
+it after an incident, or while the task waits for room, a machine or the pace,
+its clock stops: such a task never shows *over 3h*, it shows what it waits
+for, and the limit goes on from where it stopped once the agent can work
+again. The time in step shown on the card stays the real time.
 
 ### Why agents are gone
 
