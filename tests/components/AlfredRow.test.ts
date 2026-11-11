@@ -24,7 +24,7 @@ registerEndpoint('/api/pm/coordinator-start', { method: 'POST', handler: async (
 
 const pane = (id: string, coreAddress: string) => ({ id, coreAddress, status: 'idle', agent: 'claude', workspace: 'w', tab: 't' }) as Pane
 let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
-afterEach(() => { w?.unmount(); w = null; posts.length = 0; hiddenAgents.value = []; agentOrder.value = []; navigate.mockReset(); document.body.innerHTML = '' })
+afterEach(() => { w?.unmount(); w = null; posts.length = 0; hiddenAgents.value = []; agentOrder.value = []; navigate.mockReset(); document.body.innerHTML = ''; document.documentElement.style.cssText = '' })
 const mount = async (props: { banner?: boolean } = {}) => {
   w = await mountSuspended(AlfredRow, { attachTo: document.body, props })
   await vi.waitFor(() => expect(w!.find('[data-testid="alfred-name"]').text()).toBe(String(view.name)))
@@ -85,17 +85,25 @@ it('running and renamed: its name, its current agent, one tap opens the conversa
   // Its conversation open: selected like an agent card; another one opened: not any more.
   const open = w!.find('[data-testid="alfred-open"]')
   expect(open.attributes('aria-current')).toBeUndefined()
-  const card = () => w!.find('.alfred-card').classes()
-  expect(card()).not.toContain('sel')
+  // Its card's look (scoped CSS loaded, see vitest.config.ts): the neutral edge of
+  // other cards unless its conversation is open, then the mauve edge and wash.
+  document.documentElement.style.cssText = '--line:#111111;--surface:#222222;--mauve:#cc88ff'
+  const look = () => {
+    const s = getComputedStyle(w!.find('.alfred-card').element)
+    return { edge: s.borderTopColor, wash: s.backgroundImage.includes('gradient') }
+  }
+  const plain = { edge: '#111111', wash: false }
+  expect(look()).toEqual(plain)
   curPane.value = 'w:p1'
   await nextTick()
   expect(w!.find('[data-testid="alfred"]').classes()).toContain('sel')
-  expect(card()).toContain('sel')
+  // (happy-dom does not compute color-mix(), so the mauve edge is not checked here)
+  expect(look().wash).toBe(true)
   expect(open.attributes('aria-current')).toBe('page')
   curPane.value = 'w:p2'
   await nextTick()
   expect(w!.find('[data-testid="alfred"]').classes()).not.toContain('sel')
-  expect(card()).not.toContain('sel')
+  expect(look()).toEqual(plain)
   expect(open.attributes('aria-current')).toBeUndefined()
   curPane.value = null
   // Renamed during a turn: the new name shows as soon as the turn ends, not at the next poll.
