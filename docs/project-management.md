@@ -718,12 +718,12 @@ another proof repeats it; a commit as a short sha linked to the commit on the
 Git host when the task has a PR; a link labelled, *PR #12*), **Comments** and **History**, all in the sheet's one scroll. A refused merge says why under its button.
 
 **Comments** reads the agents' reports like a PR's conversation, oldest first:
-the worker's *Done* (its closing report on its last one), the reviewer's *Sent
+the worker's *Done* (its report, each one as it arrived), the reviewer's *Sent
 back* (the findings, with their weight) or *Passed* (what it left as minor),
 the worker's *Fixed* (and the findings it contested). Each says who, when and
 its program and model; its text is Markdown, folded past a few lines with
-*Show more*. Only the worker's last report is kept, so an earlier *Done* says
-just that.
+*Show more*. A task from before this version kept only its worker's last
+report, so its earlier *Done* says just that.
 
 **History** is the task's whole log in one timeline, oldest first: the same
 hand-offs, wherdr's catch-ups and CI fixes, the coordinator's and your
@@ -739,8 +739,9 @@ reports and verdicts, the files it changed with their line counts (never
 their contents), its step and what its merge does; home paths, e-mail
 addresses and tokens masked. It is written again only on a significant
 change: a report or verdict that comes with new commits of the task's own or
-new findings. A merge or catch-up with the base, a rebase, a CI re-run or a
-kept approval leaves it as it is. One task a minute; while the pace of this
+new findings, or the first verdict on new commits. A merge or catch-up with
+the base, a rebase, a CI re-run, a report that changes no code (the PR
+opened) or a kept approval leaves it as it is. One task a minute; while the pace of this
 machine's Claude account holds automatic work it waits, and **To do** shows
 the worker's and the reviewer's notes with *TL;DR waits for the pace*. A task
 whose last report is more than a day old keeps its TL;DR as it is.

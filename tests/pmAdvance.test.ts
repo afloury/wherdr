@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { DONE_CMD, READ_SEP, chainState, dueText, parseRead, proofsOf, runsNow, signalEvent, type SignalRead } from '../shared/pm/advance'
+import { DONE_CMD, READ_SEP, chainState, dueText, parseRead, proofsOf, runsNow, signalEvent, signalKept, type SignalRead } from '../shared/pm/advance'
 import { initialState, onEvent, planSteps, type StepEvent, type StepState } from '../shared/pm/steps'
 import { company, github, vibe, common } from '../shared/pm/examples'
 import type { Template } from '../shared/pm/workflow'
@@ -136,6 +136,17 @@ describe('end signals', () => {
     // Then the branch, its own commits' fingerprint and its files with their line counts (binary: 0).
     const w = parseRead(['abc1234', '42', '', '', 'task/X-1\n', '123 45\n', '3\t1\tsrc/a.ts\n-\t-\tlogo.png\n'].join(`${READ_SEP}\n`))
     expect(w.work).toEqual({ commits: '123 45', files: [{ path: 'src/a.ts', add: 3, del: 1 }, { path: 'logo.png', add: 0, del: 0 }] })
+  })
+
+  it('keeps each worker report as it arrives, and the commits a verdict read', () => {
+    const w = (commits: string) => ({ commits, files: [] })
+    const base = { id: 'X-1', project: 'X', title: 't', description: '', type: 'feature', state: 'working' } as Task
+    const a = signalKept(base, 'work', { kind: 'report' }, read({ note: 'First', work: w('1') }))
+    expect(a).toEqual({ work: w('1'), workReports: [{ step: 'work', text: 'First' }] })
+    const b = signalKept({ ...base, ...a }, 'review', { kind: 'verdict' }, read({ verdict: '{}', work: w('1') }))
+    expect(b).toEqual({ work: { ...w('1'), reviewed: '1' } })
+    const c = signalKept({ ...base, ...a, ...b }, 'work', { kind: 'report' }, read({ note: 'Second', work: w('2') }))
+    expect(c).toEqual({ work: { ...w('2'), reviewed: '1' }, workReports: [{ step: 'work', text: 'First' }, { step: 'work', text: 'Second' }] })
   })
 
   it('a verdict that does not parse is sent back to the reviewer, with how to answer', () => {

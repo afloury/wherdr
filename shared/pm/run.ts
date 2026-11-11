@@ -7,6 +7,7 @@ import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
 import type { Report } from './report'
 import type { TaskTldr } from './summary'
+import type { WorkReport } from './history'
 import type { Mark } from './times'
 import { isPublic, publicWorkerSection } from './visibility'
 import { CODEX_NO_UPDATE } from '../codexLaunch'
@@ -68,7 +69,9 @@ export interface Task {
   report?: Report // a problem the user reported, open until the coordinator acts (report.ts)
   // Its own commits since its fork from the base (author time and subject, so a
   // rebase or a merge of the base keeps it) and the files they change, read at each report or verdict.
-  work?: { commits: string, files: { path: string, add: number, del: number }[] }
+  // reviewed: the commits a verdict last read (a later report on the same ones changes nothing).
+  work?: { commits: string, files: { path: string, add: number, del: number }[], reviewed?: string }
+  workReports?: WorkReport[] // the worker's reports, each as it arrived, newest last (history.ts)
   tldr?: TaskTldr // a cheap model's few lines for the user to decide, per significant change (summary.ts)
   tldrHeld?: true // a new one waits for the pace of the Claude account
   recovery?: Recovery // its agent gone with an incident: the engine resumes it (recovery.ts)

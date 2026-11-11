@@ -10,7 +10,7 @@ import { REPORTS, taskHistory, type Who } from '#shared/pm/history'
 
 const props = defineProps<{ card: Card, comments?: boolean }>()
 const WHO: Record<Who, string> = { worker: 'Worker', reviewer: 'Reviewer', user: 'You', coordinator: 'Coordinator', engine: 'wherdr' }
-const entries = computed(() => taskHistory(props.card.log, props.card.plan, props.card.state, !props.comments)
+const entries = computed(() => taskHistory(props.card.log, props.card.plan, props.card.state, !props.comments, props.card.workReports)
   .filter(e => !props.comments || REPORTS.has(e.label))
   .map(e => ({ ...e, html: e.routine ? '' : md(e.text, { plain: true }), tone: e.label === 'Sent back' ? 'back' : e.label === 'Passed' ? 'pass' : '' })))
 function onClick(e: MouseEvent) {

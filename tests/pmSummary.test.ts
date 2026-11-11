@@ -85,6 +85,18 @@ describe('summaryTick (the TL;DR)', () => {
     expect((await store.task('CO-2'))!.tldr?.text).toBe('tldr 2')
   })
 
+  it('is kept on a report that changes no code (the PR opened after a passing review)', async () => {
+    const t = task('CO-5')
+    const store = fakeStore([{ ...t, work: { ...work('111 2'), reviewed: '111 2' } }])
+    let n = 0
+    const summarize = async () => `tldr ${++n}`
+    await summaryTick({ store, summarize, pace: go }, 5000)
+    const now = (await store.task('CO-5'))!
+    await store.saveTask({ ...now, log: [...now.log!, { at: 3000, by: 'worker claude opus', text: 'pr: done' }] })
+    await summaryTick({ store, summarize, pace: go }, 5000)
+    expect(n).toBe(1)
+  })
+
   it('waits while the pace holds automatic work, the task marked; and skips a task with nothing reported', async () => {
     const store = fakeStore([task('CO-3'), { ...task('CO-4'), log: [] }])
     let n = 0

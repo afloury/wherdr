@@ -23,7 +23,7 @@ export const TLDR_PROMPT = [
   'Use only the text below. No heading, no preamble, no file contents.',
 ].join(' ')
 
-type Source = Pick<Task, 'title' | 'description' | 'log' | 'work'> & { step?: StepState }
+type Source = Pick<Task, 'title' | 'description' | 'log' | 'work' | 'workReports'> & { step?: StepState }
 
 // What the Merge does, from the plan's step that merges (the user's button, or wherdr on its own).
 const MERGES = new Set(['github.merge', 'bitbucket.merge', 'git.land', 'git.verify-merged'])
@@ -36,14 +36,15 @@ export function mergeText(plan: PlannedStep[]): string {
   return `The user merges the PR into ${a.target ?? 'its base'} on the Git host; "${s.userLabel || 'Merged'}" checks it.`
 }
 
-// The key of what the TL;DR says (its own commits, the findings, reviewed or
-// not) and the text the model reads; null: no report or verdict yet.
+// The key of what the TL;DR says (its own commits, the findings, whether a
+// verdict read those commits: not who wrote last, so a report that changes no
+// code, a PR opened, keeps it) and the text the model reads; null: no report or verdict yet.
 export function tldrSource(task: Source, plan: PlannedStep[]): { key: string, last: number, input: string } | null {
-  const entries = taskHistory(task.log ?? [], plan, task.step).filter(e => REPORTS.has(e.label))
+  const entries = taskHistory(task.log ?? [], plan, task.step, false, task.workReports).filter(e => REPORTS.has(e.label))
   if (!entries.length) return null
   const s = task.step
   const findings = [...Object.values(s?.reviews ?? {}).flat().flatMap(r => r.findings), ...Object.values(s?.minor ?? {}).flat()].map(f => f.id).sort()
-  const key = [task.work?.commits ?? '', findings.join(','), entries.at(-1)!.who === 'reviewer' ? 'reviewed' : ''].join('|')
+  const w = task.work, key = [w?.commits ?? '', findings.join(','), w?.reviewed && w.reviewed === w.commits ? 'reviewed' : ''].join('|')
   const files = task.work?.files ?? []
   const head = [
     `Task: ${task.title}`,

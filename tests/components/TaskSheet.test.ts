@@ -217,11 +217,14 @@ it('To do shows the TL;DR, the screenshots under it, then a link to Comments (th
   const log = [
     { at: 1, by: 'worker claude opus', text: 'work: done' },
     { at: 2, by: 'engine', text: 'review: sent to the reviewer' },
-    { at: 3, by: 'reviewer codex gpt', text: 'review: verdict, 0 finding(s)' },
+    { at: 3, by: 'reviewer codex gpt', text: 'review: verdict, 1 finding(s)' },
+    { at: 4, by: 'worker claude opus', text: 'work: done' },
+    { at: 5, by: 'reviewer codex gpt', text: 'review: verdict, 0 finding(s)' },
   ]
+  const workReports = [{ step: 'work', text: 'First *try*.' }, { step: 'work', text: report }]
   const c = waiting({
-    description: 'Do it', log, yourTurn: 'Look at the screenshots, then merge', userLabel: 'Merge', tldr: '- Adds a **CSV** export.\n- Merge goes to v3.',
-    state: at(4, { yourTurn: { reason: 'user', badge: 'Look at the screenshots, then merge' }, proofs: { work: { report } }, minor: { review: [] },
+    description: 'Do it', log, workReports, yourTurn: 'Look at the screenshots, then merge', userLabel: 'Merge', tldr: '- Adds a **CSV** export.\n- Merge goes to v3.',
+    state: at(4, { yourTurn: { reason: 'user', badge: 'Look at the screenshots, then merge' }, proofs: { work: { report } }, reviews: { review: [{ findings: [{ id: 'f', severity: 'major', title: 'Cut', proof: 'p' }] }] }, minor: { review: [] },
       shots: { work: [{ file: 'aaaaaaaaaaaa.png', phase: 'after', at: 1 }] } }),
   })
   const w = await mountSuspended(TaskSheet, { props: { card: c }, global: { stubs } })
@@ -234,11 +237,13 @@ it('To do shows the TL;DR, the screenshots under it, then a link to Comments (th
   await w.get('[data-testid="todo-comments"]').trigger('click')
   expect(w.get('[role="tab"][aria-selected="true"]').attributes('data-tab')).toBe('comments')
   const comments = w.get('[data-testid="task-comments"]')
-  expect(comments.findAll('li').map(li => li.attributes('data-label'))).toEqual(['Done', 'Passed'])
-  expect(comments.find('strong').text()).toBe('it')
+  // Every report as it arrived, the first one too.
+  expect(comments.findAll(':scope > li').map(li => li.attributes('data-label'))).toEqual(['Done', 'Sent back', 'Fixed', 'Passed'])
+  expect(comments.findAll(':scope > li')[0]!.find('em').text()).toBe('try')
+  expect(comments.findAll(':scope > li')[2]!.find('strong').text()).toBe('it')
   await w.get('[data-tab="history"]').trigger('click')
   const history = w.get('[data-testid="task-history"]')
-  expect(history.findAll('li').map(li => li.attributes('data-label') ?? 'line')).toEqual(['Done', 'line', 'Passed'])
+  expect(history.findAll(':scope > li').map(li => li.attributes('data-label') ?? 'line')).toEqual(['Done', 'line', 'Sent back', 'Fixed', 'Passed'])
   expect(history.get('li.routine').text()).toContain('review: sent to the reviewer')
   expect(w.find('[data-testid="task-summary"]').exists()).toBe(false)
   w.unmount()

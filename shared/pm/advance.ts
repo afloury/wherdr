@@ -56,6 +56,14 @@ export function parseRead(out: string): SignalRead {
     ...(commits.trim() ? { work: { commits: commits.trim(), files } } : {}) }
 }
 
+// What the task keeps of an accepted report or verdict: its commits and files
+// (with those a verdict read), and a worker's report as it arrived (Comments).
+export function signalKept(task: Task, step: string, ev: { kind: string }, read: SignalRead): Partial<Task> {
+  const reviewed = ev.kind === 'verdict' ? read.work?.commits : task.work?.reviewed
+  const report = ev.kind === 'report' && read.note ? [...(task.workReports ?? []), { step, text: read.note.slice(0, 8000) }].slice(-20) : undefined
+  return { ...(read.work ? { work: { ...read.work, ...(reviewed ? { reviewed } : {}) } } : {}), ...(report ? { workReports: report } : {}) }
+}
+
 // The note gives the proofs a report needs: itself, and its first link
 // (without the sentence's closing punctuation: 'PR: <url>.').
 export function proofsOf(r: SignalRead): Partial<Record<Evidence, string>> {

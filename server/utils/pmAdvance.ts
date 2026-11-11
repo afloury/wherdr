@@ -5,7 +5,7 @@
 // stop. All of it is read again from the task's state, so a restart loses
 // nothing (shared/pm/advance.ts holds the rules).
 import { randomUUID } from 'node:crypto'
-import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent } from '../../shared/pm/advance'
+import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent, signalKept } from '../../shared/pm/advance'
 import { onEvent, type PlannedStep } from '../../shared/pm/steps'
 import { followedBranch } from '../../shared/pm/branchName'
 import { LABEL, agentEnv, agentLine, duplicateAgents, prefOf, programName, quotaOut, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
@@ -154,7 +154,8 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   // A proof is missing: the agent is told which, the step stays.
   if (res.refused) return void await Promise.all([tell(`${res.refused}\n\nWhen done: ${DONE_CMD}`), deps.store.logTask(c.task, 'engine', `${step!.id}: ${res.refused}`)])
   const what = ev.kind === 'verdict' ? `verdict, ${ev.findings.length} finding(s)` : 'done'
-  await deps.store.logTask({ ...(await deps.store.task(run.task))!, step: res.state, ...(read.work ? { work: read.work } : {}) }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
+  const fresh = await deps.store.task(run.task)
+  await deps.store.logTask({ ...fresh!, step: res.state, ...signalKept(fresh!, step!.id, ev, read) }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
 }
 
 // The worker pushed another branch than the task's: the engine pushes, opens
