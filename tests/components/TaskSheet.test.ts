@@ -108,6 +108,23 @@ it('a visual merge is sent back with a note', async () => {
   w.unmount()
 })
 
+// A review over its time limit, its reviewer gone: one plain sentence and Restart the review.
+let restarted: unknown
+registerEndpoint('/api/pm/review-restart', { method: 'POST', handler: async (e) => { restarted = await readBody(e); return { task: {} } } })
+it('a stalled review says why in plain words and restarts the review', async () => {
+  const review = plan.findIndex(p => p.id === 'review')
+  const c = waiting({ holder: 'reviewer', step: 'review', yourTurn: 'Check review: over 45m', state: at(review, { yourTurn: { reason: 'timeout', badge: 'Check review: over 45m' } }) })
+  const w = await mountSuspended(TaskSheet, { props: { card: c }, global: { stubs } })
+  expect(w.get('[data-testid="task-todo"]').attributes('data-todo')).toBe('review')
+  expect(w.get('[data-testid="task-badge"]').text()).toBe('The reviewer stopped without giving a verdict. Restart the review to review the PR\'s latest commit again.')
+  await w.get('[data-testid="todo-review-restart"]').trigger('click')
+  await vi.waitFor(() => expect(restarted).toEqual({ id: 'WHR-1' }))
+  // A reviewer that exited right after starting: the task waits on that failure, the restart is offered too.
+  await w.setProps({ card: { ...c, yourTurn: 'The reviewer (claude) stopped right after starting', state: at(review) } })
+  expect(w.get('[data-testid="task-todo"]').attributes('data-todo')).toBe('review')
+  w.unmount()
+})
+
 it('shows the spec changes under the description, newest last', async () => {
   const specNotes = [{ at: 1, by: 'coordinator CO', text: 'Keep the light theme.' }, { at: 2, by: 'coordinator CO', text: 'No toggle.' }]
   const w = await mountSuspended(TaskSheet, { props: { card: { ...card, yourTurn: undefined, description: 'A dark theme.', specNotes } }, global: { stubs } })
