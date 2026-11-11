@@ -277,6 +277,16 @@ describe('template edit', () => {
     await fs.rm(fresh, { recursive: true, force: true })
   })
 
+  it('proposes a first workflow for a project that has none, saved on the user\'s yes', async () => {
+    await store.overview() // migrated: CO has its own copy, then none
+    await fs.rm(path.join(store.files.workflows, 'CO.json'), { force: true })
+    expect(await store.workflow('CO')).toBeNull()
+    await noteTurn(store, 'CO', 'user', 'set up how we work')
+    await expect(cli(['template', 'edit'], JSON.stringify(company))).resolves.toMatchObject({ proposed: true })
+    await answerProposal(deps(), 'CO', true)
+    expect(await store.workflow('CO')).toMatchObject({ id: 'co', version: 1 })
+  })
+
   it('is not saved over a change the user made after it', async () => {
     await noteTurn(store, 'CO', 'user', 'add a line')
     await cli(['template', 'edit'], moreInstructions)
@@ -486,11 +496,11 @@ describe('role files', () => {
     expect(trustKeys((await fixture('codex-trust')).replace('/home/user/code/example', folder), folder)).toEqual(['enter'])
     expect(trustKeys((await fixture('claude-trust-folder')).replace('/home/user/projects/new-folder', `/tmp/team ${folder}`), folder)).toBeUndefined()
     expect(trustKeys((await fixture('codex-trust')).replace('/home/user/code/example', `/tmp/team ${folder}`), folder)).toBeUndefined()
-    // Step 5 follows the agent: starting, asking (the dialog left unanswered), then running.
+    // Setup step 3 follows the agent: starting, asking (the dialog left unanswered), then running.
     expect([undefined, { status: null }, { status: 'unknown' }, { status: 'blocked' }, { status: null, screen: {} }, { status: 'idle' }].map(x => coordinatorStart(x as never)))
       .toEqual(['none', 'starting', 'starting', 'asks', 'asks', 'runs'])
-    // Next and the wizard's resume wait on it: step 5 is done only once it runs.
-    const o = { enabled: true, projects: [{ key: 'CO', name: 'CO', machine: '', path: '/src', addedAt: 1, from: { template: 'vibe', version: 1 } }], tasks: [] }
+    // Next and the wizard's resume wait on it: step 3 is done only once it runs, with no workflow yet.
+    const o = { enabled: true, projects: [{ key: 'CO', name: 'CO', machine: '', path: '/src', addedAt: 1 }], tasks: [] }
     const coords = [{ project: 'CO', terminal: 'host/t1' }]
     expect((['none', 'asks', 'starting', 'runs'] as const).map(s => setupDone(o, 'CO', coords, s).coordinator)).toEqual([false, false, false, true])
     expect(setupDone(o, 'CO', coords).coordinator).toBe(true)

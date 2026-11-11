@@ -17,7 +17,7 @@ const SOURCES = ['shared/pm/actions.ts', 'shared/pm/coordinator.ts', 'shared/pm/
 const literal = SOURCES.flatMap(f => readFileSync(f, 'utf8').split('\n').filter(l => !/^\s*\/\//.test(l)))
 
 const texts = [
-  templateEditRefusal(null, t, 'user', 'CO'),
+  ...Object.values(roleFiles(p, null, [])), // no workflow yet: its first one is proposed
   templateEditRefusal(t, { ...t, guards: {} }, 'user', 'CO'),
   guardAction(combineGuards([]), { kind: 'github.pr' }, { branch: 'task/CO-1', by: 'engine', project: 'CO' }),
   guardAction(combineGuards([]), { kind: 'github.pr' }, { branch: 'task/CO-1', by: 'engine' }),

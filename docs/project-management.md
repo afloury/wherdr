@@ -8,56 +8,57 @@ you turn it on.
 
 ## Getting started
 
-A setup window walks you through six steps for one project, one per screen,
-with Back and Next. Each step does the thing in place; Next waits until it is
-done. While no project went through every step, the **Board** header shows
-*Finish setup (2/6)*, which opens it at the first step left; once one project
-is set up, the button is gone. **Settings › Projects › Set up a project** opens
-it too, on the first project with a step left, and *Add project* opens it on a
-new project.
+A setup window walks you through three steps for one project, one per screen.
+Each step does the thing in place; Next waits until it is done, and Back shows
+only when there is a step to go back to (never on the first). While no project
+went through every step, the **Board** header shows *Finish setup (2/3)*,
+which opens it at the first step left; once one project's coordinator runs,
+the button is gone. **Settings › Projects › Set up a project** opens it too, on
+the first project with a step left, and *Add project* opens it on a new
+project.
+
+There is no workflow to pick here: the project's coordinator sets it up with
+you, and you change it any time by talking to it or to Alfred. Templates stay
+in the project's [Workflow](#workflow) tab for advanced use.
 
 1. **Turn on project management.** Off, wherdr changes nothing. *Turn on* is
    the main button; under it, a quieter *Let Alfred guide me*: it opens Alfred's conversation
    (see [Home](home.md#alfred)) and asks it to walk you through the setup.
-2. **Add a project.** Pick the machine, then a git repository found there or
+2. **Your project.** Pick the machine, then a git repository found there or
    any folder (a new or empty one offers `git init`); name, key and color
    follow the folder and can be changed. Once added, wherdr checks whether the
    repository is public; correct it if the check is wrong (until it is
-   checked, it says *not checked* and nothing more). With several
-   projects, pick the one to set up, or add another.
+   checked, it says *not checked* and nothing more). Then pick its
+   coordinator's agent; it runs with that agent's default model, which you
+   change in its conversation. With several projects, pick the one to set up,
+   or add another.
    **What a project needs:** a git repository (each task works in its own
    worktree), and a remote named `origin` for a workflow that pushes, opens or
    merges a PR, checks a merge or watches a pipeline. A repository without
-   `origin`, such as a folder you just ran `git init` in, works with `vibe`.
-3. **Choose its workflow.** The examples, each with its steps in one line, such
-   as `vibe` (commit straight to a dev branch, no review). The `wherdr` example
-   (this project's own workflow) is an advanced one, offered only in
-   **Settings › Projects**. The one you choose is
-   copied into the project: that copy is the project's own workflow, shown in
-   its [Workflow](#workflow) tab and changed later by asking its coordinator.
-   Projects imported from v2 ([Migrate from v2](migrate-from-v2.md)) have none,
-   and their tasks cannot start without it: open the project, then
-   *Workflow › Start from a template*. When the repository has no remote and
-   the example you pick needs one, this step says so and offers *Use vibe*, or
-   add a remote with `git remote add origin <url>`. **New › Project** warns the
-   same way.
-4. **Check its guards.** The protected branches and who merges, as the
-   workflow set them ([Guards](#guards)). Change and save them, or keep the
-   defaults with Next. Reopened before its coordinator was started, the window
-   opens on this step again rather than past it.
-5. **Start its coordinator.** Pick the agent and start it: the coordinator is
-   the agent you talk to about the project. It adds tasks and follows them on
-   the board. Its folder is new at its first start: wherdr answers the agent's
-   "trust this folder?" question for it (that folder only, never yours), as for
-   Alfred's. The step says *starting* until the agent is ready, then that it
-   runs; if the agent still asks something (a login, say), *Answer its
-   question* opens its conversation; Next waits until it runs. Its [autopilot](#autopilot) can be set
-   under it (optional).
+   `origin`, such as a folder you just ran `git init` in, works with a workflow
+   that lands locally, like `vibe`.
+3. **Meet your coordinator.** The coordinator is the agent you talk to about
+   the project: it adds tasks and follows them on the board. *Start with…*
+   starts it, asks it to look at the project and set up how you work with you
+   (the checks before a merge, the reviews, the pace), and opens its
+   conversation. It asks you a few questions, one at a time, then proposes the
+   project's first workflow; your yes saves it, guards included
+   ([Guards](#guards)). Until then the project has no workflow and its tasks
+   cannot start; the board shows it all the same. Its folder is new at its
+   first start: wherdr answers the agent's "trust this folder?" question for
+   it (that folder only, never yours), as for Alfred's. While the agent is
+   still starting, the step says so; if it asks something (a login, say),
+   *Answer its question* opens its conversation. Next (*Finish*) waits until
+   it runs.
    It keeps a memory of its own, `memory.md` in its folder: your decisions
    and preferences, read at each start. wherdr never rewrites it, so the
    coordinator remembers them after a restart or a change of agent (Claude,
    Codex…).
-6. **Add a first task.** A title and, with several, its type.
+
+Projects imported from v2 ([Migrate from v2](migrate-from-v2.md)) have no
+workflow either: ask their coordinator, or open the project, then
+*Workflow › Start from a template*. There, an example that needs a remote
+warns when the repository has none; **New › Project** warns the same way.
 
 **New › Project** also opens a project's coordinator, or adds a new or empty
 folder (created at start, `git init` offered), or any folder without git (a

@@ -359,10 +359,12 @@ const guardsOf = (t: Template | null) =>
 export const sameGuards = (a: Template | null, b: Template | null) => guardsOf(a) === guardsOf(b)
 
 // Why the coordinator may not save `next` over `old`, or undefined. Guards
-// change only through the user's own gesture in the interface. key: the project's.
+// change only through the user's own gesture in the interface. key: the
+// project's. No workflow yet: its first one, guards included, is proposed
+// like any change and saved on the user's yes.
 export function templateEditRefusal(old: Template | null, next: Template, turn: Turn, key?: string): string | undefined {
   if (turn !== 'user') return 'template edit is only for a turn that comes from the user: propose the change and wait for their yes'
-  if (!old) return `The project has no workflow: the user starts it from a template in ${projectPlace(key, 'workflow', true)}`
+  if (!old) return undefined
   if (next?.id !== old.id) return `The coordinator edits its project's workflow only (${old.id})`
   if (!sameGuards(old, next)) return `Guards (protected branches, who merges) are changed by the user in ${projectPlace(key ?? old.id, 'guards', true)}, or by Alfred, never with a project coordinator's token`
 }
@@ -555,7 +557,8 @@ export const commandList = (t?: Template | null) => COMMANDS.filter(c => !c.usag
 export function roleFiles(p: Project, t: Template | null, examples: Template[], docs?: string): Record<string, string> {
   // A folder without git: no task worktree, the coordinator does the work there itself.
   const plain = p.git === false
-  const plans = t ? Object.entries(t.taskTypes).flatMap(([type]) => [`### ${type}`, ...planSteps(t, { type }, p.base).map(stepLine), '']) : ['(no template yet)']
+  const plans = t ? Object.entries(t.taskTypes).flatMap(([type]) => [`### ${type}`, ...planSteps(t, { type }, p.base).map(stepLine), '']) : [
+    `None yet: its tasks cannot start. When the user asks you to set up how they work: look at the repository (its tests, CI, how it merges), ask them a few questions, one at a time (the checks before a merge, the reviews, the pace), then propose a first workflow with \`template edit\`, from the example closest to their answers. Their yes in ${projectPlace(p.key, 'workflow', true)} saves it, its guards included.`, '']
   const own = t ? [t.instructions, ...Object.entries(t.taskTypes).map(([k, tt]) => tt.instructions && `${k}: ${tt.instructions}`)].filter(Boolean).map(s => `- ${s}`) : []
   const agents = [
     `# Coordinator of project ${p.name} (${p.key})`, '',
@@ -623,7 +626,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
 // The main coordinator's part of Alfred's home (shared/pm/alfred.ts): every
 // project, through the board only. Its AGENTS.md is a section of Alfred's.
 export function mainRoleFiles(projects: Pick<Project, 'key' | 'name' | 'path' | 'from'>[]): Record<string, string> {
-  const list = projects.length ? projects.map(p => `- ${p.key}: ${p.name} (repository ${p.path}, ${p.from ? `workflow copied from template ${p.from.template}` : 'no workflow yet'})`) : ['(no project yet)']
+  const list = projects.length ? projects.map(p => `- ${p.key}: ${p.name} (repository ${p.path}, ${p.from ? `workflow copied from template ${p.from.template}` : 'its own workflow, or none yet'})`) : ['(no project yet)']
   const agents = [
     '## Coordinating the projects', '',
     'You are also the main coordinator: you coordinate every project of the user\'s board, and answer the user about all of them. You change no repository: task agents do the work in their own worktrees.',

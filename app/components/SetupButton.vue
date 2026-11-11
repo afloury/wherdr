@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The board header's "Finish setup (2/6)" while no project went through every
+// The board header's "Finish setup (2/3)" while no project went through every
 // setup step (setupComplete); nothing once one did. It opens SetupWizard.
 import type { PmOverview } from '#shared/pm/project'
 import { SETUP_STEPS, setupComplete, setupCount, setupDone, setupProject } from '#shared/pm/setup'
@@ -22,7 +22,7 @@ const count = computed(() => setupCount(setupDone(data.value, setupProject(data.
 </template>
 
 <style scoped>
-/* Phone: the icon and 2/6 only (the full label for screen readers), so the header keeps its other controls. */
+/* Phone: the icon and 2/3 only (the full label for screen readers), so the header keeps its other controls. */
 .setup-btn { flex: none; white-space: nowrap; }
 .setup-icon { width: 20px; height: 20px; }
 .setup-short { display: none; }
