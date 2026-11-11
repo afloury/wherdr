@@ -31,7 +31,7 @@ import type { Incident } from '../../shared/pm/incident'
 import { NEW_AUTOPILOT, type Autopilot, type DayCount, type LastWake, type TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, type Wake, type WakeSkip } from '../../shared/pm/wakes'
 import type { HealthSent } from '../../shared/pm/health'
-import type { Automation, Mark } from '../../shared/pm/automations'
+import type { Automation, AutomationProposal, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DATA_DIR } from './env'
 
@@ -59,7 +59,7 @@ export interface CoordinatorRecord {
   cards?: UiCard[] // the action buttons it put in its replies (shared/uiActions.ts), newest first
 }
 
-export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark> }
+export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark>, proposals?: AutomationProposal[] }
 
 // The checks the store cannot make itself: the machine, a git folder there
 // (or, with plain, any folder). Resolves to the folder's absolute path, and

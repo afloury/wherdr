@@ -38,9 +38,14 @@ const route = useRoute()
 const router = useRouter()
 // An agent's `ui open` for this conversation (shared/uiOpen.ts), sent to this
 // device only when the user uses it: Settings beside it on a computer
-// (`show: 'panel'`, when the window has room), else a card above the message field. It never
-// moves the user away: the card waits for their tap.
+// (`show: 'panel'`, when the window has room), else the card the agent ends
+// its reply with. A bar above the message field stands in for that card only
+// when the reply is over without it. It never moves the user away: the card
+// waits for their tap.
 const uiCard = ref<UiOpenEvent | null>(null)
+const turnOpens = ref<string[]>([])
+watch([uiCard, turnOpens], ([e, opens]) => { if (e && opens.includes(e.link)) uiCard.value = null })
+const uiBar = computed(() => pane.value?.status === 'working' ? null : uiCard.value)
 watch(uiOpenRequest, (e) => {
   if (!e || e.pane !== props.paneId) return
   uiOpenRequest.value = null
@@ -642,7 +647,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     >
       <ChatView
         ref="chatRef" v-model:search="searchOpen" :pane="pane" :local-queued="localQueued"
-        @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @answered="composer?.focusAnswer($event)" @choose="composer?.sendText($event)" @unanswered="unanswered = $event" @sent="onSent"
+        @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @answered="composer?.focusAnswer($event)" @choose="composer?.sendText($event)" @unanswered="unanswered = $event" @opens="turnOpens = $event" @sent="onSent"
       />
     </div>
     <div v-else-if="mode === 'term' && (!linkShown || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
@@ -665,7 +670,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         @pointerdown.prevent @mousedown.prevent @click.stop="togglePhoneKeys"><UIcon :name="phoneKeysOpen ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" /></button>
     </div>
     <Keybar v-if="keybarShown" :id="keybarId" :ctl="ctl" :compact="compactPhone" :terminal="termShown" @keyboard="toggleComposerKeyboard" />
-    <UiOpenCard v-if="uiCard" :event="uiCard" @close="uiCard = null" />
+    <UiOpenCard v-if="uiBar" :event="uiBar" @close="uiCard = null" />
     <UiShowCard v-if="showCard" :event="showCard" @close="showCard = null" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @pointerdown="takeTerminalControl" @keydown="onComposerKey" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>

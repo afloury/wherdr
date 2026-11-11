@@ -7,7 +7,7 @@ import { readBody } from 'h3'
 import CoordinatorsSection from '~/components/CoordinatorsSection.vue'
 import { nextTick } from 'vue'
 import { appConfig, coarse, curPane, desk, herdrState } from '~/composables/useHerdr'
-import { alfred, coordinators, paneCoordinatorName } from '~/composables/useCoordinators'
+import { alfred, coordinators, loadCoordinators, paneCoordinatorName } from '~/composables/useCoordinators'
 import { menuState } from '~/composables/useUi'
 import { machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 import { MAIN, type CoordinatorView } from '#shared/pm/coordinator'
@@ -25,7 +25,9 @@ registerEndpoint('/api/pm/coordinator-agent', { method: 'POST', handler: async (
 const pane = (id: string, coreAddress: string) => ({ id, coreAddress, status: 'idle', agent: 'claude', workspace: 'w', tab: 't' }) as Pane
 const view = (project: string, more: Partial<CoordinatorView> = {}): CoordinatorView => ({ project, name: project, agent: { program: 'claude' }, ...more })
 let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
-afterEach(() => { w?.unmount(); w = null; posts.length = 0; navigate.mockReset(); document.body.innerHTML = '' })
+// A coordinators read still in flight would answer the next test's first one
+// with this test's views (loadCoordinators shares it): let it end first.
+afterEach(async () => { w?.unmount(); w = null; posts.length = 0; navigate.mockReset(); document.body.innerHTML = ''; await loadCoordinators() })
 
 it('lists the running project coordinators only (Alfred, the main one, has its own row)', async () => {
   herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1')] }

@@ -23,18 +23,20 @@ import { findReplyOrigin, parseReply, type ReplyTarget } from '#shared/replyQuot
 import { messageId, messageOf, messageRef, pointRef, refLine, refsIn, sameRef, type Reference } from '#shared/reference'
 import { WAKE_LABEL, wakeKindOf, type WakeKind } from '#shared/pm/wakes'
 import type { ProposalAnswer } from '#shared/pm/coordinator'
+import type { AutomationProposal } from '#shared/pm/automations'
 import { proposalSpot, type PlacedBlock } from '~/utils/proposalPlace'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
 import { keepIfSame, keyedMemo, weakMemo } from '~/utils/keepIfSame'
 import { duplicateImages } from '#shared/imageDupes'
 import { stripPosition } from '#shared/filePaths'
+import { turnOpens as openCards } from '#shared/uiOpen'
 import { readAloudEngine, stopSpeaking } from '~/composables/useReadAloud'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 // A version of a reply replaced while the agent writes takes its question marks with it.
 onMdDropped(forgetReply)
 const route = useRoute()
-const emit = defineEmits<{ gotoTerm: [], restored: [], quote: [], answered: [caret: number], unanswered: [count: number], sent: [queued: QueuedMessage | null], choose: [text: string] }>()
+const emit = defineEmits<{ gotoTerm: [], restored: [], quote: [], answered: [caret: number], unanswered: [count: number], opens: [links: string[]], sent: [queued: QueuedMessage | null], choose: [text: string] }>()
 const searchOpen = defineModel<boolean>('search', { default: false })
 
 const box = ref<HTMLElement | null>(null)
@@ -238,16 +240,18 @@ const turnOpens = (b: PlacedBlock) => fromUser(b as Block) || b.k === 'wake'
 // When a block was written (a thought's or a job's ms is its duration).
 const blockTime = (b: PlacedBlock) => (b.k === 'thinking' || b.k === 'job' ? undefined : b.ms)
 const proposalCards = computed(() => {
-  const c = coord.value, cards = new Map<string, { key: string, answer?: ProposalAnswer }[]>()
-  const place = (at: number | undefined, key: string, answer?: ProposalAnswer) => {
+  const c = coord.value, cards = new Map<string, { key: string, answer?: ProposalAnswer, auto?: AutomationProposal }[]>()
+  const place = (at: number | undefined, key: string, more: { answer?: ProposalAnswer, auto?: AutomationProposal } = {}) => {
     const spot = at === undefined ? null : proposalSpot(blocks.value, at, turnOpens, blockTime)
-    if (spot !== null) cards.set(spot, [...cards.get(spot) ?? [], { key, ...(answer ? { answer } : {}) }])
+    if (spot !== null) cards.set(spot, [...cards.get(spot) ?? [], { key, ...more }])
   }
-  c?.answers?.forEach((a, i) => place(a.proposedAt, `a${i}:${a.proposedAt}`, a))
+  c?.answers?.forEach((a, i) => place(a.proposedAt, `a${i}:${a.proposedAt}`, { answer: a }))
   if (c?.proposal) place(c.proposal.at, 'pending')
+  // Its automation proposals (AutomationProposalCard), the same way.
+  c?.automationProposals?.forEach(p => place(p.at, `auto:${p.id}`, { auto: p }))
   return cards
 })
-const proposalKey = computed(() => [...proposalCards.value].find(([, l]) => l.some(x => !x.answer))?.[0] ?? null)
+const proposalKey = computed(() => [...proposalCards.value].find(([, l]) => l.some(x => !x.answer && !x.auto))?.[0] ?? null)
 // The user's request it follows: the last message they sent before the card.
 const proposalSaidKey = computed(() => {
   if (proposalKey.value === null || !coord.value?.proposal?.said) return null
@@ -1452,6 +1456,10 @@ const unanswered = computed(() => {
 })
 watch(() => unanswered.value?.count || 0, n => emit('unanswered', n), { immediate: true })
 onUnmounted(() => emit('unanswered', 0))
+// The places this turn's replies keep as cards (shared/uiOpen.ts turnOpens):
+// AgentView shows no bar for those.
+watch(() => openCards(items.value).join(' '), s => emit('opens', s ? s.split(' ') : []), { immediate: true })
+onUnmounted(() => emit('opens', []))
 // Reminder tapped: scrolls to the first question still unanswered and flashes it.
 function gotoUnanswered() {
   const msg = unanswered.value ? msgEl(unanswered.value.key) : null
@@ -1610,7 +1618,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   </button>
                   <ReadAloudButton :id="`${paneId}:${b.key}`" :text="b.text" />
                 </div>
-                <template v-if="coord"><ProposalCard v-for="p in proposalCards.get(b.key)" :key="p.key" :c="coord" :answer="p.answer" :can-goto="!p.answer && !!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" /></template>
+                <template v-if="coord"><template v-for="p in proposalCards.get(b.key)" :key="p.key"><AutomationProposalCard v-if="p.auto" :p="p.auto" /><ProposalCard v-else :c="coord" :answer="p.answer" :can-goto="!p.answer && !!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" /></template></template>
               </template>
 
               <UChatReasoning v-else-if="b.k === 'thinking'" class="omp-thinking" :text="b.text"
@@ -1746,7 +1754,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <UIcon name="i-lucide-message-square-dashed" class="chat-empty-icon" />
               <p>{{ t('No messages yet.') }}</p>
             </div>
-            <template v-if="coord"><ProposalCard v-for="p in proposalCards.get('')" :key="p.key" :c="coord" :answer="p.answer" :can-goto="!p.answer && !!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" /></template>
+            <template v-if="coord"><template v-for="p in proposalCards.get('')" :key="p.key"><AutomationProposalCard v-if="p.auto" :p="p.auto" /><ProposalCard v-else :c="coord" :answer="p.answer" :can-goto="!p.answer && !!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" /></template></template>
             <div v-if="loadError" class="chat-empty"><p>{{ loadError }}</p></div>
           </template>
         </div>
