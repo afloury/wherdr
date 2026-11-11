@@ -28,7 +28,7 @@ it('red CI sent to the agent stalls the task after 10 min while it stays red on 
   const pr = (headRefOid: string, conclusion: string, status = 'COMPLETED') => ({ url: 'u', baseRefName: 'v3', headRefOid, statusCheckRollup: [{ name: 'test', status, conclusion }] })
   expect(ciOf(pr('abc', 'FAILURE'), 'abc')).toEqual({ head: 'abc', red: true })
   expect(ciOf(pr('abc', 'FAILURE'), 'def')).toEqual({ head: 'def', red: false })
-  expect(ciOf(pr('abc', '', 'IN_PROGRESS'), 'abc')).toEqual({ head: 'abc', red: false })
+  expect(ciOf(pr('abc', '', 'IN_PROGRESS'), 'abc')).toEqual({ head: 'abc', red: false, running: true })
 })
 
 it('an idle agent whose step waits for its report stalls the task after 5 min', () => {
