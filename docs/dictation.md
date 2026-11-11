@@ -264,11 +264,14 @@ starts once the answer is `ready`. It runs the fetch script's own code (`scripts
 same pinned URLs, sha256 checks, `.part` resume), one fetch at a time for the whole server; a
 second request for the same model joins the running one. A failed fetch (`error`, shown in the
 row) is told once in plain words; the next Install tries again and resumes. Before downloading
-an archive the server checks that its `tar` can unpack the format (`extractCommand` maps
+an archive the server checks how it can unpack the format (`unpackMode`; `extractCommand` maps
 `.tar.bz2`, `.tar.gz`, `.tar.xz`, `.tar.zst` and `.tar` to a flag and the decompressor GNU tar
-runs; bsdtar has them built in), so a server without `bzip2` says *this archive format needs bzip2
-on the server* instead of `tar exited with 2` after 200 MB (on Linux: `sudo apt install bzip2`;
-macOS has both). A failed unpack removes the archive
+runs; bsdtar has them built in). A `.tar.bz2` on a server without `bzip2` (every model and voice
+archive today) is decoded in JS (`unbzip2-stream`, about 2.5 MB/s on a desktop CPU) and streamed
+into `tar -x -f -`, so bzip2 is never a requirement. Another format whose decompressor is missing
+is refused before the download with the command that installs it (*this archive format needs xz
+on the server: install it (sudo apt install xz-utils), then try again*; `brew install` on macOS); the
+next Install tries again. A failed unpack removes the archive
 and the half-written files and says why (disk full, permission denied, incomplete archive, missing
 files: `tarFailure`); a cut download says how far it got and keeps its `.part` to resume. Cancel stops the phone's polling, not
 the server's fetch. A server without the route (older build) falls back to the 404 message with
