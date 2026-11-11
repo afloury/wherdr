@@ -25,6 +25,8 @@ export function guardAction(g: ResolvedGuards, a: StepAction, ctx: { branch: str
 // uncommitted changes). NOT_YET: checks still running, try again later.
 export const CODE = { SEND_BACK: 3, NOT_MERGED: 5, NOT_YET: 6 } as const
 
+// The remote branch $b deleted, only while it is still at commit $r.
+const DELETE_REF = 'git push -q --force-with-lease="refs/heads/$b:$r" origin ":refs/heads/$b" 2>&1 || exit 1; echo deleted'
 // Each script runs in the task's worktree ($1); its other arguments follow.
 // The last line of a successful run is its result (a commit or a link).
 const IN = 'cd "$1" || exit 1; shift;'
@@ -196,6 +198,25 @@ o=$(printf '%s\\n' "$auth" | curl -sS -K - -X "$1" $g -H 'Content-Type: applicat
 c=$(printf '%s\\n' "$o" | tail -1)
 case $c in 429) echo "rate limit"; exit 1;; 5*) echo "HTTP $c"; exit 1;; esac
 printf '%s\\n' "$o"`,
+  // After a merge: may the task's remote branch ($1) go? Last line: none (no
+  // origin or no such branch), bitbucket (asked through the API instead),
+  // kept: <why>, or deleted. It goes only when no open PR uses or targets it,
+  // a merged PR has its exact head, and GitHub neither protects it nor has it as
+  // default; the lease keeps a commit pushed meanwhile.
+  dropBranch: `${IN} b=$1; u=$(git remote get-url origin 2>/dev/null) || { echo none; exit 0; }
+case $u in *bitbucket.org[:/]*) echo bitbucket; exit 0;; esac
+ask() { o=$("$@" 2>&1) || { echo "$o" | tail -1; exit 1; }; }
+ask git ls-remote origin "refs/heads/$b"; r=$(echo "$o" | cut -f1); [ -n "$r" ] || { echo none; exit 0; }
+ask gh pr list --head "$b" --state open --json url -q '.[0].url // empty'; [ -z "$o" ] || { echo "kept: an open PR uses it ($o)"; exit 0; }
+ask gh pr list --base "$b" --state open --json url -q '.[0].url // empty'; [ -z "$o" ] || { echo "kept: an open PR targets it ($o)"; exit 0; }
+ask gh pr list --head "$b" --state merged --json headRefOid -q '.[].headRefOid'
+[ -n "$o" ] || { echo "kept: no merged PR of it"; exit 0; }
+echo "$o" | grep -qxF "$r" || { echo "kept: commit $(echo "$r" | cut -c1-7) was pushed after its merge"; exit 0; }
+ask gh api "repos/{owner}/{repo}/branches/$b" -q .protected; [ "$o" != true ] || { echo "kept: GitHub protects it"; exit 0; }
+ask gh repo view --json defaultBranchRef -q .defaultBranchRef.name; [ "$o" != "$b" ] || { echo "kept: it is the repository's default branch"; exit 0; }
+${DELETE_REF}`,
+  // Deletes remote branch $1 only while it is at commit $2.
+  deleteRef: `${IN} b=$1 r=$2; ${DELETE_REF}`,
   // Remote branches holding the task's commit, for the protected-branch alert.
   contains: `${IN} git fetch -q origin 2>&1 || exit 1; git branch -r --contains HEAD --format='%(refname:short)'`,
 }
@@ -256,6 +277,17 @@ export function bbReady(statuses: BbStatus[], required: string[] = []): { ok: tr
   const red = statuses.filter(c => c.state !== 'SUCCESSFUL')
   if (red.length) return { ok: false, why: `${red.length} check(s) failed` }
   return { ok: true }
+}
+
+// The actions whose success means the task's PR is merged: the engine's merge,
+// or git.verify-merged after the user merged on the Git host (I merged it, Check on GitHub).
+export const endsMerged = (k: string) => isPrMerge(k) || k === 'git.verify-merged'
+
+// Why a merged task's remote branch stays whatever its host says: a protected
+// branch, or a base (the project's, the step's), which other work starts from.
+export function keepsBranch(g: ResolvedGuards, branch: string, bases: (string | undefined)[]): string | undefined {
+  if (isProtected(g, branch)) return 'it is a protected branch'
+  if (bases.includes(branch)) return 'it is a base branch'
 }
 
 // Errors that pass by themselves: a git host refusing a push for a while,

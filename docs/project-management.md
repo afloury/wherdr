@@ -108,6 +108,11 @@ its folder, branches and task worktrees stay on the machine.
   *Never*. A done task stays in the Done column that long, then the engine
   archives it (see [Archived tasks](#archived-tasks)). A shorter delay archives
   at once the done tasks it now covers.
+- **Delete the task's branch after its merge**: on by default. Once a task's
+  PR is merged, by its merge step or by you on the Git host (*I merged it*,
+  *Check on GitHub*), wherdr deletes the task's remote branch and says so in
+  the task's log (*deleted the remote branch task/WHR-12*). Off: branches stay,
+  for teams that keep them. See [Workflow](#workflow) for when a branch stays.
 - **Agents**: the worker and the reviewer its tasks start with, each with an
   optional model (empty: the agent's default), and the reviewer's optional
   **Fallback** (see [Reviewer fallback](#reviewer-fallback)).
@@ -262,6 +267,16 @@ or, outside GitHub, `"source": "command", "command": "./scripts/ci-status.sh dev
 
 A merge that first pushes the task's last commits waits up to a minute for
 GitHub to show them on the PR.
+
+After a merge (`github.merge`, `bitbucket.merge`, or `git.verify-merged` once
+you merged on the Git host), wherdr deletes the task's remote branch, unless
+the project's General tab says to keep branches. It deletes it only when the
+branch's head is the merged PR's head (no commit pushed since), no other open
+PR uses or targets it, and it is neither a protected branch, a base (the
+project's, the step's) nor the repository's default branch. Otherwise it stays,
+and the task's log says why (*kept the remote branch task/WHR-12: commit
+1a2b3c4 was pushed after its merge*). A PR closed without a merge, or an
+archived task, keeps its branch.
 In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
 *Add task* under [Board](#board)).
 
@@ -618,7 +633,8 @@ copies it, *Copied*, without opening the task), the machine it runs on when its
 project allows several (*machine-b*), its step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done
 (*42 min*), a dot with its agent's state (worker or reviewer), where its PR stands (*PR open · waiting for checks*,
-*checks failed*, *merging*, *The PR conflicts with v3*, *merged …*), what you have to do under
+*checks failed*, *merging*, *The PR conflicts with v3*, *merged …*; *review pending*, never
+*ready to merge*, while a review is still ahead or under way), what you have to do under
 Your turn, the tasks it waits for, its first tags and its PR link. A refused
 step is said in plain words, never as a command: the commands go to the agent.
 When the engine has already asked the agent to bring a conflicting PR up to
@@ -833,6 +849,10 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   *The PR is not merged into develop yet: merge it on Bitbucket (PR link), then
   press “I merged it” again*.
 - **An agent's question or permission**: its text, and a button to open that agent.
+- **A stalled review** (past its time limit, or its reviewer stopped without
+  recording a verdict): one sentence says so, and **Restart the review** ends
+  the reviewer if it is still there and starts a new one on the PR's latest
+  commit, from the start. The step's time limit starts again.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (start it, open its agent). A failed action step (a merge GitHub
   refused) has *Try again* at the top of the sheet, which runs it again.
@@ -1183,7 +1203,9 @@ its project: `wherdr pm tell <task> "<what to do>" --fix <kind> --reason "<one
 sentence>"`, where the kind is `base` (merge the base and solve a conflict),
 `ci` (fix a red CI), `machine` (retry after a disk or memory problem) or
 `stall` (restart a stalled agent). A worker that was let go or ended on its
-own starts again with the message; a stopped or finished task is never fixed. Each fix is written to the task's log with its reason, at most
+own starts again with the message; at the review step, a reviewer that is not
+running starts the review again (the message goes to the task's log, the new
+reviewer reads its review file); a stopped or finished task is never fixed. Each fix is written to the task's log with its reason, at most
 twice per task and step; after that the block is yours, and the coordinator
 tells you. Each wake's text lists these fixes. A permission request, a merge,
 an approval, guards, settings and limits stay yours.

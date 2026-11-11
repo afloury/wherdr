@@ -3,8 +3,8 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { RETRY_MS, SCRIPT, commandState, guardAction, isTransient, leaks, prReady, runsState, taskGuards, type Receipt } from '../shared/pm/actions'
-import { runAction, watch, type ActionDeps, type ActionJob } from '../server/utils/pmActions'
+import { RETRY_MS, SCRIPT, commandState, endsMerged, guardAction, isTransient, leaks, prReady, runsState, taskGuards, type Receipt } from '../shared/pm/actions'
+import { dropMergedBranch, runAction, watch, type ActionDeps, type ActionJob } from '../server/utils/pmActions'
 import { WORKTREE_SCRIPT } from '../server/utils/pmLaunch'
 import { initialState, onEvent, planSteps, reviewedCommit } from '../shared/pm/steps'
 import { dueText } from '../shared/pm/advance'
@@ -606,5 +606,80 @@ describe('pipeline.watch', () => {
     expect(await watch({ sh }, { action: { kind: 'pipeline.watch', branch: 'develop' }, worktree: wt })).toEqual({ ok: false, later: true })
     expect((await sh(SCRIPT.ghRuns, [wt, 'develop', ''])).code).toBe(0)
     expect(await watch({ sh }, { action: { kind: 'pipeline.watch', branch: 'nope' }, worktree: wt })).toEqual({ ok: false, error: 'pipeline: no branch nope on origin' })
+  })
+})
+
+describe('the remote branch after a merge', () => {
+  // A clone whose task branch is on origin; a stub gh answers the open and merged PR heads from files.
+  function setup(name: string) {
+    const dir = path.join(tmp, name), origin = path.join(dir, 'origin.git'), wt = path.join(dir, 'wt'), bin = path.join(dir, 'bin')
+    fs.mkdirSync(bin, { recursive: true })
+    fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh\ncase "$*" in *"--state open"*) cat "${dir}/open" 2>/dev/null;; *"--state merged"*) cat "${dir}/merged" 2>/dev/null;; *api*) echo false;; *"repo view"*) echo main;; esac; exit 0\n`, { mode: 0o755 })
+    git(dir, 'init', '-q', '--bare', '-b', 'main', origin); git(dir, 'clone', '-q', origin, wt)
+    git(wt, 'commit', '-q', '--allow-empty', '-m', 'task'); git(wt, 'push', '-q', 'origin', 'HEAD:main', 'HEAD:task/A-1')
+    const sh: ActionDeps['sh'] = (script, args) => localSh(`PATH="${bin}:$PATH"\n${script}`, args)
+    const drop = (o: { on?: boolean, bases?: string[] } = {}) => dropMergedBranch(sh, { worktree: wt, branch: 'task/A-1', guards: g, bases: o.bases ?? ['dev'], on: o.on ?? true })
+    const onOrigin = () => git(origin, 'branch', '--list', 'task/A-1')
+    return { dir, wt, drop, onOrigin, merged: (h: string) => fs.writeFileSync(path.join(dir, 'merged'), `${h}\n`) }
+  }
+
+  it('goes after a merge by the engine or one the user confirmed, once its merged PR has its head', async () => {
+    expect(['github.merge', 'bitbucket.merge', 'git.verify-merged'].every(endsMerged)).toBe(true)
+    expect(endsMerged('git.push')).toBe(false)
+    const s = setup('drop')
+    s.merged(git(s.wt, 'rev-parse', 'HEAD'))
+    expect(await s.drop()).toBe('deleted the remote branch task/A-1')
+    expect(s.onOrigin()).toBe('')
+    expect(await s.drop()).toBeUndefined() // already gone: nothing said
+  })
+
+  it('stays after a commit pushed since the merge, a closed PR, an open PR, or with the setting off', async () => {
+    const s = setup('keep')
+    const merged = git(s.wt, 'rev-parse', 'HEAD')
+    expect(await s.drop()).toBe('kept the remote branch task/A-1: no merged PR of it') // closed without a merge
+    s.merged(merged)
+    git(s.wt, 'commit', '-q', '--allow-empty', '-m', 'later'); git(s.wt, 'push', '-q', 'origin', 'HEAD:task/A-1')
+    expect(await s.drop()).toBe(`kept the remote branch task/A-1: commit ${git(s.wt, 'rev-parse', '--short=7', 'HEAD')} was pushed after its merge`)
+    s.merged(git(s.wt, 'rev-parse', 'HEAD')); fs.writeFileSync(path.join(s.dir, 'open'), 'https://example.invalid/pr/2\n')
+    expect(await s.drop()).toBe('kept the remote branch task/A-1: an open PR uses it (https://example.invalid/pr/2)')
+    expect(await s.drop({ on: false })).toBeUndefined()
+    expect(s.onOrigin()).not.toBe('')
+  })
+
+  it('never touches a protected or base branch', async () => {
+    const sh = async () => { throw new Error('no shell') }
+    expect(await dropMergedBranch(sh, { worktree: '/w', branch: 'main', guards: g, bases: [], on: true })).toBe('kept the remote branch main: it is a protected branch')
+    expect(await dropMergedBranch(sh, { worktree: '/w', branch: 'dev', guards: g, bases: [undefined, 'dev'], on: true })).toBe('kept the remote branch dev: it is a base branch')
+  })
+
+  it('asks Bitbucket for its PRs and restrictions, and deletes only at the merged head', async () => {
+    const head = 'a'.repeat(40)
+    const bb = (o: { open?: boolean, rules?: object[], main?: string } = {}) => {
+      const calls: string[] = []
+      const sh: ActionDeps['sh'] = async (script, args) => {
+        calls.push(args[1]!)
+        if (script === SCRIPT.dropBranch) return { code: 0, out: 'bitbucket' }
+        if (script === SCRIPT.remoteHead) return { code: 0, out: head }
+        if (script === SCRIPT.deleteRef) return { code: 0, out: 'deleted' }
+        const [p, q] = [args[2]!, args[3]!]
+        const body = p === '' ? { mainbranch: { name: o.main ?? 'main' } }
+          : p.startsWith('/branch-restrictions') ? { values: o.rules ?? [] }
+            : p === '/branching-model' ? { branch_types: [{ kind: 'release', prefix: 'release/' }] }
+              : p.includes('state=OPEN') ? { values: o.open && q.startsWith('q=source') ? [{ state: 'OPEN' }] : [] }
+                : { values: [{ state: 'MERGED', source: { commit: { hash: head.slice(0, 12) } } }] }
+        return { code: 0, out: `${JSON.stringify(body)}\n200` }
+      }
+      return { calls, drop: (branch = 'task/A-1') => dropMergedBranch(sh, { worktree: '/w', branch, guards: g, bases: [], on: true }) }
+    }
+    const ok = bb()
+    expect(await ok.drop()).toBe('deleted the remote branch task/A-1')
+    expect(ok.calls.at(-1)).toBe('task/A-1')
+    // An open PR is asked apart from the merged ones, so a page of merged PRs cannot hide it.
+    expect(await bb({ open: true }).drop()).toBe('kept the remote branch task/A-1: an open PR uses it')
+    expect(await bb({ main: 'task/A-1' }).drop()).toBe('kept the remote branch task/A-1: it is the repository\'s main branch')
+    const locked = 'kept the remote branch task/A-1: a Bitbucket branch restriction forbids deleting it'
+    expect(await bb({ rules: [{ branch_match_kind: 'glob', pattern: 'task/*' }] }).drop()).toBe(locked)
+    expect(await bb({ rules: [{ branch_match_kind: 'branching_model', branch_type: 'release' }] }).drop('release/1')).toBe(locked.replace(/task\/A-1/, 'release/1'))
+    expect(await bb({ rules: [{ branch_match_kind: 'glob', pattern: 'release/*' }] }).drop()).toBe('deleted the remote branch task/A-1')
   })
 })
