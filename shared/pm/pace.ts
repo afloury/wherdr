@@ -99,6 +99,13 @@ export function paceLine(s: PaceState, now: number): string {
   return parts.join(' · ')
 }
 
+// The Autopilot tab's gauge: the week used against the line (or limit), and go or what it waits for.
+export interface PaceGauge { account: string, used: number | null, limit: number | null, label: ReturnType<typeof weekLimit>['label'], wait?: string }
+export function paceGauge(s: PaceState, now: number): PaceGauge {
+  const week = s.quota && current(s.quota.week, now), l = week?.resetsAt ? weekLimit(s.policy, week.resetsAt, now) : null
+  return { account: s.account ? `${s.account.key}${s.account.name ? ` ${s.account.name}` : ''}` : s.program, used: week?.used ?? null, limit: l?.value ?? null, label: l?.label ?? 'line', ...(s.verdict.go ? {} : { wait: paceWait(s.verdict) }) }
+}
+
 // One row of Settings › Pace: an account (or a program with no reading at all:
 // account null, quota unknown), its policy, where it stands and its verdict.
 export interface PaceRow {

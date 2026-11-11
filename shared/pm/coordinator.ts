@@ -11,7 +11,8 @@ type AgentRole = Run['role']
 import type { WorkflowChanges } from './workflowChanges'
 import type { ProjectColor } from './projectKey'
 import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, type Autopilot, type FixKind, type limitsLeft } from './autopilot'
-import type { Wake } from './wakes'
+import type { Wake, WakeSkip } from './wakes'
+import type { PaceGauge } from './pace'
 import type { AutomationProposal } from './automations'
 import { CAUSE_RULE } from './incidentWake'
 import { CHOICES, type Choice } from './verdict'
@@ -97,6 +98,9 @@ export interface CoordinatorView {
   asleep?: 'idle' | 'limit', wokeAt?: number, skippedToday?: number
   // When its autopilot wakes next (interval or fixed times), if on.
   nextWake?: number
+  // Since yesterday's midnight, for the Autopilot tab's timeline: the wakes not sent and
+  // why, the tasks started (first worker run); and the worker's account pace.
+  skips?: WakeSkip[], started?: { task: string, title: string, at: number }[], pace?: PaceGauge
 }
 
 // Where the coordinator's current turn comes from: a message the user sent
