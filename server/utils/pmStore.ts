@@ -103,6 +103,27 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     const names = (await fs.readdir(folder).catch(() => [] as string[])).filter(n => n.endsWith('.json')).sort()
     return (await Promise.all(names.map(n => readJson<T>(path.join(folder, n)).catch(() => null)))).filter((x): x is Awaited<T> & {} => !!x)
   }
+  // The runs, kept in memory: clients and ticks ask for them all the time, and
+  // finished runs pile up. Every save is a rename into the folder, which
+  // changes the folder's mtime: while it stays the same, nothing is read; when
+  // it changes, only the files whose mtime or size changed are read again.
+  let runCache: { at: number, files: Map<string, { mtime: number, size: number, run: Run | null }>, list: Run[] } | null = null
+  const runs = async (): Promise<Run[]> => {
+    const at = (await fs.stat(files.runs).catch(() => null))?.mtimeMs
+    if (at === undefined) return []
+    if (runCache?.at === at) return [...runCache.list]
+    const names = (await fs.readdir(files.runs).catch(() => [] as string[])).filter(n => n.endsWith('.json')).sort()
+    const old = runCache?.files, next = new Map<string, { mtime: number, size: number, run: Run | null }>()
+    await Promise.all(names.map(async (n) => {
+      const file = path.join(files.runs, n), s = await fs.stat(file).catch(() => null)
+      if (!s) return
+      const was = old?.get(n)
+      const run = was && was.mtime === s.mtimeMs && was.size === s.size ? was.run : await readJson<Run>(file).catch(() => null)
+      next.set(n, { mtime: s.mtimeMs, size: s.size, run })
+    }))
+    runCache = { at, files: next, list: names.flatMap(n => next.get(n)?.run ?? []) }
+    return [...runCache.list]
+  }
   const tasks = () => readAll<Task>(files.tasks)
   // The project's log: the tasks removed, by whom and why.
   const projectLog = async (key: string) =>
@@ -235,7 +256,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const version = await saveVersioned(workflowFile(key), workflowLogFile(key), { ...(t as Template), id: key.toLowerCase() }, await readJson<Template>(workflowFile(key)), by, said)
       return { id: key.toLowerCase(), version }
     }),
-    runs: () => readAll<Run>(files.runs),
+    runs,
     saveTask: (t: Task) => write(async () => { const out = await marked(t); await writeJson(path.join(files.tasks, `${t.id}.json`), out); return out }),
     // A screenshot of the task: `change` gives the task with it, from the task
     // read in the same write (refused: it throws, nothing is kept).
@@ -299,7 +320,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await writeJson(file, { v: 1, ...r.file })
       return r.out
     }),
-    saveRun: (r: Run) => write(() => writeJson(path.join(files.runs, `${r.id}.json`), r)),
+    saveRun: (r: Run) => write(async () => { await writeJson(path.join(files.runs, `${r.id}.json`), r); if (runCache) runCache.at = -1 }),
     receipt: (id: string) => readJson<Receipt>(path.join(files.receipts, `${id}.json`)),
     saveReceipt: (r: Receipt) => write(() => writeJson(path.join(files.receipts, `${r.id}.json`), r)),
 
