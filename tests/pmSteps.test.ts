@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { EXAMPLES, common, company, github, vibe, wherdr } from '../shared/pm/examples'
-import { currentStep, initialState, onEvent, planSteps, stepLabels, withBase, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
+import { currentStep, initialState, onEvent, pauseClock, planSteps, stepLabels, withBase, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
 import { validateTemplate, type Template } from '../shared/pm/workflow'
 import type { Finding } from '../shared/pm/verdict'
 import { taskBase } from '../shared/pm/run'
@@ -8,6 +8,7 @@ import { guardAction } from '../shared/pm/actions'
 import { runsNow } from '../shared/pm/advance'
 import { coordinatorWake } from '../shared/pm/coordinator'
 import { combineGuards } from '../shared/pm/guards'
+import { clockStops } from '../shared/pm/blocked'
 
 const MIN = 60_000
 const bug: Finding = { id: 'bug', severity: 'major', title: 'Crashes on empty input', proof: 'npm test: 1 failed' }
@@ -269,5 +270,37 @@ describe('step engine, study and feature split', () => {
     const s = onEvent(plan, initialState(), { kind: 'start' }, 0).state
     expect(onEvent(plan, s, { kind: 'tick' }, 59 * MIN).state.yourTurn).toBeUndefined()
     expect(onEvent(plan, s, { kind: 'tick' }, 60 * MIN).state.yourTurn).toEqual({ reason: 'timeout', badge: 'Check work: over 1h' })
+  })
+
+  describe('the step\'s clock stops while its holder cannot work', () => {
+    const H = 60 * MIN
+    const plan = planSteps(common, { type: 'study', steps: { work: { timeout: '3h' } } })
+    const start = onEvent(plan, initialState(), { kind: 'start' }, 0).state
+    // Ticks every 30 min; stopped(t): whether its holder cannot work at t.
+    const run = (until: number, stopped: (t: number) => boolean) => {
+      let s = start
+      for (let t = 30 * MIN; t <= until; t += 30 * MIN) s = onEvent(plan, pauseClock(s, stopped(t), t), { kind: 'tick' }, t).state
+      return s
+    }
+
+    it('an outage of 4 h during a 3 h work step does not time it out', () => {
+      const offline = (t: number) => t > H && t <= 5 * H
+      expect(run(5.5 * H, offline).yourTurn).toBeUndefined()
+      expect(run(7.5 * H, offline).yourTurn).toEqual({ reason: 'timeout', badge: 'Check work: over 3h' })
+    })
+
+    it('waiting for room does not count, and a timeout already shown goes', () => {
+      const late = run(3.5 * H, () => false)
+      expect(late.yourTurn?.reason).toBe('timeout')
+      const held = pauseClock(late, clockStops({ state: 'working', held: 'No room on its machine' }, false), 4 * H)
+      expect(held.yourTurn).toBeUndefined()
+      expect(onEvent(plan, held, { kind: 'tick' }, 9 * H).state.yourTurn).toBeUndefined()
+      expect(held.since).toBe(0)
+    })
+
+    it('normal work still times out after 3 h', () => {
+      expect(run(2.5 * H, () => false).yourTurn).toBeUndefined()
+      expect(run(3 * H, () => false).yourTurn).toEqual({ reason: 'timeout', badge: 'Check work: over 3h' })
+    })
   })
 })

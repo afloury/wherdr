@@ -33,7 +33,14 @@ const error = ref('')
 
 const at = computed(() => (props.card.state?.started ? props.card.state.at : -1))
 const done = computed(() => !!props.card.state?.done)
-const proofs = (id: string) => Object.entries(props.card.state?.proofs[id] ?? {}).filter(([, v]) => v)
+// Where a step's commit links to: its own link proof first, then the other steps', then the task's links
+// (a task-level link may point at another repository).
+const proofLinks = (id: string) => {
+  const given = props.card.state?.proofs ?? {}
+  const urls = [given[id]?.link, ...props.card.plan.map(p => given[p.id]?.link), ...props.card.links.map(l => l.url)]
+  return urls.filter((u): u is string => !!u).map(url => ({ label: '', url }))
+}
+const proofs = (id: string) => Object.entries(props.card.state?.proofs[id] ?? {}).filter((e): e is [string, string] => !!e[1])
 const rounds = (id: string) => props.card.state?.rounds[id] ?? 0
 // The steps that have screenshots, to look at before the push, the PR or the merge.
 const shots = (id: string) => props.card.state?.shots?.[id] ?? []
@@ -95,6 +102,7 @@ const start = () => run(() => startTaskApi(props.card.id, undefined, props.card.
 const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
 const decide = (choice: Choice) => run(() => api('/api/pm/decide', { id: props.card.id, choice }))
 const sendBack = (note: string) => run(() => api('/api/pm/step-back', { id: props.card.id, note }))
+const restartReview = () => run(() => api('/api/pm/review-restart', { id: props.card.id }))
 // A problem reported to the coordinator: open on the card until it acts or the user withdraws it.
 const reportOpen = ref(!!props.reporting)
 // An action step that failed (a merge refused): the user runs it again.
@@ -167,7 +175,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 
       <div id="task-panel" class="task-panel" role="tabpanel" :aria-labelledby="`task-tab-${tab}`" data-testid="task-panel">
         <TaskTodo v-if="tab === 'todo' && todo" :card="card" :kind="todo" :pane="pane" :busy="busy" :pressing="pressing" :refused="refused" :waits-for="waitsFor"
-          @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" />
+          @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" @review="restartReview" />
         <template v-else-if="tab === 'description'">
           <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
           <div v-if="descHtml" class="md-body task-md" data-testid="task-description" @click="onDescClick" v-html="descHtml" />
@@ -189,7 +197,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
               <p class="task-desc">{{ s.text }}</p>
             </details>
             <small v-if="switched && i === switchAt" class="muted" data-testid="review-switch">{{ switched }}</small>
-            <small v-for="[k, v] in proofs(s.id)" :key="k" class="muted">{{ k }}: <a v-if="/^https?:\/\//.test(v)" :href="v" target="_blank" rel="noopener">{{ v }}</a><template v-else>{{ v }}</template></small>
+            <TaskProofs :proofs="proofs(s.id)" :links="proofLinks(s.id)" />
             <TaskShots v-if="shots(s.id).length" :task="card.id" :shots="shots(s.id)" :mode="shotMode(s)" />
             <details v-if="earlier(s.id).length" data-testid="shots-earlier">
               <summary>{{ tl('Earlier screenshots') }}</summary>

@@ -202,6 +202,18 @@ export const prLink = (c: Pick<Card, 'links'>) => c.links.find(l => isPrUrl(l.ur
 // A PR's link reads 'PR #12'; any other keeps its label.
 export const linkLabel = (l: { label: string, url: string }) => { const n = prNumber(l.url); return n ? `PR #${n}` : l.label }
 
+// A commit's page on the Git host, read from a PR link of the task (GitHub,
+// GitLab, Azure DevOps /commit/<sha>, Bitbucket /commits/<sha>); none without one.
+const COMMIT_PATH: Record<string, string> = { 'pull': 'commit', 'pull-requests': 'commits', 'merge_requests': 'commit', 'pullrequest': 'commit' }
+export function commitUrl(sha: string, links: { url: string }[]): string | undefined {
+  if (!/^[0-9a-f]{7,64}$/i.test(sha)) return undefined
+  for (const l of links) {
+    const m = /^(https?:\/\/.+?)\/(pull|pull-requests|merge_requests|pullrequest)\/\d+/i.exec(l.url)
+    if (m) return `${m[1]}/${COMMIT_PATH[m[2]!.toLowerCase()]}/${sha}`
+  }
+  return undefined
+}
+
 // The tags of the cards, once each, to filter the board by.
 export const boardTags = (cards: Pick<Card, 'tags'>[]) => [...new Set(cards.flatMap(c => c.tags))].sort()
 
@@ -274,7 +286,9 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   const failed = s.yourTurn?.reason === 'action' ? s.yourTurn.error ?? '' : undefined
   if (kind === 'pipeline.watch' && s.acting) return { text: 'watching the pipeline', tone: 'wait' }
   if (kind === 'github.pr') return s.acting ? { text: 'opening the PR', tone: 'wait' } : failed !== undefined ? refused(failed) : undefined
-  const pr = c.plan.slice(0, s.at).some(p => p.action?.kind === 'github.pr') ? c.prNow : undefined
+  const opened = c.plan.slice(0, s.at).some(p => p.action?.kind === 'github.pr') ? c.prNow : undefined
+  // Mergeable on GitHub, but a review is still ahead (or under way): not ready to merge yet.
+  const pr = opened === 'ready to merge' && c.plan.slice(s.at).some(p => p.ends === 'verdict') ? 'review pending' : opened
   const approval = s.approved && !s.acting ? { approved: s.approved.at } : {}
   if (c.queue && !pr?.startsWith('checks failed')) return { text: `${ordinal(c.queue)} in merge queue`, tone: 'wait', ...approval }
   if (failed !== undefined) return pr?.startsWith('checks failed') ? ofPr(pr) : refused(failed, agentCatchingUp(c))
