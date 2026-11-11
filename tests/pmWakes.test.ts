@@ -23,12 +23,15 @@ describe('wakes not sent', () => {
     expect(healthRepeats(sent.lines, sent, HEALTH_REPEAT_MS)).toBe(false)
     expect(healthRepeats(sent.lines, undefined, 0)).toBe(false)
   })
-  it('notes each skip once in 12 h, the last 20 kept', () => {
+  it('notes each engine skip once in 12 h, each scheduled one, the last 50 kept', () => {
     const s = { at: 0, what: 'engine' as const, why: 'CO-1: offline' }
     const one = addSkip(undefined, s)!
     expect(addSkip(one, { ...s, at: 3_600_000 })).toBeUndefined()
     expect(addSkip(one, { ...s, at: HEALTH_REPEAT_MS })).toHaveLength(2)
-    expect(Array.from({ length: 25 }, (_, i) => i).reduce((l, i) => addSkip(l, { ...s, why: `${i}` })!, one)).toHaveLength(20)
+    expect(Array.from({ length: 55 }, (_, i) => i).reduce((l, i) => addSkip(l, { ...s, why: `${i}` })!, one)).toHaveLength(50)
+    // A scheduled wake is skipped once per slot: each one noted.
+    const slot = { at: 0, what: 'autopilot' as const, why: 'Scheduled wake: nothing to do' }
+    expect(addSkip(addSkip(undefined, slot), { ...slot, at: 3_600_000 })).toHaveLength(2)
   })
 })
 

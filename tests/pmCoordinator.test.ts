@@ -79,6 +79,25 @@ describe('the token', () => {
   })
 })
 
+describe('the Autopilot tab\'s timeline', () => {
+  it('lists the autopilot\'s own starts only, and yesterday\'s ended wakes', async () => {
+    const now = Date.now(), yesterday = new Date(now).setHours(-24, 30, 0, 0)
+    const add = async (title: string, text: string, autopilot = false) => {
+      const t = await store.addTask({ project: 'CO', title, type: 'feature' })
+      await store.saveTask({ ...t, ...(autopilot ? { autopilot: true as const } : {}), log: [{ at: now - 60_000, by: 'engine', text }] })
+    }
+    await add('Busy', 'started by the autopilot: room on box')
+    await add('Wake', 'started the task in a wake', true)
+    await add('Mine', 'started the task')
+    await add('Held for room', 'started: there is room', true)
+    await add('After', 'started: there is room')
+    await store.saveWakes([{ id: 'old', coordinator: 'CO', reasons: ['Scheduled wake'], createdAt: yesterday, deliveredAt: yesterday, ackedAt: yesterday + 1, endedAt: yesterday + 1, ended: 'ack', tries: 1 }])
+    const co = (await coordinatorsView(store)).find(c => c.project === 'CO')!
+    expect(co.started!.map(s => s.title)).toEqual(['Busy', 'Wake', 'Held for room'])
+    expect(co.wakes!.map(w => w.id)).toEqual(['old'])
+  })
+})
+
 describe('the main coordinator (WHR-398)', () => {
   const ids = (r: unknown) => (r as { tasks: { id: string }[] }).tasks.map(t => t.id)
 

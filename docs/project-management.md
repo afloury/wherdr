@@ -386,15 +386,16 @@ under the autopilot's line and a link to the project's Workflow tab:
   ran it, and *New conversation* starts a new one;
 - the autopilot's state, a switch, today's counts and *Run now*;
 - **the day's timeline**: a 24 h bar with the autopilot's hours shaded, a mark
-  for each wake sent (filled), each wake skipped (hollow) and each task started,
-  *now* and the next wake (dashed); the worker's account
+  for each wake sent (filled), each wake skipped (hollow; each skipped slot, even for the same reason) and each task it started,
+  *now* and the next wake (dashed; outside the hours, their next start); the worker's account
   [pace](quotas.md#pace) as a gauge (the week used against its line or limit,
   then *go* or what it waits for); then the same events listed, newest first:
   *Next wake*, *Now*, each wake sent (*Scheduled*, *Health check*, *Step check*,
   *Engine*, *Incident*, *Run now*: its first reason and *handled* or how it
   ended, a wake not handled highlighted), each wake skipped and why (nothing to
   do, the account ahead of its pace, nothing changed since the last wake…), each
-  task started; yesterday's below, in the same scroll;
+  task the autopilot started (Keep the board busy, a wake; never yours);
+  yesterday's below, in the same scroll;
 - the settings, below, in four groups the form saves together (*Unsaved
   changes* until you save): **Goal**; **When it wakes**: *Every*, *At*, the
   **Health check** interval (empty: every 3h; `off`: never; see

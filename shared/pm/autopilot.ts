@@ -151,6 +151,9 @@ export function startRefusal(ap: Autopilot, tasks: Task[], runs: Run[], now: num
 export const pastLimit = (ap: Autopilot | undefined, tasks: Task[], runs: Run[], now: number, holds?: SlotOf) =>
   limitHit(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now, holds)?.past
 
+// The task log's line for each start of the autopilot's own (the Autopilot tab's timeline reads them).
+export const AUTOPILOT_STARTED = { busy: 'started by the autopilot: ', wake: 'started the task in a wake', room: 'started: there is room' } as const
+
 // Starts a stopped task may have had for a wake to start it again.
 export const WAKE_RETRIES = 2
 

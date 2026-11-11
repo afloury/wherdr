@@ -29,7 +29,7 @@ import type { FolderOptions } from '../../shared/pm/newProject'
 import { MAIN, type CoordinatorAgent, type Proposal, type ProposalAnswer } from '../../shared/pm/coordinator'
 import type { Incident } from '../../shared/pm/incident'
 import { NEW_AUTOPILOT, type Autopilot, type DayCount, type LastWake, type TaskStatus } from '../../shared/pm/autopilot'
-import { readQueue, type Wake, type WakeSkip } from '../../shared/pm/wakes'
+import { WAKES_KEPT_MS, readQueue, type Wake, type WakeSkip } from '../../shared/pm/wakes'
 import type { HealthSent } from '../../shared/pm/health'
 import type { Automation, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
@@ -288,7 +288,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     coordinators: () => readAll<CoordinatorRecord>(files.coordinators),
     // Alfred (the main coordinator) also runs with projects off: its record is saved then too.
     saveCoordinator: (c: CoordinatorRecord) => (c.project === MAIN ? serial : write)(() => writeJson(path.join(files.coordinators, `${c.project}.json`), c)),
-    wakes: async () => readQueue((await fs.readFile(files.wakes, 'utf8').catch(() => '')).split('\n'), Date.now()),
+    // keepMs: ended wakes as old as this (default a day; the file keeps two).
+    wakes: async (keepMs?: number) => readQueue((await fs.readFile(files.wakes, 'utf8').catch(() => '')).split('\n'), Date.now(), keepMs),
     // Appends the changed wakes; the file is rewritten (atomically) once it holds many old lines.
     saveWakes: (changed: Wake[]) => write(async () => {
       if (!changed.length) return
@@ -298,7 +299,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
         return fs.appendFile(files.wakes, changed.map(w => JSON.stringify(w) + '\n').join(''), { mode: 0o600 })
       }
       const ids = new Set(changed.map(w => w.id))
-      const keep = [...readQueue(lines, Date.now()).filter(w => !ids.has(w.id)), ...changed]
+      const keep = [...readQueue(lines, Date.now(), WAKES_KEPT_MS).filter(w => !ids.has(w.id)), ...changed]
       const temp = `${files.wakes}.${randomUUID()}.tmp`
       await fs.writeFile(temp, keep.map(w => JSON.stringify(w) + '\n').join(''), { mode: 0o600 })
       await fs.rename(temp, files.wakes)
