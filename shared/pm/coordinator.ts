@@ -12,7 +12,6 @@ import type { WorkflowChanges } from './workflowChanges'
 import type { ProjectColor } from './projectKey'
 import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, type Autopilot, type FixKind, type limitsLeft } from './autopilot'
 import type { Wake } from './wakes'
-import type { ProposalFlow } from './flow'
 import type { AutomationProposal } from './automations'
 import { CAUSE_RULE } from './incidentWake'
 import { CHOICES, type Choice } from './verdict'
@@ -87,9 +86,9 @@ export interface CoordinatorView {
   // machines: the project's allowed machines, home first (none for the main coordinator);
   // paused: those paused for it; busy: the paused ones where one of its tasks still runs.
   project: string, machines?: string[], paused?: string[], busy?: string[], name: string, label?: string, color?: ProjectColor, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
-  // proposal: the change waiting for the user, as a person reads it too (flow: the steps of
-  // the first changed task type, before and after); answers: the last ones, oldest first.
-  proposal?: Omit<Proposal, 'template' | 'base'> & { flow?: ProposalFlow }, answers?: ProposalAnswer[]
+  // proposal: the change waiting for the user, as a person reads it too (template: the
+  // workflow it proposes, drawn with its changes); answers: the last ones, oldest first.
+  proposal?: Omit<Proposal, 'template' | 'base'> & { template?: Template }, answers?: ProposalAnswer[]
   // The automation changes it proposed (`automation propose`), waiting or answered.
   automationProposals?: AutomationProposal[]
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).

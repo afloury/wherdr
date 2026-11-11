@@ -303,10 +303,14 @@ your request), a square marks the project's row (*1 to review*) and the
 the review: the change in one line, who proposed it (the project's coordinator,
 with the project's colored key, or Alfred), your request that led to it, in
 full (*Show all* unfolds a long one) with its time, then the change, *Refuse*
-or *Accept*. The review opens on *Readable*: per task type, its steps with the ones added,
-removed or changed marked, and each changed field before → after (holder, ends,
-action, merge rule, guards; instructions as a text diff). *JSON* shows the raw
-diff. A proposal made before the workflow changed again is refused, and the
+or *Accept*. The review opens on *Diagram*: the proposed workflow drawn as in
+the Workflow tab, one changed task type at a time, with the steps added (green),
+removed (red, dashed, back where they stood) and changed (cyan: each changed
+field before → after, such as holder, agent or model, how it ends, action, rounds
+or timeout) framed and named, a legend, and one line on what changes for that
+type's tasks (*For feature tasks: review changes its model; a new step shots*).
+*List* shows the same change as a list (merge rule, guards; instructions as a
+text diff), *JSON* the raw diff. A proposal made before the workflow changed again is refused, and the
 review says so: ask the coordinator to propose again. The *Decisions* view links to this review. [Alfred](alfred.md) can propose
 a change too, on your request in its chat: you answer it in the same review.
 
@@ -314,9 +318,9 @@ In the coordinator's conversation, a *Workflow change* card sits under the last
 reply of the turn that made the proposal (never a later one): what that
 proposal changes in one line (from the workflow it was made against, so a change
 made before it never shows; an added task type with its steps, PR target and
-who merges), the steps of the first
-changed task type before and after (the steps added or handed to someone else
-are outlined), who proposed it, your request with its
+who merges), the same diagram, compact, for the first changed task type (cards
+only, with its marks, legend and what changes for its tasks; a tap opens the
+review), who proposed it, your request with its
 time and *Go to message* (back to it in the conversation), *Accept*, *Refuse*
 and *See all changes* (the review). Once answered, the card shows the outcome, by whom and
 when; each proposal keeps its own card, one the coordinator replaced before you

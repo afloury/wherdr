@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // The review of a project coordinator's proposed workflow change: the change
 // in one line, who proposed it and the user's request behind it
-// (ProposalOrigin), the change as a person reads it (or the JSON diff),
+// (ProposalOrigin), the change drawn on the workflow it proposes (WorkflowChart,
+// one changed task type at a time), as a list, or the JSON diff,
 // Refuse or Accept. An outdated proposal (the workflow changed since) is
 // refused by the server: its reason shows here.
 import type { CoordinatorView } from '#shared/pm/coordinator'
@@ -13,13 +14,18 @@ const emit = defineEmits<{ answered: [accepted: boolean], goto: [] }>()
 const open = defineModel<boolean>('open', { default: false })
 const { busy, error, answer } = useProposalAnswer(() => props.c.project, (accepted) => { open.value = false; emit('answered', accepted) })
 const lines = computed(() => diffLines(props.c.proposal?.diff ?? ''))
-// The readable view first; JSON when there is nothing else to show.
-const VIEWS = ['readable', 'json'] as const
-const view = ref<typeof VIEWS[number]>('readable')
+// The diagram first; JSON when there is nothing else to show.
+const view = ref<'diagram' | 'readable' | 'json'>('diagram')
+const proposed = computed(() => props.c.proposal?.template)
 // Nothing readable (a change the builder does not describe): the JSON diff only.
 const changes = computed(() => { const c = props.c.proposal?.changes; return c && (c.all.length || c.types.length) ? c : undefined })
+const VIEWS = computed(() => [...(changes.value && proposed.value ? ['diagram' as const] : []), ...(changes.value ? ['readable' as const] : []), 'json' as const])
 const headline = computed(() => changeHeadline(props.c.proposal?.changes ?? { all: [], types: [] }))
-watch(open, (o) => { if (o) { error.value = ''; view.value = changes.value ? 'readable' : 'json' } })
+// The task types it changes (a change to them all: every type).
+const types = computed(() => (changes.value?.types.length ? changes.value.types.map(x => x.type) : Object.keys(proposed.value?.taskTypes ?? {})))
+const type = ref('')
+watch(open, (o) => { if (o) { error.value = ''; view.value = VIEWS.value[0]!; type.value = types.value[0] ?? '' } }, { immediate: true })
+const VIEW_LABEL = { diagram: 'Diagram', readable: 'List', json: 'JSON' }
 </script>
 
 <template>
@@ -29,12 +35,18 @@ watch(open, (o) => { if (o) { error.value = ''; view.value = changes.value ? 're
         <p v-if="headline" class="review-headline" data-testid="proposal-headline">{{ headline }}</p>
         <ProposalOrigin :c="c" :can-goto="canGoto" @goto="emit('goto')" />
         <span class="mono-label muted">{{ tl('Proposed') }} · {{ fmtDateTime(c.proposal.at) }}</span>
-        <div v-if="changes" class="segmented review-tabs" role="tablist" :style="{ '--segment-count': VIEWS.length }">
+        <div v-if="VIEWS.length > 1" class="segmented review-tabs" role="tablist" :style="{ '--segment-count': VIEWS.length }">
           <button v-for="k in VIEWS" :key="k" type="button" role="tab" :class="{ on: view === k }" :aria-selected="view === k" :data-testid="`proposal-view-${k}`" @click="view = k">
-            <span>{{ k === 'json' ? 'JSON' : tl('Readable') }}</span>
+            <span>{{ tl(VIEW_LABEL[k]) }}</span>
           </button>
         </div>
-        <ProposalChanges v-if="changes && view === 'readable'" :changes="changes" />
+        <template v-if="view === 'diagram' && changes && proposed">
+          <div v-if="types.length > 1" class="segmented" role="tablist" :aria-label="tl('Task type')" :style="{ '--segment-count': types.length }">
+            <button v-for="k in types" :key="k" type="button" role="tab" :class="{ on: type === k }" :aria-selected="type === k" :data-type="k" @click="type = k">{{ k }}</button>
+          </div>
+          <WorkflowChart v-if="type" :key="type" :workflow="proposed" :type="type" :changes="changes" />
+        </template>
+        <ProposalChanges v-else-if="changes && view === 'readable'" :changes="changes" />
         <pre v-else class="review-diff" data-testid="proposal-diff"><span v-for="(d, i) in lines" :key="i" :class="d.k">{{ d.l }}
 </span></pre>
         <div class="review-actions">

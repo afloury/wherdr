@@ -15,7 +15,7 @@ import { weightOf, weightText, weightsLine } from '../../shared/pm/weight'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, busyNext, busyQueue, keepsBusy, coordinatorStartRefusal, countFix, limitsLeft, pastLimit, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
 import { ackWakes } from '../../shared/pm/wakes'
-import { nextWakeAt, proposalFlow } from '../../shared/pm/flow'
+import { nextWakeAt } from '../../shared/pm/flow'
 import { incidentView, isOpen, type Incident } from '../../shared/pm/incident'
 import { automationLine, proposalLine, proposeAutomation } from '../../shared/pm/automations'
 import type { Template } from '../../shared/pm/workflow'
@@ -596,7 +596,6 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
     const c = await store.coordinator(p.key)
     const current = c?.proposal ? await store.workflow(p.key) : null
     const changes = c?.proposal ? c.proposal.changes ?? workflowChanges(current, c.proposal.template) : undefined
-    const flow = c?.proposal && changes ? proposalFlow(current, c.proposal.template, changes.types[0]?.type) : undefined
     const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => t.project === p.key)
     const next = nextWakeAt(c?.autopilot, c?.ranAt, c?.atRan, now)
     const paused = 'paused' in p ? p.paused ?? [] : []
@@ -613,7 +612,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
           }),
       project: p.key, name: p.name, ...('machine' in p ? { machines: allowedMachines(p) } : {}), ...(paused.length ? { paused } : {}), ...(busy.length ? { busy } : {}), ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
-      ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, changes, flow, by: c.proposal.by ?? (p.key === MAIN ? 'main' : p.key), ...(c.proposal.said ? { said: c.proposal.said } : {}), ...(c.proposal.saidAt ? { saidAt: c.proposal.saidAt } : {}) } } : {}),
+      ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, changes, template: c.proposal.template, by: c.proposal.by ?? (p.key === MAIN ? 'main' : p.key), ...(c.proposal.said ? { said: c.proposal.said } : {}), ...(c.proposal.saidAt ? { saidAt: c.proposal.saidAt } : {}) } } : {}),
       ...('label' in p && p.label ? { label: p.label } : {}), ...('color' in p && p.color ? { color: p.color } : {}),
       ...(answersOf(c).length ? { answers: answersOf(c) } : {}),
       ...(autoProps.some(x => x.by === byOf(p.key)) ? { automationProposals: autoProps.filter(x => x.by === byOf(p.key)) } : {}),
