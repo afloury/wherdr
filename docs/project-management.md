@@ -152,6 +152,21 @@ its folder, branches and task worktrees stay on the machine.
   new tasks no longer start there, tasks already there stay. Its switch off pauses it
   for the project instead, its clone kept ([Pause a machine for a project](machines.md#pause-a-machine-for-a-project)). Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
+  Each machine's card shows, live (read again every 10 s), what the
+  coordinator's `autopilot show` sees: *Online*, *Offline* or *Paused*, its
+  available hours, its **memory** as a bar (its agents' estimates, the rest of
+  what is used, free, the reserve hatched at the end), cores and load (on macOS
+  the memory pressure), its agents at work with their task and weight, and
+  **what it takes now**: the heaviest weight that fits (*Takes standard now ·
+  heavy: …* says why not heavier), or *Takes nothing now* and why (*full: 4
+  agents (cap 4)*, *3.1 GB free, needs 3.4 GB with its reserve*, *paused for
+  this project*, *offline*). Under the placement picker, a small picture and one
+  line explain the strategy, and *Next* names the next to-do task and the
+  machine it would go to, by the pace of that task's own account on each machine,
+  or why it waits (no room anywhere, Keep the board busy off, a limit, the task it
+  is chained after, held for room, another task's files). What a machine takes is
+  weighed with the project's learned estimates, as placement weighs it. The board's header opens this block (its server icon: the
+  picked project's sheet, or Settings › Projects with several projects).
   **Placement** chooses how new tasks spread over these machines: *Heavy to the
   strongest* (the default: light and standard work at home when it fits, heavy
   work on the machine with most room), *Balance the load* (each task on the
@@ -719,7 +734,9 @@ waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
 *Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
 with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
-and screenshots), **History** and **Log**, all in the sheet's one scroll. A refused merge says why under its button.
+and screenshots: a report in Markdown, folded with *Show more*, shown once when
+another proof repeats it; a commit as a short sha linked to the commit on the
+Git host when the task has a PR; a link labelled, *PR #12*), **History** and **Log**, all in the sheet's one scroll. A refused merge says why under its button.
 
 **History** reads the task as a conversation, oldest first: the worker's *Done*
 (its closing report on its last one), the reviewer's *Sent back* (the findings,
@@ -943,6 +960,13 @@ working again. The step's time limit and the stall's 30 minutes start again
 from then, so the task comes back if its agent stops again. The Log says
 *back to work* and who sent it back. What only you can do (a merge, an answer,
 a permission, a decision) stays until you do it.
+
+A step's time limit counts only the time its agent could work. While the
+machine it runs on is offline or unreachable, while the engine waits to resume
+it after an incident, or while the task waits for room, a machine or the pace,
+its clock stops: such a task never shows *over 3h*, it shows what it waits
+for, and the limit goes on from where it stopped once the agent can work
+again. The time in step shown on the card stays the real time.
 
 ### Why agents are gone
 
