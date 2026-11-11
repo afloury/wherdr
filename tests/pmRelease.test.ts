@@ -7,7 +7,8 @@ import { startTask, type PmLaunchDeps } from '../server/utils/pmLaunch'
 import { releaseIdle } from '../server/utils/pmRelease'
 import { advanceTick } from '../server/utils/pmAdvance'
 import { mechanicTick } from '../server/utils/pmMechanic'
-import { FIX_QUIET_MS, RELEASE_IDLE_MS, agentBack, agentsAtWork, fixWatch, handFix, handToAgent, idleSince, releaseDue, retriesAction } from '../shared/pm/release'
+import { forgetMemory } from '../server/utils/pmMemory'
+import { FIX_QUIET_MS, RELEASE_IDLE_MS, ROOM_WAKE_MS, agentBack, agentsAtWork, fixWatch, handFix, handToAgent, idleSince, releaseDue, retriesAction } from '../shared/pm/release'
 import { cardStatus } from '../shared/pm/board'
 import { initialState, onEvent, type PlannedStep } from '../shared/pm/steps'
 import { wherdr } from '../shared/pm/examples'
@@ -151,7 +152,7 @@ describe('work the engine handed the worker', () => {
     await store.addProject({ key: 'WH', machine: 'm1', path: '/home/u/wh', template: 'wherdr' }, async (_m, p) => p)
     await store.addTask({ project: 'WH', title: 'Fix it', type: 'visual' })
     const env = { head: 'abc1234', prHead: 'abc1234', merge: { code: 3, out: 'conflict with v3 in a.ts' }, push: { code: 0, out: '' }, calls: [] as [string, Record<string, unknown>][],
-      pr: { mergeStateStatus: 'DIRTY', statusCheckRollup: [] as unknown[] }, online: true, finished: [] as string[] }
+      pr: { mergeStateStatus: 'DIRTY', statusCheckRollup: [] as unknown[] }, online: true, finished: [] as string[], capacity: '' }
     const out = (code: number, text: string) => ({ code, stdout: Buffer.from(text).toString('base64') })
     const call = async (method: string, p: Record<string, unknown>) => {
       env.calls.push([method, p])
@@ -160,6 +161,7 @@ describe('work the engine handed the worker', () => {
         if (script.includes('gh pr list --head')) return out(0, `${env.head}\n${JSON.stringify([{ url: 'https://github.com/o/r/pull/9', baseRefName: 'v3', headRefOid: env.prHead, ...env.pr }])}`)
         if (script.includes('merge -q --no-edit')) return out(env.merge.code, env.merge.out)
         if (script.includes('ls-remote')) return out(env.push.code, env.push.out)
+        if (script.includes('uname -s')) return out(0, env.capacity)
         if (script.includes('command -v')) return out(0, 'claude')
         if (script.includes('$HOME')) return out(0, '/home/u')
         return out(0, '')
@@ -282,6 +284,33 @@ describe('work the engine handed the worker', () => {
     env.finished.push('m1/t2')
     await mechanicTick(deps, 240_000)
     expect((await store.wakes()).filter(w => w.reasons.some(r => r.includes('which cannot do it')))).toHaveLength(1)
+  })
+  it('a CI fix waiting for room on its machine: the status says so, and the coordinator is woken once, only after 30 minutes', async () => {
+    const { store, deps, env, log } = await setup()
+    await store.saveCoordinator({ project: 'WH', tokenHash: '', terminal: 'm1/c', autopilot: { on: true, goal: '', events: ['stuck'], perDay: null, atOnce: null } })
+    redSmoke(env)
+    // Another task's worker on m1, which has 6 GB and 1 GB free: no room for this one.
+    const other = await store.addTask({ project: 'WH', title: 'Other', type: 'simple' })
+    await store.saveTask({ ...other, state: 'working', step: { ...initialState(), started: true, at: 1 } })
+    await store.saveRun({ ...(await store.runs())[0]!, id: 'r-other', task: other.id, terminal: 'm1/other' })
+    await store.saveRun({ ...(await store.runs()).find(r => r.task === 'WH-1')!, state: 'ended', endedBy: 'exit' })
+    env.capacity = `MemTotal: ${6 * 1024 * 1024} kB\nMemFree: 1 kB\nMemAvailable: ${1024 * 1024} kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n`
+    forgetMemory('m1')
+    // The engine's wakes about WH-1 (not the incident wake about the other worker's fake terminal).
+    const wakes = async () => (await store.wakes()).filter(w => w.kind !== 'incident' && w.reasons.some(r => r.includes('WH-1'))).length
+    await mechanicTick(deps, 0)
+    await mechanicTick(deps, 60_000)
+    const t = (await store.task('WH-1'))!
+    expect(t.step!.agent).toMatchObject({ kind: 'ci-to-agent', waits: expect.stringMatching(/^Waits for room/) })
+    expect(cardStatus({ plan: [], state: t.step })?.tone).toBe('bad')
+    expect(await log()).toContain(`ci-to-agent: ${t.step!.agent!.waits}. The coordinator is woken if that lasts 30 minutes.`)
+    expect(await wakes()).toBe(0)
+    await mechanicTick(deps, ROOM_WAKE_MS - 1)
+    expect(await wakes()).toBe(0)
+    await mechanicTick(deps, ROOM_WAKE_MS + 1)
+    await mechanicTick(deps, ROOM_WAKE_MS + 60_000)
+    expect(await wakes()).toBe(1)
+    expect((await store.wakes()).find(w => w.kind !== 'incident')!.reasons.join(' ')).toContain('which has waited 30 minutes for room on its machine')
   })
   it('a CI fix for a worker that ended on a machine paused for the project: it waits for its machine, no wake', async () => {
     const { store, deps, env, log } = await setup()

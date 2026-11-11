@@ -5,7 +5,7 @@ import { afterEach, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { board, userStep } from '../server/utils/pmBoard'
 import { company, wherdr } from '../shared/pm/examples'
-import { cardOf, cardStatus, linkLabel, prNow, requiredChecks, shownTexts } from '../shared/pm/board'
+import { cardOf, cardStatus, linkLabel, mergeGoesNow, prNow, requiredChecks, shownTexts, statusText } from '../shared/pm/board'
 import { planSteps } from '../shared/pm/steps'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 
@@ -81,6 +81,23 @@ it('the card says where its PR and merge stand: waiting for checks, merging, fai
   expect(cardStatus(done)).toEqual({ text: 'merged', tone: 'ok', at: 5 })
   expect(cardStatus({ ...done, state: { ...done.state, proofs: {} } })).toBeUndefined() // done without a merge
   expect(linkLabel({ label: 'pr', url: pr.url })).toBe('PR #7')
+})
+
+it('an approved merge with red checks says what the fix waits for, never that it merges by itself', () => {
+  // A merge the user approves (it waits for them).
+  const plan = planSteps(wherdr, { type: 'simple' }, 'v3').map(p => (p.id === 'merge' ? { ...p, ends: 'user' as const } : p))
+  const merge = (more: object, card: object = {}) => ({ plan, prNow: 'checks failed (smoke)', queue: 1, queueOut: 'checks failed', yourTurn: undefined, state: { at: plan.findIndex(p => p.id === 'merge'), started: true, proofs: {}, rounds: {}, approved: { by: 'user' as const, at: 1 }, ...more }, ...card })
+  const say = (c: ReturnType<typeof merge>) => { const s = cardStatus(c)!; return { text: statusText(s, String), tone: s.tone, spins: mergeGoesNow(c) } }
+  const agent = { kind: 'ci-to-agent', head: 'abc', at: 1 }
+  const room = 'Waits for room (Heavy to the strongest): heavy (≈3.4 GB) fits nowhere — machine-a: 3.1 GB free, needs 3.9 GB with its reserve'
+  expect(say(merge({ agent: { ...agent, waits: room } }))).toEqual({ text: 'Checks failed (smoke): waits for its worker, no room on machine-a (needs ≈3.4 GB: 3.1 GB free, needs 3.9 GB with its reserve)', tone: 'bad', spins: false })
+  expect(say(merge({ agent: { ...agent, waits: 'Waits for its machine (offline)' } })).text).toBe('Checks failed (smoke): waits for its worker, its machine is offline')
+  expect(say(merge({ agent }))).toEqual({ text: 'Checks failed (smoke): fixing: the worker is on it', tone: 'wait', spins: false })
+  // Green: as before, in line and merging by itself.
+  expect(say(merge({}, { prNow: 'ready to merge', queueOut: undefined }))).toEqual({ text: 'Approved, merges by itself · 1st in merge queue', tone: 'wait', spins: true })
+  // Green after a rerun while the fix is still handed out: not red any more, Merge goes on.
+  const rerun = merge({ agent }, { prNow: 'ready to merge', queueOut: undefined })
+  expect([cardStatus(rerun)!.text.startsWith('Checks failed'), mergeGoesNow(rerun)]).toEqual([false, true])
 })
 
 it('a card\'s texts read each task id with its project\'s shown key, stored before the key changed too; its ids stay stored', () => {

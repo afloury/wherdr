@@ -32,7 +32,8 @@ import { samplePeaks } from './pmPeaks'
 import { releaseIdle, reviveWorker } from './pmRelease'
 import { watchAgents } from './pmWatchdog'
 import { startFileWaits, syncFiles } from './pmFiles'
-import { agentBack, agentWaits, fixWatch, handToAgent, handedWatch, MACHINE_OFFLINE, MACHINE_PAUSED, retriesAction, type WorkerNow } from '../../shared/pm/release'
+import { agentBack, agentWaits, fixWatch, handToAgent, handedWatch, MACHINE_OFFLINE, MACHINE_PAUSED, retriesAction, roomWakeDue, type WorkerNow } from '../../shared/pm/release'
+import { isRoomHold } from '../../shared/pm/placement'
 import { isPaused } from '../../shared/pm/project'
 import { noteBack, noteStall } from './pmStall'
 import { askedQuestion } from './pmRead'
@@ -259,17 +260,26 @@ async function skipWake(deps: PmLaunchDeps, task: Task, why: string, now: number
 // The handed work waits for `why`: said on the step, the coordinator woken once (none: the user's).
 // Waiting only for its machine (offline, paused): no wake; the engine starts the
 // worker again with it once the machine is back, and wakes only if that fails
-// (no coordinator to wake: the user's, as before).
+// (no coordinator to wake: the user's, as before). Waiting for room: no wake
+// either, until it has lasted 30 minutes (roomWakeDue), then once.
 async function handedWaits(deps: PmLaunchDeps, task: Task, why: string, now: number): Promise<Task> {
   const work = task.step!.agent!
-  if (work.waits === why) return task
+  const room = isRoomHold(why)
+  if (work.waits === why && !(room && roomWakeDue(work, now))) return task
   if (why === MACHINE_OFFLINE || why === MACHINE_PAUSED) {
     const n = await skipWake(deps, task, showIds(await deps.store.projects(), `${task.id} (${task.title}): ${work.kind} handed to its worker, which ${why.toLowerCase()}.`), now)
-    return deps.store.logTask({ ...task, step: agentWaits(task.step!, why, work.told ?? (n ? undefined : 'user')) }, 'engine', `${work.kind}: ${why}.${n ? ' No wake: the engine goes on once the machine is back.' : ' In Your turn.'}`)
+    return deps.store.logTask({ ...task, step: agentWaits(task.step!, why, work.told ?? (n ? undefined : 'user'), now) }, 'engine', `${work.kind}: ${why}.${n ? ' No wake: the engine goes on once the machine is back.' : ' In Your turn.'}`)
   }
-  const told = work.told ?? ((await wakeCoordinators(deps, task, showIds(await deps.store.projects(), `${task.id} (${task.title}): ${work.kind} was handed to its worker, which cannot do it: ${why}. \`wherdr pm tell ${task.id} "<what to do>" --fix ${work.kind === 'catch-up' ? 'base' : 'ci'} --reason "<why>"\` starts it again with it.`), now)).length ? 'coordinator' : 'user')
+  const step = agentWaits(task.step!, why, work.told, now)
+  if (room && !roomWakeDue(step.agent!, now)) {
+    // Its numbers changed (free memory): saved, not logged again.
+    return work.waits && isRoomHold(work.waits) ? deps.store.saveTask({ ...task, step })
+      : deps.store.logTask({ ...task, step }, 'engine', `${work.kind}: ${why}. The coordinator is woken if that lasts 30 minutes.`)
+  }
+  const cannot = room ? 'which has waited 30 minutes for room on its machine' : 'which cannot do it'
+  const told = work.told ?? ((await wakeCoordinators(deps, task, showIds(await deps.store.projects(), `${task.id} (${task.title}): ${work.kind} was handed to its worker, ${cannot}: ${why}. \`wherdr pm tell ${task.id} "<what to do>" --fix ${work.kind === 'catch-up' ? 'base' : 'ci'} --reason "<why>"\` starts it again with it.`), now)).length ? 'coordinator' : 'user')
   const woke = work.told ? '' : told === 'coordinator' ? ' Woke its coordinator.' : ' In Your turn.'
-  return deps.store.logTask({ ...task, step: agentWaits(task.step!, why, told) }, 'engine', `${work.kind}: ${why}.${woke}`)
+  return deps.store.logTask({ ...task, step: agentWaits(task.step!, why, told, now) }, 'engine', `${work.kind}: ${why}.${woke}`)
 }
 
 // Keep the board busy (shared/pm/autopilot.ts busyNext): each project's next
@@ -460,7 +470,7 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
     const revived = r === 'started the worker again with it' ? { ...step, agent: { ...step.agent!, revived: Date.now() } } : step
     const saved = await deps.store.saveTask({ ...t, step: revived })
     if (typeof r === 'string') return r
-    await handedWaits(deps, saved, r.hold, Date.now())
+    await handedWaits(deps, saved, r.hold, f.now ?? Date.now())
     return `handed to the worker, which waits: ${r.hold}`
   }
   switch (move.kind) {
