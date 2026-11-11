@@ -21,11 +21,11 @@ wherdr 3 runs on herdr-core (`hc`) instead of Herdr and adds built-in project ma
 - **Routine blocks handled by wherdr.** Conflicts and branches behind their base, red CI from an infrastructure error, refused pushes and stalled agents, before the coordinator is woken.
 - **Crash recovery.** Work cut by a restart or a crash resumes by itself.
 - **Task sheet.** Time per step, waits for you, review rounds and CI fixes, with the task's description, plan and log.
-- **Tasks that touch the same files** do not run at the same time.
+- **Tasks that touch the same files.** A task whose declared files overlap a started task's waits for it, unless you start it anyway.
 - **Alfred.** wherdr's assistant guides the setup and sets up your v2 projects with you; it changes settings only after your yes.
 - **Machines.** Placement by memory, cores and load; keep awake; available hours; pause a machine for one project ([Machines](docs/machines.md)).
 - **Project tabs.** A project's coordinator and tasks show on the home tabs of its machines.
-- **Agents show instead of tell.** Choice buttons and live task cards; Alfred and coordinators also highlight a setting, show status cards and propose setting changes as cards.
+- **Agents show instead of tell.** Choice buttons and live task cards; Alfred and coordinators also highlight a setting and show status cards; Alfred proposes setting changes as cards.
 - **On-device dictation and neural read-aloud**, both running on the phone ([Read aloud](docs/read-aloud.md)).
 - **Devin conversations** open on their saved transcript, locally or on another machine.
 - **SVG diagrams** in conversations show as an isolated preview, never executed.

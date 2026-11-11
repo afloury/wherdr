@@ -2,7 +2,7 @@ wherdr 3 runs on [herdr-core](https://github.com/herdrdev/herdr-core) (`hc`) ins
 
 ## New
 
-**Projects, board and tasks.** Turn project management on, add a project from a repository on any machine, and its tasks go through the steps of its workflow on a board, done by agents. Start a workflow from a built-in example or one of your saved templates. Guards set the protected branches and whether a merge waits for you or is done by wherdr. The task sheet shows the time per step, the waits for you, review rounds and CI fixes, with the task's description, plan and log. Tasks that change the same files do not run at the same time.
+**Projects, board and tasks.** Turn project management on, add a project from a repository on any machine, and its tasks go through the steps of its workflow on a board, done by agents. Start a workflow from a built-in example or one of your saved templates. Guards set the protected branches and whether a merge waits for you or is done by wherdr. The task sheet shows the time per step, the waits for you, review rounds and CI fixes, with the task's description, plan and log. A task whose declared files overlap a started task's waits for it to finish, unless you start it anyway.
 
 **A coordinator per project.** You talk to the project's coordinator: it adds tasks and follows them on the board. It keeps its own memory of your decisions and preferences across restarts and changes of agent. Its autopilot keeps the board busy within its limits and hours, and Pace decides when automatic work may start against your Claude and Codex quotas.
 
@@ -12,7 +12,7 @@ wherdr 3 runs on [herdr-core](https://github.com/herdrdev/herdr-core) (`hc`) ins
 
 **Machines.** Each task goes to a machine its project allows, by memory, cores and load. Keep a machine awake from wherdr, set the hours it takes automatic work, or pause it for one project. A project shows on the home tabs of its machines.
 
-**Agents show instead of tell.** Agents ask a choice with buttons and show a task as a live card; Alfred and coordinators also highlight a setting, show status cards and propose a setting change as a card you apply.
+**Agents show instead of tell.** Agents ask a choice with buttons and show a task as a live card; Alfred and coordinators also highlight a setting and show status cards, and Alfred proposes a setting change as a card you apply.
 
 **Conversations.** On-device dictation, and a neural read-aloud voice that runs on the phone. Devin conversations open on their transcript. SVG diagrams show as a safe preview. Conversations are lighter and faster, also with many agents: wherdr reads only what a transcript added and keeps the last read on the device.
 
