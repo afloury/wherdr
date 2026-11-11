@@ -16,7 +16,7 @@ import type { UiCard } from '../../shared/uiActions'
 import { cleanProjectInput, isBranch, isGitBranch, machinesOf, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
 import { defaultColor, keyClash, projectOf, renamed, showIds, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
-import { WEIGHTS, isWeight, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
+import { WEIGHTS, defaultWorkflow, isWeight, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
 import { publicTask, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
 import { afterIds } from '../../shared/pm/advance'
@@ -152,7 +152,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   async function saveVersioned(file: string, logFile: string, t: Template, old: Template | null, by: string, said = '', note = '') {
     const changes = templateChanges(old, t)
     if (old && !changes.length && !note) return old.version ?? 1
-    const version = old ? (old.version ?? 1) + 1 : (note ? t.version ?? 1 : 1)
+    const version = old ? (old.version ?? 1) + 1 : (note ? t.version || 1 : 1)
     await writeJson(file, { ...t, version })
     await appendLog(logFile, { at: Date.now(), by, version, changes: note ? [note, ...(old ? changes : [])] : changes, ...(said ? { said } : {}) })
     return version
@@ -257,8 +257,10 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     project: async (key: unknown) => projectOf(await projects(), key),
     template: (id: string) => (isTemplateId(id) ? readJson<Template>(path.join(files.templates, `${id}.json`)) : Promise.resolve(null)),
     templateLog: async (id: string) => (isTemplateId(id) ? readLog(path.join(files.templateLog, `${id}.json`)) : []),
-    // The project's own workflow (a Template), what its tasks follow; null: none yet.
-    workflow: (key: string) => (KEY_RE.test(key) ? readJson<Template>(workflowFile(key)) : Promise.resolve(null)),
+    // The project's own workflow (a Template), what its tasks follow: the
+    // minimal default until the user accepts one. saved: the accepted one only (null: none yet).
+    workflow: async (key: string) => (KEY_RE.test(key) ? await readJson<Template>(workflowFile(key)) ?? defaultWorkflow(key) : null),
+    savedWorkflow: (key: string) => (KEY_RE.test(key) ? readJson<Template>(workflowFile(key)) : Promise.resolve(null)),
     workflowLog: (key: string) => (KEY_RE.test(key) ? readLog(workflowLogFile(key)) : Promise.resolve([])),
     // by, said: as saveTemplate. Its id is always the project's (lowercased key).
     saveWorkflow: (key: string, t: unknown, { by = 'user', said = '' } = {}) => write(async () => {
