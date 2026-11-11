@@ -42,9 +42,12 @@ export function coordinatorStart(pane?: Pick<Pane, 'status' | 'prompt' | 'screen
 
 export const setupCount = (d: SetupDone) => SETUP_STEPS.filter(s => d[s]).length
 // Where the wizard opens: the first step left, or past the last when all are done.
-export const setupResume = (d: SetupDone) => {
+// The guards have no state of their own (the workflow's defaults count as done):
+// while no coordinator was started, it opens on them, never past them unseen.
+export const setupResume = (d: SetupDone, coordinatorStarted = false) => {
   const i = SETUP_STEPS.findIndex(s => !d[s])
-  return i < 0 ? SETUP_STEPS.length : i
+  if (i < 0) return SETUP_STEPS.length
+  return SETUP_STEPS[i] === 'coordinator' && !coordinatorStarted ? SETUP_STEPS.indexOf('guards') : i
 }
 
 // The project the wizard finishes: the first git project with a step left, else the first one.

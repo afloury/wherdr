@@ -50,9 +50,9 @@ it('starts at the first step with nothing set up, and Next waits for the step to
   await wizard()
   await vi.waitFor(() => expect(stepShown()).toBe('enable'))
   expect($('setup-count')!.textContent).toContain('Step 1 of 6')
-  expect($('setup-alfred')).toBeTruthy()
+  expect($('setup-alfred')!.classList.contains('hw-cta')).toBe(false) // Turn on is the main button
   expect($('setup-next')!.hasAttribute('disabled')).toBe(true)
-  await vi.waitFor(() => expect($('setup-enable')).toBeTruthy())
+  await vi.waitFor(() => expect($('setup-enable')!.classList.contains('hw-cta')).toBe(true))
   await click('setup-enable')
   await vi.waitFor(() => expect($('setup-next')!.hasAttribute('disabled')).toBe(false))
   await click('setup-next')
@@ -60,13 +60,14 @@ it('starts at the first step with nothing set up, and Next waits for the step to
   expect($('setup-next')!.hasAttribute('disabled')).toBe(true) // no project yet
 })
 
-it('resumes at the first step left, and Back goes through the steps in order', async () => {
+it('reopens on the guards rather than past them unseen, and Back goes through the steps in order', async () => {
   overview = { enabled: true, projects: [project('WEB', 'vibe')], templates: [], tasks: [] }
   await wizard()
-  await vi.waitFor(() => expect(stepShown()).toBe('coordinator'))
+  await vi.waitFor(() => expect(stepShown()).toBe('guards'))
+  expect($('setup-next')!.hasAttribute('disabled')).toBe(false) // Next keeps the defaults
   const order = []
   while (stepShown() !== 'enable') { await click('setup-back'); order.push(stepShown()) }
-  expect(order).toEqual(['guards', 'workflow', 'project', 'enable'])
+  expect(order).toEqual(['workflow', 'project', 'enable'])
 })
 
 it('opens on the project asked, past the last step once all are done', async () => {
@@ -86,6 +87,8 @@ it('opens on the project asked, past the last step once all are done', async () 
   mounted!.unmount()
   await wizard()
   await vi.waitFor(() => expect(stepShown()).toBe('workflow')) // API, the project with a step left
+  // wherdr's own workflow is an advanced example, not offered here.
+  expect([...document.querySelectorAll<HTMLElement>('[data-example]')].map(e => e.dataset.example)).toEqual(['vibe', 'company', 'github', 'common'])
   // Its repository has no remote: an example that pushes is warned against, vibe offered.
   expect($('setup-no-remote')).toBeFalsy()
   document.querySelector<HTMLElement>('[data-example="github"]')!.click()
@@ -107,6 +110,16 @@ it('adding: opens at step 2 on a new project, added in place with its color, the
   await vi.waitFor(() => expect($('setup-visibility')).toBeTruthy())
   expect(added).toMatchObject({ key: 'WEB2', name: 'web', path: '/home/u/web', template: '', color: expect.any(String) })
   expect($('setup-next')!.hasAttribute('disabled')).toBe(false)
+  expect($('setup-public-note')).toBeTruthy() // checked: public
+})
+
+it('says nothing about a public repository while it is not checked', async () => {
+  overview = { enabled: true, projects: [project('WEB')], templates: [], tasks: [] }
+  await wizard({ project: 'WEB' })
+  await vi.waitFor(() => expect(stepShown()).toBe('workflow'))
+  await click('setup-back')
+  await vi.waitFor(() => expect($('setup-visibility')).toBeTruthy())
+  expect($('setup-public-note')).toBeFalsy()
 })
 
 it('the board button counts the steps done, and is gone once a project is set up', async () => {
