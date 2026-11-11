@@ -6,7 +6,7 @@ import { PATH_SETUP, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
 import type { PmStore } from './pmStore'
 import { mayMerge } from '../../shared/pm/guards'
-import { BB_STRATEGY, CODE, RETRY_MS, SCRIPT, bbReady, commandState, guardAction, isTransient, leaks, prReady, receiptId, runsState, type ActionResult, type GhRun, type PrInfo } from '../../shared/pm/actions'
+import { BB_STRATEGY, CODE, RETRY_MS, SCRIPT, bbReady, keepsBranch, commandState, guardAction, isTransient, leaks, prReady, receiptId, runsState, type ActionResult, type GhRun, type PrInfo } from '../../shared/pm/actions'
 import type { ResolvedGuards } from '../../shared/pm/guards'
 import type { BbStatus } from '../../shared/pm/actions'
 import { isPrMerge, type MergeBy, type StepAction } from '../../shared/pm/workflow'
@@ -275,6 +275,45 @@ async function bitbucketMerge(deps: ActionDeps, job: ActionJob, fail: (r: { code
     if ('error' in m) return m.error!
     return m.status === 200 ? { ok: true, link, commit: head, reached: [base] } : refusal(m)
   }
+}
+
+// After a merge (the engine's, or one the user confirmed): the task's remote
+// branch goes when it is safe, else stays. The line for the task's log, or
+// none: the project keeps branches, or there is no remote branch.
+export async function dropMergedBranch(sh: Shell, j: { worktree: string, branch: string, guards: ResolvedGuards, bases: (string | undefined)[], on: boolean }): Promise<string | undefined> {
+  if (!j.on) return
+  const kept = (why: string) => `kept the remote branch ${j.branch}: ${why}`
+  const no = keepsBranch(j.guards, j.branch, j.bases)
+  if (no) return kept(no)
+  const r = await sh(SCRIPT.dropBranch, [j.worktree, j.branch])
+  if (r.code !== 0) return kept(lastLine(r.out) || `exit code ${r.code}`)
+  const out = lastLine(r.out)
+  if (out === 'bitbucket') return dropOnBitbucket(sh, j.worktree, j.branch, kept)
+  return out === 'deleted' ? `deleted the remote branch ${j.branch}` : out.startsWith('kept: ') ? kept(out.slice(6)) : undefined
+}
+
+// As SCRIPT.dropBranch, through the Bitbucket Cloud API.
+async function dropOnBitbucket(sh: Shell, wt: string, branch: string, kept: (why: string) => string) {
+  const api = async <T>(path: string, q: string) => {
+    const r = await sh(SCRIPT.bitbucket, [wt, 'GET', path, q])
+    const lines = r.out.trim().split('\n'), status = Number(lines.pop())
+    if (r.code !== 0 || status !== 200) throw new Error(lastLine(r.out) || `exit code ${r.code}`)
+    return (JSON.parse(lines.pop() || '{}') as { values?: T[] }).values ?? []
+  }
+  try {
+    const rh = await sh(SCRIPT.remoteHead, [wt, branch])
+    if (rh.code !== 0) return kept(lastLine(rh.out))
+    const head = lastLine(rh.out)
+    if (!head) return
+    const prs = await api<BbPr>('/pullrequests?state=OPEN&state=MERGED&pagelen=50', `q=source.branch.name="${branch}"`)
+    if (prs.some(p => p.state === 'OPEN')) return kept('an open PR uses it')
+    if (!prs.some(p => p.state === 'MERGED')) return kept('no merged PR of it')
+    if (!prs.some(p => p.state === 'MERGED' && head.startsWith(p.source.commit.hash))) return kept(`commit ${head.slice(0, 7)} was pushed after its merge`)
+    if ((await api<BbPr>('/pullrequests?state=OPEN&pagelen=1', `q=destination.branch.name="${branch}"`)).length) return kept('an open PR targets it')
+    const d = await sh(SCRIPT.deleteRef, [wt, branch, head])
+    return d.code === 0 ? `deleted the remote branch ${branch}` : kept(lastLine(d.out))
+  }
+  catch (e) { return kept(`Bitbucket: ${(e as Error).message}`) }
 }
 
 // One poll of a pipeline: done, failed (with which run and job, and the tail

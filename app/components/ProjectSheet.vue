@@ -37,7 +37,7 @@ const ready = ref<Record<string, string>>({}) // each other machine's last readi
 const loaded = ref(false)
 const error = ref('')
 const busy = ref('')
-const form = reactive({ name: '', key: '', color: '', base: '', branchName: '', archiveAfter: '', agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' })
+const form = reactive({ name: '', key: '', color: '', base: '', branchName: '', archiveAfter: '', deleteBranch: true, agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' })
 async function load() {
   const r = await api<{ workflow: Template | null, log: LogEntry[], ready?: Record<string, string> }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
   workflow.value = r.workflow
@@ -47,7 +47,7 @@ async function load() {
   fillSetup(r.workflow?.worktree)
   loaded.value = true
 }
-const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', archiveAfter: String(archiveDays(x)), agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
+const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
 // The worktree setup: paths one per line (or comma separated). Folders to
 // share: empty is node_modules (no `share`), noShare is none (`share: []`).
 const setup = reactive({ copy: '', share: '', noShare: false, lockfile: '', command: '', timeout: '' })
@@ -65,8 +65,8 @@ async function run(what: string, fn: () => Promise<unknown>) {
   finally { busy.value = '' }
 }
 const save = () => run('save', async () => {
-  const { name, key, color, base, branchName, archiveAfter, ...prefs } = form
-  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, base, branchName, archiveAfter: Number(archiveAfter), ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}) })
+  const { name, key, color, base, branchName, archiveAfter, deleteBranch, ...prefs } = form
+  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, base, branchName, archiveAfter: Number(archiveAfter), deleteBranch, ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}) })
   // The prop is refreshed only after `changed`: the form takes the saved
   // project, and the shared lists that show its key and color are read again.
   await load()
@@ -205,6 +205,12 @@ async function remove() {
           <span class="pm-field">
             <USelect v-model="form.archiveAfter" :items="archiveItems" size="lg" class="pm-base-pick" :aria-label="tl('Archive done tasks after')" data-testid="pm-archive-after" />
             <small class="muted">{{ tl('A done task leaves the Done column after this time; the column\'s footer lists archived tasks. Its branch, PR and log stay.') }}</small>
+          </span>
+
+          <span class="field-label">{{ tl('Delete the task\'s branch after its merge') }}</span>
+          <span class="pm-field">
+            <USwitch v-model="form.deleteBranch" color="success" size="lg" :aria-label="tl('Delete the task\'s branch after its merge')" data-testid="pm-delete-branch" />
+            <small class="muted">{{ tl('Once its PR is merged, wherdr deletes the task\'s remote branch, unless a commit came after the merge, another open PR uses it, or it is protected or a base. Off: branches stay.') }}</small>
           </span>
 
           <template v-if="workflow">

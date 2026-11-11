@@ -101,6 +101,11 @@ its folder, branches and task worktrees stay on the machine.
   *Never*. A done task stays in the Done column that long, then the engine
   archives it (see [Archived tasks](#archived-tasks)). A shorter delay archives
   at once the done tasks it now covers.
+- **Delete the task's branch after its merge**: on by default. Once a task's
+  PR is merged, by its merge step or by you on the Git host (*I merged it*,
+  *Check on GitHub*), wherdr deletes the task's remote branch and says so in
+  the task's log (*deleted the remote branch task/WHR-12*). Off: branches stay,
+  for teams that keep them. See [Workflow](#workflow) for when a branch stays.
 - **Agents**: the worker and the reviewer its tasks start with, each with an
   optional model (empty: the agent's default), and the reviewer's optional
   **Fallback** (see [Reviewer fallback](#reviewer-fallback)).
@@ -218,6 +223,16 @@ or, outside GitHub, `"source": "command", "command": "./scripts/ci-status.sh dev
 
 A merge that first pushes the task's last commits waits up to a minute for
 GitHub to show them on the PR.
+
+After a merge (`github.merge`, `bitbucket.merge`, or `git.verify-merged` once
+you merged on the Git host), wherdr deletes the task's remote branch, unless
+the project's General tab says to keep branches. It deletes it only when the
+branch's head is the merged PR's head (no commit pushed since), no other open
+PR uses or targets it, and it is neither a protected branch, a base (the
+project's, the step's) nor the repository's default branch. Otherwise it stays,
+and the task's log says why (*kept the remote branch task/WHR-12: commit
+1a2b3c4 was pushed after its merge*). A PR closed without a merge, or an
+archived task, keeps its branch.
 In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
 *Add task* under [Board](#board)). Under the form, the plan of the chosen task type. *Save* checks the workflow
 and shows each problem with its line.
