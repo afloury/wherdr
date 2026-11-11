@@ -120,13 +120,15 @@ export async function boardAgents(store: PmStore): Promise<Record<string, TaskAg
 // The step's userLabel button: the same 'user' event as "it is merged" said
 // by the user. A step with an action (git.verify-merged) runs it at once,
 // started by the user, and its result moves the task on or back to Your turn.
-export const userStep = (deps: CoreAdminDeps & { store: PmStore }, id: unknown) => stepAction(deps, id, 'user')
+// userSaid: the user's own words (step done --user-said): they end the step even
+// when its verify-merged check disagrees, whose answer the log keeps as a warning.
+export const userStep = (deps: CoreAdminDeps & { store: PmStore }, id: unknown, userSaid = false) => stepAction(deps, id, 'user', userSaid)
 
 // by 'engine': a failed action tried again, or one entered and not run yet
 // (a merge the branch rule gives the engine); its guard is checked again.
 // Tasks whose engine action runs now: one at a time (the user's gesture, the engine's pass).
 const running = new Set<string>()
-export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: unknown, by: MergeBy): Promise<Task> {
+export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: unknown, by: MergeBy, userSaid = false): Promise<Task> {
   const { store } = deps
   const task = await store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
@@ -135,10 +137,10 @@ export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: u
   if (task.report?.block) { if (by === 'user') throw new HerdrError('refused', 'A problem you reported blocks the merge: withdraw it, or wait for the coordinator'); return task }
   if (running.has(task.id)) throw new HerdrError('busy', 'Already checking')
   running.add(task.id)
-  try { return await stepActionOf(deps, task, by) } finally { running.delete(task.id) }
+  try { return await stepActionOf(deps, task, by, userSaid) } finally { running.delete(task.id) }
 }
 
-async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task, by: MergeBy): Promise<Task> {
+async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task, by: MergeBy, userSaid: boolean): Promise<Task> {
   const { store } = deps
   const p = (await store.projects()).find(x => x.key === task.project)
   const t = p ? await store.workflow(p.key) : null
@@ -158,13 +160,15 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
   if (act?.kind === 'action') {
     await store.saveTask({ ...task, step: state }) // checking, before the action runs
     const run = await workerRun(store, task.id)
-    const result: ActionResult = run
+    let result: ActionResult = run
       ? await runAction({ store, sh: actionShell(deps, runOn(deps, run)) }, {
           task, shown: shownTaskId(p ? [p] : [], task.id), step: act.step, attempt: act.attempt, action: act.action, by: approved ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
           reviewed: reviewedCommit(plan, state), ...(approved && state.approved!.commit ? { approved: state.approved!.commit } : {}),
           halted: async () => !!(await store.task(task.id))?.stopped,
         }).catch((e: Error) => ({ ok: false, error: e.message }))
       : { ok: false, error: 'No worktree: the task never started' }
+    if (userSaid && by === 'user' && !result.ok && act.action.kind === 'git.verify-merged')
+      result = { ok: true, ...(result.commit ? { commit: result.commit } : {}), note: `verify-merged disagreed: ${(result.error ?? 'no answer').replace(/^verify-merged: /, '')}` }
     const evidence = { ...(result.link ? { link: result.link } : {}), ...(result.commit ? { commit: result.commit } : {}), ...(result.report ? { report: result.report } : {}) }
     const catchUp = result.catchUp && result.commit ? { catchUp: { base: result.catchUp, head: result.commit } } : {}
     const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.later ? { later: true } : {}), ...(result.detail ? { detail: result.detail } : {}), ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...(result.unapproved ? { unapproved: true as const } : {}), ...catchUp, evidence }, Date.now())

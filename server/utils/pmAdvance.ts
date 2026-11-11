@@ -45,8 +45,8 @@ m=
 [ -n "$m" ] || m=$s
 git -C "$wt" log --no-merges --format='%at %s' \${m:+"$m..HEAD"} 2>/dev/null | cksum; echo "${READ_SEP}"
 git -C "$wt" diff --numstat \${m:+"$m"} HEAD 2>/dev/null`
-// The task moves to the branch its worker pushed: its start point goes with it.
-const FOLLOW_SCRIPT = `s=$(git -C "$1" config "branch.$2.wherdrstart") && git -C "$1" config "branch.$3.wherdrstart" "$s"; exit 0`
+// The task moves to the branch its worker pushed: its start point (and takeover tip) goes with it.
+const FOLLOW_SCRIPT = `for k in wherdrstart wherdrtaken; do s=$(git -C "$1" config "branch.$2.$k") && git -C "$1" config "branch.$3.$k" "$s"; done; exit 0`
 
 type Ctx = { task: Task, p: Project, on: string | undefined, plan: PlannedStep[], t: NonNullable<Awaited<ReturnType<PmLaunchDeps['store']['template']>>> }
 
