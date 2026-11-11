@@ -20,6 +20,8 @@ voices are Piper models packaged by sherpa-onnx. A voice is fetched by the wherd
 `tts-siwis-medium`, `tts-cori-medium`, `tts-mls-medium`, see
 [On-device dictation files](installation.md#on-device-dictation-files)) and installed on the
 device from there.
+The voices come as `.tar.bz2` archives: a server without the `bzip2` program unpacks them with a
+built-in JS decoder (slower, nothing to install), so bzip2 is never a requirement.
 
 ## Licences of the engine
 
