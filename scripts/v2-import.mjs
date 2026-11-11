@@ -393,7 +393,7 @@ export function renderReport(r) {
   for (const m of r.machines.added) L.push(`- ${m.planned ? 'Would add' : 'Added'} ${named(m)}, ${m.target}${[m.note, m.check].filter(Boolean).map(x => `; ${x}`).join('')}`)
   for (const m of r.machines.have) L.push(`- ${m.name} (${m.target}): already in herdr-core`)
   for (const m of r.machines.local ?? []) L.push(`- ${m.label} (${m.target}): this machine, v3's Local`)
-  for (const m of r.machines.missing) L.push(`- **To do:** ${named(m)}, ${m.target}: ${m.reason}${m.note ? `; ${m.note}` : ''}. Then add it in Settings › Agents › Machines, or run \`hc machine add ${m.target} --name ${m.name}\`.`)
+  for (const m of r.machines.missing) L.push(`- **To do:** ${named(m)}, ${m.target}: ${m.reason}${m.note ? `; ${m.note}` : ''}. Then add it in Settings › Machines, or run \`hc machine add ${m.target} --name ${m.name}\`.`)
   L.push('', '## Settings', '')
   L.push(r.settings.carried.length ? `Carried over: ${r.settings.carried.join(', ')}.` : 'No synced setting carried over.')
   if (r.settings.files.length) L.push('', `Copied: ${r.settings.files.join(', ')}.`)
