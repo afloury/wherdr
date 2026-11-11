@@ -439,11 +439,12 @@ export const recheckEvery = (recheck: string, n: number) => {
 
 // What counts as news on a task: its newest log entry (a commit, a tell, a
 // report, the user's button…), the user's last message to the coordinator,
-// and its CI as last read.
-export interface News { at: number, ci?: string }
+// and its CI as last read. user: the user's last message or action alone.
+export interface News { at: number, user?: number, ci?: string }
 
 // News since the last tick: the rechecks start over from the step's own
-// interval, and a wait for the user ends. The first look only notes it.
+// interval. A wait for the user ends only on the user's own message or action.
+// The first look only notes it.
 export function recheckNews(plan: PlannedStep[], s: StepState, news: News, now: number): StepState {
   if (!s.started || s.done) return s
   const step = currentStep(plan, s)
@@ -451,6 +452,7 @@ export function recheckNews(plan: PlannedStep[], s: StepState, news: News, now: 
   const seen = s.news
   if (seen && news.at <= seen.at && news.ci === seen.ci) return s
   if (!seen) return { ...s, news }
+  if (s.waitUser !== undefined && !((news.user ?? 0) > s.waitUser)) return { ...s, news }
   return { ...s, news, rechecks: 0, waitUser: undefined, recheckAt: now + durationMs(step.recheck) }
 }
 

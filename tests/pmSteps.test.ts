@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { EXAMPLES, common, company, github, vibe, wherdr } from '../shared/pm/examples'
-import { currentStep, initialState, nextRecheck, onEvent, pauseClock, planSteps, recheckNews, waitStep, stepLabels, withBase, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
+import { currentStep, initialState, nextRecheck, type News, onEvent, pauseClock, planSteps, recheckNews, waitStep, stepLabels, withBase, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
 import { validateTemplate, type Template } from '../shared/pm/workflow'
 import type { Finding } from '../shared/pm/verdict'
 import { taskBase } from '../shared/pm/run'
@@ -310,10 +310,11 @@ describe('a coordinator step\'s rechecks', () => {
   const plan = planSteps(t, { type: 'deploy' })
   const start = () => onEvent(plan, initialState(), { kind: 'start' }, 0).state
   // Ticks every minute until `until`, the news unchanged unless `news` says; the minutes a recheck went.
-  const run = (s: StepState, from: number, until: number, news: (m: number) => number = () => 0) => {
+  const run = (s: StepState, from: number, until: number, news: (m: number) => News | number = () => 0) => {
     const at: number[] = []
     for (let m = from; m <= until; m++) {
-      s = recheckNews(plan, s, { at: news(m) * MIN }, m * MIN)
+      const n = news(m)
+      s = recheckNews(plan, s, typeof n === 'number' ? { at: n * MIN } : n, m * MIN)
       const r = onEvent(plan, s, { kind: 'tick' }, m * MIN)
       if (r.effects.length) at.push(m)
       s = r.state
@@ -325,14 +326,16 @@ describe('a coordinator step\'s rechecks', () => {
     expect(run(start(), 1, 300).at).toEqual([5, 15, 35, 75, 135, 195, 255])
   })
 
-  it('start over from the step\'s own interval on news, which also ends a wait for the user', () => {
+  it('start over from the step\'s own interval on news; a wait for the user ends only on the user\'s own', () => {
     // News at minute 40 (a commit, a tell): the next recheck is 5 minutes after it.
     expect(run(start(), 1, 60, m => (m >= 40 ? 40 : 0)).at).toEqual([5, 15, 35, 45, 55])
     const waiting = waitStep(plan, run(start(), 1, 10).s, { untilUser: true }, 10 * MIN)
     if (!('state' in waiting)) throw new Error(waiting.refused)
     expect(nextRecheck(waiting.state)).toBe('user')
     expect(run(waiting.state, 11, 200).at).toEqual([])
-    expect(run(waiting.state, 11, 200, m => (m >= 100 ? 100 : 0)).at).toEqual([105, 115, 135, 175])
+    // The engine's news (a CI run that finished, its log) leaves it waiting.
+    expect(run(waiting.state, 11, 200, m => ({ at: (m >= 50 ? 50 : 0) * MIN, ci: m >= 50 ? 'abc:false:false' : 'abc:false:true' })).at).toEqual([])
+    expect(run(waiting.state, 11, 200, m => (m >= 100 ? { at: 100 * MIN, user: 100 * MIN } : { at: 0 })).at).toEqual([105, 115, 135, 175])
   })
 
   it('wait --for sets the next recheck; refused on a step without rechecks', () => {

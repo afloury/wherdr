@@ -72,7 +72,8 @@ async function gather(deps: WakeDeps, now: number) {
     const m = run && deps.machines().find(x => x.key === run.machine)
     // News on the task (its log, its CI, the user's message to the coordinator) resets the recheck's backoff.
     const coord = await store.coordinator(task.project)
-    const news = { at: Math.max(task.log?.at(-1)?.at ?? 0, coord?.userAt ?? 0), ...(task.ci ? { ci: `${task.ci.head}:${task.ci.red}` } : {}) }
+    const user = Math.max(task.log?.findLast(e => e.by === 'user')?.at ?? 0, coord?.userAt ?? 0)
+    const news = { at: Math.max(task.log?.at(-1)?.at ?? 0, user), user, ...(task.ci ? { ci: `${task.ci.head}:${task.ci.red}:${!!task.ci.running}` } : {}) }
     const stepped = recheckNews(plan, pauseClock(task.step, clockStops(task, !!m && !m.local && m.status !== 'online'), now), news, now)
     const w = coordinatorWake(plan, stepped, now)
     if (JSON.stringify(w.state) === JSON.stringify(task.step)) continue
