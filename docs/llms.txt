@@ -23,8 +23,6 @@
 - [Install with an agent](docs/install-with-an-agent.md): ready-to-paste prompts for an agent that installs or updates wherdr.
 - [Migrate from v2](docs/migrate-from-v2.md): install v3 beside v2 and import its machines, settings and recent folders, nothing of herdr-projects; Alfred sets up its projects.
 - [What is imported](docs/migrate-from-v2.md#what-is-imported): what the v2 import brings over (v2's own machine becomes v3's local one in the machine tabs and groups), and what to redo.
-- [Set up your v2 projects with Alfred](docs/migrate-from-v2.md#set-up-your-v2-projects-with-alfred): Alfred's first message offers to bring v2 projects over, reading the herdr-projects board then (machine, template, coordinator, open tasks; under-way ones continue from their branch and PR).
-- [What is imported](docs/migrate-from-v2.md#what-is-imported): what the v2 import brings over, and what to redo.
 - [Set up your v2 projects with Alfred](docs/migrate-from-v2.md#set-up-your-v2-projects-with-alfred): Alfred's first message offers to bring v2 projects over, reading the herdr-projects board then (machine, template, coordinator, open tasks; under-way ones continue from their branch and PR); an optional handover note from the v2 coordinator and its autopilot goal go into the new coordinator's memory.md.
 - [Auto-deploy from a build machine](docs/migrate-from-v2.md#auto-deploy-from-a-build-machine): build elsewhere and deploy to the server.
 - [Fall back to v2](docs/migrate-from-v2.md#fall-back-to-v2): go back to v2, and [uninstall v3](docs/migrate-from-v2.md#uninstall-v3); on v3, `herdr plugin install|update` and the `curl … | sh` installer change nothing and say how to install v3.
