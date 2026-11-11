@@ -11,6 +11,35 @@ export function nextTail(tail: ChatItem[], r: Pick<ChatResponse, 'items' | 'keep
   return r.keep === tail.length && !items.length ? tail : tail.slice(0, r.keep).concat(items)
 }
 
+// The list that replaces the one shown after a restart (see restartsTail),
+// swapped in one step: an item equal to one already shown is that same object,
+// so Vue has nothing to redo for it; the others are the new ones.
+export function swapTail(shown: ChatItem[], next: ChatItem[]): ChatItem[] {
+  if (!shown.length) return next
+  const pool = new Map<string, ChatItem[]>()
+  for (const it of shown) {
+    const k = JSON.stringify(it)
+    const same = pool.get(k)
+    if (same) same.push(it)
+    else pool.set(k, [it])
+  }
+  return next.map(it => pool.get(JSON.stringify(it))?.shift() ?? it)
+}
+
+// Key of each item's block, the same whatever sits above it: role and time,
+// numbered among the items that share both. A re-read whose list starts at
+// another message (the kept end shown first, older pages added above) leaves
+// the other blocks' keys as they were, so Vue keeps their elements.
+export function itemKeys(list: readonly Pick<ChatItem, 'role' | 'ts'>[]): string[] {
+  const seen = new Map<string, number>()
+  return list.map((it) => {
+    const base = `${it.role}:${it.ts}`
+    const n = seen.get(base) || 0
+    seen.set(base, n + 1)
+    return `${base}#${n}`
+  })
+}
+
 // Whether a reply means starting again from the bottom, dropping the older
 // pages loaded above: another file (/clear, new session), or a bottom the
 // server read from another byte. The latter happens when the file grew more
@@ -38,6 +67,12 @@ export function tailQuery(pane: string, c: { token: string, tailStart: number | 
   return q
 }
 
+// A bottom read unanswered past this is dead (a black-holed fetch after the
+// server went away mid-request): aborting frees the one-at-a-time lock below
+// so the next poll can ask again, instead of every refresh waiting forever
+// behind a read that will never settle.
+export const CHAT_READ_MS = 8000
+
 // One re-read of the bottom at a time, for its whole life. `step` returns
 // true to run again at once (session changed, delta did not fit), up to `max`
 // steps, still holding the lock: a polling tick or a return to the app during
@@ -57,4 +92,35 @@ export function createTailLoader(step: (current: () => boolean) => Promise<boole
     } finally { if (running === g) running = null }
   }
   return { load, invalidate: () => { gen++ } }
+}
+
+// Last line of defence against a conversation that blinks: a list that keeps
+// coming back to the one shown two changes before (a loop between two sources,
+// e.g. the device's copy and the server's) more than `limit` times within
+// `windowMs`. While that lasts, an empty list keeps the last non-empty one on
+// screen, and a diagnostic is logged once.
+export function createFlipGuard({ windowMs = 4000, limit = 2, now = Date.now, warn = console.warn }: {
+  windowMs?: number, limit?: number, now?: () => number, warn?: (msg: string, info: object) => void
+} = {}) {
+  let last: string | null = null
+  let before: string | null = null
+  let flips: number[] = []
+  let full: ChatItem[] = []
+  let warned = false
+  const sig = (l: ChatItem[]) => (l.length ? `${l.length}|${l[0]!.role}:${l[0]!.ts}|${l.at(-1)!.role}:${l.at(-1)!.ts}:${l.at(-1)!.text?.length}` : '')
+  return (list: ChatItem[]): ChatItem[] => {
+    const t = now()
+    const s = sig(list)
+    if (s !== last) {
+      if (s === before) flips.push(t)
+      before = last
+      last = s
+    }
+    flips = flips.filter(x => t - x < windowMs)
+    const looping = flips.length > limit
+    if (looping && !warned) warn('[wherdr] conversation list alternates: last non-empty list kept', { flips: flips.length, items: list.length, kept: full.length })
+    warned = looping
+    if (list.length) full = list
+    return looping && !list.length ? full : list
+  }
 }
