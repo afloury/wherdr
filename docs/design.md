@@ -91,7 +91,11 @@ when using that mode.
 
 Sheets and settings pages never scroll sideways, and have **one vertical
 scroll**, the sheet's body: a tab's content takes its natural height, with no
-inner scroll box. What could overflow shrinks, wraps or is ellipsized: grid
+inner scroll box. That scroll ends at the sheet's bottom edge: the gap under
+the last element and the phone's home bar room are padding inside it
+(`--sheet-end` on `.hw-sheet`, on the footer when the sheet has one), never a
+band under the scrolled content; a sheet's own content adds no bottom padding.
+What could overflow shrinks, wraps or is ellipsized: grid
 and flex children get `min-width: 0` (`minmax(0, 1fr)` tracks), long names and
 paths wrap with `overflow-wrap: anywhere`, fields are `w-full` or
 `min(100%, …)`. The one exception is a row meant to be swiped (the phone's row

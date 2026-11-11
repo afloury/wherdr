@@ -146,10 +146,11 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
 /* Large, yet leaving Merge in view. */
 .todo-shot img { display: block; height: auto; max-height: min(40vh, 420px); max-width: 100%; width: auto; }
 /* On the phone the step's buttons (Merge…) stay pinned at the bottom of the
-   sheet while its content scrolls: always in reach, never under the sheet's edge. */
+   sheet while its content scrolls: always in reach, never under the sheet's edge,
+   over the home bar's room at the end of the scroll (--sheet-safe, main.css). */
 @media (max-width: 699px) {
   .todo-shot img { max-height: 26vh; }
-  .todo-actions:has(> .todo-buttons:not(:empty)) { position: sticky; bottom: 0; z-index: 1; padding: 10px 0; background: var(--bg); border-top: 1px solid var(--line-soft); }
+  .todo-actions:has(> .todo-buttons:not(:empty)) { position: sticky; bottom: 0; z-index: 1; padding: 10px 0 calc(10px + var(--sheet-safe, 0px)); background: var(--bg); border-top: 1px solid var(--line-soft); }
 }
 /* On a computer the screenshots wrap as a grid. */
 @media (min-width: 700px) {

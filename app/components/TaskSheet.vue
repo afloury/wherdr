@@ -216,7 +216,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 <style scoped>
 /* One scroll, the sheet's body (a flex column, main.css): the sheet fills it
    and grows with its tab, whose panel takes its natural height. */
-.task-sheet { display: flex; flex-direction: column; gap: 12px; flex: 1 0 auto; padding: 0 16px 16px; }
+.task-sheet { display: flex; flex-direction: column; gap: 12px; flex: 1 0 auto; padding: 0 16px; }
 .task-sheet-top { display: flex; flex-direction: column; gap: 10px; flex: none; }
 .task-sheet p { margin: 0; }
 .task-tabs { flex: none; }
