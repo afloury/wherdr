@@ -298,28 +298,56 @@ export async function dropMergedBranch(sh: Shell, j: { worktree: string, branch:
   return out === 'deleted' ? `deleted the remote branch ${j.branch}` : out.startsWith('kept: ') ? kept(out.slice(6)) : undefined
 }
 
-// As SCRIPT.dropBranch, through the Bitbucket Cloud API.
+// As SCRIPT.dropBranch, through the Bitbucket Cloud API: no open PR from or to
+// it, a merged PR at its exact head, no delete restriction on it, and not the
+// repository's main branch.
 async function dropOnBitbucket(sh: Shell, wt: string, branch: string, kept: (why: string) => string) {
-  const api = async <T>(path: string, q: string) => {
+  const get = async <T>(path: string, q: string) => {
     const r = await sh(SCRIPT.bitbucket, [wt, 'GET', path, q])
     const lines = r.out.trim().split('\n'), status = Number(lines.pop())
     if (r.code !== 0 || status !== 200) throw new Error(lastLine(r.out) || `exit code ${r.code}`)
-    return (JSON.parse(lines.pop() || '{}') as { values?: T[] }).values ?? []
+    return JSON.parse(lines.pop() || '{}') as T
   }
+  const list = async <T>(path: string, q: string) => (await get<{ values?: T[] }>(path, q)).values ?? []
   try {
     const rh = await sh(SCRIPT.remoteHead, [wt, branch])
     if (rh.code !== 0) return kept(lastLine(rh.out))
     const head = lastLine(rh.out)
     if (!head) return
-    const prs = await api<BbPr>('/pullrequests?state=OPEN&state=MERGED&pagelen=50', `q=source.branch.name="${branch}"`)
-    if (prs.some(p => p.state === 'OPEN')) return kept('an open PR uses it')
-    if (!prs.some(p => p.state === 'MERGED')) return kept('no merged PR of it')
-    if (!prs.some(p => p.state === 'MERGED' && head.startsWith(p.source.commit.hash))) return kept(`commit ${head.slice(0, 7)} was pushed after its merge`)
-    if ((await api<BbPr>('/pullrequests?state=OPEN&pagelen=1', `q=destination.branch.name="${branch}"`)).length) return kept('an open PR targets it')
+    // One open PR is enough to keep it: asked apart, so no page of merged ones hides it.
+    if ((await list('/pullrequests?state=OPEN&pagelen=1', `q=source.branch.name="${branch}"`)).length) return kept('an open PR uses it')
+    if ((await list('/pullrequests?state=OPEN&pagelen=1', `q=destination.branch.name="${branch}"`)).length) return kept('an open PR targets it')
+    const merged = await list<BbPr>('/pullrequests?state=MERGED&sort=-updated_on&pagelen=50', `q=source.branch.name="${branch}"`)
+    if (!merged.length) return kept('no merged PR of it')
+    if (!merged.some(p => head.startsWith(p.source.commit.hash))) return kept(`commit ${head.slice(0, 7)} was pushed after its merge`)
+    const repo = await get<{ mainbranch?: { name?: string } }>('', 'fields=mainbranch.name')
+    if (repo.mainbranch?.name === branch) return kept('it is the repository\'s main branch')
+    const rules = await get<{ values?: BbRule[], next?: string }>('/branch-restrictions?kind=delete', 'pagelen=100')
+    if (rules.next) return kept('too many Bitbucket branch restrictions to check')
+    if (await restricted(rules.values ?? [], branch, () => get<BbModel>('/branching-model', 'fields=development,production,branch_types'))) return kept('a Bitbucket branch restriction forbids deleting it')
     const d = await sh(SCRIPT.deleteRef, [wt, branch, head])
     return d.code === 0 ? `deleted the remote branch ${branch}` : kept(lastLine(d.out))
   }
   catch (e) { return kept(`Bitbucket: ${(e as Error).message}`) }
+}
+
+interface BbRule { branch_match_kind?: string, pattern?: string, branch_type?: string }
+interface BbModel { development?: { name?: string, branch?: { name?: string } }, production?: { name?: string, branch?: { name?: string } }, branch_types?: { kind: string, prefix: string }[] }
+
+// Does a delete restriction cover the branch? By glob (* matches any run of
+// characters), or by the branching model's development or production branch,
+// or one of its type prefixes. The model is asked only when a rule needs it.
+async function restricted(rules: BbRule[], branch: string, model: () => Promise<BbModel>) {
+  const glob = (p: string) => new RegExp('^' + p.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.') + '$')
+  if (rules.some(r => r.branch_match_kind !== 'branching_model' && glob(r.pattern ?? '*').test(branch))) return true
+  const typed = rules.filter(r => r.branch_match_kind === 'branching_model')
+  if (!typed.length) return false
+  const m = await model()
+  return typed.some((r) => {
+    const t = r.branch_type ?? ''
+    if (t === 'development' || t === 'production') return (m[t]?.branch?.name ?? m[t]?.name) === branch
+    return (m.branch_types ?? []).some(b => b.kind === t && b.prefix && branch.startsWith(b.prefix))
+  })
 }
 
 // One poll of a pipeline: done, failed (with which run and job, and the tail
