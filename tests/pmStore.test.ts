@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { cleanProjectInput } from '../shared/pm/project'
 
@@ -82,6 +82,25 @@ describe('pm store', () => {
     await store.addProject({ ...input, template: '' }, okFolder)
     expect(await store.workflow('WEB')).toBeNull()
     expect(await store.workflowLog('WEB')).toEqual([])
+  })
+})
+
+describe('runs', () => {
+  it('reads a run file again only when it changed', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    const run = (id: string, state: 'running' | 'ended') => ({ id, task: 'WEB-1', role: 'worker' as const, program: 'claude', model: 'm', machine: '', worktree: '/w', branch: 'b', instructions: '/i', attempt: 1, state, startedAt: 1 })
+    await store.saveRun(run('a', 'ended'))
+    await store.saveRun(run('b', 'running'))
+    expect((await store.runs()).map(r => r.id)).toEqual(['a', 'b'])
+    const reads = vi.spyOn(fs, 'readFile')
+    try {
+      await store.runs()
+      expect(reads.mock.calls.filter(c => String(c[0]).includes('runs'))).toEqual([])
+      await store.saveRun(run('b', 'ended'))
+      expect((await store.runs()).map(r => r.state)).toEqual(['ended', 'ended'])
+      expect(reads.mock.calls.filter(c => String(c[0]).includes('runs')).map(c => path.basename(String(c[0])))).toEqual(['b.json'])
+    } finally { reads.mockRestore() }
   })
 })
 
