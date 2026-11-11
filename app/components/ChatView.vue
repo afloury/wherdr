@@ -28,13 +28,14 @@ import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } fr
 import { keepIfSame, keyedMemo, weakMemo } from '~/utils/keepIfSame'
 import { duplicateImages } from '#shared/imageDupes'
 import { stripPosition } from '#shared/filePaths'
+import { turnOpens as openCards } from '#shared/uiOpen'
 import { readAloudEngine, stopSpeaking } from '~/composables/useReadAloud'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 // A version of a reply replaced while the agent writes takes its question marks with it.
 onMdDropped(forgetReply)
 const route = useRoute()
-const emit = defineEmits<{ gotoTerm: [], restored: [], quote: [], answered: [caret: number], unanswered: [count: number], sent: [queued: QueuedMessage | null], choose: [text: string] }>()
+const emit = defineEmits<{ gotoTerm: [], restored: [], quote: [], answered: [caret: number], unanswered: [count: number], opens: [links: string[]], sent: [queued: QueuedMessage | null], choose: [text: string] }>()
 const searchOpen = defineModel<boolean>('search', { default: false })
 
 const box = ref<HTMLElement | null>(null)
@@ -1452,6 +1453,10 @@ const unanswered = computed(() => {
 })
 watch(() => unanswered.value?.count || 0, n => emit('unanswered', n), { immediate: true })
 onUnmounted(() => emit('unanswered', 0))
+// The places this turn's replies keep as cards (shared/uiOpen.ts turnOpens):
+// AgentView shows no bar for those.
+watch(() => openCards(items.value).join(' '), s => emit('opens', s ? s.split(' ') : []), { immediate: true })
+onUnmounted(() => emit('opens', []))
 // Reminder tapped: scrolls to the first question still unanswered and flashes it.
 function gotoUnanswered() {
   const msg = unanswered.value ? msgEl(unanswered.value.key) : null
