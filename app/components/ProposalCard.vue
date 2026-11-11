@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // The coordinator's proposed workflow change, in its conversation after the
 // message that made it: titled 'Workflow change' with what a workflow is, what
-// changes in one line, the steps before and after drawn, who proposed it and the
+// changes in one line, the proposed workflow drawn small with its changes marked
+// (WorkflowChart, the first changed task type; a tap opens the review), who proposed it and the
 // user's request behind it (ProposalOrigin), Accept / Refuse and See all
 // changes (ProposalReview). answer: an answered one instead (accepted, refused,
 // replaced): what it changed, the outcome, by whom, when.
@@ -15,6 +16,8 @@ const review = ref(false)
 const { busy, error, answer: send } = useProposalAnswer(() => props.c.project)
 const pending = computed(() => (props.answer ? undefined : props.c.proposal))
 const summary = computed(() => (pending.value ? [changeHeadline(pending.value.changes ?? { all: [], types: [] })].filter(Boolean) : props.answer?.summary ?? []))
+// The task type drawn: the first one changed.
+const drawn = computed(() => pending.value?.changes?.types[0]?.type ?? Object.keys(pending.value?.template?.taskTypes ?? {})[0])
 const outcome = computed(() => {
   const a = props.answer
   if (!a) return ''
@@ -27,10 +30,9 @@ const outcome = computed(() => {
   <div class="proposal-card" :class="{ answered: !pending }" data-testid="proposal-card">
     <PartHead part="workflow" :title="tl('Workflow change')" />
     <p v-for="(l, i) in summary" :key="i" class="proposal-line" data-testid="proposal-headline">{{ l }}</p>
-    <template v-if="pending?.flow">
-      <WorkflowDiagram :steps="pending.flow.before" :label="tl(`Before · ${pending.flow.type}`)" />
-      <WorkflowDiagram :steps="pending.flow.after" :compare="pending.flow.before" :label="tl(`After · ${pending.flow.type}`)" />
-    </template>
+    <div v-if="pending?.template && drawn" class="proposal-chart" role="button" tabindex="0" :aria-label="tl('See all changes')" data-testid="proposal-chart" @click="review = true" @keydown.enter.prevent="review = true" @keydown.space.prevent="review = true">
+      <WorkflowChart :workflow="pending.template" :type="drawn" :changes="pending.changes" compact />
+    </div>
     <template v-if="pending">
       <ProposalOrigin :c="c" :can-goto="canGoto" @goto="emit('goto')" />
       <div class="proposal-actions">
@@ -49,6 +51,8 @@ const outcome = computed(() => {
 <style scoped>
 .proposal-card { display: grid; gap: 6px; margin: 4px 0 12px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--blocked); background: var(--surface); }
 .proposal-card.answered { border-left-color: var(--line); }
+.proposal-chart { min-width: 0; padding: 8px 0 4px; cursor: pointer; }
+.proposal-chart:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .proposal-line { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
 .proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding-top: 4px; }
 .proposal-gap { flex: 1 1 0; }
