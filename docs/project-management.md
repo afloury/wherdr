@@ -44,8 +44,10 @@ in the project's [Workflow](#workflow) tab for advanced use.
    (the checks before a merge, the reviews, the pace), and opens its
    conversation. It asks you a few questions, one at a time, then proposes the
    project's first workflow; your yes saves it, guards included
-   ([Guards](#guards)). Until then the project has no workflow and its tasks
-   cannot start; the board shows it all the same. Its folder is new at its
+   ([Guards](#guards)); see [its first
+   conversation](#the-coordinators-first-conversation). Until then its tasks
+   follow a minimal default: one task type, `task`, *to do → work → done*.
+   Its folder is new at its
    first start: wherdr answers the agent's "trust this folder?" question for
    it (that folder only, never yours), as for Alfred's. While the agent is
    still starting, the step says so; if it asks something (a login, say),
@@ -72,6 +74,36 @@ is wider, with a taller repository list.
 
 Then ask the coordinator for tasks, and answer what shows under *Your turn* and
 *Decisions*.
+
+### The coordinator's first conversation
+
+On a project with no accepted workflow, the coordinator's instructions say its
+first conversation with you sets one up:
+
+1. It looks at the repository: README, docs, CI files, branches, recent
+   commits and PRs.
+2. It introduces itself as the project's coordinator.
+3. On existing code, it says in a few lines what it understood of the project;
+   on an empty or nearly empty repository, it asks what you want to build.
+4. It asks a few short questions on how you work, as choices where it can:
+   strict, like a company or open-source project (protected branches, PRs,
+   reviews, CI checks before merge, you merge), or fast and light, like a
+   personal project (fewer checks, wherdr merges); and what you prefer to
+   approve yourself.
+5. It proposes a workflow (`wherdr pm template edit`), its diff against the
+   minimal default, with the [guards](#guards) that fit, and explains it in a
+   few lines. You accept or refuse it in the [Workflow](#workflow) tab, as any
+   proposal. This first proposal may set guards; later ones never do.
+
+Until you accept one, tasks follow the minimal default. Once accepted, the
+section leaves the coordinator's instructions.
+
+Along the way, the coordinator (and Alfred) may suggest a setting you may like,
+or one that solves a problem you mention: once, highlighted with
+`ui open --target`, and not again if you let it pass. When you need something
+wherdr cannot do, they may suggest an issue (or a pull request when the fit is
+clear) on wherdr's repository: they show you the draft first, with no private
+data, and post it only on your yes.
 
 ## Projects
 
@@ -232,8 +264,9 @@ motion). *JSON* shows the whole workflow, read only, with *Copy*.
 Nothing in the tab edits the workflow. To create or change one, *Ask the
 coordinator* opens the project's coordinator with a first message to complete;
 it writes the new workflow (`wherdr pm template edit`) and you accept or refuse
-it (below). A project without a workflow (imported from v2) shows *Start from a
-template*: pick a template or an example to start from.
+it (below). A project without an accepted workflow says its tasks follow a
+minimal one (*to do → work → done*) and shows *Start from a template*: pick a
+template or an example to start from, or ask the coordinator to propose one.
 
 What a workflow holds: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator
@@ -887,7 +920,21 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   host*, from the PR link), and its button *I merged it* checks that the branch
   is in its target; the step's own badge and button text win. Not merged yet:
   *The PR is not merged into develop yet: merge it on Bitbucket (PR link), then
-  press “I merged it” again*.
+  press “I merged it” again*. It counts as merged when:
+  - a merged PR from the branch into the target holds the task's commit, on
+    GitHub or on Bitbucket Cloud (with its credentials), squash and rebase
+    included;
+  - or the task's commit is in the target and the branch has work of its own,
+    even once its remote branch is deleted. For a task that continues an
+    existing branch (`--from-branch`), the commits that branch already had
+    ahead of the target count, whoever made them (a bot's PR branch). A branch
+    with no commit ahead of the target at any time is *nothing was merged*.
+
+  When you tell the coordinator it is merged, your word ends the step
+  (`wherdr pm step done <task> --user-said "<your words>"`) even if the check
+  disagrees: the task's log keeps *verify-merged disagreed: <why>* as a
+  warning. This holds only for a step that waits for you, never for wherdr's
+  own merge.
 - **An agent's question or permission**: its text, and a button to open that agent.
 - **A stalled review** (past its time limit, or its reviewer stopped without
   recording a verdict): one sentence says so, and **Restart the review** ends

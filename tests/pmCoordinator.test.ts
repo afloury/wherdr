@@ -16,7 +16,7 @@ import { EXAMPLES, common, company as example, github } from '../shared/pm/examp
 import { DONE_CMD, reviewFile } from '../shared/pm/advance'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import type { Finding } from '../shared/pm/verdict'
-import type { Template } from '../shared/pm/workflow'
+import { defaultWorkflow, type Template } from '../shared/pm/workflow'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 import { runNow, wakeTick } from '../server/utils/pmWakes'
 import { WAKE } from '../shared/pm/wakes'
@@ -277,16 +277,6 @@ describe('template edit', () => {
     await fs.rm(fresh, { recursive: true, force: true })
   })
 
-  it('proposes a first workflow for a project that has none, saved on the user\'s yes', async () => {
-    await store.overview() // migrated: CO has its own copy, then none
-    await fs.rm(path.join(store.files.workflows, 'CO.json'), { force: true })
-    expect(await store.workflow('CO')).toBeNull()
-    await noteTurn(store, 'CO', 'user', 'set up how we work')
-    await expect(cli(['template', 'edit'], JSON.stringify(company))).resolves.toMatchObject({ proposed: true })
-    await answerProposal(deps(), 'CO', true)
-    expect(await store.workflow('CO')).toMatchObject({ id: 'co', version: 1 })
-  })
-
   it('is not saved over a change the user made after it', async () => {
     await noteTurn(store, 'CO', 'user', 'add a line')
     await cli(['template', 'edit'], moreInstructions)
@@ -320,6 +310,17 @@ describe('template edit', () => {
     const answers = (await coordinatorsView(store)).find(c => c.project === 'CO')!.answers!
     expect(answers.map(a => a.outcome)).toEqual(['replaced', 'accepted'])
     expect(answers[1]!.summary).toEqual(['+ type v2 (2 steps)'])
+  })
+
+  it('works on a project with no workflow yet: its diff is against the default, and its guards come with it', async () => {
+    const projects = JSON.parse(await fs.readFile(store.files.projects, 'utf8'))
+    await fs.writeFile(store.files.projects, JSON.stringify({ ...projects, projects: [...projects.projects, { key: 'NW', name: 'New', machine: '', path: '/src/nw', addedAt: 1 }] }))
+    const nw = await issueToken(store, 'NW')
+    await noteTurn(store, 'NW', 'user', 'strict, I merge')
+    const r = await cli(['template', 'edit'], JSON.stringify(company), nw) as { diff: string }
+    expect(r.diff).toContain('+   "guards"')
+    await expect(answerProposal(deps(), 'NW', true)).resolves.toEqual({ accepted: true })
+    expect(await store.savedWorkflow('NW')).toMatchObject({ id: 'nw', version: 1, guards: company.guards })
   })
 
   it('never changes a guard with the token, even in a user turn', async () => {
@@ -571,6 +572,11 @@ describe('role files', () => {
     expect(agents).toContain('- deploy (Deploy): holder coordinator, ends report, recheck 5m, timeout 90m')
     expect(agents).toContain('- Base branch is develop.')
     expect(agents).toContain('copied from template company v1 (the template library never changes it)')
+    expect(agents).not.toContain('## Your first conversation')
+    // No accepted workflow yet: the first conversation sets one up.
+    const first = roleFiles({ key: 'CO', name: 'Company', machine: '', path: '/src/co', addedAt: 1 }, defaultWorkflow('CO'), EXAMPLES)['AGENTS.md']!
+    expect(first).toContain('## Your first conversation')
+    expect(first).toContain('propose a workflow with `template edit`')
     expect(agents).toContain('"id":"vibe"')
     expect(agents).toContain('with its absolute path (`/src/co/README.md`)')
     expect(files['CLAUDE.md']).toBe('@AGENTS.md\n')

@@ -95,7 +95,7 @@ defineExpose({ menu })
       </div>
     </template>
     <template v-else>
-      <p class="muted settings-hint">{{ tl('No workflow yet: tasks cannot start. Ask the project’s coordinator to set one up with you, or start from a template.') }}</p>
+      <p class="muted settings-hint">{{ tl('No workflow chosen yet: tasks follow a minimal one (to do, work, done). Ask the project’s coordinator to propose one, or start from a template.') }}</p>
       <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-layout-template" data-testid="wf-start-open" @click="startPick = ''; dialog = 'start'">{{ tl('Start from a template') }}</UButton>
     </template>
     <p v-if="error && !dialog" class="form-error" role="alert">{{ t(error) }}</p>

@@ -2,10 +2,11 @@
 // rights checked on each, and the role files written in its own folder. Pure:
 // the server (server/utils/pmCoordinator.ts) reads and writes.
 import { isGitBranch, type Project } from './project'
-import { WEIGHTS, isWeight, type Holder, type Template, type Weight } from './workflow'
+import { WEIGHTS, isDefaultWorkflow, isWeight, type Holder, type Template, type Weight } from './workflow'
 import { SPEC_RULE, type Run, type Task } from './run'
 import { wasReleased } from './release'
 import { CODEX_NO_UPDATE } from '../codexLaunch'
+import pkg from '../../package.json'
 
 type AgentRole = Run['role']
 import type { WorkflowChanges } from './workflowChanges'
@@ -144,8 +145,8 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'list [--archived]', does: 'the project\'s tasks, their step and what waits for the user; archived tasks (done, off the board) only with --archived' },
   { usage: 'show <task>', does: 'one task, its weight, the machine it runs on, its plan and its log' },
   { usage: 'plan', does: 'the resolved plan of each task type' },
-  { usage: 'template show', does: 'the project\'s own workflow (JSON), copied from a template when the project started' },
-  { usage: 'template edit < template.json', does: 'propose a new workflow for the project; only in a turn that comes from the user, guards unchanged; the user accepts or refuses its diff in wherdr' },
+  { usage: 'template show', does: 'the project\'s own workflow (JSON): a minimal default (version 0) until the user accepts one' },
+  { usage: 'template edit < template.json', does: 'propose a new workflow for the project; only in a turn that comes from the user, guards unchanged (unless the project has no accepted workflow yet); the user accepts or refuses its diff in wherdr' },
   { usage: 'task tag <task> <text>', does: 'a short tag on the card (a ticket key, a client)' },
   { usage: 'task link <task> <url> --label <label>', does: 'a link on the card (PR, ticket, pipeline)' },
   { usage: 'step done <task> [--link <url>]', does: 'end the task\'s current step when you hold it (holder: coordinator)' },
@@ -368,14 +369,13 @@ const guardsOf = (t: Template | null) =>
 export const sameGuards = (a: Template | null, b: Template | null) => guardsOf(a) === guardsOf(b)
 
 // Why the coordinator may not save `next` over `old`, or undefined. Guards
-// change only through the user's own gesture in the interface. key: the
-// project's. No workflow yet: its first one, guards included, is proposed
-// like any change and saved on the user's yes.
+// change only through the user's own gesture in the interface. key: the project's.
 export function templateEditRefusal(old: Template | null, next: Template, turn: Turn, key?: string): string | undefined {
   if (turn !== 'user') return 'template edit is only for a turn that comes from the user: propose the change and wait for their yes'
-  if (!old) return undefined
+  if (!old) return `The project has no workflow: the user starts it from a template in ${projectPlace(key, 'workflow', true)}`
   if (next?.id !== old.id) return `The coordinator edits its project's workflow only (${old.id})`
-  if (!sameGuards(old, next)) return `Guards (protected branches, who merges) are changed by the user in ${projectPlace(key ?? old.id, 'guards', true)}, or by Alfred, never with a project coordinator's token`
+  // The first workflow brings its guards: the user's yes to it sets them.
+  if (!isDefaultWorkflow(old) && !sameGuards(old, next)) return `Guards (protected branches, who merges) are changed by the user in ${projectPlace(key ?? old.id, 'guards', true)}, or by Alfred, never with a project coordinator's token`
 }
 
 // `step done` → the engine's event, or why it is refused. --user-said ends a
@@ -490,6 +490,9 @@ cat "$out"; echo; rm -f "$out" "$hdr"
 // never from memory. docs: the docs folder, when it is on the agent's machine;
 // help: the command(s) that list its commands; open: its `ui open` command,
 // and which places it may open; guide: its "Showing instead of telling" (uiGuide.ts).
+// wherdr's issues page: package.json's `bugs` (one source).
+export const WHERDR_ISSUES: string = pkg.bugs
+
 export function docsRule(docs: string | undefined, help: string, open: { cmd: string, places: string }, guide: string[]): string[] {
   return ['## Answering about wherdr', '',
     'Never explain wherdr\'s interface or commands from memory: wherdr changes with each update.',
@@ -502,6 +505,8 @@ export function docsRule(docs: string | undefined, help: string, open: { cmd: st
     ...appLinkList(),
     `To show the user ${open.places} at once, beside your conversation in their open wherdr (a card on a phone): \`${open.cmd} '#/settings?section=phone'\`, the address quoted (an unquoted # starts a shell comment). Only when the user asks to see it, in their turn (refused in a wake), and only to the wherdr the user is on now; otherwise give the link. The answer says where (\`opened on\`: phone or computer) and gives a block to end your reply with, so the card stays in the conversation. It opens the place and changes nothing.`,
     `To point at one setting (the user asks where it is, or it would solve their problem): \`${open.cmd} --target <id>\`, with one line on why; it opens the setting's section and highlights the setting. A target on a project's sheet (project.…) takes \`--project <KEY>\` too. The ids (\`${open.cmd.replace(/open$/, 'targets')}\` lists them too): ${uiTargetList().map(t => `${t.id} (${t.label})`).join(', ')}.`,
+    'Suggest without insisting: when you notice a setting the user may like, or they have a problem a setting solves, suggest it once, with that command and one line on why. If they ignore it, never bring it up again (note it in your memory).',
+    `When the user needs something wherdr cannot do, and the need is justified or a good fit for wherdr, you may suggest opening an issue on wherdr's repository (${WHERDR_ISSUES}), or a pull request when the fit is clear. Write the draft first for the user to read (title and body, with no private data: no paths, machine or host names, e-mail addresses, tokens, real conversations or user data), and post it (\`gh issue create\`) only after their yes.`,
     '', ...guide]
 }
 
@@ -567,8 +572,16 @@ export const commandList = (t?: Template | null) => COMMANDS.filter(c => !c.usag
 export function roleFiles(p: Project, t: Template | null, examples: Template[], docs?: string): Record<string, string> {
   // A folder without git: no task worktree, the coordinator does the work there itself.
   const plain = p.git === false
-  const plans = t ? Object.entries(t.taskTypes).flatMap(([type]) => [`### ${type}`, ...planSteps(t, { type }, p.base).map(stepLine), '']) : [
-    `None yet: its tasks cannot start. When the user asks you to set up how they work: look at the repository (its tests, CI, how it merges), ask them a few questions, one at a time (the checks before a merge, the reviews, the pace), then propose a first workflow with \`template edit\`, from the example closest to their answers. Their yes in ${projectPlace(p.key, 'workflow', true)} saves it, its guards included.`, '']
+  const plans = t ? Object.entries(t.taskTypes).flatMap(([type]) => [`### ${type}`, ...planSteps(t, { type }, p.base).map(stepLine), '']) : ['(no template yet)']
+  // No accepted workflow yet: the coordinator's first conversation sets one up.
+  const firstTalk = !plain && isDefaultWorkflow(t) ? ['## Your first conversation', '',
+    `This project has no accepted workflow yet: its tasks follow a minimal default (one type \`task\`: todo → work → done). Your first conversation with the user sets one up:`,
+    '1. Before your first answer, look at the repository: README, docs, CI files, branches, recent commits and PRs.',
+    `2. Introduce yourself as the coordinator of project ${p.key}.`,
+    '3. Existing code: say in a few lines what you understood of the project. An empty or nearly empty repository: ask what the user wants to build.',
+    '4. Ask a few short questions on how the user works, one at a time, as `choices` where you can: strict, like a company or open-source project (protected branches, PRs, reviews, CI checks before merge, the user merges), or fast and light, like a personal or vibe-coding project (fewer checks, wherdr merges); and what they prefer to approve themselves.',
+    '5. Then propose a workflow with `template edit` (its diff is against the default), with the guards that fit, and explain it in a few lines. The user accepts or refuses it in wherdr.',
+    'Note their answers in memory.md. This section goes away once the user accepts a workflow.', ''] : []
   const own = t ? [t.instructions, ...Object.entries(t.taskTypes).map(([k, tt]) => tt.instructions && `${k}: ${tt.instructions}`)].filter(Boolean).map(s => `- ${s}`) : []
   const agents = [
     `# Coordinator of project ${p.name} (${p.key})`, '',
@@ -582,6 +595,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '- "Incident: <incident>, wake <id>": agents were gone (a restart, a machine offline, a crash, an account limit): once per incident, the engine\'s facts: the cause and its evidence, what it resumed, what still waits and why, what needs you or the user. It comes even with the autopilot off. The engine resumes the rest by itself: tell the user what needs them, start again what needs you, then ack;',
     '- "Health check:": every few hours, a short summary of your project (tasks done since the last check, waiting for the user, stuck for long, machines idle while to-do tasks wait). When nothing in it is wrong, ack at once with no further work: look into a line only when it needs you.',
     'The engine runs the board on its own: it starts to-do tasks while machines have room and moves them through their steps. By default no wake comes for a task done, ready or started, nor for a block the engine fixed itself; you wake only for what needs judgment, and for the health check.', '',
+    ...firstTalk,
     '## Your memory', '',
     `\`memory.md\` in your folder is yours: wherdr creates it once and never rewrites it, so it outlives a restart and a change of program. Read it first, at each start, and follow it: the user's decisions and preferences there come before your defaults. Note there, as you go, each decision or preference the user gives you, one fact per line; nothing a command or the board already says. Keep it clean: merge duplicates, drop stale lines, stay under ${MEMORY_CAP} characters.`, '',
     '## Commands (your token: this project only)', '', ...commandList(t), '',
@@ -605,7 +619,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '## Machines', '',
     'The engine places each start on one of the machines the project allows (the user allows them in its settings), by the project\'s placement strategy, which the user sets (by default heavy work on the strongest that has room, light and standard work on the project\'s own machine when it has room). `autopilot show` gives the strategy, each machine and what it takes now. Leave placement to the engine; `task start <task> --on <machine>` picks one by its name when the user asks or a task needs that machine. A started task always stays on its machine (`show` gives it).',
     'A task\'s weight says what it needs of a machine: light (docs, a study), standard (tests and typecheck), heavy (a build, e2e, screenshots). It comes from its task type and steps; set `task add --weight` only when the task differs from its type (a docs-only change in a type that takes screenshots: light).', '',
-    '## Plans of this project\'s task types', '', `Workflow: ${t ? `v${t.version ?? 1}${p.from ? `, copied from template ${p.from.template} v${p.from.version} (the template library never changes it)` : ''}` : 'none'}`, `Working branch: ${p.base || 'none set'}`, '', ...plans]),
+    '## Plans of this project\'s task types', '', `Workflow: ${isDefaultWorkflow(t) ? 'the minimal default, none accepted yet' : t ? `v${t.version ?? 1}${p.from ? `, copied from template ${p.from.template} v${p.from.version} (the template library never changes it)` : ''}` : 'none'}`, `Working branch: ${p.base || 'none set'}`, '', ...plans]),
     '## Turning a workflow request into steps', '',
     'You are the one who writes this project\'s workflow: wherdr only shows it to the user, who asks you for every change and accepts or refuses your proposal.',
     'wherdr imposes no workflow: it knows ordered steps, who holds each (worker, reviewer, coordinator, none), how it ends (report, verdict, user, action), the proofs it needs (evidence) and the user\'s guards. What an agent must do is plain text in `instructions`.',
@@ -636,7 +650,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
 // The main coordinator's part of Alfred's home (shared/pm/alfred.ts): every
 // project, through the board only. Its AGENTS.md is a section of Alfred's.
 export function mainRoleFiles(projects: Pick<Project, 'key' | 'name' | 'path' | 'from'>[]): Record<string, string> {
-  const list = projects.length ? projects.map(p => `- ${p.key}: ${p.name} (repository ${p.path}, ${p.from ? `workflow copied from template ${p.from.template}` : 'its own workflow, or none yet'})`) : ['(no project yet)']
+  const list = projects.length ? projects.map(p => `- ${p.key}: ${p.name} (repository ${p.path}, ${p.from ? `workflow copied from template ${p.from.template}` : 'no workflow accepted yet: a minimal default'})`) : ['(no project yet)']
   const agents = [
     '## Coordinating the projects', '',
     'You are also the main coordinator: you coordinate every project of the user\'s board, and answer the user about all of them. You change no repository: task agents do the work in their own worktrees.',

@@ -136,7 +136,12 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
   switch (a.kind) {
     case 'git.land': return commit(SCRIPT.land, [a.target!])
     case 'git.push': return commit(SCRIPT.push, [branch])
-    case 'git.verify-merged': return commit(SCRIPT.verify, [a.target!, branch])
+    case 'git.verify-merged': {
+      const r = await run(deps, SCRIPT.verify, [wt, a.target!, branch])
+      if (r.code === 0) return { ok: true, commit: lastLine(r.out) }
+      // Not merged by git, or GitHub could not answer (gh logged out on a Bitbucket repository): Bitbucket may know.
+      return ((r.code === CODE.NOT_MERGED || /\(GitHub not checked: /.test(r.out)) && await bitbucketMerged(deps, wt, branch, a.target!)) || fail(r)
+    }
     case 'github.pr': {
       const r = await run(deps, SCRIPT.pr, [wt, branch, a.base!, `${job.shown ?? job.task.id}: ${job.task.title}`], job.task.description || job.task.title)
       return r.code === 0 ? { ok: true, link: lastLine(r.out) } : fail(r)
@@ -226,6 +231,21 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
 }
 
 interface BbPr { id: number, state: string, destination: { branch: { name: string } }, source: { commit: { hash: string } }, links: { html: { href: string } } }
+
+// verify-merged's GitHub check, on Bitbucket Cloud when it has credentials: a
+// merged PR from the branch into the target whose source commit is HEAD or holds it.
+async function bitbucketMerged(deps: ActionDeps, wt: string, branch: string, target: string): Promise<Done | undefined> {
+  const r = await run(deps, SCRIPT.bitbucket, [wt, 'GET', '/pullrequests?state=MERGED&sort=-updated_on&pagelen=50', `q=source.branch.name="${branch}" AND destination.branch.name="${target}"`])
+  const lines = r.out.trim().split('\n')
+  if (r.code !== 0 || lines.pop() !== '200') return
+  let prs: BbPr[]
+  try { prs = (JSON.parse(lines.pop() || '{}') as { values?: BbPr[] }).values ?? [] }
+  catch { return }
+  for (const p of prs) {
+    const h = await run(deps, SCRIPT.holds, [wt, p.source.commit.hash])
+    if (h.code === 0) return { ok: true, commit: lastLine(h.out), link: p.links.html.href, note: 'merged on Bitbucket' }
+  }
+}
 
 // As github.merge, through the Bitbucket Cloud API: the task's open PR, its
 // guard on the PR's destination, its head pushed when behind, its build

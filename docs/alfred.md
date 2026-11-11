@@ -59,6 +59,19 @@ $ wherdr alfred project template WEB company
   "next": "Show this to the user; only after their yes, run: wherdr alfred project template WEB company --apply" }
 ```
 
+## Suggestions
+
+When Alfred notices a setting you may like, or you have a problem a setting
+solves, it suggests it once, highlighted with `wherdr alfred ui open --target`,
+and does not bring it up again if you let it pass. Project coordinators do the
+same.
+
+When you need something wherdr cannot do, and the need fits wherdr, Alfred or a
+coordinator may suggest opening an issue on wherdr's repository, or a pull
+request when the fit is clear. It shows you the draft first, with no private
+data (no paths, machine names, e-mail addresses, tokens or conversations), and
+posts it only on your yes.
+
 ## After an update
 
 When wherdr starts (after an update too), it rewrites the instructions (`AGENTS.md` and the files

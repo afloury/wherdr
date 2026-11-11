@@ -262,7 +262,7 @@ async function remove() {
             </div>
             <small class="muted">{{ tl('Before a task\'s first worker. Files to copy: ignored files taken from the project\'s clone (a tracked or missing one is skipped). Folders to share: taken from the clone while the lockfile is the same in both; otherwise the setup command runs, at most 10m. Folders to share empty: node_modules; Share no folder: none.') }}</small>
           </template>
-          <p v-else-if="loaded" class="muted settings-hint">{{ tl('No workflow yet: tasks cannot start until the project starts from a template.') }}</p>
+          <p v-else-if="loaded" class="muted settings-hint">{{ tl('No workflow chosen yet: tasks follow a minimal one (to do, work, done). Ask the project’s coordinator to propose one, or start from a template.') }}</p>
           <UButton type="submit" size="xl" color="primary" variant="solid" class="hw-cta" :loading="busy === 'save'" :disabled="!loaded || busy !== ''" data-testid="pm-save">{{ tl('Save') }}</UButton>
 
           <span class="field-label pm-later">{{ tl('Repository') }}</span>
@@ -295,7 +295,7 @@ async function remove() {
         <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" data-ui-target="project.workflow" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
         <template v-else-if="tab === 'guards' && loaded">
           <ProjectGuards v-if="workflow" data-ui-target="project.guards" :project="p" :workflow="workflow" @changed="workflowChanged" />
-          <p v-else class="muted settings-hint">{{ tl('No workflow yet: tasks cannot start until the project starts from a template.') }}</p>
+          <p v-else class="muted settings-hint">{{ tl('No workflow chosen yet: tasks follow a minimal one (to do, work, done). Ask the project’s coordinator to propose one, or start from a template.') }}</p>
         </template>
         <ProjectAutomations v-else-if="tab === 'automations'" :project="p.key" :name="p.name" />
         <template v-else-if="tab === 'autopilot'">
