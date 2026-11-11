@@ -165,4 +165,4 @@ Codex agents of online machines. Choosing a result opens it.
 ([Notifications](notifications.md)), the **passkey lock** (Face ID, Touch ID, Windows Hello,
 Android…) and optional [wherdr plugins](plugins.md#wherdr-plugins).
 
-Herdr sessions, Herdr plugin actions and keep-awake are v2 only.
+Herdr sessions and Herdr plugin actions are v2 only.

@@ -60,6 +60,7 @@ export interface Task {
   origin?: TaskOrigin // who made it: only automatic work is held by the pace (pace.ts)
   addedBy?: string // who added it: 'user', 'automation', or a coordinator's key (MAIN for the main one)
   held?: string // an automatic start waits for memory on its machine (memory.ts): the engine starts it once memory is back
+  reviewWait?: string // the reviewer account its review waits on, in that account's queue (reviewQueue.ts)
   files?: string[] // the files or folders it plans to change (files.ts)
   changed?: string[] // what it changed since its branch started, as the engine last read it
   sameFiles?: string // the started task its start waits behind: same files (files.ts)

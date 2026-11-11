@@ -17,7 +17,8 @@ export const AGENTLESS_WHY = 'its agent was no longer running while the task was
 export function agentNeeded(task: Task, plan: PlannedStep[]): 'worker' | 'reviewer' | undefined {
   const s = task.step
   if (task.state !== 'working' || task.stopped || !s?.started || s.done || s.acting || s.agent || s.yourTurn) return
-  if (waitsForUser(task) || waitsInQueue(task)) return
+  // A review waiting in its account's queue: no agent is missing.
+  if (waitsForUser(task) || waitsInQueue(task) || task.reviewWait) return
   const holder = plan[s.at]?.holder
   return holder === 'worker' || holder === 'reviewer' ? holder : undefined
 }
