@@ -57,15 +57,16 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   '#/settings?section=phone'`, `wherdr pm ui open '…'`): of the apps showing its conversation,
   the one you last used (within 15 minutes), and no other, so a computer left open on the same
   conversation stays as it is while you are on your phone. On a computer window at least 1280 px
-  wide, a Settings place opens in the side panel beside the conversation; elsewhere, and for
-  the board, a task or Decisions, a card above the message field names the place, and a tap
-  opens it. Either says who opened it ("Opened by Alfred"); close the panel or dismiss the card
-  with ×. The agent is told where it went (phone or computer), and ends its reply with the same
-  card (a ```wherdr block of `open <in-app link>` lines), so it stays in the conversation for
-  later. With no app in use on the conversation, it gives you the link instead. Opening is all it
-  does: it changes no setting. It works only in a turn that follows your message (never in an
-  Autopilot wake), and a coordinator opens its own project's places and global Settings sections
-  only. To show you where a setting is, the agent points at it (`wherdr alfred ui open --target
+  wide, a Settings place opens in the side panel beside the conversation (bare `#/settings` on
+  Appearance); elsewhere, and for the board, a task or Decisions, a card above the message field,
+  in the conversation column and as wide as the field, names the place, and a tap opens it.
+  Either says who opened it ("Opened by Alfred"); close the panel or dismiss the card with ×. The
+  agent is told where it went (phone or computer), and ends its reply with the same card (a
+  ```wherdr block of `open <in-app link>` lines), so it stays in the conversation for later. With
+  no app in use on the conversation, it gives you the link instead. Opening is all it does: it
+  changes no setting. It works only in a turn that follows your message (never in an Autopilot
+  wake), and a coordinator opens its own project's places and global Settings sections only. To
+  show you where a setting is, the agent points at it (`wherdr alfred ui open --target
   terminal.key-order`; `ui targets` lists the settings it can point at): on a wide computer the
   side panel opens on its section and highlights it; on a phone the card names the setting with a
   crosshair, and a tap opens the page and highlights it. A part of a project's sheet takes the
