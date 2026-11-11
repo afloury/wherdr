@@ -786,14 +786,17 @@ report, so its earlier *Done* says just that.
 hand-offs, wherdr's catch-ups and CI fixes, the coordinator's and your
 actions, and wherdr's routine lines, lighter.
 
-<a id="tldr"></a>**TL;DR.** On a task waiting for you, **To do** starts with a
-few lines for you to decide: what changed for you, how it was checked, the
-review findings fixed or left, the risks, what the screenshots show, what
-*Merge* does (which branch it goes to); *Full reports in Comments* below it.
+<a id="tldr"></a>**TL;DR.** On a task waiting for you, **To do** starts with at
+most five lines in plain words, with no code names: **What changes for you**
+(what you will see or what now behaves differently), **What to look at** on
+the screenshots when there are some, and **Anything wrong** only when there is
+a reason to hesitate (a finding left open, a check that failed, something the
+worker could not do); *Full reports in Comments* below it. How it was checked
+and what *Merge* does are left out: the step's badge says it.
 Claude Haiku writes it through the `claude` CLI on the wherdr machine
 (`claude -p`, safe mode, no tools), from the task's title, description,
 reports and verdicts, the files it changed with their line counts (never
-their contents), its step and what its merge does; home paths, e-mail
+their contents) and its step; home paths, e-mail
 addresses and tokens masked. It is written again only on a significant
 change: a report or verdict that comes with new commits of the task's own or
 new findings, or the first verdict on new commits. A merge or catch-up with
@@ -801,7 +804,9 @@ the base, a rebase, a CI re-run, a report that changes no code (the PR
 opened) or a kept approval leaves it as it is. One task a minute; while the pace of this
 machine's Claude account holds automatic work it waits, and **To do** shows
 the worker's and the reviewer's notes with *TL;DR waits for the pace*. A task
-whose last report is more than a day old keeps its TL;DR as it is.
+whose last report is more than a day old keeps its TL;DR as it is, unless it
+was written with an older prompt and the task is still open: it is written
+again once in the new style.
 
 **Check on GitHub** shows on a task with a PR at its merge step, or archived:
 wherdr reads the PR now, for a merge stuck after a guard refusal, a PR merged
