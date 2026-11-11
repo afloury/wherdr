@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { WAKE, ackWakes, addSkip, enqueue, inWake, readQueue, tickWakes, wakeKindOf, wakeText, type Wake } from '../shared/pm/wakes'
+import { WAKE, ackWakes, addSkip, enqueue, inWake, readQueue, sinceYesterday, tickWakes, wakeKindOf, wakeText, type Wake } from '../shared/pm/wakes'
 import { HEALTH_REPEAT_MS, healthRepeats } from '../shared/pm/health'
 import { createPmStore } from '../server/utils/pmStore'
 
@@ -15,6 +15,21 @@ const tick = (q: Wake[], status: 'idle' | 'working' | 'gone', now: number, lastU
 }
 const queued = (reasons: string[], now = 0, id = 'w1') => [enqueue([], 'CO', reasons, now, id)]
 
+describe('the timeline window', () => {
+  it('starts at yesterday\'s local midnight, a 25 h day included', () => {
+    const tz = process.env.TZ
+    process.env.TZ = 'America/New_York'
+    try {
+      const now = new Date(2026, 10, 1, 23, 50).getTime()
+      expect(sinceYesterday(now)).toBe(new Date(2026, 9, 31, 0, 0).getTime())
+      // Handled 31 October at 00:05, 48 h 45 min before: still read.
+      const handled = new Date(2026, 9, 31, 0, 5).getTime()
+      const w = JSON.stringify({ id: 'y', coordinator: 'CO', reasons: [], createdAt: handled, tries: 1, endedAt: handled, ended: 'ack' })
+      expect(readQueue([w], now, now - sinceYesterday(now))).toHaveLength(1)
+    } finally { if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz }
+  })
+})
+
 describe('wakes not sent', () => {
   it('a health check repeating the last one\'s lines is skipped, for 12 h at most', () => {
     const sent = { lines: ['Waiting for the user: CO-1 (Fix)', 'ack'], at: 0 }
@@ -23,12 +38,15 @@ describe('wakes not sent', () => {
     expect(healthRepeats(sent.lines, sent, HEALTH_REPEAT_MS)).toBe(false)
     expect(healthRepeats(sent.lines, undefined, 0)).toBe(false)
   })
-  it('notes each engine skip once in 12 h, each scheduled one, the last 50 kept', () => {
+  it('notes each engine skip once in 12 h, each scheduled one, three days kept', () => {
     const s = { at: 0, what: 'engine' as const, why: 'CO-1: offline' }
     const one = addSkip(undefined, s)!
     expect(addSkip(one, { ...s, at: 3_600_000 })).toBeUndefined()
     expect(addSkip(one, { ...s, at: HEALTH_REPEAT_MS })).toHaveLength(2)
-    expect(Array.from({ length: 55 }, (_, i) => i).reduce((l, i) => addSkip(l, { ...s, why: `${i}` })!, one)).toHaveLength(50)
+    // Every 30 min for two days: all kept; older than three days: dropped.
+    const slots = Array.from({ length: 96 }, (_, i) => i).reduce<ReturnType<typeof addSkip>>((l, i) => addSkip(l, { at: i * 1_800_000, what: 'autopilot', why: 'Scheduled wake: nothing to do' }), undefined)!
+    expect(slots).toHaveLength(96)
+    expect(addSkip(slots, { ...s, at: 3 * 86_400_000 + 1 })).toHaveLength(96)
     // A scheduled wake is skipped once per slot: each one noted.
     const slot = { at: 0, what: 'autopilot' as const, why: 'Scheduled wake: nothing to do' }
     expect(addSkip(addSkip(undefined, slot), { ...slot, at: 3_600_000 })).toHaveLength(2)

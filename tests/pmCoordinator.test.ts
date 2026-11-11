@@ -6,7 +6,7 @@ import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
 import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, takeUpdateNotice, userMessageTo } from '../server/utils/pmCoordinator'
 import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
-import { CREATE_SCRIPT } from '../server/utils/pmLaunch'
+import { CREATE_SCRIPT, launched } from '../server/utils/pmLaunch'
 import { execFileSync } from 'node:child_process'
 import { trustKeys } from '../shared/pm/run'
 import { coordinatorStart, setupDone } from '../shared/pm/setup'
@@ -95,6 +95,16 @@ describe('the Autopilot tab\'s timeline', () => {
     const co = (await coordinatorsView(store)).find(c => c.project === 'CO')!
     expect(co.started!.map(s => s.title)).toEqual(['Busy', 'Wake', 'Held for room'])
     expect(co.wakes!.map(w => w.id)).toEqual(['old'])
+  })
+
+  it('counts a start only once its terminal exists', async () => {
+    const t = await store.addTask({ project: 'CO', title: 'Timed out', type: 'feature' })
+    const run = { id: 'r1', task: t.id, role: 'worker' as const, program: 'claude', model: '', machine: '', worktree: '', branch: '', instructions: '', attempt: 1, state: 'starting' as const, startedAt: 1 }
+    await store.saveRun(run)
+    const working = await store.saveTask({ ...t, state: 'working', run: 'r1' })
+    expect(await launched(store, working)).toBe(false)
+    await store.saveRun({ ...run, terminal: 'host/t9', state: 'running' })
+    expect(await launched(store, working)).toBe(true)
   })
 })
 

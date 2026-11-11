@@ -152,7 +152,9 @@ export const pastLimit = (ap: Autopilot | undefined, tasks: Task[], runs: Run[],
   limitHit(ap ?? DEFAULT_AUTOPILOT, tasks, runs, now, holds)?.past
 
 // The task log's line for each start of the autopilot's own (the Autopilot tab's timeline reads them).
+// A launch not confirmed yet (no terminal) gets UNCONFIRMED instead, never counted.
 export const AUTOPILOT_STARTED = { busy: 'started by the autopilot: ', wake: 'started the task in a wake', room: 'started: there is room' } as const
+export const UNCONFIRMED = 'start sent, not confirmed yet (its terminal is not seen)'
 
 // Starts a stopped task may have had for a wake to start it again.
 export const WAKE_RETRIES = 2

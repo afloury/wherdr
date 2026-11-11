@@ -13,8 +13,8 @@ import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
 import { validateTemplate } from '../../shared/pm/workflow'
 import { weightOf, weightText, weightsLine } from '../../shared/pm/weight'
 import { EXAMPLES } from '../../shared/pm/examples'
-import { AUTOPILOT_STARTED, DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, busyNext, busyQueue, keepsBusy, coordinatorStartRefusal, countFix, limitsLeft, pastLimit, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
-import { ackWakes } from '../../shared/pm/wakes'
+import { AUTOPILOT_STARTED, UNCONFIRMED, DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, busyNext, busyQueue, keepsBusy, coordinatorStartRefusal, countFix, limitsLeft, pastLimit, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
+import { ackWakes, sinceYesterday } from '../../shared/pm/wakes'
 import { nextWakeAt, proposalFlow } from '../../shared/pm/flow'
 import { incidentView, isOpen, type Incident } from '../../shared/pm/incident'
 import { automationLine } from '../../shared/pm/automations'
@@ -24,7 +24,7 @@ import { projectOf, showIds, shownKey, shownTaskId } from '../../shared/pm/proje
 import { taskPlan, trustKeys, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
-import { CREATE_SCRIPT, WRITE_SCRIPT, exec, startTask } from './pmLaunch'
+import { CREATE_SCRIPT, WRITE_SCRIPT, exec, launched, startTask } from './pmLaunch'
 import { actionShell } from './pmActions'
 import { SCRIPT } from '../../shared/pm/actions'
 import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from '../../shared/pm/contributorPr'
@@ -381,7 +381,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
       if (on !== undefined) forgetMemory(on)
       const started = await startTask(deps, task.id, { by, ...(on !== undefined ? { on } : {}) })
       if (started.sameFiles) return { task: started, held: `${sameFilesText(started.sameFiles)}: it starts by itself once that task no longer touches them` }
-      return { task: await store.logTask(started, by, started.state === 'working' ? (wake ? AUTOPILOT_STARTED.wake : 'started the task') : `could not start the task: ${started.waiting ?? ''}`), ...said }
+      return { task: await store.logTask(started, by, started.state === 'working' ? (!wake ? 'started the task' : await launched(store, started) ? AUTOPILOT_STARTED.wake : UNCONFIRMED) : `could not start the task: ${started.waiting ?? ''}`), ...said }
     }
     case 'task edit': case 'task note': {
       const why = specChangeRefusal(turn)
@@ -566,7 +566,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
   const now = Date.now(), [tasks, runs] = [await store.tasks(), await store.runs()]
   const projects = await store.projects(), holds = await slotsOf(store, projects)
   // The timeline's start: yesterday's local midnight.
-  const since = new Date(now).setHours(-24, 0, 0, 0), wakes = await store.wakes(now - since)
+  const since = sinceYesterday(now), wakes = await store.wakes(now - since)
   // The main coordinator first; it has no autopilot (each project's coordinator runs its own).
   return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...projects].map(async (p) => {
     const c = await store.coordinator(p.key)

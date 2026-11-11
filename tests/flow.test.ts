@@ -10,6 +10,15 @@ describe('nextWakeAt', () => {
     // A wake overdue goes now, never in the past.
     expect(nextWakeAt({ ...ap, every: '30m' }, now - 3_600_000, undefined, now)).toBe(now)
   })
+  it('outside its hours on a clock change: the next opening that exists', () => {
+    const tz = process.env.TZ
+    process.env.TZ = 'America/New_York'
+    try {
+      // 8 March 2026: 02:00 does not exist; 02:00-03:00 has no opening that day.
+      const t = new Date(2026, 2, 8, 1, 30).getTime()
+      expect(nextWakeAt({ ...ap, every: '30m', hours: { from: 2, to: 3 } }, t, undefined, t)).toBe(new Date(2026, 2, 9, 2, 0).getTime())
+    } finally { if (tz === undefined) delete process.env.TZ; else process.env.TZ = tz }
+  })
   it('outside its hours: the next start of them', () => {
     const late = new Date(2026, 0, 5, 21, 30).getTime()
     expect(nextWakeAt({ ...ap, every: '2h', hours: { from: 8, to: 20 } }, late - 2.5 * 3_600_000, undefined, late)).toBe(new Date(2026, 0, 6, 8, 0).getTime())

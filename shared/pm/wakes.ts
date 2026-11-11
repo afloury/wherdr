@@ -135,23 +135,24 @@ export function ackWakes(q: Wake[], coordinator: string, ids: string[], now: num
   return { changed, unknown }
 }
 
-// A wake the engine did not send, and why: the coordinator's last SKIPS_KEPT,
+// A wake the engine did not send, and why: the coordinator's last three days,
 // newest last, shown by `wherdr pm autopilot show`, never in its chat.
 export interface WakeSkip { at: number, what: WakeKind | 'question', why: string }
-export const SKIPS_KEPT = 50
+// Kept three days (the timeline shows yesterday and today, a clock change included).
+export const SKIPS_KEPT_MS = 3 * 86_400_000
 const SKIP_AGAIN_MS = 12 * 3_600_000
 // The list with this skip, unless the same one is noted within 12 h: only for
 // what is seen every tick (an engine block, a question); a scheduled wake or a
 // health check is skipped once per slot, each one noted (the Autopilot tab's timeline).
 const PER_TICK = new Set<WakeSkip['what']>(['engine', 'question'])
 export const addSkip = (skips: WakeSkip[] | undefined, s: WakeSkip): WakeSkip[] | undefined =>
-  PER_TICK.has(s.what) && skips?.some(x => x.what === s.what && x.why === s.why && s.at - x.at < SKIP_AGAIN_MS) ? undefined : [...(skips ?? []), s].slice(-SKIPS_KEPT)
+  PER_TICK.has(s.what) && skips?.some(x => x.what === s.what && x.why === s.why && s.at - x.at < SKIP_AGAIN_MS) ? undefined : [...(skips ?? []).filter(x => s.at - x.at < SKIPS_KEPT_MS), s]
 
 // Is the coordinator's current turn a wake? Only while a delivered wake is open.
 export const inWake = (q: Wake[], coordinator: string) => mine(q, coordinator).some(isOpen)
 
-// Ended wakes stay two days in the file: the Autopilot tab shows yesterday's.
-export const WAKES_KEPT_MS = 2 * 86_400_000
+// The Autopilot tab's window starts at yesterday's local midnight (a 23 or 25 h day included).
+export const sinceYesterday = (now: number) => { const d = new Date(now); d.setDate(d.getDate() - 1); return d.setHours(0, 0, 0, 0) }
 
 // Last record per id wins (the file is append-only); old ended wakes dropped.
 export function readQueue(lines: string[], now: number, keepMs = 86_400_000): Wake[] {

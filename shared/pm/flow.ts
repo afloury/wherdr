@@ -37,8 +37,12 @@ export function nextWakeAt(ap: Autopilot | undefined, ranAt: number | undefined,
 // The time itself within the hours, else the next start of them.
 function intoHours(hours: Autopilot['hours'], t: number) {
   if (!hours || inHours(hours, new Date(t))) return t
+  // Each day's opening from its date, kept only when inside the hours: a clock
+  // change can skip it (02:00 that does not exist becomes 03:00).
   const d = new Date(t)
-  d.setHours(hours.from, 0, 0, 0)
-  if (d.getTime() <= t) d.setDate(d.getDate() + 1)
-  return d.getTime()
+  for (let day = 0; day < 8; day++) {
+    const open = new Date(d.getFullYear(), d.getMonth(), d.getDate() + day, hours.from).getTime()
+    if (open > t && inHours(hours, new Date(open))) return open
+  }
+  return t
 }
