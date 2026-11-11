@@ -200,3 +200,14 @@ it('an approved merge keeps Merge loading with what it waits for, until it merge
   expect(failed.find('[data-testid="step-user-waits"]').exists()).toBe(false)
   failed.unmount()
 })
+
+it('links a step\'s commit to the repository of its own PR, not a task-level link to another one', async () => {
+  const sha = '0123456789abcdef0123456789abcdef01234567'
+  const c: Card = { ...card, yourTurn: undefined, userLabel: undefined, plan: planSteps(wherdr, { type: 'simple' }),
+    links: [{ label: 'PR', url: 'https://github.com/example/other/pull/12' }, { label: 'PR', url: 'https://github.com/example/task/pull/34' }],
+    state: { ...initialState(), started: true, at: 2, proofs: { work: { commit: sha, link: 'https://github.com/example/task/pull/34' } } } }
+  const w = await mountSuspended(TaskSheet, { props: { card: c }, global: { stubs } })
+  await w.get('[data-tab="plan"]').trigger('click')
+  expect(w.get('[data-proof="commit"] a').attributes('href')).toBe(`https://github.com/example/task/commit/${sha}`)
+  w.unmount()
+})

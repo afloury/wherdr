@@ -1,7 +1,7 @@
 // Latest wherdr release on GitHub, checked at most once a day
 // (public API without a token, nothing is sent). WHERDR_UPDATE_CHECK=off disables the call.
 import pkg from '../../package.json'
-import { compareVersions, installMode, isNewerRelease, oneTapMode, updateCommand, type UpdateInfo } from '../../shared/updates'
+import { compareVersions, isNewerRelease, UPDATE_COMMAND, type UpdateInfo } from '../../shared/updates'
 
 export const REPO = 'afloury/wherdr'
 export const RELEASES_URL = `https://api.github.com/repos/${REPO}/releases?per_page=100`
@@ -10,7 +10,7 @@ const DAY_MS = 24 * 60 * 60 * 1000
 const RETRY_MS = 60 * 60 * 1000
 
 interface Release { version: string, url: string, missed: string[], truncated: boolean }
-type Fetcher = (url: string) => Promise<{ ok: boolean, json: () => Promise<unknown>, text?: () => Promise<string> }>
+type Fetcher = (url: string) => Promise<{ ok: boolean, json: () => Promise<unknown> }>
 
 export function createUpdateChecker(opts: {
   current: string
@@ -42,34 +42,13 @@ export function createUpdateChecker(opts: {
       const missed = [...new Set(stable.map(r => String(r.tag_name).replace(/^v/, '')))]
       const candidate = { version: body.tag_name.replace(/^v/, ''), url: typeof body.html_url === 'string' ? body.html_url : '',
         missed, truncated: releases.length >= 100 }
-      const mode = installMode(opts.env.WHERDR_INSTALL)
-      if (mode === 'npm' || mode === 'npm-global') {
-        // Check the actual tarball, rather than trusting npm publish's exit code.
-        const registry = (opts.env.npm_config_registry || 'https://registry.npmjs.org').replace(/\/$/, '')
-        const available = await opts.fetch(`${registry}/wherdr/-/wherdr-${candidate.version}.tgz`)
-        if (!available.ok) { nextAt = now() + RETRY_MS; return }
-        if (mode === 'npm') {
-          const latest = await opts.fetch(`${registry}/wherdr/latest`)
-          if (!latest.ok || (await latest.json() as { version?: string }).version !== candidate.version) {
-            nextAt = now() + RETRY_MS; return
-          }
-        }
-      }
-      if (mode === 'brew') {
-        const formula = await opts.fetch('https://raw.githubusercontent.com/afloury/homebrew-tap/main/Formula/wherdr.rb')
-        const text = formula.ok ? await formula.text?.() : ''
-        if (!text?.includes(`/v${candidate.version}/wherdr-${candidate.version}.tgz"`)) {
-          nextAt = now() + RETRY_MS; return
-        }
-      }
       cached = candidate
       nextAt = now() + DAY_MS
     } catch { nextAt = now() + RETRY_MS }
   }
 
   return async function check(): Promise<UpdateInfo> {
-    const mode = installMode(opts.env.WHERDR_INSTALL)
-    const base = { current: opts.current, mode, command: updateCommand(mode), oneTap: oneTapMode(mode), behind: 0, missed: [] as string[], behindAtLeast: false }
+    const base = { current: opts.current, command: UPDATE_COMMAND, behind: 0, missed: [] as string[], behindAtLeast: false }
     if (String(opts.env.WHERDR_UPDATE_CHECK || '').toLowerCase() === 'off') return { ...base, latest: null, url: null, checked: false }
     if (now() >= nextAt) {
       pending ??= refresh().finally(() => { pending = null })
@@ -81,15 +60,10 @@ export function createUpdateChecker(opts: {
   }
 }
 
-// Keep provider-specific headers off npm and release asset requests. In
-// particular npm's version metadata endpoint rejects GitHub's Accept with 406.
+// GitHub's releases API, with its JSON media type.
 export function fetchUpdateResource(url: string, request: typeof fetch = fetch) {
   return request(url, {
-    method: /\.tgz(?:\.sha256)?$/.test(url) ? 'HEAD' : 'GET',
-    headers: {
-      ...(new URL(url).hostname === 'api.github.com' ? { accept: 'application/vnd.github+json' } : {}),
-      'user-agent': 'wherdr',
-    },
+    headers: { 'accept': 'application/vnd.github+json', 'user-agent': 'wherdr' },
     signal: AbortSignal.timeout(10_000),
   })
 }
