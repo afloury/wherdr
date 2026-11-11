@@ -272,7 +272,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       }
       const n = (state.rounds[step.id] ?? 0) + 1
       const rounds = { ...state.rounds, [step.id]: n }
-      const history = [...(state.reviews?.[step.id] ?? []), { findings: left, ...(ev.diffLines !== undefined ? { diffLines: ev.diffLines } : {}) }]
+      const history = [...(state.reviews?.[step.id] ?? []), { findings: left, ...(ev.diffLines !== undefined ? { diffLines: ev.diffLines } : {}), ...(ev.head ? { head: ev.head } : {}) }]
       const s = { ...state, rounds, reviews: { ...state.reviews, [step.id]: history } }
       // Past the rounds, nothing is sent back: the engine advises, the choice goes to Your turn.
       if (n > (step.rounds ?? DEFAULT_ROUNDS)) {
