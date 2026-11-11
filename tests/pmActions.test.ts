@@ -332,7 +332,7 @@ describe('verify-merged', () => {
       git(repo, 'add', '.'); git(repo, 'commit', '-qm', 'theirs'); git(repo, 'push', '-q', 'origin', 'HEAD:dev')
     }
     const work = () => { fs.writeFileSync(path.join(wt, 'b.txt'), 'task\n'); git(wt, 'add', '.'); git(wt, 'commit', '-qm', 'task'); return git(wt, 'rev-parse', 'HEAD') }
-    return { repo, wt, merged, verify, theirs, work }
+    return { repo, wt, merged, verify, theirs, work, sh }
   }
 
   it('records where the branch started, once', async () => {
@@ -394,6 +394,37 @@ describe('verify-merged', () => {
     s.theirs(); git(s.wt, 'fetch', '-q', 'origin'); git(s.wt, 'rebase', '-q', 'origin/dev')
     expect(git(s.wt, 'rev-parse', 'HEAD')).toBe(git(s.wt, 'rev-parse', 'origin/dev'))
     expect(await s.verify()).toMatchObject({ ok: false, error: expect.stringMatching(/no commit of its own/) })
+  })
+
+  it('counts the commits a branch taken over had ahead of dev as the task\'s, even once merged and deleted', async () => {
+    const s = await setup()
+    // A bot's branch, then one with no commit ahead of dev.
+    git(s.repo, 'checkout', '-q', '-B', 'bot/deps', 'origin/dev'); fs.writeFileSync(path.join(s.repo, 'lock.txt'), 'bumped\n')
+    git(s.repo, 'add', '.'); git(s.repo, 'commit', '-qm', 'bump'); git(s.repo, 'push', '-q', 'origin', 'bot/deps', 'origin/dev:refs/heads/bot/empty')
+    git(s.repo, 'checkout', '-q', 'main'); git(s.repo, 'branch', '-qD', 'bot/deps'); git(s.repo, 'fetch', '-q')
+    const take = async (b: string) => {
+      const wt = path.join(s.wt, '..', b.replace('/', '-'))
+      expect((await localSh(WORKTREE_SCRIPT, [s.repo, wt, b, 'dev', `origin/${b}`])).code).toBe(0)
+      return { wt, verify: () => runAction({ ...fakeDeps([]).deps, sh: s.sh }, job({ worktree: wt, branch: b, step: 'check', by: 'user', action: { kind: 'git.verify-merged', target: 'dev' } })) }
+    }
+    const bot = await take('bot/deps'), empty = await take('bot/empty')
+    expect(git(s.repo, 'config', 'branch.bot/deps.wherdrstart')).toBe(git(s.repo, 'rev-parse', 'origin/dev'))
+    git(s.repo, 'push', '-q', 'origin', 'origin/bot/deps:refs/heads/dev', ':refs/heads/bot/deps', ':refs/heads/bot/empty')
+    expect(await bot.verify()).toMatchObject({ ok: true, commit: git(bot.wt, 'rev-parse', 'HEAD') })
+    expect(await empty.verify()).toMatchObject({ ok: false, error: 'verify-merged: bot/empty has no commit of its own: nothing was merged' })
+  })
+
+  it('accepts a PR merged on Bitbucket whose source commit holds HEAD', async () => {
+    const s = await setup(), head = s.work()
+    const asked: string[] = []
+    const sh: ActionDeps['sh'] = async (script, args, input) => {
+      if (script !== SCRIPT.bitbucket) return s.sh(script, args, input)
+      asked.push(args[3]!)
+      return { code: 0, out: `${JSON.stringify({ values: [{ state: 'MERGED', source: { commit: { hash: head.slice(0, 12) } }, links: { html: { href: 'https://bitbucket.example/pr/7' } } }] })}\n200` }
+    }
+    const r = await runAction({ ...fakeDeps([]).deps, sh }, job({ worktree: s.wt, step: 'check', by: 'user', action: { kind: 'git.verify-merged', target: 'dev' } }))
+    expect(r).toMatchObject({ ok: true, commit: head, link: 'https://bitbucket.example/pr/7' })
+    expect(asked).toEqual(['q=source.branch.name="task/A-1" AND destination.branch.name="dev"'])
   })
 })
 
