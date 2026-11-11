@@ -1,7 +1,9 @@
 // WHR-403: Alfred's row at the top of the agent list: not started (the first
 // tap asks for its agent), running (its agent shown), renamed (identity.md's name).
 // WHR-119: its own card (emblem, what it is, its state square).
+// WHR-265: the card has the mauve edge only while its conversation is open; its wash always.
 import { afterEach, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { nextTick } from 'vue'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
@@ -23,7 +25,7 @@ registerEndpoint('/api/pm/coordinator-start', { method: 'POST', handler: async (
 
 const pane = (id: string, coreAddress: string) => ({ id, coreAddress, status: 'idle', agent: 'claude', workspace: 'w', tab: 't' }) as Pane
 let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
-afterEach(() => { w?.unmount(); w = null; posts.length = 0; hiddenAgents.value = []; agentOrder.value = []; navigate.mockReset(); document.body.innerHTML = '' })
+afterEach(() => { w?.unmount(); w = null; posts.length = 0; hiddenAgents.value = []; agentOrder.value = []; navigate.mockReset(); document.body.innerHTML = ''; document.documentElement.style.cssText = '' })
 const mount = async (props: { banner?: boolean } = {}) => {
   w = await mountSuspended(AlfredRow, { attachTo: document.body, props })
   await vi.waitFor(() => expect(w!.find('[data-testid="alfred-name"]').text()).toBe(String(view.name)))
@@ -84,13 +86,27 @@ it('running and renamed: its name, its current agent, one tap opens the conversa
   // Its conversation open: selected like an agent card; another one opened: not any more.
   const open = w!.find('[data-testid="alfred-open"]')
   expect(open.attributes('aria-current')).toBeUndefined()
+  // Its card's look (scoped CSS loaded, see vitest.config.ts): the neutral edge of
+  // other cards unless its conversation is open, then the mauve edge; its wash always.
+  document.documentElement.style.cssText = '--line:#111111;--surface:#222222;--mauve:#cc88ff'
+  const look = () => {
+    const s = getComputedStyle(w!.find('.alfred-card').element)
+    return { edge: s.borderTopColor, wash: s.backgroundImage.includes('gradient') }
+  }
+  const plain = { edge: '#111111', wash: true }
+  expect(look()).toEqual(plain)
   curPane.value = 'w:p1'
   await nextTick()
   expect(w!.find('[data-testid="alfred"]').classes()).toContain('sel')
+  // (happy-dom does not compute color-mix(), so the mauve edge is not checked here)
+  expect(look().wash).toBe(true)
+  // Nothing paints over the wash when selected (happy-dom computes no inner background: read the rules).
+  expect(readFileSync('app/components/AlfredRow.vue', 'utf8')).not.toMatch(/\.alfred(-card)?\.sel \{[^}]*background/)
   expect(open.attributes('aria-current')).toBe('page')
   curPane.value = 'w:p2'
   await nextTick()
   expect(w!.find('[data-testid="alfred"]').classes()).not.toContain('sel')
+  expect(look()).toEqual(plain)
   expect(open.attributes('aria-current')).toBeUndefined()
   curPane.value = null
   // Renamed during a turn: the new name shows as soon as the turn ends, not at the next poll.
