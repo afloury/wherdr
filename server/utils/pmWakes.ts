@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { MAIN, coordinatorBy, coordinatorWake } from '../../shared/pm/coordinator'
 import { LOOK_REASON, SKIP_WHY, quietEvents, autopilotEvents, bump, inHours, scheduledWake, sentence, skippedWake, today } from '../../shared/pm/autopilot'
 import { projectPace } from './pmPace'
-import { currentStep, durationMs, pauseClock } from '../../shared/pm/steps'
+import { currentStep, durationMs, pauseClock, recheckNews } from '../../shared/pm/steps'
 import { clockStops } from '../../shared/pm/blocked'
 import { taskPlan } from '../../shared/pm/run'
 import { due as isDue, parseSchedule } from '../../shared/pm/schedule'
@@ -70,10 +70,14 @@ async function gather(deps: WakeDeps, now: number) {
     // Its holder cannot work (machine offline, an incident, no room): the step's clock stops.
     const run = runs.filter(r => r.task === task.id && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
     const m = run && deps.machines().find(x => x.key === run.machine)
-    const w = coordinatorWake(plan, pauseClock(task.step, clockStops(task, !!m && !m.local && m.status !== 'online'), now), now)
+    // News on the task (its log, its CI, the user's message to the coordinator) resets the recheck's backoff.
+    const coord = await store.coordinator(task.project)
+    const news = { at: Math.max(task.log?.at(-1)?.at ?? 0, coord?.userAt ?? 0), ...(task.ci ? { ci: `${task.ci.head}:${task.ci.red}` } : {}) }
+    const stepped = recheckNews(plan, pauseClock(task.step, clockStops(task, !!m && !m.local && m.status !== 'online'), now), news, now)
+    const w = coordinatorWake(plan, stepped, now)
     if (JSON.stringify(w.state) === JSON.stringify(task.step)) continue
     // No coordinator: the tick still counts (timeouts), the step start stays to announce.
-    const has = !!(await store.coordinator(task.project))?.terminal
+    const has = !!coord?.terminal
     await store.saveTask({ ...task, step: has ? w.state : { ...w.state, told: task.step.told } })
     const step = currentStep(plan, task.step)
     if (has) add(task.project, w.texts.map(x => `${task.id} (${task.title}): ${x}`), { kind: 'step', about: `${task.id} (${step?.id ?? 'step'})` })
