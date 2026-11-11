@@ -173,18 +173,18 @@ it('filters the board by tag, and the card\'s one-tap link is its PR', async () 
   expect(w.findAll('[data-testid="board-card"]').map(c => c.attributes('data-task'))).toEqual(['CO-1'])
 })
 
-it('splits the task\'s sheet in tabs, Description first, one open at a time; the log holds the coordinator\'s choice', async () => {
+it('splits the task\'s sheet in tabs, Description first, one open at a time; History holds the coordinator\'s choice', async () => {
   const w = await mount()
   await card(w, 'CO-1').trigger('click')
   const q = (sel: string) => document.querySelector<HTMLElement>(sel)
   const tabs = () => [...document.querySelectorAll<HTMLElement>('[role="tab"]')].map(t => `${t.dataset.tab}${t.getAttribute('aria-selected') === 'true' ? '*' : ''}`)
-  await vi.waitFor(() => expect(tabs()).toEqual(['description*', 'plan', 'history', 'log']))
+  await vi.waitFor(() => expect(tabs()).toEqual(['description*', 'plan', 'comments', 'history']))
   expect(q('[data-testid="task-panel"] a[href="https://example.com/pr/1"]')).not.toBeNull()
   expect(q('[data-testid="task-plan"]')).toBeNull()
-  q('[data-tab="log"]')!.click()
-  await vi.waitFor(() => expect(tabs()).toEqual(['description', 'plan', 'history', 'log*']))
-  expect(q('[data-testid="task-log"]')!.textContent).toContain('coordinator CO')
-  expect(q('[data-testid="task-log"]')!.textContent).toContain('chose pass (advice: pass, nothing above minor). Only a naming nit is left.')
+  q('[data-tab="history"]')!.click()
+  await vi.waitFor(() => expect(tabs()).toEqual(['description', 'plan', 'comments', 'history*']))
+  expect(q('[data-testid="task-history"]')!.textContent).toContain('Coordinator')
+  expect(q('[data-testid="task-history"]')!.textContent).toContain('chose pass (advice: pass, nothing above minor). Only a naming nit is left.')
   expect(q('[data-testid="task-panel"] a[href="https://example.com/pr/1"]')).toBeNull()
   q('[data-tab="plan"]')!.click()
   await vi.waitFor(() => expect(q('[data-testid="task-plan"] [aria-current="step"]')).not.toBeNull())
@@ -255,7 +255,7 @@ it('the card menu opens on long press and right click; its ••• button only
   } finally { vi.useRealTimers() }
   expect(menuState.open).toBe(true)
   expect(menuState.items.map(i => ('label' in i ? i.label : ''))).toEqual(['Open'])
-  expect(document.querySelector('[data-testid="task-stop"], [data-testid="task-log"]')).toBeNull()
+  expect(document.querySelector('[data-testid="task-stop"], [data-testid="task-history"]')).toBeNull()
   menuState.open = false
   // A mouse right click on a touch or narrow screen: the same sheet.
   await card(w, 'CO-1').trigger('pointerdown', { pointerType: 'mouse', button: 2 })

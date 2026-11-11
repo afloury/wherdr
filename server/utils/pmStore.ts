@@ -31,7 +31,7 @@ import type { Incident } from '../../shared/pm/incident'
 import { NEW_AUTOPILOT, type Autopilot, type DayCount, type LastWake, type TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, type Wake, type WakeSkip } from '../../shared/pm/wakes'
 import type { HealthSent } from '../../shared/pm/health'
-import type { Automation, Mark } from '../../shared/pm/automations'
+import type { Automation, AutomationProposal, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DATA_DIR } from './env'
 
@@ -59,7 +59,7 @@ export interface CoordinatorRecord {
   cards?: UiCard[] // the action buttons it put in its replies (shared/uiActions.ts), newest first
 }
 
-export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark> }
+export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark>, proposals?: AutomationProposal[] }
 
 // The checks the store cannot make itself: the machine, a git folder there
 // (or, with plain, any folder). Resolves to the folder's absolute path, and
@@ -419,7 +419,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     // A new key: a key no other project has (any case, former keys too); the old one stays an alias.
     updateProject: (key: unknown, update: ProjectUpdate) => write(async () => {
       const { list, i } = await findProject(key)
-      const { base: _base, label: _label, aliases: _aliases, branchName: _bn, ...rest } = list[i]!
+      const { base: _base, label: _label, aliases: _aliases, branchName: _bn, deleteBranch: _db, ...rest } = list[i]!
+      const keepBranch = (update.deleteBranch ?? list[i]!.deleteBranch) === false
       const base = update.base ?? list[i]!.base
       // '' goes back to task/{id}.
       const branchName = update.branchName ?? list[i]!.branchName
@@ -430,7 +431,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const placement = update.placement ?? rest.placement
       const allowed = machinesOf(rest, update)
       if (allowed.errors.length) throw badInput(allowed.errors)
-      list[i] = { ...kept, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(allowed.paused ? { paused: allowed.paused } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}), ...(update.archiveAfter !== undefined ? { archiveAfter: update.archiveAfter } : {}) }
+      list[i] = { ...kept, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(allowed.paused ? { paused: allowed.paused } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}), ...(update.archiveAfter !== undefined ? { archiveAfter: update.archiveAfter } : {}), ...(keepBranch ? { deleteBranch: false as const } : {}) }
       await saveProjects(list)
       return list[i]!
     }),

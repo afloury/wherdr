@@ -59,6 +59,24 @@ export function parseOpenLine(line: string): string | null {
   return m ? uiLink(m[1]) : null
 }
 
+// The places the current turn's replies (the agent's messages after the
+// user's last one) keep as cards: an open whose card is there needs no bar
+// above the message field (AgentView.vue).
+const WHERDR_BLOCK = /```wherdr\n([\s\S]*?)```/g
+export function turnOpens(items: readonly { role: string, text: string }[]): string[] {
+  const out: string[] = []
+  for (let i = items.length - 1; i >= 0 && items[i]!.role !== 'user'; i--) {
+    if (items[i]!.role !== 'assistant') continue
+    for (const m of items[i]!.text.matchAll(WHERDR_BLOCK)) {
+      for (const line of m[1]!.split('\n')) {
+        const link = parseOpenLine(line)
+        if (link) out.push(link)
+      }
+    }
+  }
+  return out
+}
+
 // `/settings?…` or `#/settings?…`, quoted or not (an unquoted `#` starts a
 // shell comment, so the leading `#` may be left out) → `#/settings?…`.
 export function uiLink(raw: unknown): string | null {

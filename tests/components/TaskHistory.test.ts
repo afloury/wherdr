@@ -37,15 +37,17 @@ it('shows the hand-offs of two review rounds in order, with who and what', async
   const w = await mountSuspended(TaskHistory, { props: { card } })
   const items = w.findAll('[data-testid="task-history"] > li')
   const heads = items.map(li => li.get('.mono-label b').text() + (li.get('.mono-label').text().match(/· (Done|Fixed|Sent back|Passed)/)?.[1] ?? ''))
-  // The engine's bookkeeping stays in the Log tab; its catch-up is a hand-off.
-  expect(heads).toEqual(['WorkerDone', 'ReviewerSent back', 'WorkerFixed', 'ReviewerSent back', 'WorkerFixed', 'wherdr', 'ReviewerPassed', 'You'])
-  const text = items.map(li => li.get('.md-body').text())
+  // The whole log: the engine's bookkeeping as a light routine line, its catch-up a hand-off.
+  expect(heads).toEqual(['wherdr', 'WorkerDone', 'ReviewerSent back', 'WorkerFixed', 'ReviewerSent back', 'WorkerFixed', 'wherdr', 'ReviewerPassed', 'You'])
+  expect(items[0]!.classes()).toContain('routine')
+  expect(items[0]!.text()).toContain('work: sent to the worker')
+  const text = items.slice(1).map(li => li.get('.md-body').text())
   expect(text[0]).toBe('Reported done.') // only the last report is kept
   expect(text[1]).toContain('[critical] Crash on empty list')
   expect(text[3]).toContain('Missing test')
   expect(text[4]).toContain('Final report: all fixed.')
   expect(text[4]).toContain('Contested: c')
   expect(text[6]).toContain('Typo in a comment')
-  expect(items[1]!.get('.mono-label').text()).toContain('codex gpt')
+  expect(items[2]!.get('.mono-label').text()).toContain('codex gpt')
   w.unmount()
 })

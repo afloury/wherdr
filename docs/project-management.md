@@ -30,12 +30,14 @@ new project.
    `origin`, such as a folder you just ran `git init` in, works with `vibe`.
 3. **Choose its workflow.** The examples, each with its steps in one line, such
    as `vibe` (commit straight to a dev branch, no review). The one you choose is
-   copied into the project: that copy is the project's own workflow, changed
-   later in its [Workflow](#workflow) tab. Projects imported from v2
-   ([Migrate from v2](migrate-from-v2.md)) have none, and their tasks cannot
-   start without it. When the repository has no remote and the example you
-   pick needs one, this step says so and offers *Use vibe*, or add a remote
-   with `git remote add origin <url>`. **New › Project** warns the same way.
+   copied into the project: that copy is the project's own workflow, shown in
+   its [Workflow](#workflow) tab and changed later by asking its coordinator.
+   Projects imported from v2 ([Migrate from v2](migrate-from-v2.md)) have none,
+   and their tasks cannot start without it: open the project, then
+   *Workflow › Start from a template*. When the repository has no remote and
+   the example you pick needs one, this step says so and offers *Use vibe*, or
+   add a remote with `git remote add origin <url>`. **New › Project** warns the
+   same way.
 4. **Check its guards.** The protected branches and who merges, as the
    workflow set them ([Guards](#guards)). Change and save them, or keep the
    defaults with Next.
@@ -106,13 +108,17 @@ its folder, branches and task worktrees stay on the machine.
   *Never*. A done task stays in the Done column that long, then the engine
   archives it (see [Archived tasks](#archived-tasks)). A shorter delay archives
   at once the done tasks it now covers.
+- **Delete the task's branch after its merge**: on by default. Once a task's
+  PR is merged, by its merge step or by you on the Git host (*I merged it*,
+  *Check on GitHub*), wherdr deletes the task's remote branch and says so in
+  the task's log (*deleted the remote branch task/WHR-12*). Off: branches stay,
+  for teams that keep them. See [Workflow](#workflow) for when a branch stays.
 - **Agents**: the worker and the reviewer its tasks start with, each with an
   optional model (empty: the agent's default), and the reviewer's optional
   **Fallback** (see [Reviewer fallback](#reviewer-fallback)).
 - **Worktree setup**: what wherdr prepares in a new task's worktree before its
   worker first starts, so the worker does not rebuild it. Saved with *Save*, in
-  the workflow's `worktree` block (also editable in Workflow › Edit as JSON, kept
-  on *Start over*):
+  the workflow's `worktree` block (shown in Workflow › JSON):
   - *Files to copy*: ignored files taken from the project's clone, such as `.env`
     or a local config, one path per line. Literal paths only; a file git tracks
     (it is already there) or the clone does not have is skipped, and the log says so.
@@ -197,10 +203,33 @@ its folder, branches and task worktrees stay on the machine.
 The **Workflow** is *how each task runs, step by step*; the
 [Autopilot](#autopilot) is *when the project works without you*. The tab
 starts with that line and a link to the Autopilot tab (who starts tasks and
-when), then draws the first task type's steps as a row of linked boxes (for
-example work → pr → review → merge), each with who holds it.
+when).
 
-The project's own workflow: its task types, and the steps of each. Each step
+The project's own workflow, read only: pick a task type and its diagram shows
+how a task of that type runs. A line on top gives its route in a few words
+(for example *Worker, with screenshots → Open a GitHub PR to v3 → Reviewer, up
+to 3 rounds → You press “Merge”*), so two types compare at a glance. The steps
+are cards laid out in rows that snake across the width (three per row on a
+computer, one column on a phone). Each step is a card with its id, its board
+column, who holds it (worker, reviewer or coordinator, with the agent and model
+from the project's agents; the engine; or you), how it ends (a report, a
+verdict, your button, or an action such as *Open a GitHub PR to v3* or *Merge
+the GitHub PR · squash · once smoke green*), its timeout, the proofs it needs
+(screenshots, a report, a link) and a sentence saying what happens there. A
+merge step shows its guard: the branch is protected and you merge, or the
+engine merges. Coloured arrows mark the path: an agent works (purple), the
+engine acts (blue), the task waits for you (orange), and a dashed red loop
+sends the work back from a review, up to its number of rounds, then you
+decide. A square travels the path (still when the system asks for reduced
+motion). *JSON* shows the whole workflow, read only, with *Copy*.
+
+Nothing in the tab edits the workflow. To create or change one, *Ask the
+coordinator* opens the project's coordinator with a first message to complete;
+it writes the new workflow (`wherdr pm template edit`) and you accept or refuse
+it (below). A project without a workflow (imported from v2) shows *Start from a
+template*: pick a template or an example to start from.
+
+What a workflow holds: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator
 or none), how it ends (a report, a verdict, you, or an action) and, for an
 action, what it does: land on a branch, push, open a PR, merge a GitHub or
@@ -227,7 +256,7 @@ Green: the step ends, and the coordinator is not woken. Failed (which run and
 job, and the tail of the output) or past its timeout: the task's log and the
 coordinator get it once, and the step comes to you, or goes back to the worker
 with `"onFail": "worker"` (a timeout always comes to you). A step that had the
-coordinator watch the deploy with a recheck becomes, in *Edit as JSON*:
+coordinator watch the deploy with a recheck becomes, in the JSON:
 
 ```json
 { "id": "deploy", "column": "Deploy", "ends": "action",
@@ -238,9 +267,18 @@ or, outside GitHub, `"source": "command", "command": "./scripts/ci-status.sh dev
 
 A merge that first pushes the task's last commits waits up to a minute for
 GitHub to show them on the PR.
+
+After a merge (`github.merge`, `bitbucket.merge`, or `git.verify-merged` once
+you merged on the Git host), wherdr deletes the task's remote branch, unless
+the project's General tab says to keep branches. It deletes it only when the
+branch's head is the merged PR's head (no commit pushed since), no other open
+PR uses or targets it, and it is neither a protected branch, a base (the
+project's, the step's) nor the repository's default branch. Otherwise it stays,
+and the task's log says why (*kept the remote branch task/WHR-12: commit
+1a2b3c4 was pushed after its merge*). A PR closed without a merge, or an
+archived task, keeps its branch.
 In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
-*Add task* under [Board](#board)). Under the form, the plan of the chosen task type. *Save* checks the workflow
-and shows each problem with its line.
+*Add task* under [Board](#board)).
 
 **Bitbucket Cloud.** A worker step can open the PR with the agent's own
 Bitbucket tool (`evidence: ["link"]`). Then either a step that ends with you and
@@ -256,10 +294,8 @@ the machine that runs the task: `BITBUCKET_TOKEN` (an access token), or
 `BITBUCKET_USERNAME` with `BITBUCKET_APP_PASSWORD`, in the environment
 herdr-core runs with; wherdr never stores them.
 
-The ⋯ menu adds *Edit as JSON*, *Change log*, *Save as template* (copies the
-saved workflow into your templates; the project is untouched) and *Start over
-from a template* (pick a template or an example, read the difference, replace).
-Neither *Save* nor *Start over* changes the project's [guards](#guards).
+The ⋯ menu adds *Change log* and *Save as template* (copies the saved workflow
+into your templates; the project is untouched).
 
 When the project's coordinator proposes a change to the workflow (only after
 your request), a square marks the project's row (*1 to review*) and the
@@ -267,10 +303,14 @@ your request), a square marks the project's row (*1 to review*) and the
 the review: the change in one line, who proposed it (the project's coordinator,
 with the project's colored key, or Alfred), your request that led to it, in
 full (*Show all* unfolds a long one) with its time, then the change, *Refuse*
-or *Accept*. The review opens on *Readable*: per task type, its steps with the ones added,
-removed or changed marked, and each changed field before → after (holder, ends,
-action, merge rule, guards; instructions as a text diff). *JSON* shows the raw
-diff. A proposal made before the workflow changed again is refused, and the
+or *Accept*. The review opens on *Diagram*: the proposed workflow drawn as in
+the Workflow tab, one changed task type at a time, with the steps added (green),
+removed (red, dashed, back where they stood) and changed (cyan: each changed
+field before → after, such as holder, agent or model, how it ends, action, rounds
+or timeout) framed and named, a legend, and one line on what changes for that
+type's tasks (*For feature tasks: review changes its model; a new step shots*).
+*List* shows the same change as a list (merge rule, guards; instructions as a
+text diff), *JSON* the raw diff. A proposal made before the workflow changed again is refused, and the
 review says so: ask the coordinator to propose again. The *Decisions* view links to this review. [Alfred](alfred.md) can propose
 a change too, on your request in its chat: you answer it in the same review.
 
@@ -278,9 +318,9 @@ In the coordinator's conversation, a *Workflow change* card sits under the last
 reply of the turn that made the proposal (never a later one): what that
 proposal changes in one line (from the workflow it was made against, so a change
 made before it never shows; an added task type with its steps, PR target and
-who merges), the steps of the first
-changed task type before and after (the steps added or handed to someone else
-are outlined), who proposed it, your request with its
+who merges), the same diagram, compact, for the first changed task type (cards
+only, with its marks, legend and what changes for its tasks; a tap opens the
+review), who proposed it, your request with its
 time and *Go to message* (back to it in the conversation), *Accept*, *Refuse*
 and *See all changes* (the review). Once answered, the card shows the outcome, by whom and
 when; each proposal keeps its own card, one the coordinator replaced before you
@@ -380,7 +420,23 @@ A message that sends you to a tab of the project sheet names it as
 Each automation adds a task and starts it at once, on a **schedule** (`every 2h`,
 `daily 09:00`, `mon,thu 09:00` or a cron, in this machine's time) or on an
 **event**, with an optional filter on the task's title. Each has its prompt (the
-task's description), its task type, a switch, its last firings and *Run now*.
+task's description) and its task type.
+
+You don't write automations in a form: ask the project's coordinator (or Alfred).
+The tab says so, with a button that opens that conversation. The coordinator
+proposes a new automation, a change or a removal with
+`wherdr pm automation propose`, only in a turn that comes from you. A card shows
+what the automation does, when it fires and its prompt, with *Accept* and
+*Refuse*. You see it in the conversation and at the top of the tab. A new
+automation you accept starts switched on, and a change keeps the switch and the
+past firings. The coordinator reads your answer with `wherdr pm automation list`.
+
+The tab lists each automation with its switch (only you turn it on or off), what
+triggers it in words (*every weekday at 9:00*, *when a task is merged · docs\**),
+its next firing and *Run now*. Its last five results form a short timeline,
+newest first: *Fired* with the task it added, *Waits for room*, *Skipped* (the
+[pace](quotas.md#pace) held it) or *Failed* with the reason. *What it does*
+opens the prompt.
 
 ### Autopilot tab
 
@@ -395,10 +451,10 @@ every account.
 with its version) and the built-in examples. Tap one to read it: the plan of
 each task type, then its JSON. A saved template's ⋯ menu renames it (its version
 and change log come along) or deletes it, after a confirmation. A project never
-follows the library: it starts from a copy (*Add project*, or *Workflow › ⋯ ›
-Start over from a template*), so renaming or deleting a template changes no
-project. To change a template, change a project's workflow, then *Save as
-template*.
+follows the library: it starts from a copy (*Add project*, or *Workflow › Start
+from a template* when it has none), so renaming or deleting a template changes no
+project. To change a template, have a project's coordinator change
+its workflow, then *Save as template*.
 
 ## Autopilot
 
@@ -577,7 +633,8 @@ copies it, *Copied*, without opening the task), the machine it runs on when its
 project allows several (*machine-b*), its step, how long it has been in that
 step (*12 min in review*) or, once done, how long it took from start to done
 (*42 min*), a dot with its agent's state (worker or reviewer), where its PR stands (*PR open · waiting for checks*,
-*checks failed*, *merging*, *The PR conflicts with v3*, *merged …*), what you have to do under
+*checks failed*, *merging*, *The PR conflicts with v3*, *merged …*; *review pending*, never
+*ready to merge*, while a review is still ahead or under way), what you have to do under
 Your turn, the tasks it waits for, its first tags and its PR link. A refused
 step is said in plain words, never as a command: the commands go to the agent.
 When the engine has already asked the agent to bring a conflicting PR up to
@@ -715,27 +772,36 @@ with this version: an older task shows only its total. Below, tabs: **Descriptio
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
 and screenshots: a report in Markdown, folded with *Show more*, shown once when
 another proof repeats it; a commit as a short sha linked to the commit on the
-Git host when the task has a PR; a link labelled, *PR #12*), **History** and **Log**, all in the sheet's one scroll. A refused merge says why under its button.
+Git host when the task has a PR; a link labelled, *PR #12*), **Comments** and **History**, all in the sheet's one scroll. A refused merge says why under its button.
 
-**History** reads the task as a conversation, oldest first: the worker's *Done*
-(its closing report on its last one), the reviewer's *Sent back* (the findings,
-with their weight) or *Passed* (what it left as minor), the worker's *Fixed*
-(and the findings it contested), wherdr's catch-ups and CI fixes, the
-coordinator's and your actions. Each entry says who, when and, for an agent,
+**Comments** reads the agents' reports like a PR's conversation, oldest first:
+the worker's *Done* (its report, each one as it arrived), the reviewer's *Sent
+back* (the findings, with their weight) or *Passed* (what it left as minor),
+the worker's *Fixed* (and the findings it contested). Each says who, when and
 its program and model; its text is Markdown, folded past a few lines with
-*Show more*. Only the worker's last report is kept, so an earlier *Done* says
-just that. **Log** keeps the raw lines, newest first.
+*Show more*. A task from before this version kept only its worker's last
+report, so its earlier *Done* says just that.
 
-At the top of **History**, and of the worker's note in **To do**, a
-**Summary** says in 3 to 6 lines how the task went: what was built, the main
-review findings and how they were solved, what is left. Claude Haiku writes it
-through the `claude` CLI on the wherdr machine (`claude -p`, safe mode, no
-tools), from the task's title, the worker's reports and the reviewer's
-findings only: no description, no proof, no file contents, and home paths,
-e-mail addresses and tokens masked. It is made once per round, again when a
-new report or verdict arrives, one task a minute, and skipped while the pace
-of this machine's Claude account holds automatic work. A task whose last
-report is more than a day old keeps its summary as it is.
+**History** is the task's whole log in one timeline, oldest first: the same
+hand-offs, wherdr's catch-ups and CI fixes, the coordinator's and your
+actions, and wherdr's routine lines, lighter.
+
+<a id="tldr"></a>**TL;DR.** On a task waiting for you, **To do** starts with a
+few lines for you to decide: what changed for you, how it was checked, the
+review findings fixed or left, the risks, what the screenshots show, what
+*Merge* does (which branch it goes to); *Full reports in Comments* below it.
+Claude Haiku writes it through the `claude` CLI on the wherdr machine
+(`claude -p`, safe mode, no tools), from the task's title, description,
+reports and verdicts, the files it changed with their line counts (never
+their contents), its step and what its merge does; home paths, e-mail
+addresses and tokens masked. It is written again only on a significant
+change: a report or verdict that comes with new commits of the task's own or
+new findings, or the first verdict on new commits. A merge or catch-up with
+the base, a rebase, a CI re-run, a report that changes no code (the PR
+opened) or a kept approval leaves it as it is. One task a minute; while the pace of this
+machine's Claude account holds automatic work it waits, and **To do** shows
+the worker's and the reviewer's notes with *TL;DR waits for the pace*. A task
+whose last report is more than a day old keeps its TL;DR as it is.
 
 **Check on GitHub** shows on a task with a PR at its merge step, or archived:
 wherdr reads the PR now, for a merge stuck after a guard refusal, a PR merged
@@ -750,7 +816,7 @@ when you ask them to unblock a task.
 ### A task waiting for you
 
 Open a task under *Your turn* and its sheet starts on **To do**: what the task
-needs from you and the buttons for it, before its Description, Plan and Log.
+needs from you and the buttons for it, before its Description, Plan, Comments and History.
 
 A tap on a card under *Your turn*, or on an entry of the home's **Tasks to
 handle**, goes where you act: when the task's agent (worker or reviewer, on any
@@ -759,16 +825,15 @@ its question last; anything else opens the sheet on **To do**. The sheet stays
 one tap away: *Open the task* in the card's menu, or the small icon at the end
 of the entry. An agent that is not on screen here opens the sheet instead.
 
-- <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: the **Worker's note** (its closing report: what
+- <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: its [TL;DR](#tldr); then its screenshots large (swipe between them on
+  the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop),
+  *Full reports in Comments*, then *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
+  With no TL;DR yet, the **Worker's note** (its closing report: what
   was done, why it is done, what was tested) and the **Reviewer's note** (the
   verdict, what it sent back and was fixed during the rounds, what it left as
-  minor), each in Markdown, folded to a few lines with *Show more* (the
-  task's [summary](#task-sheet) above the worker's note), full
-  width, one above the other (on a phone, *Worker* / *Reviewer* tabs above
-  one note); then its screenshots large (swipe between them on
-  the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop), then
-  *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
-  A step you end (*Deployed*, …) shows the same two notes under its badge.
+  minor) show in its place, each in Markdown, folded to a few lines with *Show more*, full
+  width, one above the other (on a phone, *Worker* / *Reviewer* tabs above one note).
+  A step you end (*Deployed*, …) shows the same under its badge.
   When the agent reworks the task after its review (new commits since the
   review), its new screenshots replace the shown ones, marked *after rework*;
   the earlier set stays in the Plan tab under *Earlier screenshots*. The merge
@@ -792,6 +857,10 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   *The PR is not merged into develop yet: merge it on Bitbucket (PR link), then
   press “I merged it” again*.
 - **An agent's question or permission**: its text, and a button to open that agent.
+- **A stalled review** (past its time limit, or its reviewer stopped without
+  recording a verdict): one sentence says so, and **Restart the review** ends
+  the reviewer if it is still there and starts a new one on the PR's latest
+  commit, from the start. The step's time limit starts again.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (start it, open its agent). A failed action step (a merge GitHub
   refused) has *Try again* at the top of the sheet, which runs it again.
@@ -905,7 +974,7 @@ the mechanical blocks itself and wakes it only when that fails:
 These blocks do not wake the coordinator. After 2 failed tries on the same
 step (or 15 minutes with nothing left to try), wherdr wakes it once (an
 *Engine* wake, whatever the autopilot's events) and says what it tried. Every try, and giving
-up, is written to the task's **Log**. Any other failure (a refused merge, a
+up, is written to the task's **History**. Any other failure (a refused merge, a
 check that waits for you) goes to *Tasks to handle*, and wakes the coordinator
 only when its *Task stuck* event is on.
 
@@ -928,7 +997,7 @@ shows the reason, and wherdr:
   *Your turn* and in the sidebar's **Tasks to handle**, with the reason, and
   sends a notification (it needs the *Needs you* level).
 
-The task's **Log** lists each of these: the stall, the nudge, the restart, the
+The task's **History** lists each of these: the stall, the nudge, the restart, the
 hand-over to you and the notification.
 
 A step that runs past its time limit (*Check work: over 3h*, *Check review:
@@ -1142,7 +1211,9 @@ its project: `wherdr pm tell <task> "<what to do>" --fix <kind> --reason "<one
 sentence>"`, where the kind is `base` (merge the base and solve a conflict),
 `ci` (fix a red CI), `machine` (retry after a disk or memory problem) or
 `stall` (restart a stalled agent). A worker that was let go or ended on its
-own starts again with the message; a stopped or finished task is never fixed. Each fix is written to the task's log with its reason, at most
+own starts again with the message; at the review step, a reviewer that is not
+running starts the review again (the message goes to the task's log, the new
+reviewer reads its review file); a stopped or finished task is never fixed. Each fix is written to the task's log with its reason, at most
 twice per task and step; after that the block is yours, and the coordinator
 tells you. Each wake's text lists these fixes. A permission request, a merge,
 an approval, guards, settings and limits stay yours.

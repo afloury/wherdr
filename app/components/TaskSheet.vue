@@ -11,8 +11,8 @@
 // a task never started (confirmed), Unarchive for an archived one. Those stay at the top; below, tabs (the app's
 // segmented style) for the rest, in the sheet's one scroll: Description (the
 // text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR among them), Plan (each step with its
-// screenshots), History (the hand-offs between its agents and the user,
-// TaskHistory), Log (the raw lines).
+// screenshots), Comments (the worker's and the reviewer's reports, in order)
+// and History (the whole log as one timeline, the hand-offs as entries; TaskHistory).
 import { canStart, canStop, cardStatus, linkLabel, mergeWaits, statusText, type Card } from '#shared/pm/board'
 import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
 import type { Resume } from '#shared/pm/stop'
@@ -62,13 +62,13 @@ function onDescClick(e: MouseEvent) {
   const text = btn?.closest('.code-block')?.querySelector('pre')?.textContent
   if (btn && text != null) copyCodeBlock(btn, text)
 }
-type Tab = 'todo' | 'description' | 'plan' | 'history' | 'log'
-const TAB_LABEL: Record<Tab, [string, string?]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], history: ['History'], log: ['Log', 'Journal'] }
+type Tab = 'todo' | 'description' | 'plan' | 'comments' | 'history'
+const TAB_LABEL: Record<Tab, [string, string?]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], comments: ['Comments'], history: ['History'] }
 const tabs = computed<Tab[]>(() => [
   ...(todo.value ? ['todo' as const] : []),
   ...(props.card.description || props.card.specNotes?.length || props.card.tags.length || props.card.links.length ? ['description' as const] : []),
   'plan',
-  ...(props.card.log.length ? ['history' as const, 'log' as const] : []),
+  ...(props.card.log.length ? ['comments' as const, 'history' as const] : []),
 ])
 const picked = ref<Tab>()
 // The tab picked while it is still there (the task read again), else the first.
@@ -102,6 +102,7 @@ const start = () => run(() => startTaskApi(props.card.id, undefined, props.card.
 const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
 const decide = (choice: Choice) => run(() => api('/api/pm/decide', { id: props.card.id, choice }))
 const sendBack = (note: string) => run(() => api('/api/pm/step-back', { id: props.card.id, note }))
+const restartReview = () => run(() => api('/api/pm/review-restart', { id: props.card.id }))
 // A problem reported to the coordinator: open on the card until it acts or the user withdraws it.
 const reportOpen = ref(!!props.reporting)
 // An action step that failed (a merge refused): the user runs it again.
@@ -174,7 +175,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 
       <div id="task-panel" class="task-panel" role="tabpanel" :aria-labelledby="`task-tab-${tab}`" data-testid="task-panel">
         <TaskTodo v-if="tab === 'todo' && todo" :card="card" :kind="todo" :pane="pane" :busy="busy" :pressing="pressing" :refused="refused" :waits-for="waitsFor"
-          @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" />
+          @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" @review="restartReview" @comments="picked = 'comments'" />
         <template v-else-if="tab === 'description'">
           <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
           <div v-if="descHtml" class="md-body task-md" data-testid="task-description" @click="onDescClick" v-html="descHtml" />
@@ -205,14 +206,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
           </li>
         </ol>
 
-        <TaskHistory v-else-if="tab === 'history'" :card="card" />
-
-        <ol v-else class="task-log" data-testid="task-log">
-          <li v-for="(e, i) in [...card.log].reverse()" :key="i">
-            <span class="mono-label muted">{{ new Date(e.at).toLocaleString() }} · {{ e.by }}</span>
-            <span class="task-desc">{{ e.text }}</span>
-          </li>
-        </ol>
+        <TaskHistory v-else :card="card" :comments="tab === 'comments'" />
       </div>
     </div>
   </AppSheet>
@@ -247,7 +241,5 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-plan li { display: flex; flex-direction: column; gap: 4px; padding: 8px 0 8px 12px; border-bottom: 1px solid var(--line-soft); border-left: 2px solid transparent; }
 .task-plan li.past { color: var(--muted); }
 .task-plan li.now { border-left-color: var(--accent); }
-.task-log { list-style: none; margin: 0; padding: 0; }
-.task-log li { display: grid; gap: 2px; padding: 6px 0; border-bottom: 1px solid var(--line-soft); }
 .task-plan summary { cursor: pointer; min-height: 32px; display: flex; align-items: center; }
 </style>
