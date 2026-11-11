@@ -35,9 +35,11 @@ new project.
    **Settings › Projects**. The one you choose is
    copied into the project: that copy is the project's own workflow, shown in
    its [Workflow](#workflow) tab and changed later by asking its coordinator.
-   Projects imported from v2 ([Migrate from v2](migrate-from-v2.md)) have none,
-   and their tasks cannot start without it: open the project, then
-   *Workflow › Start from a template*. When the repository has no remote and
+   A project without one (imported from v2, see [Migrate from v2](migrate-from-v2.md))
+   follows a minimal default until you accept one: one task type, `task`,
+   *to do → work → done*. Its coordinator proposes a workflow in its
+   [first conversation](#the-coordinators-first-conversation), or open the
+   project, then *Workflow › Start from a template*. When the repository has no remote and
    the example you pick needs one, this step says so and offers *Use vibe*, or
    add a remote with `git remote add origin <url>`. **New › Project** warns the
    same way.
@@ -70,6 +72,36 @@ is wider, with a taller repository list.
 
 Then ask the coordinator for tasks, and answer what shows under *Your turn* and
 *Decisions*.
+
+### The coordinator's first conversation
+
+On a project with no accepted workflow, the coordinator's instructions say its
+first conversation with you sets one up:
+
+1. It looks at the repository: README, docs, CI files, branches, recent
+   commits and PRs.
+2. It introduces itself as the project's coordinator.
+3. On existing code, it says in a few lines what it understood of the project;
+   on an empty or nearly empty repository, it asks what you want to build.
+4. It asks a few short questions on how you work, as choices where it can:
+   strict, like a company or open-source project (protected branches, PRs,
+   reviews, CI checks before merge, you merge), or fast and light, like a
+   personal project (fewer checks, wherdr merges); and what you prefer to
+   approve yourself.
+5. It proposes a workflow (`wherdr pm template edit`), its diff against the
+   minimal default, with the [guards](#guards) that fit, and explains it in a
+   few lines. You accept or refuse it in the [Workflow](#workflow) tab, as any
+   proposal. This first proposal may set guards; later ones never do.
+
+Until you accept one, tasks follow the minimal default. Once accepted, the
+section leaves the coordinator's instructions.
+
+Along the way, the coordinator (and Alfred) may suggest a setting you may like,
+or one that solves a problem you mention: once, highlighted with
+`ui open --target`, and not again if you let it pass. When you need something
+wherdr cannot do, they may suggest an issue (or a pull request when the fit is
+clear) on wherdr's repository: they show you the draft first, with no private
+data, and post it only on your yes.
 
 ## Projects
 
@@ -230,8 +262,9 @@ motion). *JSON* shows the whole workflow, read only, with *Copy*.
 Nothing in the tab edits the workflow. To create or change one, *Ask the
 coordinator* opens the project's coordinator with a first message to complete;
 it writes the new workflow (`wherdr pm template edit`) and you accept or refuse
-it (below). A project without a workflow (imported from v2) shows *Start from a
-template*: pick a template or an example to start from.
+it (below). A project without an accepted workflow says its tasks follow a
+minimal one (*to do → work → done*) and shows *Start from a template*: pick a
+template or an example to start from, or ask the coordinator to propose one.
 
 What a workflow holds: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator

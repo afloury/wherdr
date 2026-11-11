@@ -4,6 +4,8 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { cleanProjectInput } from '../shared/pm/project'
+import { defaultWorkflow } from '../shared/pm/workflow'
+import { initialState, onEvent, planSteps } from '../shared/pm/steps'
 
 let dir = ''
 beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-store-')) })
@@ -73,14 +75,22 @@ describe('pm store', () => {
     await expect(store.saveTemplate({ ...template, id: '../evil' })).rejects.toMatchObject({ code: 'bad_input' })
 
     expect(await store.setTemplate('WEB', '')).not.toHaveProperty('from')
-    expect(await store.workflow('WEB')).toBeNull()
+    expect(await store.savedWorkflow('WEB')).toBeNull()
+    // No workflow accepted yet: the minimal default runs a task, todo → work → done.
+    const t = (await store.workflow('WEB'))!
+    expect(t).toEqual(defaultWorkflow('WEB'))
+    const plan = planSteps(t, { type: 'task' })
+    expect(plan.map(s => s.id)).toEqual(['todo', 'work', 'done'])
+    const started = onEvent(plan, initialState(), { kind: 'start' }, 0).state
+    expect(plan[started.at]!.holder).toBe('worker')
+    expect(onEvent(plan, started, { kind: 'report', from: 'worker' }, 1).state).toMatchObject({ at: 2, done: true })
     await expect(store.setTemplate('WEB', 'company')).rejects.toMatchObject({ code: 'not_found' })
     await store.setTemplate('WEB', 'vibe')
     await store.removeProject('WEB')
     expect((await store.overview()).projects).toEqual([])
     // Added again under the same key: none of the removed project's workflow or log.
     await store.addProject({ ...input, template: '' }, okFolder)
-    expect(await store.workflow('WEB')).toBeNull()
+    expect(await store.savedWorkflow('WEB')).toBeNull()
     expect(await store.workflowLog('WEB')).toEqual([])
   })
 })
@@ -121,7 +131,7 @@ describe('workflows migration', () => {
     ])
     expect(await store.workflow('WEB')).toMatchObject({ id: 'web', version: 2, instructions: 'Small commits.' })
     expect((await store.workflowLog('WEB')).map(e => [e.version, e.changes])).toEqual([[1, []], [2, ['instructions']], [2, ['copied from template vibe v2']]])
-    expect(await store.workflow('API')).toBeNull()
+    expect(await store.savedWorkflow('API')).toBeNull()
     expect(await fs.readFile(path.join(store.files.templates, 'vibe.json'), 'utf8')).toBe(library)
     // A restart changes nothing more.
     const again = createPmStore(dir)
