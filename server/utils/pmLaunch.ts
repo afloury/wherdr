@@ -18,7 +18,7 @@ import { cloneOn, taskMachine } from '../../shared/pm/project'
 import { ensureVisibility, readLeakCheck } from './pmVisibility'
 import { prepareWorktree } from './pmDeps'
 import { ensureReady } from './pmReady'
-import { fileConflict, filesSection } from '../../shared/pm/files'
+import { fileConflict, filesSection, pastAgents } from '../../shared/pm/files'
 import { branchFor } from '../../shared/pm/branchName'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 import { LABEL, TMP_DIR, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type Run, type Task } from '../../shared/pm/run'
@@ -66,6 +66,10 @@ df -Pk /tmp | awk 'NR==2 {print $4}'`
 export const FETCH_BRANCH_SCRIPT = `git -C "$1" ls-remote -q --exit-code origin "refs/heads/$2" >/dev/null 2>&1; c=$?
 [ $c = 2 ] && exit 2; [ $c = 0 ] || { echo "origin unreachable (git ls-remote exit $c)"; exit 1; }
 git -C "$1" fetch -q origin "+refs/heads/$2:refs/remotes/origin/$2" 2>&1 || exit 1`
+// The task's worker terminal exists (a launch that timed out is not confirmed until
+// reconciliation finds it).
+export const launched = async (store: PmStore, t: Task) => t.state === 'working' && !!t.run && !!(await store.runs()).find(r => r.id === t.run)?.terminal
+
 export const WRITE_SCRIPT = 'mkdir -p "$(dirname "$1")" && cat > "$1"'
 // The same, only when the file is missing: an agent's own file is never overwritten.
 // An existing file still reads its input, so the writer never hits a closed pipe.
@@ -122,6 +126,17 @@ async function liveWorker(deps: PmLaunchDeps, id: string) {
   }
 }
 
+// Tasks that only wait for their merge (past their work and review), from each
+// one's plan: their files no longer hold others (shared/pm/files.ts).
+export async function mergingOf(store: PmStore): Promise<(t: Task) => boolean> {
+  const projects = await store.projects()
+  const flows = new Map(await Promise.all(projects.map(async p => [p.key, await store.workflow(p.key).catch(() => null)] as const)))
+  return (t) => {
+    const flow = flows.get(t.project)
+    return !!flow && !!t.step && pastAgents(taskPlan(flow, t, projects.find(p => p.key === t.project)), t.step.at)
+  }
+}
+
 const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind, held: undefined, sameFiles: undefined })
 
 // Starts the worker of a task to do (or waiting, to try again). Any reason it
@@ -152,7 +167,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   if (!found) throw new HerdrError('not_found', 'Unknown project')
   const placed = taskMachine(task, found, asked)
   if ('refused' in placed) throw new HerdrError('refused', placed.refused)
-  const same = task.step?.started || revive || anyway ? undefined : fileConflict(task, await store.tasks())
+  const same = task.step?.started || revive || anyway ? undefined : fileConflict(task, await store.tasks(), await mergingOf(store))
   if (same) {
     if (task.state === 'todo' && task.sameFiles === same.task) return task
     return store.logTask({ ...task, state: 'todo', waiting: undefined, waitKind: undefined, sameFiles: same.task }, 'engine', `waits for ${same.task}: same files (${same.files.join(', ')})`)

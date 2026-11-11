@@ -11,7 +11,8 @@ type AgentRole = Run['role']
 import type { WorkflowChanges } from './workflowChanges'
 import type { ProjectColor } from './projectKey'
 import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, type Autopilot, type FixKind, type limitsLeft } from './autopilot'
-import type { Wake } from './wakes'
+import type { Wake, WakeSkip } from './wakes'
+import type { PaceGauge } from './pace'
 import type { AutomationProposal } from './automations'
 import { CAUSE_RULE } from './incidentWake'
 import { CHOICES, type Choice } from './verdict'
@@ -97,6 +98,9 @@ export interface CoordinatorView {
   asleep?: 'idle' | 'limit', wokeAt?: number, skippedToday?: number
   // When its autopilot wakes next (interval or fixed times), if on.
   nextWake?: number
+  // Since yesterday's midnight, for the Autopilot tab's timeline: the wakes not sent and
+  // why, the tasks started (first worker run); and the worker's account pace.
+  skips?: WakeSkip[], started?: { task: string, title: string, at: number }[], pace?: PaceGauge
 }
 
 // Where the coordinator's current turn comes from: a message the user sent
@@ -181,14 +185,15 @@ const AGENT_ROLES: AgentRole[] = ['worker', 'reviewer']
 // reviewer, who has nothing to change). run: its latest run of that role, if
 // still running; released: a worker the engine let go while the task waited
 // for the user (release.ts), started again with the message.
-// fix: a mechanical fix also starts again a worker that ended on its own (a
-// crash, a machine problem), never one a stop ended; and a reviewer not
-// running at its step (review: the review starts again, pmWatchdog.ts).
-export function tellTarget(runs: Run[], task: string, holder: Holder | undefined, to?: AgentRole, fix = false) {
+// fix: a mechanical fix also starts again, at any step, a worker that ended
+// however it ended (a crash, a machine problem, a stop), as long as its
+// worktree is there (worktree false: removed); and a reviewer not running at
+// its step (review: the review starts again, pmWatchdog.ts).
+export function tellTarget(runs: Run[], task: string, holder: Holder | undefined, to?: AgentRole, fix = false, worktree = true) {
   const role = to ?? (holder === 'reviewer' ? 'reviewer' : 'worker')
   const last = runs.filter(r => r.task === task && r.role === role).sort((a, b) => b.startedAt - a.startedAt)[0]
   const run = last?.state !== 'ended' && last?.terminal ? last : undefined
-  return { role, run, released: !run && role === 'worker' && !!last && (wasReleased(last) || (fix && last.endedBy !== 'stopped')), review: !run && role === 'reviewer' && fix && holder === 'reviewer' }
+  return { role, run, released: !run && role === 'worker' && !!last && (wasReleased(last) || (fix && worktree)), review: !run && role === 'reviewer' && fix && holder === 'reviewer' }
 }
 
 const TASK_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/

@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { beyond, fileConflict, overlap, parseFiles } from '../shared/pm/files'
+import { beyond, fileConflict, overlap, parseFiles, pastAgents } from '../shared/pm/files'
 import { FILES_SCRIPT, parseFilesRead } from '../server/utils/pmFiles'
 import type { Task } from '../shared/pm/run'
 
@@ -34,6 +34,14 @@ describe('declared files', () => {
     expect(fileConflict(mine, others)).toEqual({ task: 'WEB-2', files: ['server/utils'] })
     expect(fileConflict({ ...mine, files: ['README.md'] }, others)).toBeUndefined()
     expect(fileConflict({ ...mine, files: undefined }, others)).toBeUndefined()
+    // Only waiting for its merge (past its work and review): it holds no files.
+    expect(fileConflict(mine, others, t => t.id === 'WEB-2')).toBeUndefined()
+    expect(pastAgents([{ holder: 'worker' }, { holder: 'reviewer' }, { holder: 'none' }], 1)).toBe(false)
+    expect(pastAgents([{ holder: 'worker' }, { holder: 'reviewer' }, { holder: 'none' }], 2)).toBe(true)
+    // docs/llms.txt, merged by the engine, is never a reason to wait.
+    const index = [task('WEB-5', { step: started, files: ['docs/llms.txt'], changed: ['docs/llms.txt'] })]
+    expect(fileConflict({ ...mine, files: ['docs/llms.txt'] }, index)).toBeUndefined()
+    expect(fileConflict({ ...mine, files: ['docs'] }, index)).toBeUndefined()
   })
 
   it('says what changed beyond the declared paths', () => {

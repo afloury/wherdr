@@ -6,7 +6,7 @@ import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
 import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, takeUpdateNotice, userMessageTo } from '../server/utils/pmCoordinator'
 import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
-import { CREATE_SCRIPT } from '../server/utils/pmLaunch'
+import { CREATE_SCRIPT, launched } from '../server/utils/pmLaunch'
 import { execFileSync } from 'node:child_process'
 import { trustKeys } from '../shared/pm/run'
 import { coordinatorStart, setupDone } from '../shared/pm/setup'
@@ -76,6 +76,35 @@ describe('the token', () => {
     const saved = (await store.task(task.id))!
     expect(saved).toMatchObject({ tags: ['CTP-264'], links: [{ label: 'PR', url: 'https://example.com/pr/7' }] })
     expect(saved.log!.map(l => [l.by, l.text])).toEqual([['coordinator CO', 'tag CTP-264'], ['coordinator CO', 'link PR https://example.com/pr/7']])
+  })
+})
+
+describe('the Autopilot tab\'s timeline', () => {
+  it('lists the autopilot\'s own starts only, and yesterday\'s ended wakes', async () => {
+    const now = Date.now(), yesterday = new Date(now).setHours(-24, 30, 0, 0)
+    const add = async (title: string, text: string, autopilot = false) => {
+      const t = await store.addTask({ project: 'CO', title, type: 'feature' })
+      await store.saveTask({ ...t, ...(autopilot ? { autopilot: true as const } : {}), log: [{ at: now - 60_000, by: 'engine', text }] })
+    }
+    await add('Busy', 'started by the autopilot: room on box')
+    await add('Wake', 'started the task in a wake', true)
+    await add('Mine', 'started the task')
+    await add('Held for room', 'started: there is room', true)
+    await add('After', 'started: there is room')
+    await store.saveWakes([{ id: 'old', coordinator: 'CO', reasons: ['Scheduled wake'], createdAt: yesterday, deliveredAt: yesterday, ackedAt: yesterday + 1, endedAt: yesterday + 1, ended: 'ack', tries: 1 }])
+    const co = (await coordinatorsView(store)).find(c => c.project === 'CO')!
+    expect(co.started!.map(s => s.title)).toEqual(['Busy', 'Wake', 'Held for room'])
+    expect(co.wakes!.map(w => w.id)).toEqual(['old'])
+  })
+
+  it('counts a start only once its terminal exists', async () => {
+    const t = await store.addTask({ project: 'CO', title: 'Timed out', type: 'feature' })
+    const run = { id: 'r1', task: t.id, role: 'worker' as const, program: 'claude', model: '', machine: '', worktree: '', branch: '', instructions: '', attempt: 1, state: 'starting' as const, startedAt: 1 }
+    await store.saveRun(run)
+    const working = await store.saveTask({ ...t, state: 'working', run: 'r1' })
+    expect(await launched(store, working)).toBe(false)
+    await store.saveRun({ ...run, terminal: 'host/t9', state: 'running' })
+    expect(await launched(store, working)).toBe(true)
   })
 })
 
@@ -386,7 +415,9 @@ it('tell goes to the step\'s agent, else the worker; --to picks one', () => {
   expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'exit' })], 'CO-1', 'none')).toEqual({ role: 'worker', run: undefined, released: false, review: false })
   // A fix starts again a worker that ended, not only one let go.
   expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'exit' })], 'CO-1', 'none', undefined, true)).toEqual({ role: 'worker', run: undefined, released: true, review: false })
-  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'stopped' })], 'CO-1', 'none', undefined, true)).toEqual({ role: 'worker', run: undefined, released: false, review: false })
+  // At any step (the merge: held by nobody), however it ended, a stop too; only a removed worktree is not running.
+  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'stopped' })], 'CO-1', 'none', undefined, true)).toEqual({ role: 'worker', run: undefined, released: true, review: false })
+  expect(tellTarget([run('w', 'worker', 1, { state: 'ended', endedBy: 'exit' })], 'CO-1', 'none', undefined, true, false)).toEqual({ role: 'worker', run: undefined, released: false, review: false })
   // A fix at the review step, its reviewer not running: the review starts again; without a fix it is not running.
   const gone = [run('r', 'reviewer', 1, { state: 'ended', endedBy: 'exit' })]
   expect(tellTarget(gone, 'CO-1', 'reviewer', undefined, true)).toMatchObject({ role: 'reviewer', run: undefined, review: true })

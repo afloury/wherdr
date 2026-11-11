@@ -221,8 +221,11 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   const told = { ...s, told: s.since }
   if (due.holder === 'reviewer') return oneStart(id, 'reviewer', () => reviewer(deps, c, due.text, alive(rv) && rv)).catch(busy)
   const worker = latest(runs, id, 'worker')
-  // Released while the task waited for the user: started again, the handover gives the step.
-  if (!alive(worker) && wasReleased(worker)) return void await reviveWorker(deps, id, `${plan[s.at]!.id} needs it`)
+  // Released while the task waited for the user, or ended earlier (on its own, or
+  // by a stop the task went on from) with no incident: a step due for it (a
+  // send-back, the user's or the engine's) starts it again, the handover gives the step.
+  if (!alive(worker) && (wasReleased(worker) || (worker?.state === 'ended' && !task.stopped && task.state !== 'waiting' && !why.has(worker.id))))
+    return void await reviveWorker(deps, id, `${plan[s.at]!.id} needs it`)
   if (!alive(worker)) {
     if (task.state === 'waiting') return
     const i = why.get(worker?.id ?? '')

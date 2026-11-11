@@ -4,12 +4,12 @@
 // origin's base, else the local one, else where its branch started. Never from
 // that start alone: once the base is merged in, the base's own changes would count.
 // Then the to-do tasks that wait behind one of them start once it no longer touches
-// their files (it is done, or its files moved on).
+// their files (it is done or only waits for its merge, or its files moved on).
 import { beyond, fileConflict, parseFiles } from '../../shared/pm/files'
 import { runFiles } from '../../shared/pm/advance'
 import type { Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
-import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
+import { exec, mergingOf, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 
 const SEP = '--wherdr-files--'
 export const FILES_SCRIPT = `wt=$1 b=$2 base=$4
@@ -58,8 +58,9 @@ export async function syncFiles(deps: PmLaunchDeps, now = Date.now()) {
 export async function startFileWaits(deps: PmLaunchDeps) {
   const { store } = deps
   const started: string[] = [], projects = new Set<string>()
+  const merging = await mergingOf(store)
   for (const t of (await store.tasks()).filter(x => x.sameFiles && x.state === 'todo')) {
-    const c = fileConflict(t, await store.tasks())
+    const c = fileConflict(t, await store.tasks(), merging)
     if (c?.task === t.sameFiles) continue
     if (c) { await store.logTask({ ...t, sameFiles: c.task }, 'engine', `waits for ${c.task}: same files (${c.files.join(', ')})`); continue }
     const own = !t.after && !t.held

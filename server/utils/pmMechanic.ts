@@ -20,8 +20,8 @@ import { actionShell, takeUpdate } from './pmActions'
 import { prSeen, stepAction } from './pmBoard'
 import type { PmStore } from './pmStore'
 import { prNow, requiredChecks } from '../../shared/pm/board'
-import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
-import { busyNext, busyQueue, coordinatorStartRefusal } from '../../shared/pm/autopilot'
+import { exec, runOn, startTask, type PmLaunchDeps, launched } from './pmLaunch'
+import { busyNext, busyQueue, coordinatorStartRefusal, AUTOPILOT_STARTED, UNCONFIRMED } from '../../shared/pm/autopilot'
 import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
 import { paceOf, placeFor, slotsOf } from './pmPlace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
@@ -152,7 +152,7 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
     forgetMemory(placed.machine)
     const r = await startTask(deps, t.id, { on: placed.machine }).catch((e: Error) => startedElsewhere(e) ? null : ({ ...t, state: 'waiting' as const, waiting: e.message }))
     if (!r) continue
-    if (!r.sameFiles) await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? 'started: there is room' : `could not start: ${r.waiting ?? ''}`)
+    if (!r.sameFiles) await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? (t.autopilot && !(await launched(store, r)) ? UNCONFIRMED : AUTOPILOT_STARTED.room) : `could not start: ${r.waiting ?? ''}`)
     started.push(t.id)
   }
   return started
@@ -174,14 +174,15 @@ async function noteFixWork(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], 
 }
 
 // The task's worker as this pass sees it; undefined: unknown (unread, still
-// starting, stopped by the user). Ended on a machine paused for its project: 'paused'.
+// starting, the task stopped by the user). Ended on a machine paused for its project:
+// 'paused'. Stopped, then the task started again (its step held by no agent): gone.
 async function workerNow(deps: PmLaunchDeps, run: Run): Promise<WorkerNow | undefined> {
+  const task = await deps.store.task(run.task)
   const gone = async () => {
-    const project = (await deps.store.task(run.task))?.project
-    const p = (await deps.store.projects()).find(x => x.key === project)
+    const p = (await deps.store.projects()).find(x => x.key === task?.project)
     return p && isPaused(p, run.machine) ? 'paused' as const : 'gone' as const
   }
-  if (run.state === 'ended') return run.endedBy === 'stopped' ? undefined : gone()
+  if (run.state === 'ended') return run.endedBy === 'stopped' && (!task || task.stopped) ? undefined : gone()
   const m = deps.machines().find(x => x.key === run.machine)
   if (m && !m.local && m.status !== 'online') return 'offline'
   if (!run.terminal) return
@@ -209,6 +210,32 @@ async function noteHandedWork(deps: PmLaunchDeps, task: Task, plan: PlannedStep[
   // Started (or not: the task waits with why): never started again for this work.
   const step = agentWaits(fresh.step, undefined)
   return deps.store.saveTask({ ...fresh, step: { ...step, agent: { ...step.agent!, revived: now } } })
+}
+
+// The user's Start the worker on a merge that waits on it (board.ts mergeStuck):
+// the worker, started again in its worktree when it ended, gets the work the
+// engine handed it, else the conflict or the red checks. The merge goes on once it is in.
+export async function startWorkerFor(deps: PmLaunchDeps, id: string, by = 'user'): Promise<Task> {
+  const { store } = deps
+  const task = await store.task(id), s = task?.step
+  const run = (await store.runs()).filter(r => r.task === id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
+  if (!s?.started || s.done || !run) throw new HerdrError('not_found', 'The task has no merge waiting on its worker')
+  const base = s.catchUp?.base
+  const text = s.agent?.text ?? (base
+    ? `The PR conflicts with ${base}. Merge origin/${base} into your branch, resolve the conflicts, commit, then stop: the engine pushes it.`
+    : redCiText(['the PR'], task!.ci?.head ?? 'HEAD'))
+  const kind = s.agent?.kind ?? (base ? 'catch-up' : 'ci-to-agent')
+  if (await workerNow(deps, run) === 'alive') await deps.call('terminal.send', { terminal: run.terminal, text: showIds(await store.projects(), text) }, 30000)
+  else {
+    if (run.state !== 'ended') await store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
+    let hold: string | undefined
+    const started = await reviveWorker(deps, id, `${kind}: the ${by} started it`, text, h => { hold = h })
+    if (hold) throw new HerdrError('refused', `The worker cannot start now: ${hold}`)
+    if (started?.state !== 'working') throw new HerdrError('refused', `The worker could not start: ${started?.waiting ?? 'unknown reason'}`)
+  }
+  const fresh = (await store.task(id))!
+  const step = handToAgent(fresh.step!, kind, s.agent?.head ?? s.catchUp?.from ?? task!.ci?.head, Date.now(), text)
+  return store.logTask({ ...fresh, step: { ...step, agent: { ...step.agent!, revived: Date.now() } } }, by, `${kind}: the ${by} started the worker with it`)
 }
 
 // The task's machine offline, or paused for its project: why it waits; undefined: up.
@@ -280,7 +307,7 @@ export async function startNext(deps: PmLaunchDeps, now = Date.now()) {
     if (!r || r.sameFiles) continue
     const label = deps.machines().find(m => m.key === placed.machine)?.label ?? placed.machine
     const t = (await store.task(first.id))!
-    await store.logTask(r.state === 'working' ? { ...t, autopilot: true } : t, 'engine', r.state === 'working' ? `started by the autopilot: room on ${label}` : `the autopilot could not start it: ${r.waiting ?? ''}`)
+    await store.logTask(r.state === 'working' ? { ...t, autopilot: true } : t, 'engine', r.state === 'working' ? (await launched(store, r) ? `${AUTOPILOT_STARTED.busy}room on ${label}` : UNCONFIRMED) : `the autopilot could not start it: ${r.waiting ?? ''}`)
     started.push(first.id)
   }
   return started

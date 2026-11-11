@@ -6,6 +6,7 @@ import { company, wherdr } from '#shared/pm/examples'
 import { readBody } from 'h3'
 import { cardOf, linkLabel, mainLink, type Card } from '#shared/pm/board'
 import type { Task } from '#shared/pm/run'
+import { AGENT_ENDED } from '#shared/pm/release'
 
 const badge = 'Look at the screenshots, then merge: merge: the PR head is not the task\'s commit'
 let release: () => void = () => {}
@@ -216,6 +217,32 @@ it('an approved merge keeps Merge loading with what it waits for, until it merge
   expect(failed.get('[data-testid="task-badge"]').text()).toContain('2 check(s) failed')
   expect(failed.find('[data-testid="step-user-waits"]').exists()).toBe(false)
   failed.unmount()
+})
+
+// An approved merge stuck on a conflict no agent solves: no spinner, why in plain words, Start the worker.
+let startedWorker: unknown
+registerEndpoint('/api/pm/worker-start', { method: 'POST', handler: async (e) => { startedWorker = await readBody(e); return { task: {} } } })
+it('an approved merge stuck on its conflict offers Start the worker instead of a spinner', async () => {
+  const w = await mountSuspended(TaskSheet, { props: { card: approvedCard({ catchUp: { base: 'v3', from: 'abc1234', at: 0 } }) }, global: { stubs } })
+  expect(w.get('[data-testid="step-user"]').html()).not.toContain('animate-spin')
+  expect(w.find('[data-testid="step-user-waits"]').exists()).toBe(false)
+  expect(w.get('[data-testid="step-user-stuck"]').text()).toBe('Its PR conflicts with v3 and no agent is solving it. Start the worker to solve the conflict; the merge then goes on.')
+  await w.get('[data-testid="todo-worker-start"]').trigger('click')
+  await vi.waitFor(() => expect(startedWorker).toEqual({ id: 'WHR-3' }))
+  // Its worker on it: no button, the merge waits as before.
+  await w.setProps({ card: approvedCard({ catchUp: { base: 'v3', from: 'abc1234', at: 0 }, agent: { kind: 'catch-up', at: 1 } }) })
+  expect(w.find('[data-testid="todo-worker-start"]').exists()).toBe(false)
+  w.unmount()
+  // Its worker ended after its revival, no coordinator to take it: the user's turn, and still Start the worker.
+  const ended = approvedCard({ catchUp: { base: 'v3', from: 'abc1234', at: 0 }, agent: { kind: 'catch-up', at: 1, revived: 2, waits: AGENT_ENDED, told: 'user' } })
+  expect(ended.yourTurn).toBe(AGENT_ENDED)
+  const u = await mountSuspended(TaskSheet, { props: { card: ended }, global: { stubs } })
+  expect(u.get('[data-testid="task-badge"]').text()).toBe('The merge waits for its worker')
+  expect(u.get('[data-testid="step-user-stuck"]').text()).toContain('Its worker ended')
+  startedWorker = undefined
+  await u.get('[data-testid="todo-worker-start"]').trigger('click')
+  await vi.waitFor(() => expect(startedWorker).toEqual({ id: 'WHR-3' }))
+  u.unmount()
 })
 
 it('links a step\'s commit to the repository of its own PR, not a task-level link to another one', async () => {

@@ -99,7 +99,7 @@ export const roomWakeDue = (work: AgentWork, now: number) =>
 export function waitsShort(waits: string): string {
   if (waits === MACHINE_OFFLINE) return 'its machine is offline'
   if (waits === MACHINE_PAUSED) return 'its machine is paused for this project'
-  if (waits === AGENT_ENDED) return 'which ended (the coordinator, or Stop then Resume, continues it)'
+  if (waits === AGENT_ENDED) return 'which ended (Start the worker continues it)'
   const off = /^Waits for (.+) \(offline\)$/.exec(waits)
   if (off) return `${off[1]} is offline`
   return roomShort(waits) ?? waits.replace(/^Waits:? /, '').replace(/^./, c => c.toLowerCase())
