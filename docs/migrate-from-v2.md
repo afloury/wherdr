@@ -102,6 +102,13 @@ to redo in its template (reviewer, merge, worker…). Alfred asks you to switch 
 - the machine its repository is on, and its folder there when that is not the machine v2 ran on;
 - its template, starting from a saved template or an example, with the v2 settings to redo in mind;
 - whether to start its coordinator;
+- what its v2 coordinator knew. v2 coordinators keep no memory file, so when the project's v2
+  coordinator exists, Alfred offers once a handover: a prompt to paste to it in v2 ("Write a handover
+  note, at most 25 lines: decisions and preferences, conventions, open work and where it stands, what
+  to avoid."). Paste its answer back to Alfred: it shows the lines it will add to the end of the new
+  coordinator's `memory.md` and adds them after your yes. Declined, nothing happens. The v2
+  coordinator's autopilot goal, when it has one, comes as one line of that `memory.md` too
+  (`wherdr alfred project memory`). v2's conversations are never read;
 - which of its open v2 tasks to add again (each description starts with "From v2 WHR-37.");
   each comes back as a task to do, whatever its v2 stage;
 - for an under-way or waiting task, its branch and PR are kept: its description starts with

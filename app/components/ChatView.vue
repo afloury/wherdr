@@ -11,7 +11,7 @@ import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
 import { uploadSrc } from '#shared/queuedMatch'
 import { userMessageParts } from '~/utils/userMessage'
-import { type PendingMessage, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
+import { type PendingMessage, type WaitingOn, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { CHAT_READ_MS, createFlipGuard, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
@@ -1165,8 +1165,9 @@ function onListKey(e: KeyboardEvent) {
 // messages were sent or are still in its queue (see shared/queuedPhase.ts).
 // omp: only the "!" / "$" command it runs (it stays idle meanwhile).
 // What a message waits on before the agent reads it.
-function waitingOn(p: Pane): 'stopped' | 'question' | 'working' | 'sending' {
-  if (!p.agent) return 'stopped'
+function waitingOn(p: Pane): WaitingOn {
+  if (!p.agent || p.stopped) return 'stopped'
+  if (p.installing) return 'installing'
   if (p.prompt || p.status === 'blocked') return 'question'
   return p.status === 'working' ? 'working' : 'sending'
 }
@@ -1227,6 +1228,7 @@ function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' 
     case 'read': return t('Read by the agent')
     case 'input': return t('Not sent yet · waiting in the agent’s input')
     case 'stopped': return t('Queued · ') + t('agent stopped')
+    case 'installing': return t('Queued · ') + tl('sent when Codex is ready')
     case 'question': return t('Queued · ') + t('after you answer the question')
     case 'agent-queue':
       if (l.agent === 'claude') return t('Queued by Claude · sent when it finishes')
@@ -1826,6 +1828,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
           </div>
           <!-- herdr-core: text left unsent in Claude's own input box, Claude's queue. -->
           <UnsentInput v-if="!readOnly && hasDraft" :pane="unsentPane" :shown="inputShown(queuedList, pane.draft?.text)" />
+          <CodexRestartCard v-if="!readOnly && pane.stopped" :pane-id="pane.id" />
         </div>
 
         <ChatStatusLine :get="readStatus" />
