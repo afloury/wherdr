@@ -34,6 +34,7 @@ export interface Project {
   from?: { template: string, version: number }
   visibility?: RepoVisibility // public repository: guardrails for its coordinator and tasks
   archiveAfter?: number // days a done task stays in Done before it is archived, 0 never; missing: 7 (archive.ts)
+  deleteBranch?: false // keep each task's remote branch after its merge; missing: deleted when safe (pmActions.ts)
   addedAt: number
 }
 
@@ -56,7 +57,7 @@ export const isGitBranch = (b: string) => b !== '' && b !== '@' && !/[\x00-\x20\
 export const isTemplateId = (id: unknown): id is string => typeof id === 'string' && ID_RE.test(id)
 
 const KEY_HINT = '2 to 10 letters or digits, starting with a letter'
-export interface ProjectUpdate { name?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, paused?: string[], placement?: Strategy, branchName?: string, archiveAfter?: number }
+export interface ProjectUpdate { name?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, paused?: string[], placement?: Strategy, branchName?: string, archiveAfter?: number, deleteBranch?: boolean }
 
 // The machines a project's tasks may run on, its home machine first.
 export const allowedMachines = (p: Pick<Project, 'machine' | 'machines'>) => [p.machine, ...(p.machines ?? []).filter(m => m !== p.machine)]
@@ -160,6 +161,10 @@ export function cleanProjectUpdate(raw: unknown): { update?: ProjectUpdate, erro
   if (o.archiveAfter !== undefined) {
     if (!(ARCHIVE_DAYS as readonly unknown[]).includes(o.archiveAfter)) errors.push({ path: 'archiveAfter', message: `one of ${ARCHIVE_DAYS.join(', ')} (0: never)` })
     else update.archiveAfter = o.archiveAfter as number
+  }
+  if (o.deleteBranch !== undefined) {
+    if (typeof o.deleteBranch !== 'boolean') errors.push({ path: 'deleteBranch', message: 'true or false' })
+    else update.deleteBranch = o.deleteBranch
   }
   if (o.clones !== undefined) {
     const entries = o.clones && typeof o.clones === 'object' && !Array.isArray(o.clones) ? Object.entries(o.clones) : null
