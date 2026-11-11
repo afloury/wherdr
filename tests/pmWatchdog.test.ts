@@ -9,7 +9,7 @@ import { advanceTick } from '../server/utils/pmAdvance'
 import { userDecide } from '../server/utils/pmBoard'
 import { MACHINE_OFFLINE, MACHINE_PAUSED, RELEASE_IDLE_MS } from '../shared/pm/release'
 import { restartReview, watchAgents } from '../server/utils/pmWatchdog'
-import { AGENTLESS_MS } from '../shared/pm/watchdog'
+import { AGENTLESS_MS, reviewRestarted } from '../shared/pm/watchdog'
 import type { Task } from '../shared/pm/run'
 import type { Template } from '../shared/pm/workflow'
 
@@ -103,6 +103,16 @@ describe('released agents start again', () => {
     expect(starts()).toBe(2)
     expect((await store.runs()).filter(r => r.role === 'reviewer' && r.state !== 'ended')).toHaveLength(1)
     expect(await log()).toContain('restarted the review')
+  })
+
+  it('a restart gives the review a fresh time limit, and recovers a reviewer that exited right after starting', () => {
+    const plan = [{ id: 'review', holder: 'reviewer', ends: 'verdict', timeout: '45m' }] as never
+    const min = 60_000, step = { at: 0, started: true, since: min, told: min, deadline: 46 * min, proofs: {}, rounds: {} }
+    // Restarted at minute 41, before its timeout: 45 minutes from then, not 5.
+    expect(reviewRestarted({ state: 'working', step } as Task, plan, 41 * min).step!.deadline).toBe(86 * min)
+    const failed = reviewRestarted({ state: 'waiting', waiting: 'The reviewer (claude) stopped right after starting', step } as Task, plan, 41 * min)
+    expect(failed).toMatchObject({ state: 'working', waiting: undefined })
+    expect(failed.step!.told).toBeUndefined()
   })
 
   it('a machine offline or paused: the status says why, its coordinator is woken once, never in a loop', async () => {

@@ -24,7 +24,7 @@ export function taskTodo(c: Card): TodoKind | undefined {
   if (reason === 'rounds' && c.state?.yourTurn?.advice) return 'decide'
   if (reason === 'action') return 'refused'
   if (c.asks) return 'ask'
-  if (c.holder === 'reviewer' && (reason === 'timeout' || (!reason && c.stall && !c.terminal))) return 'review'
+  if (c.holder === 'reviewer' && (reason === 'timeout' || (!reason && !c.terminal))) return 'review'
   if (reason === 'user' && c.userLabel) return shotSteps(c).length ? 'merge' : 'step'
   return 'blocked'
 }

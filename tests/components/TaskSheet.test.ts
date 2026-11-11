@@ -119,6 +119,9 @@ it('a stalled review says why in plain words and restarts the review', async () 
   expect(w.get('[data-testid="task-badge"]').text()).toBe('The reviewer stopped without giving a verdict. Restart the review to review the PR\'s latest commit again.')
   await w.get('[data-testid="todo-review-restart"]').trigger('click')
   await vi.waitFor(() => expect(restarted).toEqual({ id: 'WHR-1' }))
+  // A reviewer that exited right after starting: the task waits on that failure, the restart is offered too.
+  await w.setProps({ card: { ...c, yourTurn: 'The reviewer (claude) stopped right after starting', state: at(review) } })
+  expect(w.get('[data-testid="task-todo"]').attributes('data-todo')).toBe('review')
   w.unmount()
 })
 
