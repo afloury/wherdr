@@ -26,7 +26,7 @@ import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
-import { appRoute } from '#shared/appLinks'
+import { uiOpenPanel } from '~/utils/settingsPanel'
 import type { UiOpenEvent } from '#shared/uiOpen'
 import type { UiShowEvent } from '#shared/uiShow'
 
@@ -44,11 +44,11 @@ const uiCard = ref<UiOpenEvent | null>(null)
 watch(uiOpenRequest, (e) => {
   if (!e || e.pane !== props.paneId) return
   uiOpenRequest.value = null
-  const to = appRoute(e.link)
-  if (e.show === 'card' || !sidePanelRoom.value || !to.startsWith('/settings?')) { uiCard.value = e; return }
+  const panel = e.show === 'card' ? null : uiOpenPanel(e.link, route, sidePanelRoom.value)
+  if (!panel) { uiCard.value = e; return }
   uiCard.value = null
-  uiOpenedBy.value = { by: e.by, section: new URLSearchParams(to.split('?')[1]).get('section') ?? '' }
-  router.push(to)
+  uiOpenedBy.value = { by: e.by, section: panel.query.section }
+  router.push(panel)
 })
 // An agent's `ui show` (shared/uiShow.ts): beside the conversation when the
 // window has room, else a card that opens it in a sheet (UiShowPanel.vue).
@@ -268,7 +268,7 @@ function onSent(q: QueuedMessage | null) {
 }
 // As soon as the server lists them, the server state wins; once taken, they stay
 // until the transcript is read again (see utils/outbox.ts prune).
-watch(pane, p => outboxPrune(props.paneId, p?.queued || []))
+watch(pane, p => outboxSync(props.paneId, p, herdrState.value.ok))
 
 const prompt = computed(() => (pane.value && pane.value.status === 'blocked' && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
 watch(() => JSON.stringify(prompt.value), () => nextTick(() => chatRef.value?.scrollToEnd(false)))
