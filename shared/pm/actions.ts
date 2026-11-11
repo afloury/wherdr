@@ -114,7 +114,9 @@ gh pr merge "$1" "--$m" --match-head-commit "$2" 2>&1 || exit 1; echo "$1"`,
   // head is HEAD (or holds it): squash and rebase merges leave no ancestor.
   // Else HEAD must be in the target and the branch hold a commit of its own:
   // one made on it (its reflog: a fast-forward is no work) since its start
-  // (branch.<b>.wherdrstart, written at worktree add). Inspired by Shepherdr's
+  // (branch.<b>.wherdrstart, written at worktree add), or, for a branch taken
+  // over (branch.<b>.wherdrtaken: its tip then), one it had ahead of the target
+  // at its start, whoever made it. Inspired by Shepherdr's
   // merged_here()/own_work() (mods/tasks/bin/herdr_task/github.py, MIT).
   verify: `${IN} t=$1 b=$2 ghe=; h=$(git rev-parse HEAD) || exit 1
 if command -v gh >/dev/null; then
@@ -132,6 +134,8 @@ if git merge-base --is-ancestor HEAD "origin/$t"; then
   OWN='$2 ~ /^(commit|cherry-pick|revert|am):$/ || / commit \\((initial|amend)\\): / || /\\((pick|reword|edit|squash|fixup|continue)\\): / || (/ \\(finish\\): refs\\/heads\\/[^ ]+ onto [0-9a-f]+$/ && $1 != $NF) { print $1 }'
   for c in $({ git log -g --format='%H %gs' "refs/heads/$b"; git log -g --format='%H %gs' HEAD; } 2>/dev/null | awk "$OWN"); do
     case "$mine" in *"$c"*) echo "$h"; exit 0;; esac; done
+  k=$(git config "branch.$b.wherdrtaken")
+  [ -n "$k" ] && [ -n "$(git rev-list -1 \${s:+"$s.."}"$k")" ] && git merge-base --is-ancestor "$k" HEAD && { echo "$h"; exit 0; }
   why="$b has no commit of its own: nothing was merged"
 else why="commit $(git rev-parse --short HEAD) is not in $t"; fi
 [ -z "$ghe" ] || { echo "$why (GitHub not checked: $(echo "$ghe" | head -1))"; exit 1; }
@@ -183,6 +187,9 @@ gh run view "$1" --log-failed 2>&1 | tail -n 20`,
   // The same over all its files: a commit that only merges the base is not reviewed again.
   ownChanged: ownChange('.'),
   head: `${IN} git rev-parse HEAD`,
+  // Does merged PR head $1 (a commit, or the start of one) hold HEAD? Prints HEAD.
+  holds: `${IN} h=$(git rev-parse HEAD) || exit 1; p=$(git rev-parse -q --verify "$1^{commit}") || p=$1
+${HOLDS} || exit ${CODE.NOT_MERGED}; echo "$h"`,
   // One Bitbucket Cloud API call on origin's repository: method ($1), path
   // ($2), then a query (GET) or a JSON body. Credentials from the machine's
   // environment, passed to curl on stdin (never on its command line). Prints
