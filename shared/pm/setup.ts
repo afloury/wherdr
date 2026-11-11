@@ -1,6 +1,7 @@
 // The setup wizard of project management: six steps for one project, each done
 // or not from what the server reports. Pure, so the board, the settings and the
 // tests read the same answer.
+import type { Pane } from '../types'
 import type { PmOverview } from './project'
 import type { Template } from './workflow'
 
@@ -14,7 +15,9 @@ type Coord = { project: string, terminal?: string }
 type Overview = Pick<PmOverview, 'enabled' | 'projects' | 'tasks'>
 
 // The guards come with the workflow (its defaults): done once it is copied.
-export function setupDone(o: Overview | null, key: string | undefined, coords: Coord[] = []): SetupDone {
+// start: its coordinator's state from its live pane (the wizard): step 5 is
+// done only once it runs, not while its pane has not arrived, starts or asks something.
+export function setupDone(o: Overview | null, key: string | undefined, coords: Coord[] = [], start?: CoordinatorStart): SetupDone {
   const p = o?.enabled ? o.projects.find(x => x.key === key && x.git !== false) : undefined
   const flow = !!p?.from
   return {
@@ -22,9 +25,19 @@ export function setupDone(o: Overview | null, key: string | undefined, coords: C
     project: !!p,
     workflow: flow,
     guards: flow,
-    coordinator: flow && coords.some(c => c.project === p!.key && !!c.terminal),
+    coordinator: flow && coords.some(c => c.project === p!.key && !!c.terminal) && (start === undefined || start === 'runs'),
     task: flow && !!o?.tasks?.some(t => t.project === p!.key),
   }
+}
+
+// Step 5 from its coordinator's pane: not started, starting (no state yet, or
+// one core cannot tell), asking something before it can work (a dialog, a
+// login), or running (idle, working, done).
+export type CoordinatorStart = 'none' | 'starting' | 'asks' | 'runs'
+export function coordinatorStart(pane?: Pick<Pane, 'status' | 'prompt' | 'screen'>): CoordinatorStart {
+  if (!pane) return 'none'
+  if (pane.status === 'blocked' || pane.prompt || pane.screen) return 'asks'
+  return pane.status && pane.status !== 'unknown' ? 'runs' : 'starting'
 }
 
 export const setupCount = (d: SetupDone) => SETUP_STEPS.filter(s => d[s]).length

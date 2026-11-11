@@ -8,7 +8,7 @@ import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanProjectInput } from '../shared/pm/project'
 import { detectV2, keptDirs, v3AppDir, mapMachines, mapSettings, parseArgs as importArgs, parseEnvFile, parseUnit, remapMachineSettings, runImport, sshProblem, v3MachineKey } from '../scripts/v2-import.mjs'
-import { mapCandidates, readBoard } from '../server/utils/v2Board'
+import { HANDOVER_PROMPT, goalLine, mapCandidates, readBoard } from '../server/utils/v2Board'
 import { EXIT, buildCommand, buildTuning, deployUnits, hcTarget, hcUnit, main, parseArgs, pickHttpsPort, unitProtections, updateScript, v3Unit } from '../scripts/install-v3-beside-v2.mjs'
 
 const FIX = path.resolve(__dirname, 'fixtures/v2-install')
@@ -98,6 +98,16 @@ describe('import mapping', () => {
     const long = `feature/${'a'.repeat(193)}`
     const one = (branch: string) => mapCandidates({ ...board, tasks: [{ repo: 'app', n: 3, stage: 'progress', branch }] }, [], exists).projects[0].tasks[0].branch
     expect([one(long), one('a..b')]).toEqual([long, undefined])
+  })
+
+  it('offers a handover only for a project whose v2 coordinator exists, and carries its autopilot goal as one line', () => {
+    const r = mapCandidates(board, [], exists).projects
+    expect(r.map(p => [p.key, p.handover ?? null, p.goalLine ?? null])).toEqual([
+      ['APP', HANDOVER_PROMPT, '- Goal from v2\'s autopilot: Ship the release'],
+      ['GONE', null, null], ['MYDOCS', null, null],
+      ['SITE', null, '- Goal from v2\'s autopilot: Keep the docs current'],
+    ])
+    expect(goalLine({ autopilot: { goal: 'none' } })).toBeUndefined()
   })
 
   it('carries the settings v3 reads, never over a v3 value', () => {

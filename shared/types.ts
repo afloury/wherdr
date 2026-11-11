@@ -180,7 +180,10 @@ export interface Pane {
   // quits then comes back, the pane is briefly without an agent. `update`:
   // Codex update typed into its terminal between the two (the command).
   restart?: { phase: 'stopping' | 'updating' | 'starting' | 'failed', agent: string, error?: string, update?: string }
+  // Codex exited after updating itself; its terminal is a shell (shared/codexLaunch.ts).
   stopped?: { reason: 'update' }
+  // Codex installing or updating itself: messages wait on the server (server/utils/coreHeld.ts).
+  installing?: boolean
   // Codex just left this pane and its screen is not checked yet (update or
   // plain exit?): a shell for a few seconds, where a message must not be typed.
   leaving?: boolean

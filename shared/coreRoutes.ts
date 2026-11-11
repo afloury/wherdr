@@ -39,7 +39,7 @@ const BASE = [
   'auth/login/options', 'auth/login/verify', 'auth/register/options', 'auth/register/verify',
   'core', 'core/terminals', 'client-plugins', 'client-plugins/:id/:file',
   'state', 'config', 'settings', 'health', 'search',
-  'chat', 'chat/image', 'prompt', 'input', 'interrupt', 'close', 'agents',
+  'chat', 'chat/image', 'prompt', 'input', 'interrupt', 'close', 'agents', 'codex-restart',
   'dirs', 'isgit', 'quotas', 'claude-statusline', 'claude-setup',
   'machine/add', 'machine/connect', 'machine/core', 'machine/core-rename', 'machine/core-forget',
   'upload', 'attach', 'file', 'keep',
