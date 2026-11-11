@@ -20,6 +20,7 @@ import type { Pane } from '#shared/types'
 import { reviewSwitch, type Task } from '#shared/pm/run'
 import { shotMode } from '#shared/pm/shots'
 import { timesText } from '#shared/pm/times'
+import { nextRecheck } from '#shared/pm/steps'
 import type { Choice } from '#shared/pm/verdict'
 
 // stopping: opened from the card menu's Stop, the confirmation shown.
@@ -58,6 +59,8 @@ const branch = computed(() => branchLine(props.card, props.projectBase))
 
 // Time per step, the waits for the user apart, review rounds and CI fixes, in one line.
 const times = computed(() => (props.card.times ? timesText(props.card.times) : ''))
+// A step the coordinator rechecks: when its next recheck is due.
+const recheck = computed(() => { const n = nextRecheck(props.card.state); return n === 'user' ? tl('Next recheck: when you write to the coordinator or act on the task') : n ? `${tl('Next recheck')} ${n - Date.now() < 43_200_000 ? fmtTime(n) : fmtDateTime(n)}` : '' })
 
 const todo = computed(() => taskTodo(props.card))
 const descHtml = computed(() => (props.card.description ? md(props.card.description, { plain: true }) : ''))
@@ -135,6 +138,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
         <BranchLine v-if="branch" :line="branch" />
         <p v-if="times" class="task-times" data-testid="task-times">{{ times }}</p>
+        <p v-if="recheck" class="task-times" data-testid="task-recheck">{{ recheck }}</p>
         <p v-if="card.archived" class="muted" data-testid="task-archived">{{ tl('Archived') }} {{ fmtWhen(new Date(card.archived).toISOString()) }}</p>
         <div class="task-sheet-actions">
           <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ card.sameFiles ? tl('Start anyway') : tl('Start', 'Lancer') }}</UButton>

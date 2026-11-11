@@ -390,7 +390,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       }
       // Kept for the board: a task is stalled only while its CI is still red (pm/blocked.ts).
       const ci = ciOf(facts.pr, facts.head)
-      if (ci && (ci.head !== task.ci?.head || ci.red !== task.ci?.red)) facts.task = task = await store.saveTask({ ...task, ci })
+      if (ci && (ci.head !== task.ci?.head || ci.red !== task.ci?.red || !!ci.running !== !!task.ci?.running)) facts.task = task = await store.saveTask({ ...task, ci })
       const seen = prNow(facts.pr, requiredChecks(plan))
       if (seen) prSeen.set(task.id, seen)
       else prSeen.delete(task.id)

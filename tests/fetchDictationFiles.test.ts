@@ -101,7 +101,7 @@ describe('unpack', () => {
   })
   it('says in plain words why tar failed', () => {
     const noBzip2 = 'tar (child): bzip2: Cannot exec: No such file or directory\ntar (child): Error is not recoverable: exiting now\ntar: Child returned status 2\n'
-    expect(tarFailure(noBzip2, 2, 'bzip2')).toBe('this archive format needs bzip2 on the server: install it, then try again')
+    expect(tarFailure(noBzip2, 2, 'bzip2')).toMatch(/^this archive format needs bzip2 on the server: install it \((sudo apt|brew) install bzip2\), then try again$/)
     expect(tarFailure('tar: m/a.onnx: Cannot write: No space left on device\n', 2, 'bzip2')).toMatch(/out of disk space/)
     expect(tarFailure('tar: m/a.onnx: Cannot open: Permission denied\n', 2, 'bzip2')).toMatch(/permission denied/)
     expect(tarFailure('tar: pack/b.onnx: Not found in archive\ntar: Exiting with failure status due to previous errors\n', 2, 'bzip2'))
@@ -118,5 +118,28 @@ describe('unpack', () => {
     writeFileSync(archive, readFileSync(path.join(src, 'pack.tar.gz')).subarray(0, 300))
     await expect(unpack(archive, dir, ['a.onnx'])).rejects.toThrow('the archive is incomplete: it ends before its last file')
     expect(existsSync(archive) || existsSync(path.join(dir, 'a.onnx'))).toBe(false)
+  })
+  // A packed voice served by a fake host; the server has no bzip2 (`has`).
+  function packedVoice(ext: string, flag: string) {
+    const src = tmp()
+    mkdirSync(path.join(src, 'voice'))
+    writeFileSync(path.join(src, 'voice/model.onnx'), Buffer.alloc(300_000, 3))
+    const file = path.join(src, `voice${ext}`)
+    execFileSync('tar', [flag, '-cf', file, '-C', src, 'voice'])
+    const data = readFileSync(file)
+    const entry = { url: `https://example.com/voice${ext}`, sha256: createHash('sha256').update(data).digest('hex'), dir: 'voice', members: ['model.onnx'] }
+    return { entry, ...server(data) }
+  }
+  const noProgram = async () => false
+  it('unpacks a .tar.bz2 on a server without bzip2 (JS decoder)', async () => {
+    const { entry, fetchImpl } = packedVoice('.tar.bz2', '-j')
+    const dir = tmp()
+    await fetchEntry(dir, entry, { fetchImpl, has: noProgram, retryMs: 1 })
+    expect(readFileSync(path.join(dir, 'voice/model.onnx'))).toEqual(Buffer.alloc(300_000, 3))
+  })
+  it('refuses an archive it cannot unpack before downloading it, with the command', async () => {
+    const { entry, fetchImpl, calls } = packedVoice('.tar.xz', '-J')
+    await expect(fetchEntry(tmp(), entry, { fetchImpl, has: noProgram })).rejects.toThrow(/needs xz on the server: install it \((sudo apt install xz-utils|brew install xz)\)/)
+    expect(calls).toEqual([])
   })
 })

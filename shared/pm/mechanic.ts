@@ -63,16 +63,16 @@ export const catchUpGaveUp = (task: Task, head?: string) => !!head && catchUps(t
 const checkName = (c: { name?: string, context?: string }) => c.name || c.context || 'a check'
 
 // The PR's failed checks, once none still runs.
+const checksRun = (pr: PrState) => (pr.statusCheckRollup ?? []).some(c => (c.status && c.status !== 'COMPLETED') || ['PENDING', 'EXPECTED'].includes(c.state ?? ''))
 function redChecks(pr: PrState) {
-  const checks = pr.statusCheckRollup ?? []
-  const running = checks.some(c => (c.status && c.status !== 'COMPLETED') || ['PENDING', 'EXPECTED'].includes(c.state ?? ''))
-  return running ? [] : checks.filter(c => !GREEN.includes(c.conclusion || c.state || ''))
+  return checksRun(pr) ? [] : (pr.statusCheckRollup ?? []).filter(c => !GREEN.includes(c.conclusion || c.state || ''))
 }
 
 // The task's CI as the engine reads it: red only while the PR head is still
 // the task's commit and its checks have finished red (pm/blocked.ts).
+// running: its checks have not all finished (a finished run is news for rechecks).
 export const ciOf = (pr: PrState | undefined, head: string | undefined): NonNullable<Task['ci']> | undefined =>
-  pr && head && !pr.merged ? { head, red: pr.headRefOid === head && redChecks(pr).length > 0 } : undefined
+  pr && head && !pr.merged ? { head, red: pr.headRefOid === head && redChecks(pr).length > 0, ...(checksRun(pr) ? { running: true as const } : {}) } : undefined
 
 // The next mechanical move for a task and its key, or undefined.
 export function nextMove(f: MechFacts): { move: Move, key: string } | undefined {

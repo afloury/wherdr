@@ -15,6 +15,7 @@ import { access, constants, mkdir, readFile, rename, rm, stat, writeFile } from 
 import path from 'node:path'
 import { Readable, Transform } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import bunzip2 from 'unbzip2-stream'
 import CATALOG from '../app/utils/dictation/models.json' with { type: 'json' }
 import VOICES from '../app/utils/speech/voices.json' with { type: 'json' }
 
@@ -126,13 +127,15 @@ const FORMATS = [
 ]
 
 // The tar command that extracts `members` of an archive (all under its top
-// folder, named as the archive) straight into `dir`.
-export function extractCommand(archive, dir, members) {
+// folder, named as the archive) straight into `dir`. With `stdin`, tar reads
+// the decompressed tar from its input (the JS bzip2 decoder) instead.
+export function extractCommand(archive, dir, members, { stdin = false } = {}) {
   const name = path.basename(archive)
   const format = FORMATS.find(f => name.endsWith(f.ext))
   if (!format) throw new Error(`unknown archive format: ${name}`)
   const top = name.slice(0, -format.ext.length)
-  const args = ['-x', ...format.flags, '-f', archive, '-C', dir, '--strip-components=1', ...members.map(m => `${top}/${m}`)]
+  const source = stdin ? ['-f', '-'] : [...format.flags, '-f', archive]
+  const args = ['-x', ...source, '-C', dir, '--strip-components=1', ...members.map(m => `${top}/${m}`)]
   return { args, program: format.program }
 }
 
@@ -140,46 +143,75 @@ export function extractCommand(archive, dir, members) {
 export function tarFailure(stderr, code, program) {
   const missing = [...stderr.matchAll(/([^\s:]+): Not found in archive/g)].map(m => m[1].split('/').pop())
   if (/Cannot exec|Can't initialize filter|unrecognized option|Unsupported compression|not supported/i.test(stderr)) {
-    return `this archive format needs ${program || 'a newer tar'} on the server: install it, then try again`
+    return needs(program || 'a newer tar')
   }
   if (/No space left on device/i.test(stderr)) return 'the server ran out of disk space while unpacking the model'
   if (/Permission denied|Read-only file system/i.test(stderr)) return 'the server cannot write to its models folder (permission denied)'
-  if (/Unexpected EOF|ends unexpectedly|truncated/i.test(stderr)) return 'the archive is incomplete: it ends before its last file'
+  if (/Unexpected EOF|ends unexpectedly|truncated|ended prematurely|unexpected end of file/i.test(stderr)) return 'the archive is incomplete: it ends before its last file'
   if (missing.length) return `the archive lacks the files ${missing.join(', ')}`
+  const decoder = /^bzip2 decoder: (.*)$/m.exec(stderr)
+  if (decoder) return `the archive could not be decoded: ${decoder[1]}`
   const last = stderr.trim().split('\n').filter(l => !/not recoverable|Child returned/.test(l)).pop()
   return `tar exited with ${code}${last ? `: ${last}` : ''}`
 }
 
-// Can this server unpack the format? bsdtar (macOS) has the decompressors
-// built in; GNU tar runs `program`, which must be on the PATH. Checked before
-// a download of hundreds of MB.
-async function canUnpack(program) {
-  if (!program) return true
-  const version = await runTar(['--version']).then(r => r.out, () => '')
-  if (/bsdtar/.test(version)) return true
+const APT = { xz: 'xz-utils' }
+
+// The message for a decompressor the server lacks, with the command that installs it.
+function needs(program) {
+  const install = !/^[a-z0-9]+$/.test(program) ? ''
+    : process.platform === 'darwin' ? ` (brew install ${program})` : ` (sudo apt install ${APT[program] || program})`
+  return `this archive format needs ${program} on the server: install it${install}, then try again`
+}
+
+async function onPath(program) {
   for (const d of (process.env.PATH || '').split(path.delimiter).filter(Boolean)) {
     if (await access(path.join(d, program), constants.X_OK).then(() => true, () => false)) return true
   }
   return false
 }
 
-function runTar(args) {
+// How this server unpacks the format, checked before a download of hundreds
+// of MB: 'tar' when tar decompresses it (bsdtar has the decompressors built
+// in, GNU tar runs `program` from the PATH), 'js' for bzip2 without the
+// program (decoded in JS and streamed into tar, so bzip2 is never a
+// requirement), null when it cannot.
+export async function unpackMode(program, { has = onPath } = {}) {
+  if (!program) return 'tar'
+  const version = await runTar(['--version']).then(r => r.out, () => '')
+  if (/bsdtar/.test(version) || await has(program)) return 'tar'
+  return program === 'bzip2' ? 'js' : null
+}
+
+// Runs tar; `input`, when given, is piped into its stdin (an error there
+// ends tar and is reported in its stderr).
+function runTar(args, input) {
   return new Promise((resolve, reject) => {
-    const child = spawn('tar', args, { stdio: ['ignore', 'pipe', 'pipe'] })
+    const child = spawn('tar', args, { stdio: [input ? 'pipe' : 'ignore', 'pipe', 'pipe'] })
     let out = ''
     let err = ''
     child.stdout.on('data', (b) => { out += b })
     child.stderr.on('data', (b) => { err += b })
     child.on('error', e => reject(new Error(e.code === 'ENOENT' ? 'the server has no tar command' : e.message)))
     child.on('close', code => resolve({ code, out, err }))
+    if (input) {
+      child.stdin.on('error', () => {})
+      input.on('error', (e) => {
+        err += `bzip2 decoder: ${e.message}\n`
+        child.kill()
+      })
+      input.pipe(child.stdin)
+    }
   })
 }
 
-// Extracts the archive's members into `dir`. On failure, the archive and the
-// members it left half written are removed and the error says why.
-export async function unpack(archive, dir, members) {
-  const { args, program } = extractCommand(archive, dir, members)
-  const { code, err } = await runTar(args)
+// Extracts the archive's members into `dir` (`mode` from unpackMode). On
+// failure, the archive and the members it left half written are removed and
+// the error says why.
+export async function unpack(archive, dir, members, { mode = 'tar' } = {}) {
+  const js = mode === 'js'
+  const { args, program } = extractCommand(archive, dir, members, { stdin: js })
+  const { code, err } = await runTar(args, js ? createReadStream(archive).pipe(bunzip2()) : undefined)
   if (code === 0) return
   await Promise.all([archive, ...members.map(m => path.join(dir, m))].map(f => rm(f, { force: true })))
   throw new Error(tarFailure(err, code, program))
@@ -201,11 +233,12 @@ export async function fetchEntry(modelsDir, entry, opts = {}) {
   if ((await readFile(stamp, 'utf8').catch(() => '')).trim() === entry.sha256) return log(`have ${entry.dir}`)
   const archive = path.join(dir, path.basename(new URL(entry.url).pathname))
   const { program } = extractCommand(archive, dir, entry.members)
-  if (!(await canUnpack(program))) throw new Error(`this archive format needs ${program} on the server: install it, then try again`)
+  const mode = await unpackMode(program, opts)
+  if (!mode) throw new Error(needs(program))
   log(`fetch ${entry.url}`)
   await download(entry.url, entry.sha256, archive, opts)
   opts.onUnpack?.()
-  await unpack(archive, dir, entry.members)
+  await unpack(archive, dir, entry.members, { mode })
   await rm(archive, { force: true })
   await writeFile(stamp, `${entry.sha256}\n`)
 }
