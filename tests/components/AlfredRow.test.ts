@@ -3,6 +3,7 @@
 // WHR-119: its own card (emblem, what it is, its state square).
 // WHR-265: the card has the mauve edge only while its conversation is open; its wash always.
 import { afterEach, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
 import { nextTick } from 'vue'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
@@ -99,6 +100,8 @@ it('running and renamed: its name, its current agent, one tap opens the conversa
   expect(w!.find('[data-testid="alfred"]').classes()).toContain('sel')
   // (happy-dom does not compute color-mix(), so the mauve edge is not checked here)
   expect(look().wash).toBe(true)
+  // Nothing paints over the wash when selected (happy-dom computes no inner background: read the rules).
+  expect(readFileSync('app/components/AlfredRow.vue', 'utf8')).not.toMatch(/\.alfred(-card)?\.sel \{[^}]*background/)
   expect(open.attributes('aria-current')).toBe('page')
   curPane.value = 'w:p2'
   await nextTick()
