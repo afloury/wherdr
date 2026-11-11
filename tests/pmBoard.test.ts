@@ -92,6 +92,9 @@ it('an approved merge with red checks says what the fix waits for, never that it
   expect(say(merge({ agent }))).toEqual({ text: 'Checks failed (smoke): fixing: the worker is on it', tone: 'wait', spins: false })
   // Green: as before, in line and merging by itself.
   expect(say(merge({}, { prNow: 'ready to merge', queueOut: undefined }))).toEqual({ text: 'Approved, merges by itself · 1st in merge queue', tone: 'wait', spins: true })
+  // Green after a rerun while the fix is still handed out: not red any more, Merge goes on.
+  const rerun = merge({ agent }, { prNow: 'ready to merge', queueOut: undefined })
+  expect([cardStatus(rerun)!.text.startsWith('Checks failed'), mergeGoesNow(rerun)]).toEqual([false, true])
 })
 
 it('a card\'s texts read each task id with its project\'s shown key, stored before the key changed too; its ids stay stored', () => {

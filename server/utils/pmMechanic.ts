@@ -443,7 +443,7 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
     const revived = r === 'started the worker again with it' ? { ...step, agent: { ...step.agent!, revived: Date.now() } } : step
     const saved = await deps.store.saveTask({ ...t, step: revived })
     if (typeof r === 'string') return r
-    await handedWaits(deps, saved, r.hold, Date.now())
+    await handedWaits(deps, saved, r.hold, f.now ?? Date.now())
     return `handed to the worker, which waits: ${r.hold}`
   }
   switch (move.kind) {

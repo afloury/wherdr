@@ -249,7 +249,9 @@ const bad = (text: string): CardStatus => ({ text, tone: 'bad' })
 export function redAtMerge(c: Pick<Card, 'plan' | 'state' | 'prNow' | 'queueOut'>): string | undefined {
   const s = c.state
   if (!s?.started || s.done || c.plan[s.at]?.action?.kind !== 'github.merge') return
-  const red = c.prNow?.startsWith('checks failed') ? c.prNow : c.queueOut === 'checks failed' || s.agent?.kind === 'ci-to-agent' ? 'checks failed' : undefined
+  // The engine's last read of the PR decides (a rerun may turn it green while the fix is still handed out); without one, the queue and the handed fix.
+  const red = c.prNow ? (c.prNow.startsWith('checks failed') ? c.prNow : undefined)
+    : c.queueOut === 'checks failed' || s.agent?.kind === 'ci-to-agent' ? 'checks failed' : undefined
   return red && `C${red.slice(1)}`
 }
 // A refused action in plain words; waiting, not bad, once the agent took it on.
