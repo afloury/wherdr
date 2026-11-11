@@ -3,7 +3,7 @@ import { flushPromises } from '@vue/test-utils'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import NewAgentSheet from '~/components/NewAgentSheet.vue'
 import { newAgentOpen } from '~/composables/useUi'
-import { herdrState } from '~/composables/useHerdr'
+import { herdrState, lastMachine } from '~/composables/useHerdr'
 import { newTabSpace } from '~/composables/useSpaces'
 import { machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 import { BAR_ALL } from '~/utils/machineBar'
@@ -53,12 +53,18 @@ it('names the host with its HOST badge and preselects a machine of the current t
   await opens('*group:office', 'work')
   newAgentOpen.value = false
   await flushPromises()
-  // The all-machines view: the host, by its name, with the HOST badge.
+  // The all-machines view: the host, even after a machine was picked by hand.
   await opens(BAR_ALL, 'local')
+  await w.get('[data-machine="work"]').trigger('click')
+  newAgentOpen.value = false
+  await flushPromises()
+  await opens(BAR_ALL, 'local')
+  // The host, by its name, with the HOST badge.
   const host = w.get('[data-machine="local"]')
   expect(host.text()).toContain('home-server')
   expect(host.get('.machine-local-badge').text()).toBe('HOST')
   w.unmount()
   configMachines = undefined
   machineGroups.value = []
+  lastMachine.value = ''
 })

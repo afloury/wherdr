@@ -90,10 +90,6 @@ export function barMachineSelection(pick: string | null, groups: readonly Machin
   return groups.find(g => g.id === pick)?.machines ?? [pick]
 }
 
-// The machine "New" preselects: the last one used when it is online and on the
-// tab, else the tab's first online machine, else the host (''). `only` is the
-// tab's machines in order, null for the all-machines view.
-export function tabMachine(only: readonly string[] | null, online: (key: string) => boolean, last: string): string {
-  if (online(last) && (only === null || only.includes(last))) return last
-  return only?.find(online) ?? ''
-}
+// The machine "New" preselects: the tab's first online machine, else the host
+// (''). `only` is the tab's machines in order, null for the all-machines view.
+export const tabMachine = (only: readonly string[] | null, online: (key: string) => boolean) => only?.find(online) ?? ''

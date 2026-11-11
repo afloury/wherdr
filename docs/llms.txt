@@ -50,7 +50,7 @@
 - [Coordinators](docs/home.md#coordinators): project coordinator rows under Alfred, with the project's colored key badge, and their menu; a stopped one (its terminal ended) offers to resume its conversation or start a new one; coordinators and Tasks to handle follow the machine tab (a project shows on the tabs holding its machines, Alfred on every tab).
 - [Offered agents](docs/home.md#offered-agents): Settings › Agents, which programs every picker offers and in which order.
 - [Machines as tabs](docs/home.md#machines-as-tabs): the machine tabs and their counts (rows and coordinators), their groups (deleting one puts its projects back to Automatic), which tabs show a project (its machines', a paused one only while its task runs, or its Shown in; notifications are not filtered, the board only on Follow machine tab), a machine's actions, and the offline machines' line with Reconnect (no machine chips while all are online).
-- [New agents and tabs](docs/home.md#new-agents-and-tabs): the New sheet (its machine: the last picked on the current tab, else the tab's first online one, the host on All), the + of a space's tabs, and renaming or closing a tab or a space.
+- [New agents and tabs](docs/home.md#new-agents-and-tabs): the New sheet (its machine: the current tab's first online one, else the host, as on All), the + of a space's tabs, and renaming or closing a tab or a space.
 - [Search](docs/home.md#search): search agents and conversations.
 - [Inventory](docs/core.md#inventory): how terminals are placed in spaces and tabs, and how states are read.
 - [Creating terminals and agents, machines](docs/core.md#creating-terminals-and-agents-machines): what the New sheet asks hc to run, and how hc reaches core machines.

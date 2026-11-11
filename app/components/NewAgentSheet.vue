@@ -63,7 +63,7 @@ function syncKind() {
 }
 const isOnline = (k: string) => !!machineList.value?.some(m => m.key === k && online(m))
 // The current machine tab's first online machine (utils/machineBar.ts).
-const defaultMachine = () => tabMachine(machineBarSelection.value, isOnline, lastMachine.value)
+const defaultMachine = () => tabMachine(machineBarSelection.value, isOnline)
 function setMachine(k: string) {
   if (machine.value === k) return
   machine.value = k
