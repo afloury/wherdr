@@ -19,8 +19,8 @@ import { CoreError } from './core'
 import { actionShell, takeUpdate } from './pmActions'
 import { prSeen, stepAction } from './pmBoard'
 import { prNow, requiredChecks } from '../../shared/pm/board'
-import { exec, runOn, startTask, type PmLaunchDeps } from './pmLaunch'
-import { busyNext, busyQueue, coordinatorStartRefusal } from '../../shared/pm/autopilot'
+import { exec, runOn, startTask, type PmLaunchDeps, launched } from './pmLaunch'
+import { busyNext, busyQueue, coordinatorStartRefusal, AUTOPILOT_STARTED, UNCONFIRMED } from '../../shared/pm/autopilot'
 import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
 import { paceOf, placeFor, slotsOf } from './pmPlace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
@@ -151,7 +151,7 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
     forgetMemory(placed.machine)
     const r = await startTask(deps, t.id, { on: placed.machine }).catch((e: Error) => startedElsewhere(e) ? null : ({ ...t, state: 'waiting' as const, waiting: e.message }))
     if (!r) continue
-    if (!r.sameFiles) await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? 'started: there is room' : `could not start: ${r.waiting ?? ''}`)
+    if (!r.sameFiles) await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? (t.autopilot && !(await launched(store, r)) ? UNCONFIRMED : AUTOPILOT_STARTED.room) : `could not start: ${r.waiting ?? ''}`)
     started.push(t.id)
   }
   return started
@@ -279,7 +279,7 @@ export async function startNext(deps: PmLaunchDeps, now = Date.now()) {
     if (!r || r.sameFiles) continue
     const label = deps.machines().find(m => m.key === placed.machine)?.label ?? placed.machine
     const t = (await store.task(first.id))!
-    await store.logTask(r.state === 'working' ? { ...t, autopilot: true } : t, 'engine', r.state === 'working' ? `started by the autopilot: room on ${label}` : `the autopilot could not start it: ${r.waiting ?? ''}`)
+    await store.logTask(r.state === 'working' ? { ...t, autopilot: true } : t, 'engine', r.state === 'working' ? (await launched(store, r) ? `${AUTOPILOT_STARTED.busy}room on ${label}` : UNCONFIRMED) : `the autopilot could not start it: ${r.waiting ?? ''}`)
     started.push(first.id)
   }
   return started

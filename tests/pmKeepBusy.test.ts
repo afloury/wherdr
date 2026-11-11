@@ -51,7 +51,11 @@ describe('keep the board busy', () => {
       const meminfo = `MemTotal: ${64 * 1024 * 1024} kB\nMemAvailable: ${60 * 1024 * 1024} kB\nSwapTotal: 0 kB\nSwapFree: 0 kB\n`
       const call = async (method: string) => (method === 'machine.exec' ? { code: 0, stdout: Buffer.from(meminfo).toString('base64') } : {})
       const deps = { store, call, machines: () => [{ key: 'm1', local: false, label: 'box', status: 'online' }] } as never
-      vi.mocked(startTask).mockImplementation(async (_d, id) => store.saveTask({ ...(await store.task(id))!, state: 'working', step: { at: 1, started: true, proofs: {}, rounds: {} } }))
+      // A start that went: its worker run has a terminal.
+      vi.mocked(startTask).mockImplementation(async (_d, id) => {
+        await store.saveRun({ id: `r-${id}`, task: id, role: 'worker', program: 'claude', model: '', machine: 'm1', worktree: '', branch: '', instructions: '', attempt: 1, state: 'running', terminal: 'm1/t1', startedAt: 1 })
+        return store.saveTask({ ...(await store.task(id))!, state: 'working', run: `r-${id}`, step: { at: 1, started: true, proofs: {}, rounds: {} } })
+      })
 
       expect(await startNext(deps)).toEqual([first.id])
       expect((await store.task(first.id))!.log?.at(-1)).toMatchObject({ by: 'engine', text: 'started by the autopilot: room on box' })

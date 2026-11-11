@@ -66,6 +66,10 @@ df -Pk /tmp | awk 'NR==2 {print $4}'`
 export const FETCH_BRANCH_SCRIPT = `git -C "$1" ls-remote -q --exit-code origin "refs/heads/$2" >/dev/null 2>&1; c=$?
 [ $c = 2 ] && exit 2; [ $c = 0 ] || { echo "origin unreachable (git ls-remote exit $c)"; exit 1; }
 git -C "$1" fetch -q origin "+refs/heads/$2:refs/remotes/origin/$2" 2>&1 || exit 1`
+// The task's worker terminal exists (a launch that timed out is not confirmed until
+// reconciliation finds it).
+export const launched = async (store: PmStore, t: Task) => t.state === 'working' && !!t.run && !!(await store.runs()).find(r => r.id === t.run)?.terminal
+
 export const WRITE_SCRIPT = 'mkdir -p "$(dirname "$1")" && cat > "$1"'
 // The same, only when the file is missing: an agent's own file is never overwritten.
 // An existing file still reads its input, so the writer never hits a closed pipe.

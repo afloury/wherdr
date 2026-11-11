@@ -13,8 +13,8 @@ import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
 import { validateTemplate } from '../../shared/pm/workflow'
 import { weightOf, weightText, weightsLine } from '../../shared/pm/weight'
 import { EXAMPLES } from '../../shared/pm/examples'
-import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, busyNext, busyQueue, keepsBusy, coordinatorStartRefusal, countFix, limitsLeft, pastLimit, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
-import { ackWakes } from '../../shared/pm/wakes'
+import { AUTOPILOT_STARTED, UNCONFIRMED, DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, busyNext, busyQueue, keepsBusy, coordinatorStartRefusal, countFix, limitsLeft, pastLimit, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
+import { ackWakes, sinceYesterday } from '../../shared/pm/wakes'
 import { nextWakeAt } from '../../shared/pm/flow'
 import { incidentView, isOpen, type Incident } from '../../shared/pm/incident'
 import { automationLine, proposalLine, proposeAutomation } from '../../shared/pm/automations'
@@ -24,7 +24,7 @@ import { projectOf, showIds, shownKey, shownTaskId } from '../../shared/pm/proje
 import { taskPlan, trustKeys, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
-import { CREATE_SCRIPT, WRITE_SCRIPT, exec, startTask } from './pmLaunch'
+import { CREATE_SCRIPT, WRITE_SCRIPT, exec, launched, startTask } from './pmLaunch'
 import { actionShell } from './pmActions'
 import { SCRIPT } from '../../shared/pm/actions'
 import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from '../../shared/pm/contributorPr'
@@ -40,7 +40,7 @@ import { handFix } from '../../shared/pm/release'
 import { DONE_CMD } from '../../shared/pm/advance'
 import { READ_LINES, lastWords } from './pmRead'
 import { resumeRefusal } from '../../shared/pm/stop'
-import { pacedStart, paceLine } from '../../shared/pm/pace'
+import { pacedStart, paceGauge, paceLine } from '../../shared/pm/pace'
 import { readQuotas } from './quotas'
 import { quotaByKey, reviewAccount, reviewQueueLines, runningReviews } from '../../shared/pm/reviewQueue'
 import { forgetMemory } from './pmMemory'
@@ -300,7 +300,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
         reviews: await reviews(),
         weights: key ? await weights(p!, t) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, weights(x, await store.workflow(x.key))]))),
         // Wakes not sent, newest first: what and why.
-        skippedWakes: [...(pilotRec?.skips ?? [])].reverse().map(x => ({ at: new Date(x.at).toISOString(), what: x.what, why: x.why })),
+        skippedWakes: [...(pilotRec?.skips ?? [])].slice(-20).reverse().map(x => ({ at: new Date(x.at).toISOString(), what: x.what, why: x.why })),
         today: { ...limitsLeft(ap, mine, await store.runs(), now, await slotsOf(store, p ? [p] : projects)), skippedWakes: today(pilotRec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(pilotRec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
         note: 'Only the user changes these, in wherdr. keepBusy: with it on, the engine itself starts the next to-do task in board order (oldest first) while a machine has room, within the limits, hours and pace; next says which, or why none. With nothing to do and lookForWork off, scheduled wakes are skipped, and so are they while nothing you could act on changed since your last wake (no task startable now, no new block, no answer); a health check repeating the last one\'s lines (within 12 h), a question you already answered with tell, and an engine wake for a block that is only an offline or paused machine (the incident covers it; the engine resumes the task itself and wakes you if that fails) are skipped too. skippedWakes lists the last ones, what and why; today.skippedWakes counts today\'s skipped scheduled wakes. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines by its placement strategy (Heavy to the strongest: heavy work on the strongest, light and standard work at home when it fits; Balance the load: each task on the machine with most room; Home first: home until it is full; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. perDay, atOnce and hours hold automatic work only: a start the user asks for goes past them, and still counts in them. perDay null: no daily limit; atOnce null is Auto: as many tasks as the machines take (both the defaults of a new project). Whatever the counts, pacing and machine room still hold automatic work. machines: each allowed machine, its agents at work by weight, its available hours (automatic starts skip it outside them, heavy work in its last 2 hours) and the heaviest weight it takes now (or why none: offline, away, full…); weights: what placement counts per weight (learned from the measured peaks of the project after 3 runs of that weight, else the default), and the weight each task type gets. lastOpenIncident: the last time agents were gone and why, from facts (wherdr pm incidents lists them all); null when none is open. reviews: each reviewer account with reviews running or waiting, its 5-hour and weekly use, and how many it runs at once; the others wait their turn, oldest first',
       }
@@ -414,7 +414,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
       if (on !== undefined) forgetMemory(on)
       const started = await startTask(deps, task.id, { by, ...(on !== undefined ? { on } : {}) })
       if (started.sameFiles) return { task: started, held: `${sameFilesText(started.sameFiles)}: it starts by itself once that task no longer touches them` }
-      return { task: await store.logTask(started, by, started.state === 'working' ? 'started the task' : `could not start the task: ${started.waiting ?? ''}`), ...said }
+      return { task: await store.logTask(started, by, started.state === 'working' ? (!wake ? 'started the task' : await launched(store, started) ? AUTOPILOT_STARTED.wake : UNCONFIRMED) : `could not start the task: ${started.waiting ?? ''}`), ...said }
     }
     case 'task edit': case 'task note': {
       const why = specChangeRefusal(turn)
@@ -583,16 +583,28 @@ function asleepOf(ap: Autopilot, tasks: Task[], c: CoordinatorRecord | null | un
   return k === 'idle' || k === 'limit' ? { asleep: k } : {}
 }
 
+// The autopilot's own starts since `since`, oldest first, from the task log (written
+// once the worker runs): Keep the board busy's, a wake's, and a task held by a
+// wake for room that the engine started once there was some. Never the user's.
+const autopilotStart = (t: Task, text: string) =>
+  text.startsWith(AUTOPILOT_STARTED.busy) || text === AUTOPILOT_STARTED.wake || (text === AUTOPILOT_STARTED.room && !!t.autopilot)
+function startsSince(projects: Project[], tasks: Task[], since: number) {
+  return tasks.flatMap(t => (t.log ?? []).filter(e => e.at >= since && autopilotStart(t, e.text)).map(e => ({ task: shownTaskId(projects, t.id), title: t.title, at: e.at })))
+    .sort((a, b) => a.at - b.at)
+}
+
 // Each project's coordinator: who answers, the agent of its kept conversation, its pending change.
 export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[]> {
   if (!(await store.enabled())) return []
-  const [tasks, runs, wakes, now] = [await store.tasks(), await store.runs(), await store.wakes(), Date.now()]
-  const holds = await slotsOf(store, await store.projects())
+  const now = Date.now(), [tasks, runs] = [await store.tasks(), await store.runs()]
+  const projects = await store.projects(), holds = await slotsOf(store, projects)
+  // The timeline's start: yesterday's local midnight.
+  const since = sinceYesterday(now), wakes = await store.wakes(now - since)
   // The automation proposals, for the card in the conversation of the one that made them.
   const byOf = (k: string) => (k === MAIN ? 'main' : k)
-  const autoProps = (await Promise.all((await store.projects()).map(async x => (await store.automations(x.key)).proposals ?? []))).flat()
+  const autoProps = (await Promise.all(projects.map(async x => (await store.automations(x.key)).proposals ?? []))).flat()
   // The main coordinator first; it has no autopilot (each project's coordinator runs its own).
-  return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...await store.projects()].map(async (p) => {
+  return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...projects].map(async (p) => {
     const c = await store.coordinator(p.key)
     const current = c?.proposal ? await store.workflow(p.key) : null
     const changes = c?.proposal ? c.proposal.changes ?? workflowChanges(current, c.proposal.template) : undefined
@@ -608,7 +620,9 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
             ...asleepOf(autopilot, mine, c, now), skippedToday: today(c?.skipped, now),
             ...(c?.woke?.at ? { wokeAt: c.woke.at } : {}),
             ...(next ? { nextWake: next } : {}),
-            wakes: wakes.filter(w => w.coordinator === p.key).sort((a, b) => b.createdAt - a.createdAt).slice(0, 5),
+            wakes: wakes.filter(w => w.coordinator === p.key && w.createdAt >= since).sort((a, b) => b.createdAt - a.createdAt),
+            skips: (c?.skips ?? []).filter(x => x.at >= since), started: startsSince(projects, mine, since),
+            ...await projectPace(store, p.key, undefined, now).then(s => (s ? { pace: paceGauge(s, now) } : {}), () => ({})),
           }),
       project: p.key, name: p.name, ...('machine' in p ? { machines: allowedMachines(p) } : {}), ...(paused.length ? { paused } : {}), ...(busy.length ? { busy } : {}), ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
