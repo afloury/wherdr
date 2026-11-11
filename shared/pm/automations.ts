@@ -200,8 +200,10 @@ export function scheduleWords(raw: string) {
   }
   const { min, hour } = s, d = s.dow?.join(',')
   const allHours = hour.length === 24, hs = stepOf(hour, 23), ms = stepOf(min, 59)
-  const days = !s.dow || d === '0,1,2,3,4,5,6' ? '' : d === '1,2,3,4,5' ? 'weekday' : d === '0,6' ? 'Saturday and Sunday' : and(s.dow.map(x => DAY_NAMES[x]!))
-  const dates = [s.dom ? `on day ${and(s.dom)} of the month` : '', s.mon ? `in ${and(s.mon.map(x => MONTHS[x - 1]!))}` : ''].filter(Boolean).join(' ')
+  const week = !s.dow || d === '0,1,2,3,4,5,6' ? '' : d === '1,2,3,4,5' ? 'weekday' : d === '0,6' ? 'Saturday and Sunday' : and(s.dow.map(x => DAY_NAMES[x]!))
+  // Both day fields restricted: cron fires on either (schedule.ts), so "or".
+  const days = s.dom ? '' : week
+  const dates = [s.dom ? `on day ${and(s.dom)} of the month${week ? ` or on ${week === 'weekday' ? 'weekdays' : week}` : ''}` : '', s.mon ? `in ${and(s.mon.map(x => MONTHS[x - 1]!))}` : ''].filter(Boolean).join(' ')
   // At set times of the day: "every Monday at 9:00 and 14:00".
   if (min.length === 1 && !allHours && !hs && hour.length <= 4 && !span(hour))
     return [`every ${days || (s.dom ? '' : 'day')}`.trim(), `at ${and(hour.map(h => clock(h, min[0]!)))}`, dates].filter(x => x && x !== 'every').join(' ')

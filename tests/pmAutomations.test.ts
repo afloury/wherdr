@@ -163,12 +163,12 @@ describe('the engine', () => {
     await propose(['clean'], { name: 'Clean', prompt: 'Remove dead tests', schedule: '0 9 * * 1-5' })
     await answer(true)
     expect((await store.automations('CO')).automations[0]).toMatchObject({ prompt: 'Remove dead tests', on: false, firings: [{ task: 'CO-1' }] })
-    expect(Object.fromEntries(['0 9 * * 1-5', 'daily 09:00', 'mon,thu 09:00', '0 9,14 * * *', '0 9 1 * *', '*/15 * * * *', '0 */2 * * *', '30 9-17 * * 1-5', '5,20 * * * *', '0 0 * 1 *', 'every 2h']
+    expect(Object.fromEntries(['0 9 * * 1-5', 'daily 09:00', 'mon,thu 09:00', '0 9,14 * * *', '0 9 1 * *', '*/15 * * * *', '0 */2 * * *', '30 9-17 * * 1-5', '5,20 * * * *', '0 0 * 1 *', '0 9 1 * 1', '*/15 * 1 * 1-5', 'every 2h']
       .map(x => [x, scheduleWords(x)]))).toEqual({
       '0 9 * * 1-5': 'every weekday at 9:00', 'daily 09:00': 'every day at 9:00', 'mon,thu 09:00': 'every Monday and Thursday at 9:00',
       '0 9,14 * * *': 'every day at 9:00 and 14:00', '0 9 1 * *': 'at 9:00 on day 1 of the month', '*/15 * * * *': 'every 15 minutes',
       '0 */2 * * *': 'every 2 hours at :00', '30 9-17 * * 1-5': 'every hour at :30 from 9:00 to 17:59 on weekdays', '5,20 * * * *': 'at minutes 5 and 20',
-      '0 0 * 1 *': 'every day at 0:00 in January', 'every 2h': 'every 2 hours',
+      '0 0 * 1 *': 'every day at 0:00 in January', '0 9 1 * 1': 'at 9:00 on day 1 of the month or on Monday', '*/15 * 1 * 1-5': 'every 15 minutes on day 1 of the month or on weekdays', 'every 2h': 'every 2 hours',
     })
     // A removal; the outcomes stay for automation list.
     await propose(['docs-check', '--remove'])
