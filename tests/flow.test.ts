@@ -1,0 +1,17 @@
+import { describe, expect, it } from 'vitest'
+import { nextWakeAt } from '../shared/pm/flow'
+
+describe('nextWakeAt', () => {
+  const ap = { on: true, goal: '', events: [], perDay: 1, atOnce: 1 }
+  const now = new Date(2026, 0, 5, 10, 0).getTime()
+  it('the interval after the last wake, or the next fixed time, whichever comes first', () => {
+    expect(nextWakeAt({ ...ap, every: '2h' }, now - 30 * 60_000, undefined, now)).toBe(now + 90 * 60_000)
+    expect(nextWakeAt({ ...ap, every: '2h', at: 'daily 10:30' }, now, now, now)).toBe(new Date(2026, 0, 5, 10, 30).getTime())
+    // A wake overdue goes now, never in the past.
+    expect(nextWakeAt({ ...ap, every: '30m' }, now - 3_600_000, undefined, now)).toBe(now)
+  })
+  it('none when off or with no schedule', () => {
+    expect(nextWakeAt({ ...ap, on: false, every: '2h' }, 0, 0, now)).toBeUndefined()
+    expect(nextWakeAt(ap, 0, 0, now)).toBeUndefined()
+  })
+})

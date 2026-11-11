@@ -7,7 +7,7 @@ import { pmStore } from '../../utils/pmStore'
 
 export default defineApi(async (event, body) => {
   const token = String(getRequestHeader(event, 'authorization') || '').replace(/^Bearer\s+/i, '')
-  const out = await runCommand({ ...coreAdminDeps(), store: pmStore() }, token, body)
+  const out = await runCommand({ ...coreAdminDeps(), store: pmStore(), clients: () => eventClients.values() }, token, body)
   // Once after an update: the line the command's output starts with (the CLI prints it).
   const notice = await takeUpdateNotice(pmStore(), await scopeOf(pmStore(), token))
   if (notice) setResponseHeader(event, 'x-wherdr-notice', notice)

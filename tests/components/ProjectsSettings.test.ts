@@ -25,15 +25,16 @@ const post = (url: string, fn: (b: Record<string, unknown>) => unknown) => regis
 })
 const edit = (b: Record<string, unknown>, change: Partial<Project>) => {
   state = { ...state, projects: state.projects.map(p => p.key === b.key ? { ...p, ...change } : p) }
-  return { project: {} }
+  return { project: state.projects.find(p => p.key === b.key) }
 }
 registerEndpoint('/api/pm/overview', () => state)
-registerEndpoint('/api/pm/project', () => ({ project: state.projects[0], workflow: { id: 'web', steps: [], taskTypes: {}, guards: { protected: ['main'] }, prefs: { agent: 'claude', model: 'sonnet' } }, log: [] }))
+registerEndpoint('/api/pm/project', () => ({ project: state.projects[0], workflow: { id: 'web', steps: [], taskTypes: {}, guards: { protected: ['main'] }, prefs: { agent: 'claude', model: 'sonnet' }, worktree: { share: [] } }, log: [] }))
 post('/api/pm/enabled', (b) => { state = { ...state, enabled: b.enabled as boolean }; return state })
-post('/api/pm/project-update', b => edit(b, { name: b.name as string, base: b.base as string }))
+post('/api/pm/project-update', b => edit(b, { name: b.name as string, base: b.base as string, ...(b.newKey ? { label: b.newKey as string } : {}) }))
 post('/api/pm/project-guards', () => ({}))
 let coordinators: { project: string, name: string, proposal?: { diff: string, at: number, said?: string } }[] = []
-registerEndpoint('/api/pm/coordinators', () => coordinators)
+let coordinatorReads = 0
+registerEndpoint('/api/pm/coordinators', () => { coordinatorReads++; return coordinators })
 let outdated = false
 registerEndpoint('/api/pm/template-proposal', { method: 'POST', handler: async (event) => {
   calls.push({ url: '/api/pm/template-proposal', body: await readBody(event) })
@@ -48,7 +49,7 @@ const inSheet = (id: string) => document.body.querySelector<HTMLElement>(`[data-
 let mounted: { unmount: () => void } | null = null
 afterEach(() => { mounted?.unmount(); mounted = null; reset(); newAgentOpen.value = false })
 
-it('switches project management on; Add project opens the New sheet on a new project', async () => {
+it('switches project management on; Add project opens the setup window on a new project', async () => {
   const w = await mountSuspended(ProjectsSettings, { props: { active: true } })
   mounted = w
   await vi.waitFor(() => expect(w.find('[data-testid="pm-switch"]').attributes('disabled')).toBeUndefined())
@@ -57,10 +58,19 @@ it('switches project management on; Add project opens the New sheet on a new pro
   await w.find('[data-testid="pm-switch"]').trigger('click')
   await vi.waitFor(() => expect(w.find('[data-testid="pm-empty"]').exists()).toBe(true))
   await w.find('[data-testid="pm-add"]').trigger('click')
-  expect([newAgentOpen.value, newProjectOpen.value]).toEqual([true, true])
+  await vi.waitFor(() => expect(inSheet('setup-project-form')).toBeTruthy())
+  expect(w.get('[data-testid="pm-library"]').text()).toContain('1 saved · 4 examples')
+  await w.get('[data-testid="pm-library"]').trigger('click')
+  await vi.waitFor(() => expect(inSheet('library-saved')?.dataset.id).toBe('vibe'))
 })
 
-it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name and base, and the visibility', async () => {
+// WHR-243: Alfred's `ui open --target projects.setup` opens the setup window, not only a halo.
+it('the projects.setup target opens the setup window', async () => {
+  mounted = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&target=projects.setup' })
+  await vi.waitFor(() => expect(inSheet('setup-wizard')).toBeTruthy())
+})
+
+it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name, base and worktree setup, and the visibility', async () => {
   state = { ...state, enabled: true, projects: [web()] }
   const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=guards' })
   mounted = w
@@ -80,8 +90,14 @@ it('opens the project sheet on the URL\'s tab; Guards saves a branch added; Gene
   const name = inSheet('pm-name')!.querySelector('input') ?? inSheet('pm-name') as HTMLInputElement
   ;(name as HTMLInputElement).value = 'Website'
   name.dispatchEvent(new Event('input'))
+  const copy = inSheet('pm-setup-copy')!.querySelector('textarea') ?? inSheet('pm-setup-copy') as HTMLTextAreaElement
+  ;(copy as HTMLTextAreaElement).value = '.env\n config/local.json '
+  copy.dispatchEvent(new Event('input'))
   inSheet('pm-save')!.closest('form')!.dispatchEvent(new Event('submit'))
-  await vi.waitFor(() => expect(calls[0]).toEqual({ url: '/api/pm/project-update', body: { key: 'WEB', name: 'Website', base: '', prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '' } } }))
+  await vi.waitFor(() => expect(calls[0]).toEqual({ url: '/api/pm/project-update', body: {
+    key: 'WEB', name: 'Website', base: '', branchName: '', archiveAfter: 7, prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' },
+    worktree: { copy: ['.env', 'config/local.json'], share: [], lockfile: '', command: '', timeout: '' }, // share none kept
+  } }))
 
   await vi.waitFor(() => expect(inSheet('pm-save')!.hasAttribute('disabled')).toBe(false))
   await pick(w, 'pm-visibility', 'private')
@@ -96,7 +112,7 @@ it('a coordinator\'s proposal: badge on the row and on Workflow, the URL opens i
     coordinators = [{ project: 'WEB', name: 'Web', proposal: { diff: '-   "instructions": "a",\n+   "instructions": "b",', at: 1, said: 'Use b' } }]
     const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=workflow&review=1' })
     mounted = w
-    await vi.waitFor(() => expect(inSheet('proposal-review')?.textContent).toContain('“Use b”'))
+    await vi.waitFor(() => expect(inSheet('proposal-said')?.textContent).toBe('Use b'))
     expect(w.find('[data-testid="pm-review"]').exists()).toBe(true)
     expect(inSheet('workflow-badge')).not.toBeNull()
     expect([...inSheet('proposal-diff')!.querySelectorAll('.add')].map(x => x.textContent?.trim())).toEqual(['+   "instructions": "b",'])
@@ -109,4 +125,22 @@ it('a coordinator\'s proposal: badge on the row and on Workflow, the URL opens i
     mounted = null
   }
   outdated = false
+})
+
+it('a saved key stays in the field and the badge, and the shared coordinators are read again', async () => {
+  state = { ...state, enabled: true, projects: [web()] }
+  const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=general' })
+  mounted = w
+  await vi.waitFor(() => expect(inSheet('pm-save')!.hasAttribute('disabled')).toBe(false))
+  const key = inSheet('pm-key')!.querySelector('input') ?? inSheet('pm-key') as HTMLInputElement
+  ;(key as HTMLInputElement).value = 'site'
+  key.dispatchEvent(new Event('input'))
+  await nextTick()
+  const reads = coordinatorReads
+  inSheet('pm-save')!.closest('form')!.dispatchEvent(new Event('submit'))
+  await vi.waitFor(() => expect(calls.at(-1)?.body.newKey).toBe('SITE'))
+  await vi.waitFor(() => expect(inSheet('pm-save')!.hasAttribute('disabled')).toBe(false))
+  expect((key as HTMLInputElement).value).toBe('SITE')
+  expect(document.body.querySelector('.pm-key-row .project-badge')?.textContent?.trim()).toBe('SITE')
+  expect(coordinatorReads).toBeGreaterThan(reads)
 })

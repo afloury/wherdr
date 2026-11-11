@@ -9,7 +9,7 @@ function coreDelivery(opts: { viewed?: boolean, allowed?: boolean, taskAgent?: b
   const notify = bindFunction(source, 'notifyCorePane', {
     notificationAllowed: async () => opts.allowed ?? true, isViewed: () => opts.viewed ?? false, notificationTitle: (s: string) => s,
     state: { workspaces: [{ id: 'w1', label: 'demo' }], panes: [pane], machines: [{ key: 'k', label: 'laptop' }, { key: '', label: 'Local' }] },
-    isTaskAgent: async () => opts.taskAgent ?? false,
+    isTaskAgent: async () => opts.taskAgent ?? false, coordinatorAt: async () => undefined,
     agentLabel: () => 'Claude', agentNotificationTitle: (kind: string, who: string) => ({ title: `${who} ${kind}`, titleFr: '' }), pushSend, log: () => {},
   })
   return { notify, pushSend }
