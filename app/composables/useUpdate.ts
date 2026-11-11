@@ -1,8 +1,7 @@
 // "New wherdr version" notice (/api/update): loaded once per opening
 // of the app (the server only asks GitHub once a day). "Hide"
 // lasts until the next version, on this device.
-// herdr-core never offers the one-tap update (GET /api/update answers
-// oneTap: false): the banner shows the update command instead.
+// v3 has no one-tap update: the banner shows the update command.
 import type { UpdateInfo } from '#shared/updates'
 
 const DISMISS_KEY = 'wherdr.update.dismissed'

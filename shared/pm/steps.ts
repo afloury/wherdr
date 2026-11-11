@@ -31,6 +31,7 @@ export interface StepState {
   started: boolean
   since?: number // when the current step started
   deadline?: number // absolute time, from the step's timeout
+  paused?: number // since when the step's clock is stopped: its holder cannot work (pauseClock)
   recheckAt?: number // absolute time, for a step with recheck
   told?: number // the `since` of the step whose instructions were delivered to its holder
   fix?: string // what the worker must fix, when an engine action sent the task back to it
@@ -208,7 +209,7 @@ function act(s: StepState, step: PlannedStep, effects: Effect[], now: number): S
 // Enters step i: a step with no end is passed through (the last one is done).
 function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, effects: Effect[]): StepState {
   const step = plan[i]
-  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, recheckAt: undefined, acting: undefined, watch: undefined, yourTurn: undefined, agent: undefined, fix: undefined, rereview: undefined, catchUp: undefined }
+  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, paused: undefined, recheckAt: undefined, acting: undefined, watch: undefined, yourTurn: undefined, agent: undefined, fix: undefined, rereview: undefined, catchUp: undefined }
   if (!step) return effects.push({ kind: 'done' }), { ...s, done: true }
   if (!step.ends) return i === plan.length - 1 ? (effects.push({ kind: 'done' }), { ...s, done: true }) : enter(plan, s, i + 1, now, effects)
   if (step.timeout) s.deadline = now + durationMs(step.timeout)
@@ -273,7 +274,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       }
       const n = (state.rounds[step.id] ?? 0) + 1
       const rounds = { ...state.rounds, [step.id]: n }
-      const history = [...(state.reviews?.[step.id] ?? []), { findings: left, ...(ev.diffLines !== undefined ? { diffLines: ev.diffLines } : {}) }]
+      const history = [...(state.reviews?.[step.id] ?? []), { findings: left, ...(ev.diffLines !== undefined ? { diffLines: ev.diffLines } : {}), ...(ev.head ? { head: ev.head } : {}) }]
       const s = { ...state, rounds, reviews: { ...state.reviews, [step.id]: history } }
       // Past the rounds, nothing is sent back: the engine advises, the choice goes to Your turn.
       if (n > (step.rounds ?? DEFAULT_ROUNDS)) {
@@ -417,9 +418,24 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
         effects.push({ kind: 'instruct', step: step.id, holder: step.holder!, text: `Check again: ${step.text}` })
         s = { ...s, recheckAt: now + durationMs(step.recheck!) }
       }
-      if (s.deadline !== undefined && now >= s.deadline && !s.yourTurn)
+      if (s.deadline !== undefined && s.paused === undefined && now >= s.deadline && !s.yourTurn)
         s = { ...s, yourTurn: { reason: 'timeout', badge: `Check ${step.id}: over ${step.timeout}` } }
       return { state: s, effects }
     }
   }
+}
+
+// The step's clock stops while its holder cannot work (its machine offline or
+// unreachable, an incident not over, the task waiting for room): that time
+// does not count toward its timeout. Stopped, a timeout already in Your turn
+// goes (the card shows what the task waits for); started again, the deadline
+// moves by the time stopped. `since` stays: the card shows the real time in step.
+export function pauseClock(s: StepState, stopped: boolean, now: number): StepState {
+  if (!s.started || s.done) return s
+  if (stopped) {
+    const yourTurn = s.yourTurn?.reason === 'timeout' ? undefined : s.yourTurn
+    return s.paused !== undefined && yourTurn === s.yourTurn ? s : { ...s, paused: s.paused ?? now, yourTurn }
+  }
+  if (s.paused === undefined) return s
+  return { ...s, paused: undefined, ...(s.deadline !== undefined ? { deadline: s.deadline + Math.max(0, now - s.paused) } : {}) }
 }

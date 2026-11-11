@@ -94,6 +94,9 @@ limit still stops it (**Limit reached**), and so does a machine with no room. Th
 switch, and the row, say until when it burns (**Burning until Sun 19:00**); it turns itself off at the
 reset. It needs a quota reading, which gives the reset.
 
+A reviewer account near its limit or held by its pace takes no new review:
+the project's [reviewer fallback](project-management.md#reviewer-fallback) does it.
+
 ## Codex updates
 
 wherdr starts Codex (new agents, task agents, coordinators) with its update check off

@@ -21,9 +21,9 @@ it('a task agent\'s row: state, key badge, task title and duration, then role ·
   taskAgents.value = { t1: { task: 'CO-1', shown: 'AC-1', title: 'Fix the login', role: 'review', reserve: true } }
   const w = await mountSuspended(AgentCard, { props: { pane, row, machineBadge: 'laptop' } })
   try {
-    // The state square leads the row; a Claude agent shows no icon.
+    // The state square leads the row; the agent's icon is on its line.
     expect(w.find('.card').element.firstElementChild?.classList.contains('card-state')).toBe(true)
-    expect(w.find('.avatar').exists()).toBe(false)
+    expect(w.find('[data-testid="task-agent-line"] .avatar.claude').exists()).toBe(true)
     expect(w.find('[data-testid="project-badge"]').text()).toBe('AC-1')
     expect(w.find('.card-title').text()).toBe('Fix the login')
     expect(w.find('.card-age').text()).toBe('8 min')
@@ -61,13 +61,33 @@ it('several agents of a task: one title line, then a line per agent that opens i
     expect(w.findAll('.card-title')).toHaveLength(1)
     const lines = w.findAll('[data-testid="task-agent-line"]')
     expect(lines.map(l => l.text())).toEqual(['fix · Looks good', 'review · Reading the diff'])
-    // Each line has its own state; a non-Claude agent keeps a small icon.
+    // Each line has its own state and the small icon of the agent that runs it.
     expect(lines.map(l => l.find('.card-state').classes())).toEqual([expect.arrayContaining(['idle']), expect.arrayContaining(['working'])])
-    expect(lines[0]!.find('.avatar').exists()).toBe(false)
-    expect(lines[1]!.find('.avatar').exists()).toBe(true)
+    expect(lines[0]!.find('.avatar.claude').exists()).toBe(true)
+    expect(lines[1]!.find('.avatar.codex').exists()).toBe(true)
     // Each line opens its own agent, not the row's lead.
     await lines[0]!.trigger('click')
     expect(navigate).toHaveBeenCalledTimes(1)
     expect(navigate).toHaveBeenCalledWith(`/a/${encodeURIComponent(pane.id)}`)
+  } finally { w.unmount() }
+})
+
+it('a reviewer\'s verdict JSON previews as a short readable line', async () => {
+  const reviewer: Pane = { ...pane, agent: 'codex', status: 'done' }
+  const verdict = (findings: string) => `Checked the diff. {"findings":[${findings}]}`
+  const finding = (severity: string, title: string) => `{"id":"${title}","severity":"${severity}","title":"${title}","proof":"x"}`
+  herdrState.value = { ok: true, panes: [reviewer], workspaces: [] }
+  taskAgents.value = { t1: { task: 'CO-1', shown: 'AC-1', title: 'Fix the login', role: 'review' } }
+  const w = await mountSuspended(AgentCard, { props: { pane: { ...reviewer, preview: verdict('') }, row } })
+  const line = () => w.find('[data-testid="task-agent-line"]').text()
+  try {
+    expect(line()).toBe('review · Passed, 0 findings')
+    await w.setProps({ pane: { ...reviewer, preview: verdict([finding('minor', 'Typo'), finding('major', 'No test')].join(',')) } })
+    expect(line()).toBe('review · 2 findings: 1 major, 1 minor')
+    await w.setProps({ pane: { ...reviewer, preview: verdict(finding('critical', 'Data loss')) } })
+    expect(line()).toBe('review · 1 critical finding: Data loss')
+    // Cut at 200 characters: the first finding's title.
+    await w.setProps({ pane: { ...reviewer, preview: '{"findings":[{"id":"a","severity":"major","title":"Leaks the token","proof":"cur…' } })
+    expect(line()).toBe('review · Leaks the token')
   } finally { w.unmount() }
 })

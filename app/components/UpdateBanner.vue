@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // "wherdr X.Y.Z is available" banner: link to the release notes and the
-// update command for the installation mode.
+// update command of a source checkout.
 import type { UpdateInfo } from '#shared/updates'
 
 const props = defineProps<{ info: UpdateInfo, dismissible?: boolean }>()
@@ -25,8 +25,7 @@ async function copy() {
         <small v-if="info.missed && info.missed.length > 1">{{ tl(`Other newer releases: ${info.missed.slice(1).join(', ')}`, `Autres versions plus récentes : ${info.missed.slice(1).join(', ')}`) }}</small>
       </p>
       <code>{{ info.command }}</code>
-      <small v-if="info.mode === 'native'">{{ t('Then restart wherdr.') }}</small>
-      <small v-else-if="info.mode === 'npm'">{{ t('Stop wherdr first, then run this command.') }}</small>
+      <small>{{ t('Then restart wherdr.') }}</small>
     </div>
     <div class="update-banner-actions">
       <UButton v-if="info.url" size="sm" color="neutral" variant="ghost" icon="i-lucide-external-link" :to="info.url" target="_blank" rel="noopener noreferrer">{{ t('Release notes') }}</UButton>

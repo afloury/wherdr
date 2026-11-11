@@ -8,8 +8,13 @@ import { randomUUID } from 'node:crypto'
 import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent } from '../../shared/pm/advance'
 import { onEvent, type PlannedStep } from '../../shared/pm/steps'
 import { followedBranch } from '../../shared/pm/branchName'
-import { LABEL, agentEnv, agentLine, duplicateAgents, prefOf, programName, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, agentEnv, agentLine, duplicateAgents, prefOf, programName, quotaOut, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { accountOut } from '../../shared/pm/pace'
+import { codexError } from '../../shared/codexError'
+import { codexLimitReset } from './quotas'
+import type { Quotas } from '../../shared/types'
+import { reviewAccount, reviewCap, reviewTurn, reviewerOut, runningReviews } from '../../shared/pm/reviewQueue'
+import { policyIn, readPolicies } from './pacingPolicies'
 import { showIds } from '../../shared/pm/projectKey'
 import { PATH_SETUP, launchFailure } from './coreCreate'
 import { WRITE_SCRIPT, exec, oneStart, prepareTmp, runOn, type PmLaunchDeps } from './pmLaunch'
@@ -55,6 +60,40 @@ const latest = (runs: Run[], task: string, role: Run['role']) =>
   runs.filter(r => r.task === task && r.role === role).sort((a, b) => b.startedAt - a.startedAt)[0]
 const clearSignal = (deps: PmLaunchDeps, terminal: string) =>
   deps.call('terminal.label', { terminal, labels: { [LABEL.report]: '' } }, 8000).catch(() => {})
+// Reviewer accounts a Codex reviewer's screen showed out ("You've hit your usage
+// limit"), until the reset its message gives: the quota reading has no numbers
+// then (rate_limits primary and secondary null) and cannot tell.
+const screenOut = new Map<string, number>()
+export const SCREEN_OUT = screenOut
+
+// A Codex screen ending on its usage-limit message: until when the account is out (an hour when it gives no time).
+export function codexLimitHit(screen: string, now: number): number | undefined {
+  const e = codexError(screen)
+  return e && /usage limit/i.test(e) ? codexLimitReset(e, now) ?? now + 3_600_000 : undefined
+}
+
+// Why an account is out by what its reviewer's screen said, until its reset.
+function outOnScreen(q: Quotas | null, program: string, machine: string, now: number) {
+  const until = screenOut.get(reviewAccount(q, program, machine).key)
+  return until && until > now ? quotaOut(program, until) : undefined
+}
+
+// The live Codex reviewers holding their review whose screen shows the usage limit: their accounts marked out.
+async function readLimits(deps: PmLaunchDeps, alive: (r?: Run) => LabelledTerminal | undefined, now: number) {
+  const hit = new Set<string>(), tasks = await deps.store.tasks()
+  const held = (await deps.store.runs()).filter(r => r.role === 'reviewer' && r.program === 'codex' && alive(r) && tasks.some(t => t.run === r.id && t.step && !t.step.done && t.step.told === t.step.since))
+  if (!held.length) return hit
+  const q = await readAccounts(deps)
+  for (const r of held) {
+    const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: r.terminal, lines: 40 }, 3000).catch(() => null))?.text || '')
+    const until = codexLimitHit(screen, now)
+    if (!until) continue
+    screenOut.set(reviewAccount(q, r.program, r.machine).key, until)
+    hit.add(r.id)
+  }
+  return hit
+}
+
 const waitFor = async (deps: PmLaunchDeps, id: string, reason: string) =>
   deps.store.logTask({ ...(await deps.store.task(id))!, state: 'waiting', waiting: reason, waitKind: undefined }, 'engine', reason)
 
@@ -72,7 +111,8 @@ export async function advanceTick(deps: PmLaunchDeps, now = Date.now()) {
     // Cleared once handled; a failure leaves it for the next tick.
     if (await signal(deps, run, now).then(() => true, () => false)) await clearSignal(deps, run.terminal!)
   }
-  for (const task of await store.tasks()) await advance(deps, task.id, alive, why).catch(() => {})
+  const limited = await readLimits(deps, alive, now).catch(() => new Set<string>())
+  for (const task of await store.tasks()) await advance(deps, task.id, alive, why, limited).catch(() => {})
 }
 
 // A run said it is done: the engine's event for the current step.
@@ -138,7 +178,7 @@ async function endDuplicates(deps: PmLaunchDeps, terminals: LabelledTerminal[]) 
 }
 
 // The task's current step, carried on: its action run, its holder told, or its agents stopped.
-async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => LabelledTerminal | undefined, why = new Map<string, Incident>()) {
+async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => LabelledTerminal | undefined, why = new Map<string, Incident>(), limited = new Set<string>()) {
   const c = await context(deps, id)
   if (!c) return
   const { task, plan } = c, s = task.step!
@@ -156,14 +196,17 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   if (task.state === 'waiting' && !task.waitKind) return
   if (runsNow(plan[s.at], s)) return void await stepAction(deps, id, 'engine')
   const busy = (e: Error) => { if (!(e instanceof HerdrError && e.code === 'busy')) throw e }
-  // The review agent hit its account limit during the review: with a fallback
-  // set, the fallback takes the review over from the start, at once.
+  // The review agent hit its account limit during the review (it ended on it, or
+  // sits idle on Codex's usage-limit message): with a fallback set, the fallback
+  // takes the review over from the start, at once.
   const rv = latest(runs, id, 'reviewer'), main = reviewerPlan(c.t, task)
-  if (plan[s.at]?.holder === 'reviewer' && s.told === s.since && rv && rv.state !== 'ended' && !alive(rv) && why.get(rv.id)?.cause === 'limit'
+  const hit = rv && (limited.has(rv.id) || (!alive(rv) && why.get(rv.id)?.cause === 'limit'))
+  if (plan[s.at]?.holder === 'reviewer' && s.told === s.since && rv && rv.state !== 'ended' && hit
     && prefOf(c.t, task, 'reviewFallbackAgent') && 'program' in main && main.program === rv.program && main.model === rv.model) {
+    if (alive(rv)) await killTerminal(deps, rv.terminal!).catch(() => {})
     await deps.store.saveRun({ ...rv, state: 'ended', endedBy: 'lost' })
-    const again = dueText(plan, { ...s, told: undefined })!
-    const out = accountOut(await readAccounts(deps), rv.program, rv.machine, Date.now()) ?? `${programName(rv.program)} hit its account limit during the review`
+    const again = dueText(plan, { ...s, told: undefined })!, q = await readAccounts(deps), now = Date.now()
+    const out = outOnScreen(q, rv.program, rv.machine, now) ?? accountOut(q, rv.program, rv.machine, now) ?? `${programName(rv.program)} hit its account limit during the review`
     return oneStart(id, 'reviewer', () => reviewer(deps, c, again.text, false, out)).catch(busy)
   }
   const due = dueText(plan, s)
@@ -195,12 +238,23 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
 async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: string, live: Run | undefined | false, out?: string) {
   const { store } = deps
   const worker = latest(await store.runs(), task.id, 'worker')
-  const main = reviewerPlan(t, task)
-  // A new reviewer, a fallback set: the review agent's account read first.
-  if (!out && !live && worker && 'program' in main && prefOf(t, task, 'reviewFallbackAgent')) out = accountOut(await readAccounts(deps), main.program, worker.machine, Date.now())
-  // A live fallback reviewer: once the review agent has quota again, it ends and the review agent takes this round.
-  if (live && worker && 'program' in main && (live.program !== main.program || live.model !== main.model) && prefOf(t, task, 'reviewFallbackAgent')
-    && !accountOut(await readAccounts(deps), main.program, worker.machine, Date.now())) {
+  const main = reviewerPlan(t, task), now = Date.now(), q = await readAccounts(deps)
+  let handover = !!out
+  const fallback = !!prefOf(t, task, 'reviewFallbackAgent'), policies = fallback ? await readPolicies() : {}
+  // The review agent's account at its limit, near it, or held by its pace: why, for the fallback.
+  const busy = () => worker && 'program' in main ? outOnScreen(q, main.program, worker.machine, now) ?? reviewerOut(q, main.program, worker.machine, k => policyIn(policies, k), now) : undefined
+  const isMain = (r: Run) => 'program' in main && r.program === main.program && r.model === main.model
+  // A new reviewer or round, a fallback set: the review agent's account read first.
+  if (!out && fallback && (!live || isMain(live))) out = busy()
+  // The live review agent's account is out: it ends, the fallback takes this round.
+  if (out && live && isMain(live)) {
+    await killTerminal(deps, live.terminal!).catch(() => {})
+    await store.saveRun({ ...live, state: 'ended', endedBy: 'stopped' })
+    live = false
+    handover = true
+  }
+  // A live fallback reviewer: once the review agent has room again, it ends and the review agent takes this round.
+  if (live && worker && 'program' in main && !isMain(live) && fallback && !busy()) {
     await killTerminal(deps, live.terminal!).catch(() => {})
     await store.saveRun({ ...live, state: 'ended', endedBy: 'stopped' })
     task = await store.logTask(task, 'engine', `review: ${programName(main.program)} has quota again, the fallback reviewer (${live.program} ${live.model}) ends`)
@@ -208,6 +262,19 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
   }
   const plan = out ? reviewerPlan(t, task, out) : main
   if (!worker || 'reason' in plan) return void (task.state !== 'waiting' && await waitFor(deps, task.id, worker ? (plan as { reason: string }).reason : 'No worktree: the task never started'))
+  // A new review (not a hand-over) waits its turn in its account's queue, oldest first.
+  if (!live && !handover) {
+    const acc = reviewAccount(q, plan.program, worker.machine), tasks = await store.tasks()
+    const running = runningReviews(tasks, await store.runs(), r => reviewAccount(q, r.program, r.machine).key).get(acc.key) ?? 0
+    const turn = reviewTurn(task, acc.key, tasks, running, reviewCap(acc.quota, now))
+    if ('ahead' in turn) {
+      const held = `Review waits: ${turn.ahead} ahead on ${acc.name}`
+      if (task.reviewWait !== acc.key) await store.logTask({ ...task, held, reviewWait: acc.key }, 'engine', `review: waits, ${turn.ahead} ahead on ${acc.name}`)
+      else if (task.held !== held) await store.saveTask({ ...task, held })
+      return
+    }
+  }
+  task = { ...task, held: undefined, reviewWait: undefined }
   const files = runFiles(worker.instructions)
   if ((await exec(deps, on, `rm -f "$2" && ${WRITE_SCRIPT}`, [files.review, files.verdict], showIds([p], reviewFile(task, worker, text, files.verdict, isPublic(p))))).code !== 0)
     return void await waitFor(deps, task.id, 'Could not write the review file')
