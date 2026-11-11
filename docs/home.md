@@ -54,8 +54,9 @@ Alfred, wherdr's assistant, is always the first row of the agent list, even
 with no agent and projects off. Its row is a card of its own: its emblem (the
 wherdr ram in a bow tie, also in its conversation's header), *Your assistant ·
 all projects*, and its state (*Not started*, *Ready*, *Working*…) with its
-agent. A tap on it opens its conversation. Like other rows, it looks selected (a
-mauve edge and left bar) only while its conversation is the one open. It helps you get started and, with projects
+agent. A tap on it opens its conversation. Its card keeps a faint mauve
+wash; like other rows, it looks selected (a mauve edge and left bar) only while its
+conversation is the one open. It helps you get started and, with projects
 on, coordinates all of them when you ask it: it has no autopilot, each
 project's coordinator runs its own. The first *Start* asks which agent (Claude,
 Codex, OMP…, those offered in Settings › Agents) runs it; the choice is kept, and wherdr

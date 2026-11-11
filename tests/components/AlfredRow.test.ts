@@ -1,7 +1,7 @@
 // WHR-403: Alfred's row at the top of the agent list: not started (the first
 // tap asks for its agent), running (its agent shown), renamed (identity.md's name).
 // WHR-119: its own card (emblem, what it is, its state square).
-// WHR-265: the card looks selected (mauve edge, wash) only while its conversation is open.
+// WHR-265: the card has the mauve edge only while its conversation is open; its wash always.
 import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
@@ -86,13 +86,13 @@ it('running and renamed: its name, its current agent, one tap opens the conversa
   const open = w!.find('[data-testid="alfred-open"]')
   expect(open.attributes('aria-current')).toBeUndefined()
   // Its card's look (scoped CSS loaded, see vitest.config.ts): the neutral edge of
-  // other cards unless its conversation is open, then the mauve edge and wash.
+  // other cards unless its conversation is open, then the mauve edge; its wash always.
   document.documentElement.style.cssText = '--line:#111111;--surface:#222222;--mauve:#cc88ff'
   const look = () => {
     const s = getComputedStyle(w!.find('.alfred-card').element)
     return { edge: s.borderTopColor, wash: s.backgroundImage.includes('gradient') }
   }
-  const plain = { edge: '#111111', wash: false }
+  const plain = { edge: '#111111', wash: true }
   expect(look()).toEqual(plain)
   curPane.value = 'w:p1'
   await nextTick()
