@@ -282,6 +282,7 @@ export function leaks(g: ResolvedGuards, remoteBranches: string[], allowed: stri
 // later: a pipeline still running, polled again. report: a watch's output, its
 // proof. detail: what a failed watch printed, for the log and the coordinator.
 // catchUp: the PR's base, when the merge is refused because the PR conflicts with or is behind it.
-export interface ActionResult { ok: boolean, later?: boolean, report?: string, detail?: string, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, unapproved?: true, link?: string, commit?: string, alert?: string, note?: string }
+// base: the branch a merge went to (the PR's base on its host).
+export interface ActionResult { ok: boolean, later?: boolean, report?: string, detail?: string, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, unapproved?: true, link?: string, commit?: string, alert?: string, note?: string, base?: string }
 export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number, by?: MergeBy, resumes?: number }
 export const receiptId = (task: string, step: string, attempt: number) => `${task}.${attempt}.${encodeURIComponent(step)}`

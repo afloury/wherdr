@@ -12,7 +12,7 @@ import { MAIN } from '../../shared/pm/coordinator'
 import { inMergeQueue, mergeOrder, ordinal, queueOut } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
 import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
-import { hasPrLink, LABEL, taskPlan, trustKeys, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, linkedPr, prLink, taskPlan, trustKeys, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP } from './coreCreate'
 import { HerdrError } from './herdr'
 import { CoreError } from './core'
@@ -364,12 +364,14 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       // Red, neither re-run nor sent back yet: its log says whether the code failed or the infrastructure.
       if (ci?.red && !facts.agentBusy && !task.mech?.[`rerun:${ci.head}`] && !task.mech?.[`red:${ci.head}`])
         facts.infra = infraLog((await sh(SCRIPT.failedLog, [run.worktree, ci.head]).catch(() => null))?.out ?? '')
-    } else if (hasPrLink(task)) {
-      // A PR its worker opened (no PR step): read for its base only, the branch line's.
-      const r = await sh(SCRIPT.prInfo, [run.worktree, run.branch]).catch(() => null)
-      let pr: PrInfo | undefined | null = null
-      try { if (r?.code === 0) pr = (JSON.parse(r.out.split('\n').at(-1) || '[]') as PrInfo[])[0] } catch { /* read again next tick */ }
-      if (pr !== null) facts.task = task = await keepPrBase(store, task, pr)
+    } else if (prLink(task)) {
+      // A PR its worker opened (no PR step): read for its base only, the branch
+      // line's; the one linked, not another PR of the branch. Not found: left as it was.
+      const link = prLink(task), r = await sh(SCRIPT.prInfo, [run.worktree, run.branch]).catch(() => null)
+      let prs: PrInfo[] = []
+      try { if (r?.code === 0) prs = JSON.parse(r.out.split('\n').at(-1) || '[]') as PrInfo[] } catch { /* read again next tick */ }
+      const pr = linkedPr(prs, link)
+      if (pr) facts.task = task = await keepPrBase(store, task, pr)
     }
     // A stall: the coordinator's wake, one nudge, then the user's (pmStall.ts).
     facts.task = task = await noteStall(deps, task, plan, runs, run.worktree, sh, now).catch(() => task)

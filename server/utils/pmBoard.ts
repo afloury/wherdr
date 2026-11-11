@@ -154,6 +154,12 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
   // An approved merge the engine carries out stays the user's: their guard applies.
   const approved = !!state.approved && waitsToMerge(step)
   const act = r.effects.find(e => e.kind === 'action')
+  // The base a merge went to, kept on the task: a done task is no longer read by the mechanic.
+  let mergedInto: string | undefined
+  const fresh = async () => {
+    const t = await store.task(task.id) ?? task
+    return mergedInto && t.prBase?.base !== mergedInto ? { ...t, prBase: { base: mergedInto } } : t
+  }
   if (act?.kind === 'action') {
     await store.saveTask({ ...task, step: state }) // checking, before the action runs
     const run = await workerRun(store, task.id)
@@ -168,13 +174,14 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const catchUp = result.catchUp && result.commit ? { catchUp: { base: result.catchUp, head: result.commit } } : {}
     const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.later ? { later: true } : {}), ...(result.detail ? { detail: result.detail } : {}), ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...(result.unapproved ? { unapproved: true as const } : {}), ...catchUp, evidence }, Date.now())
     state = back.state
+    mergedInto = result.ok ? result.base : undefined
     const log = back.effects.find(e => e.kind === 'log')
-    if (log?.kind === 'log') return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', log.text)
+    if (log?.kind === 'log') return store.logTask({ ...(await fresh()), step: state }, 'engine', log.text)
     const auto = result.ok && approved && by === 'engine' ? 'merged by itself, as the user approved' : undefined
     const said = [auto, result.note, result.alert].filter(Boolean).join('. ')
-    if (said) return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', `${act.step}: ${said}`)
+    if (said) return store.logTask({ ...(await fresh()), step: state }, 'engine', `${act.step}: ${said}`)
   }
-  return store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
+  return store.saveTask({ ...(await fresh()), step: state })
 }
 
 const workerRun = async (store: PmStore, id: string) =>

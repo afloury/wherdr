@@ -76,9 +76,13 @@ export interface Task {
 // A task as the browser gets it: the agent's screenshot key stays on the server.
 export const publicTask = ({ shotToken: _, ...t }: Task): Task => t
 
-// A task's PR, when a step or its worker linked one (the PR step's proof, a worker's report).
-export const hasPrLink = (t: Pick<Task, 'links' | 'step'>) =>
-  [...(t.links ?? []).map(l => l.url), ...Object.values(t.step?.proofs ?? {}).map(p => p?.link ?? '')].some(u => /\/pull\/\d+/.test(u))
+// A PR's address without what follows its number (/files, a slash, an anchor), to compare two.
+export const prUrl = (u: string) => /^(.*\/pull\/\d+)(?:[/?#].*)?$/.exec(u)?.[1]
+// Of a branch's PRs, the one the task links (another may be open on the same branch).
+export const linkedPr = <P extends { url: string }>(prs: P[], link: string | undefined) => (link ? prs.find(x => prUrl(x.url) === link) : undefined)
+// A task's PR, when a step or its worker linked one (a worker's report, the PR step's proof): the last linked.
+export const prLink = (t: Pick<Task, 'links' | 'step'>) =>
+  [...(t.links ?? []).map(l => l.url), ...Object.values(t.step?.proofs ?? {}).map(p => p?.link ?? '')].map(prUrl).filter(Boolean).at(-1)
 
 export interface TaskLogEntry { at: number, by: string, text: string }
 export type SpecNote = TaskLogEntry

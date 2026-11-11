@@ -97,7 +97,7 @@ describe('runAction', () => {
     const info = (state: string, base = 'dev') => ({ code: 0, out: `abc\n${JSON.stringify([{ url: 'https://pr/1', baseRefName: base, headRefOid: 'abc', statusCheckRollup: [{ status: state, conclusion: 'SUCCESS' }] }])}` })
     const f = fakeDeps([info('QUEUED'), { code: 0, out: 'same' }, info('COMPLETED'), { code: 0, out: 'same' }, { code: 0, out: 'https://pr/1' }, { code: 0, out: 'origin/dev\norigin/main' }])
     const r = await runAction(f.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))
-    expect(r).toEqual({ ok: true, link: 'https://pr/1', commit: 'abc', alert: 'A-1\'s commit abc is on main without a step of yours' })
+    expect(r).toEqual({ ok: true, link: 'https://pr/1', base: 'dev', commit: 'abc', alert: 'A-1\'s commit abc is on main without a step of yours' })
     expect(f.sleeps).toEqual([60_000])
     expect(f.calls[4]).toEqual(['/w', 'https://pr/1', 'abc', '']) // no method: the first the repo allows
     const p = fakeDeps([info('COMPLETED', 'main')])
@@ -139,7 +139,7 @@ describe('a merge interrupted by a restart', () => {
 
   it('ends merged when GitHub merged it meanwhile', async () => {
     const f = cut([pr({ merged: true }), { code: 0, out: 'origin/dev' }])
-    expect(await f.go()).toEqual({ ok: true, link: 'https://pr/1', commit: 'abc', note: 'merged before the restart' })
+    expect(await f.go()).toEqual({ ok: true, link: 'https://pr/1', base: 'dev', commit: 'abc', note: 'merged before the restart' })
     expect(f.receipts.get('A-1.1.merge')?.state).toBe('done')
   })
 
@@ -151,7 +151,7 @@ describe('a merge interrupted by a restart', () => {
   it('merges an open PR again, with the gesture of whoever started it', async () => {
     // Started by the user into protected main: resumed by the engine, still theirs.
     const f = cut([pr({ baseRefName: 'main' }), { code: 0, out: 'same' }, { code: 0, out: 'https://pr/1' }, { code: 0, out: 'origin/main' }], { by: 'user' })
-    expect(await f.go()).toEqual({ ok: true, link: 'https://pr/1', commit: 'abc' })
+    expect(await f.go()).toEqual({ ok: true, link: 'https://pr/1', base: 'main', commit: 'abc' })
     expect(f.calls[2]).toEqual(['/w', 'https://pr/1', 'abc', ''])
   })
 
@@ -422,19 +422,19 @@ esac
 
   it('counts as done at the merge step', async () => {
     const s = setup('merged-merge'), head = git(s.repo, 'rev-parse', 'HEAD')
-    expect(await s.go('merge', { kind: 'github.merge' })).toEqual({ ok: true, link: 'https://pr/1', commit: head, note: 'already merged on GitHub' })
+    expect(await s.go('merge', { kind: 'github.merge' })).toEqual({ ok: true, link: 'https://pr/1', base: 'dev', commit: head, note: 'already merged on GitHub' })
     // Merged by hand at a head without the task's commit (a later local commit):
     // the step ends merged, recording what GitHub merged, and says what it left out.
     const at = 'f'.repeat(40)
     fs.writeFileSync(s.merged, `${at} https://pr/1\n`)
-    expect(await s.go('merge', { kind: 'github.merge' }, 2)).toEqual({ ok: true, link: 'https://pr/1', commit: at, note: `already merged on GitHub at fffffff, without the task's commit ${head.slice(0, 7)}`,
+    expect(await s.go('merge', { kind: 'github.merge' }, 2)).toEqual({ ok: true, link: 'https://pr/1', base: 'dev', commit: at, note: `already merged on GitHub at fffffff, without the task's commit ${head.slice(0, 7)}`,
       alert: `A-1's commit ${head.slice(0, 7)} was not merged: its PR was merged on GitHub at fffffff without it. Its later commits need a new branch` })
     // Merged into protected main outside your gesture: recorded, with the alert.
     fs.writeFileSync(s.merged, `${head} https://pr/1 main\n`)
     git(s.repo, 'push', '-q', 'origin', 'HEAD:refs/heads/main')
     expect(await s.go('merge', { kind: 'github.merge' }, 3)).toMatchObject({ ok: true, alert: 'A-1\'s commit ' + head.slice(0, 7) + ' is on main without a step of yours' })
     // Your gesture: main is yours to merge, no alert.
-    expect(await s.go('merge', { kind: 'github.merge' }, 4, 'user')).toEqual({ ok: true, link: 'https://pr/1', commit: head, note: 'already merged on GitHub' })
+    expect(await s.go('merge', { kind: 'github.merge' }, 4, 'user')).toEqual({ ok: true, link: 'https://pr/1', base: 'main', commit: head, note: 'already merged on GitHub' })
     // The PR's head pushed from elsewhere, not fetched here yet: found all the same.
     const other = path.join(tmp, 'merged-merge', 'other')
     git(s.repo, 'push', '-q', 'origin', 'HEAD:refs/heads/task/A-1'); git(tmp, 'clone', '-q', '-b', 'task/A-1', path.join(tmp, 'merged-merge', 'origin.git'), other)
@@ -492,7 +492,7 @@ esac
     expect((await s.sh(SCRIPT.catchUp, [s.repo, 'dev', 'task/A-1'])).code).toBe(0)
     const caught = s.head()
     expect(await s.merge(1, reviewed)).toEqual({ ok: false, error: `merge: new commits since the review (${reviewed.slice(0, 7)}..${caught.slice(0, 7)})`, review: { since: reviewed, head: caught }, commit: caught })
-    expect(await s.merge(2, caught)).toEqual({ ok: true, link: 'https://pr/1', commit: caught })
+    expect(await s.merge(2, caught)).toEqual({ ok: true, link: 'https://pr/1', base: 'dev', commit: caught })
   })
 
   it('after a CI fix committed but not pushed, has it reviewed, pushes it, then merges', async () => {
@@ -500,7 +500,7 @@ esac
     git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'fix CI')
     const fix = s.head()
     expect(await s.merge(1, reviewed)).toMatchObject({ ok: false, review: { since: reviewed, head: fix }, commit: fix })
-    expect(await s.merge(2, fix)).toEqual({ ok: true, link: 'https://pr/1', commit: fix })
+    expect(await s.merge(2, fix)).toEqual({ ok: true, link: 'https://pr/1', base: 'dev', commit: fix })
     expect(git(s.repo, '--git-dir', s.origin, 'rev-parse', 'task/A-1')).toBe(fix)
   })
 
@@ -509,7 +509,7 @@ esac
     s.lagging(3) // the read before the push, then two stale reads after it
     git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'fix CI')
     const fix = s.head()
-    expect(await s.merge(1, fix)).toEqual({ ok: true, link: 'https://pr/1', commit: fix })
+    expect(await s.merge(1, fix)).toEqual({ ok: true, link: 'https://pr/1', base: 'dev', commit: fix })
     expect(s.f.sleeps).toEqual([2_000, 4_000])
     s.lagging(99)
     git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'again')
