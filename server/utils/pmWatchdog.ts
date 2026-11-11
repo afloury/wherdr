@@ -43,7 +43,7 @@ export async function watchAgents(deps: PmLaunchDeps, wake: (task: Task, why: st
     if (!watch) {
       watches.delete(task.id)
       // Its agent is back (or not needed): the watchdog's status goes.
-      if (task.held && task.state === 'working') await store.saveTask({ ...task, held: undefined })
+      if (task.held && task.state === 'working' && !task.reviewWait) await store.saveTask({ ...task, held: undefined })
       continue
     }
     watches.set(task.id, watch)
