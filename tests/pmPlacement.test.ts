@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { machineLine, placeTask, type Candidate, type Strategy } from '../shared/pm/placement'
+import { machineLine, machineNow, placeTask, type Candidate, type Strategy } from '../shared/pm/placement'
 import { WEIGHT_DEFAULTS, weightsLine, type Weight } from '../shared/pm/weight'
 import type { MemorySettings } from '../shared/pm/memory'
 
@@ -156,6 +156,10 @@ describe('the coordinator\'s view of machines', () => {
     expect(mac('normal')).toBe('machine-m: pressure normal, ≈5.0 GB available of 18.0 GB · 8 cores, load 0.0 · 1 of 12 agents · running 1 standard · fits standard')
     expect(mac('warn')).toMatch(/ · fits light$/)
     expect(mac('critical')).toMatch(/ · takes nothing now: memory pressure critical$/)
+    // Learned estimates count, as placement counts them: a 6 GB heavy task needs 8 GB free with the reserve.
+    const busy = { home: false, ...machine('machine-a', 16, 7, 8, ['light']), running: [{ ...WEIGHT_DEFAULTS.light, weight: 'light' as const }] }
+    expect(machineNow(busy)).toMatchObject({ takes: 'heavy' })
+    expect(machineNow(busy, { ...WEIGHT_DEFAULTS, heavy: { mb: 6 * GB, cores: 2 } })).toMatchObject({ takes: 'standard', why: 'heavy: 7.0 GB free, needs 8.0 GB with its reserve' })
     expect(weightsLine()).toBe('light ≈ 0.7 GB, 0.25 core (default) · standard ≈ 1.8 GB, 1 core (default) · heavy ≈ 3.9 GB, 2 cores (default)')
   })
 })

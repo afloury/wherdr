@@ -202,6 +202,18 @@ export const prLink = (c: Pick<Card, 'links'>) => c.links.find(l => isPrUrl(l.ur
 // A PR's link reads 'PR #12'; any other keeps its label.
 export const linkLabel = (l: { label: string, url: string }) => { const n = prNumber(l.url); return n ? `PR #${n}` : l.label }
 
+// A commit's page on the Git host, read from a PR link of the task (GitHub,
+// GitLab, Azure DevOps /commit/<sha>, Bitbucket /commits/<sha>); none without one.
+const COMMIT_PATH: Record<string, string> = { 'pull': 'commit', 'pull-requests': 'commits', 'merge_requests': 'commit', 'pullrequest': 'commit' }
+export function commitUrl(sha: string, links: { url: string }[]): string | undefined {
+  if (!/^[0-9a-f]{7,64}$/i.test(sha)) return undefined
+  for (const l of links) {
+    const m = /^(https?:\/\/.+?)\/(pull|pull-requests|merge_requests|pullrequest)\/\d+/i.exec(l.url)
+    if (m) return `${m[1]}/${COMMIT_PATH[m[2]!.toLowerCase()]}/${sha}`
+  }
+  return undefined
+}
+
 // The tags of the cards, once each, to filter the board by.
 export const boardTags = (cards: Pick<Card, 'tags'>[]) => [...new Set(cards.flatMap(c => c.tags))].sort()
 

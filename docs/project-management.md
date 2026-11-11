@@ -151,6 +151,21 @@ its folder, branches and task worktrees stay on the machine.
   new tasks no longer start there, tasks already there stay. Its switch off pauses it
   for the project instead, its clone kept ([Pause a machine for a project](machines.md#pause-a-machine-for-a-project)). Alfred does the
   same with `wherdr alfred project machine add|remove` ([Alfred](alfred.md)).
+  Each machine's card shows, live (read again every 10 s), what the
+  coordinator's `autopilot show` sees: *Online*, *Offline* or *Paused*, its
+  available hours, its **memory** as a bar (its agents' estimates, the rest of
+  what is used, free, the reserve hatched at the end), cores and load (on macOS
+  the memory pressure), its agents at work with their task and weight, and
+  **what it takes now**: the heaviest weight that fits (*Takes standard now ·
+  heavy: …* says why not heavier), or *Takes nothing now* and why (*full: 4
+  agents (cap 4)*, *3.1 GB free, needs 3.4 GB with its reserve*, *paused for
+  this project*, *offline*). Under the placement picker, a small picture and one
+  line explain the strategy, and *Next* names the next to-do task and the
+  machine it would go to, by the pace of that task's own account on each machine,
+  or why it waits (no room anywhere, Keep the board busy off, a limit, the task it
+  is chained after, held for room, another task's files). What a machine takes is
+  weighed with the project's learned estimates, as placement weighs it. The board's header opens this block (its server icon: the
+  picked project's sheet, or Settings › Projects with several projects).
   **Placement** chooses how new tasks spread over these machines: *Heavy to the
   strongest* (the default: light and standard work at home when it fits, heavy
   work on the machine with most room), *Balance the load* (each task on the
@@ -293,15 +308,34 @@ The fallback follows the reviewer's rules; *Save* refuses one that breaks them,
 or one of the two prefs without the other.
 
 Before it starts a reviewer, wherdr reads the review agent's account (the
-reading of the home screen and pacing): at its limit and not yet reset, the
+reading of the home screen and pacing): at its limit and not yet reset, its
+5-hour window at 90 % or more, or held by its [pace](quotas.md#pace), the
 fallback reviews instead. A reviewer that hits its limit during a review (an
 *account limit* [incident](#why-agents-are-gone)) is replaced at once by the
-fallback, which reviews from the start. Each switch is in the task's log
+fallback, which reviews from the start. So is a Codex reviewer that stays open
+on its *You've hit your usage limit* message, even when the quota reading shows
+no numbers: its account counts as out until the reset time the message gives,
+and the reviews waiting on it, or a new round, go to the fallback until then. Each switch is in the task's log
 (*review: Codex out of quota until 14:52, reviewed by claude claude-opus-5-5*)
 and on the review step of the task sheet's Plan. The next review uses the
 review agent again once its quota is back. Leave both out (as in the example
 templates) for no fallback: nothing changes, the review waits for the review
 agent.
+
+#### Review queue and re-reviews
+
+One reviewer account runs a few reviews at once: 3 while its 5-hour window is
+under half used, else 2. The other reviews wait their turn, oldest first, and
+their card says so (*Review waits: 2 ahead on Codex*); started reviews finish
+before new ones start. A hand-over to the fallback after a mid-review limit
+does not wait. `autopilot show` lists each reviewer account with reviews
+running or waiting: its 5-hour and weekly use, and its queue.
+
+A review round after a send-back reviews only the commits since the last round
+(with that round's findings), not the whole change again. Before a merge, new
+commits since the review go back to a short re-review of those commits only;
+commits that only merge the base, the task's own change unchanged, are not
+reviewed again (the same rule as for your approval).
 
 ### Guards
 
@@ -695,7 +729,9 @@ waited for you 1 h · 2 review rounds · 1 CI fix*), and its buttons (*Start*,
 *Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
 with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags, links and the PR),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
-and screenshots), **History** and **Log**, all in the sheet's one scroll. A refused merge says why under its button.
+and screenshots: a report in Markdown, folded with *Show more*, shown once when
+another proof repeats it; a commit as a short sha linked to the commit on the
+Git host when the task has a PR; a link labelled, *PR #12*), **History** and **Log**, all in the sheet's one scroll. A refused merge says why under its button.
 
 **History** reads the task as a conversation, oldest first: the worker's *Done*
 (its closing report on its last one), the reviewer's *Sent back* (the findings,
@@ -919,6 +955,13 @@ working again. The step's time limit and the stall's 30 minutes start again
 from then, so the task comes back if its agent stops again. The Log says
 *back to work* and who sent it back. What only you can do (a merge, an answer,
 a permission, a decision) stays until you do it.
+
+A step's time limit counts only the time its agent could work. While the
+machine it runs on is offline or unreachable, while the engine waits to resume
+it after an incident, or while the task waits for room, a machine or the pace,
+its clock stops: such a task never shows *over 3h*, it shows what it waits
+for, and the limit goes on from where it stopped once the agent can work
+again. The time in step shown on the card stays the real time.
 
 ### Why agents are gone
 
