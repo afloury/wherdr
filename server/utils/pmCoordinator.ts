@@ -608,6 +608,20 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   return { p, local: !!m.local, on, folder, first: false, v2: false, none: false }
 }
 
+// Lines added to the end of a project coordinator's memory.md, on the
+// project's machine (created first when missing, with a line break before them).
+const APPEND_SCRIPT = 'mkdir -p "$(dirname "$1")" && { [ -e "$1" ] || printf \'%s\' "$2" > "$1"; } && { [ -z "$(tail -c 1 "$1")" ] || echo >> "$1"; } && cat >> "$1"'
+export async function appendCoordinatorMemory(deps: Deps, key: string, lines: string[]) {
+  const p = (await deps.store.projects()).find(x => x.key === key)
+  if (!p) throw new HerdrError('not_found', 'Unknown project')
+  const { on } = machineOn(deps, p.machine)
+  const home = await homeOf(deps, on)
+  if (!home) throw new HerdrError('core', 'Home folder not found on the project\'s machine')
+  const file = `${home}/.wherdr/pm/coordinators/${key}/memory.md`
+  if ((await exec(deps, on, APPEND_SCRIPT, [file, OWN_ROLE_FILES['memory.md']!], `${lines.join('\n')}\n`)).code !== 0) throw new HerdrError('core', 'Could not write memory.md')
+  return { file, added: lines.length }
+}
+
 // wherdr's docs on its own machine: the running build's, so an update brings new ones.
 const docsDir = () => findDocsDir()
 
@@ -728,7 +742,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   // Its folder is wherdr's own, new at its first start: its trust dialog is answered here.
   void answerOwnTrust(deps, address, c.folder).catch(() => {})
   // Typed once the program is ready (in the background: it may wait on a dialog).
-  if (!asArg) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
+  if (!asArg) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' || r === 'installing' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
   // version: what this session knows (takeUpdateNotice tells it of an update).
   const { told: _told, ...rec } = (await deps.store.coordinator(key))!

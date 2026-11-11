@@ -68,6 +68,6 @@ describe('crash recovery: the engine resumes the work by itself', () => {
   it('a Claude worker keeps its conversation id, and takes it up again', () => {
     expect(agentLine('claude', 'opus', '/h/i.md', { id: 's1' })).toBe(`exec claude '--model' 'opus' '--session-id' 's1' 'Read /h/i.md and follow it.'`)
     expect(agentLine('claude', 'opus', '/h/i.md', { id: 's1', resume: 'Go on.' })).toBe(`exec claude '--model' 'opus' '--resume' 's1' 'Go on.'`)
-    expect(agentLine('codex', 'gpt-5', '/h/i.md', { id: 's1' })).toBe(`exec codex '--model' 'gpt-5' 'Read /h/i.md and follow it.'`)
+    expect(agentLine('codex', 'gpt-5', '/h/i.md', { id: 's1' })).toBe(`exec codex '-c' 'check_for_update_on_startup=false' '--model' 'gpt-5' 'Read /h/i.md and follow it.'`)
   })
 })

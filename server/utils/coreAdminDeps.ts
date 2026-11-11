@@ -1,6 +1,6 @@
 import { coreInputDeps } from './coreInput'
 import { takingTurns } from './terminalTurns'
-import { getState, poll, transcripts } from './state'
+import { getState, heldMessages, poll, transcripts } from './state'
 import { staleCoreDocs } from './readCoreState'
 import { recentDirs, rememberDir } from './actions'
 import type { CoreAdminDeps } from './coreCreate'
@@ -20,5 +20,7 @@ export function coreAdminDeps(): CoreAdminDeps {
     recent: m => recentDirs({ local: m.local, key: m.key, profileId: null }),
     remember: (dir, m) => rememberDir(dir, { local: m.local, key: m.key, profileId: null }),
     chat: async pane => (await transcripts.chat(pane)).items ?? null,
+    hold: (pane, text, byHolder) => heldMessages.hold(pane, text, undefined, byHolder),
+    handOver: (address, id, typed) => heldMessages.handOver(address, id, typed),
   }
 }
