@@ -1,12 +1,32 @@
+// @vitest-environment happy-dom
 // WHR-202: a `wherdr` block's `task <ID>` lines, and the row a task shows as.
 import { describe, expect, it } from 'vitest'
-import { parseWherdrBlock } from '../app/utils/markdown'
+import { marked } from 'marked'
+import { md, parseWherdrBlock } from '../app/utils/markdown'
 import { taskRow, type Card } from '../shared/pm/board'
 
 describe('wherdr blocks', () => {
   it('reads task lines, and leaves any block with a line it does not know as code', () => {
     expect(parseWherdrBlock('task WHR-12\n\n  task ACME-API-4  \n')).toEqual([{ kind: 'task', id: 'WHR-12' }, { kind: 'task', id: 'ACME-API-4' }])
     for (const text of ['', 'task', 'task WHR-12 extra', 'task WHR-12\nmerge WHR-12', 'task <b>-1']) expect(parseWherdrBlock(text)).toBeNull()
+  })
+
+  // WHR-283: one option is a one-click confirm; none or more than four stay invalid.
+  it('reads choices of 1 to 4 options, and nothing else', () => {
+    expect(parseWherdrBlock('choices "OK, fix the test"')).toEqual([{ kind: 'choices', options: ['OK, fix the test'] }])
+    expect(parseWherdrBlock('choices "A" | "B" | "C" | "D"')?.[0]).toMatchObject({ options: ['A', 'B', 'C', 'D'] })
+    for (const text of ['choices', 'choices ""', 'choices "A" | "B" | "C" | "D" | "E"', 'choices "A" | "a"', 'choices A']) expect(parseWherdrBlock(text)).toBeNull()
+  })
+
+  it('draws an invalid block as an ordinary code block', () => {
+    ;(globalThis as { t?: (s: string) => string }).t = s => s
+    md('') // installs the app's code renderer
+    const html = (text: string) => marked.parse(`\`\`\`wherdr\n${text}\n\`\`\``, { gfm: true, async: false }) as string
+    expect(html('choices "OK"')).toContain('<button type="button" class="q-choice" data-a="OK">OK</button>')
+    for (const text of ['choices "A" | "B" | "C" | "D" | "E"', 'choices', 'merge WHR-12']) {
+      expect(html(text)).toContain('class="code-block"')
+      expect(html(text)).not.toContain('q-choice')
+    }
   })
 })
 
