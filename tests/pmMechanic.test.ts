@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import { nextMove, redCiText, type MechFacts, type PrState } from '../shared/pm/mechanic'
 import { combineGuards } from '../shared/pm/guards'
 import { caughtUpSettled, onEvent, SETTLE_MS, type PlannedStep, type StepState } from '../shared/pm/steps'
-import { boardLanes, cardOf, cardStatus, statusText, toHandle } from '../shared/pm/board'
+import { boardLanes, cardOf, cardStatus, mayAccept, statusText, toHandle } from '../shared/pm/board'
+import { inMergeQueue } from '../shared/pm/mergeQueue'
+import { agentBack, handToAgent } from '../shared/pm/release'
 import { addShot } from '../shared/pm/shots'
 import type { Task } from '../shared/pm/run'
 
@@ -142,8 +144,40 @@ describe('mechanical moves', () => {
       expect(boardLanes([back], ['Merging'])[0]!.cards).toEqual([back])
     })
 
+    it('accepts in any PR state: the task leaves Your turn, enters the queue, and comes back only when the engine cannot go on', () => {
+      const T = Date.now()
+      const accept = (st: StepState) => { const r = onEvent(visual, st, { kind: 'user' }, T); expect(r.refused).toBeUndefined(); return r }
+      const card = (st: StepState, prNow: string) => ({ ...cardOf(task({ step: st }), visual, [], T), prNow })
+      const dirty = pr({ mergeStateStatus: 'DIRTY' })
+      // In conflict, being updated (no Your turn, Accept still offered); its worker solving it; behind; red checks handed to the worker.
+      const updating = onEvent(visual, waiting, { kind: 'catch-up', base: 'v3', head: 'abc1234' }, T).state
+      const solving = handToAgent(updating, 'catch-up', 'abc1234', T)
+      const red = handToAgent(waiting, 'ci-to-agent', 'abc1234', T)
+      for (const [st, prNow] of [[waiting, 'conflict with its base'], [updating, 'conflict with its base'], [solving, 'conflict with its base'], [waiting, 'behind its base'], [red, 'checks failed (smoke)']] as const) {
+        expect(mayAccept(card(st, prNow))).toBe(true)
+        const r = accept(st)
+        // Recorded at the reviewed commit, no merge attempted by the click: the queue merges it in its own order.
+        expect(r.state).toMatchObject({ approved: { by: 'user', at: T, commit: 'abc1234' }, yourTurn: undefined })
+        expect(r.effects).toEqual([])
+        const c = card(r.state, prNow)
+        expect(c.yourTurn).toBeUndefined()
+        expect(toHandle([c])).toEqual([])
+        expect(mayAccept(c)).toBe(false)
+        expect(inMergeQueue(task({ step: r.state }), visual, guards, dirty)).toBe(true)
+      }
+      // Off the Your turn lane; the handed work coming in does not bring the user's turn back.
+      const accepted = accept(solving).state
+      expect(boardLanes([card(accepted, 'conflict with its base')], null)[0]!.cards).toEqual([])
+      expect(agentBack(accepted).yourTurn).toBeUndefined()
+      expect(nextMove(at(agentBack(accepted), { pr: dirty }))).toEqual({ key: 'catch-up:abc1234', move: { kind: 'catch-up', base: 'v3' } })
+      // Back only when the engine cannot go on: the worker could not solve its conflict.
+      const gaveUp = card({ ...accepted, agent: { ...accepted.agent!, waits: 'Waits for its machine (offline)', told: 'user' } }, 'conflict with its base')
+      expect(gaveUp.yourTurn).toBe('Waits for its machine (offline)')
+      expect(boardLanes([gaveUp], ['Merging'])[0]!.cards).toEqual([gaveUp])
+    })
+
     it('keeps the user\'s approval through a refused merge, then merges by itself once ready', () => {
-      const clicked = onEvent(visual, waiting, { kind: 'user' }, 10).state
+      const clicked = { ...onEvent(visual, waiting, { kind: 'user' }, 10).state, acting: true }
       expect(clicked.approved).toEqual({ by: 'user', at: 10, commit: 'abc1234' })
       // The engine running the step again is no approval.
       expect(onEvent(visual, waiting, { kind: 'user', engine: true }, 10).state.approved).toBeUndefined()
@@ -169,7 +203,7 @@ describe('mechanical moves', () => {
 
     it('keeps the approval through a red CI fix; new screenshots drop it', () => {
       const shotsPlan = visual.map(p => (p.id === 'work' ? { ...p, evidence: ['screenshots' as const] } : p))
-      const clicked = onEvent(shotsPlan, { ...waiting, shots: { work: [{ file: 'a.png', phase: 'after', at: 1 }] } }, { kind: 'user' }, 10).state
+      const clicked = { ...onEvent(shotsPlan, { ...waiting, shots: { work: [{ file: 'a.png', phase: 'after', at: 1 }] } }, { kind: 'user' }, 10).state, acting: true }
       // Red CI goes back to the worker; fixed, reviewed again, the merge waits for no one.
       const red = onEvent(shotsPlan, clicked, { kind: 'action-result', ok: false, error: 'CI failed', toAgent: true }, 11).state
       expect(red).toMatchObject({ at: 0, approved: { at: 10 } })

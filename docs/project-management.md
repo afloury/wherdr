@@ -1004,17 +1004,27 @@ checks), then *updated with v3, GitHub is checking it* until GitHub reads the
 new commit without a conflict (3 minutes at most). It comes back to *Your turn*
 once the PR is clean, or when the update needs you (its worker waits, the
 conflict is not solved in time). An agent's conflict resolution gets a short
-re-review first. One update runs at a time per task.
+re-review first. One update runs at a time per task. The update never takes
+**Accept** away: the task sheet's To do tab keeps it, with the neutral line
+under it, so you can accept the work while the update runs.
 
 When an approved merge waits on something wherdr cannot do by itself (a
 conflict or red checks no agent is on, its worker ended, its machine offline or
-paused), Merge stops loading: the card says *Merge waits for its worker*, and
+paused), *Merging* stops loading: the task is back in *Your turn*, the card says *Merge waits for its worker*, and
 the sheet says in one sentence what it waits for, with **Start the worker**,
 which starts the worker again in its worktree (or sends to it, if it runs) with
 what to do. The merge goes on once its work is in.
 
-Clicking *Merge* is an approval of the task's screenshots that stays: the log
-records who approved, when and at which commit. Later updates keep it: the base
+**Accept** (the merge step's button when the workflow keeps the default label
+*Merge*) is there as soon as the review passed, whatever the PR's state: in
+conflict, behind its base, checks running or red, its worker ended. Accepting
+and merging are two steps: you accept the work, and wherdr merges it in the
+merge queue's order. The click merges nothing by itself and never fails on the
+PR's state. It is an approval of the task's screenshots that stays: the log
+records who approved, when and at which commit. The task leaves *Your turn* and
+Tasks to handle at once and shows in its column (*Merging*) with its place in
+the merge queue or what wherdr is doing (updating with the base, the worker
+solving a conflict, checks running). Later updates keep it: the base
 merged in, a conflict resolved, red CI fixed. The card shows *Approved, merges
 by itself*, and the task sheet *Approved on* its date. Once the PR is clean and
 its checks are green, wherdr merges by itself, even on a branch only you may
@@ -1024,22 +1034,26 @@ task's own changes to interface files (`components`, `assets`, `pages` and
 `layouts` folders) differ from those you approved; what a merge of the base
 brought does not count.
 
-Until the merge ends, *Merge* stays loading, on the card in *Your turn* and in
+It also comes back when wherdr truly cannot go on: a conflict its worker could
+not solve, a merge refused by a guard or by GitHub.
+
+Until the merge ends, *Merging* stays loading, on the card and in
 the task sheet, with what it waits for under it: its place in the merge queue,
 its checks running, an update with its base, or its machine coming back
 online. This comes from the approval wherdr keeps, so it is the same after a
 reload and on every device. While its checks are red, the merge cannot go on:
-*Merge* stops loading, and the card and the sheet say why instead of *merges
+*Merging* stops loading, and the card and the sheet say why instead of *merges
 by itself*: *Checks failed (smoke): fixing: the worker is on it*, or what the
 fix waits for, such as *Checks failed (smoke): waits for its worker, no room on
-machine-a (needs ≈3.4 GB: …)* or *…, its machine is offline*. Once merged, the task leaves *Your turn*; if the
-merge fails or is refused, *Try again* comes back with the reason in plain
+machine-a (needs ≈3.4 GB: …)* or *…, its machine is offline*. If the
+merge is refused, *Try again* comes back in *Your turn* with the reason in plain
 words.
 
 #### The merge queue
 
 Each project has a **merge queue**: every task whose merge may go on without
-you (a merge the guards give to wherdr, or one you approved) enters it. Only
+you (a merge the guards give to wherdr, or one you accepted, whatever its PR's
+state when you did) enters it. Only
 PRs ready to merge now stand in line: no conflict, no update required, the
 task's last commit on the PR and its checks green. The first in line merges,
 then the next one, a minute apart; the tasks the coordinator put first on the
