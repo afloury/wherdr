@@ -11,6 +11,9 @@ import { wherdr } from '../shared/pm/examples'
 import { planSteps } from '../shared/pm/steps'
 import { dueText } from '../shared/pm/advance'
 import { startFileWaits } from '../server/utils/pmFiles'
+import { startHeld } from '../server/utils/pmMechanic'
+import { resumeInterrupted } from '../server/utils/pmRecovery'
+import { CoreError } from '../server/utils/core'
 
 const template: Template = {
   id: 'vibe', instructions: 'Small commits.', prefs: { agent: 'claude', model: 'opus' },
@@ -273,6 +276,56 @@ describe('startTask', () => {
     expect(held).toMatchObject({ status: 'rejected', reason: { code: 'busy' } })
     expect((await store.task('WEB-1'))!.held).toBeUndefined()
     await expect(startTask(deps, 'WEB-1', { on: machine })).rejects.toMatchObject({ code: 'busy' })
+    expect(runs).toHaveLength(1)
+  })
+
+  // The engine's start finds its machine offline: to do, held (never a failure for the user), started by the next tick once it is back.
+  const offlineAt = (deps: PmLaunchDeps, machine: string) => {
+    let online = false
+    deps.machines = () => [{ key: machine, label: machine, local: false, status: online ? 'online' : 'offline' }] as never
+    return () => { online = true }
+  }
+
+  it('an engine start on an unreachable machine joins its open offline incident, which starts it once the machine is back', async () => {
+    const { store, deps, runs, machine } = await setup()
+    // Another task's agent on that machine, gone with an offline incident the engine tracks.
+    const other = await store.saveTask({ ...(await store.addTask({ project: 'WEB', title: 'Other', type: 'simple' })), state: 'waiting', run: 'r9' })
+    const [i] = await store.addIncidents([{ at: 1, machine, label: machine, cause: 'offline', evidence: [], tasks: [other.id], runs: ['r9'] }])
+    const back = offlineAt(deps, machine)
+    expect(await startTask(deps, 'WEB-1')).toMatchObject({ state: 'waiting', waiting: `Waits for ${machine} (unreachable, incident ${i!.id}): wherdr starts it once it is back`, recovery: { incident: i!.id, cause: 'offline', machine, waits: true } })
+    expect((await store.incidents())[0]!.tasks).toEqual([other.id, 'WEB-1'])
+    expect((await resumeInterrupted(deps)).resumed).toEqual([])
+    back()
+    expect((await resumeInterrupted(deps)).resumed).toEqual(['WEB-1'])
+    const t = (await store.task('WEB-1'))!
+    expect(t).toMatchObject({ state: 'working' })
+    expect([t.held, t.waiting]).toEqual([undefined, undefined])
+    expect(t.log!.at(-1)!.text).toBe(`started after incident ${i!.id}: ${machine} is back`)
+    expect(runs).toHaveLength(1)
+  })
+
+  it('a start once its files are free, its machine out of reach midway (herdr-core answers unreachable): held, started by the next tick once it is back', async () => {
+    const { store, deps, runs } = await setup()
+    const first = await store.saveTask({ ...(await store.task('WEB-1'))!, state: 'working', step: { at: 1, started: true, since: 1, proofs: {}, rounds: {} }, changed: ['app/x.vue'] })
+    await store.addTask({ project: 'WEB', title: 'Other', type: 'simple', files: ['app/'] })
+    expect(await startTask(deps, 'WEB-2')).toMatchObject({ state: 'todo', sameFiles: 'WEB-1' })
+    // The inventory still says online; herdr-core's answer says otherwise.
+    const call = deps.call, label = deps.machines()[0]!.label
+    let down = true
+    deps.call = (async (method: string, p: { argv?: string[] }, ...rest: unknown[]) => {
+      if (down && method === 'machine.exec' && p.argv?.[2] === WORKTREE_SCRIPT) throw new CoreError('unreachable', 'machine unreachable')
+      return (call as (...a: unknown[]) => unknown)(method, p, ...rest)
+    }) as never
+    await store.saveTask({ ...first, step: { ...first.step!, done: true } })
+    expect(await startFileWaits(deps)).toEqual(['WEB-2'])
+    expect(await store.task('WEB-2')).toMatchObject({ state: 'todo', held: `Waits for ${label} (unreachable)` })
+    expect((await store.task('WEB-2'))!.log!.at(-1)!.text).toBe(`could not start: Waits for ${label} (unreachable)`)
+    down = false
+    expect(await startHeld(deps)).toEqual(['WEB-2'])
+    const t = (await store.task('WEB-2'))!
+    expect(t.state).toBe('working')
+    expect([t.held, t.waiting, t.sameFiles, t.machineWait]).toEqual([undefined, undefined, undefined, undefined])
+    expect(t.log!.at(-1)!.text).toBe('started: a machine is back')
     expect(runs).toHaveLength(1)
   })
 

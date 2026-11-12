@@ -124,7 +124,7 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
     forgetMemory(placed.machine)
     const r = await startTask(deps, next.id, { on: placed.machine }).catch((e: Error) => startedElsewhere(e) ? null : ({ ...next, state: 'waiting' as const, waiting: e.message }))
     if (!r) continue
-    if (!r.sameFiles) await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
+    if (!r.sameFiles) await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? r.held ?? ''}`)
     started.push(next.id)
   }
   return started
@@ -142,7 +142,8 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
     const p = projects.find(x => x.key === t.project)
     if (!p) continue
     const pace = pacedStart(t, 'wake') ? await paceOf(store, p, t, now) : undefined
-    const why = originOf(t) === 'automation' ? paceRefusal(pace?.verdict)
+    // An engine start its machine was out of reach for: already decided, it only waits for a machine.
+    const why = t.machineWait ? undefined : originOf(t) === 'automation' ? paceRefusal(pace?.verdict)
       : coordinatorStartRefusal((await store.coordinator(p.key))?.autopilot, t, (await store.tasks()).filter(x => x.project === p.key), runs, now, true, { pace: pace?.verdict, holds: await slotsOf(store, [p]) })
     if (why && /autopilot on/.test(why)) { await store.logTask({ ...t, held: undefined }, 'engine', `no longer held: ${why}`); continue }
     const placed = why ? { hold: `Waits: ${why}` } : await placeFor(deps, t, { waits: pace?.waits })
@@ -152,7 +153,7 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
     forgetMemory(placed.machine)
     const r = await startTask(deps, t.id, { on: placed.machine }).catch((e: Error) => startedElsewhere(e) ? null : ({ ...t, state: 'waiting' as const, waiting: e.message }))
     if (!r) continue
-    if (!r.sameFiles) await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? (t.autopilot && !(await launched(store, r)) ? UNCONFIRMED : AUTOPILOT_STARTED.room) : `could not start: ${r.waiting ?? ''}`)
+    if (!r.sameFiles) await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? (t.machineWait ? 'started: a machine is back' : t.autopilot && !(await launched(store, r)) ? UNCONFIRMED : AUTOPILOT_STARTED.room) : `could not start: ${r.waiting ?? r.held ?? ''}`)
     started.push(t.id)
   }
   return started
@@ -307,7 +308,7 @@ export async function startNext(deps: PmLaunchDeps, now = Date.now()) {
     if (!r || r.sameFiles) continue
     const label = deps.machines().find(m => m.key === placed.machine)?.label ?? placed.machine
     const t = (await store.task(first.id))!
-    await store.logTask(r.state === 'working' ? { ...t, autopilot: true } : t, 'engine', r.state === 'working' ? (await launched(store, r) ? `${AUTOPILOT_STARTED.busy}room on ${label}` : UNCONFIRMED) : `the autopilot could not start it: ${r.waiting ?? ''}`)
+    await store.logTask(r.state === 'working' ? { ...t, autopilot: true } : t, 'engine', r.state === 'working' ? (await launched(store, r) ? `${AUTOPILOT_STARTED.busy}room on ${label}` : UNCONFIRMED) : `the autopilot could not start it: ${r.waiting ?? r.held ?? ''}`)
     started.push(first.id)
   }
   return started
