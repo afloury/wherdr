@@ -5,7 +5,7 @@
 // and a merge the engine may do is tried again on its next pass. Closed: said,
 // with Archive offered.
 import { checkable, mergedArchive, openWhy, PR_VIEW_FIELDS, taskPr, type GhCheck, type PrView } from '../../shared/pm/ghCheck'
-import { prReady, taskGuards } from '../../shared/pm/actions'
+import { errorText, prReady, taskGuards } from '../../shared/pm/actions'
 import { requiredChecks } from '../../shared/pm/board'
 import { mayMerge } from '../../shared/pm/guards'
 import { taskPlan, type Task } from '../../shared/pm/run'
@@ -32,7 +32,7 @@ export async function checkOnGithub(deps: CoreAdminDeps & { store: PmStore }, id
   const r = await actionShell(deps, runOn(deps, run))(`gh pr view "$1" --json ${PR_VIEW_FIELDS}`, [url])
   let pr: PrView | undefined
   try { pr = JSON.parse(r.out.split('\n').find(l => l.startsWith('{')) ?? '') as PrView } catch {}
-  if (r.code !== 0 || !pr) throw new HerdrError('failed', `gh pr view: ${r.out.trim().split('\n').pop()?.slice(0, 300) || 'no answer'}`)
+  if (r.code !== 0 || !pr) throw new HerdrError('failed', `gh pr view: ${errorText(r).trim().split('\n').pop()?.slice(0, 300) || 'no answer'}`)
 
   if (pr.state === 'MERGED') {
     if (s.done) {

@@ -26,11 +26,22 @@ export function guardAction(g: ResolvedGuards, a: StepAction, ctx: { branch: str
 // uncommitted changes). NOT_YET: checks still running, try again later.
 export const CODE = { SEND_BACK: 3, NOT_MERGED: 5, NOT_YET: 6 } as const
 
+// A script's run: its answer is on stdout (out), never on stderr (err), which
+// only says why it failed. code null: timed out.
+export interface ShellResult { code: number | null, out: string, err?: string }
+// Why a run failed: what the script printed, else its stderr.
+export const errorText = (r: ShellResult) => r.out.trim() ? r.out : r.err ?? ''
+// All of it, for the patterns of a transient error.
+export const allText = (r: ShellResult) => [r.out, r.err].filter(Boolean).join('\n')
+
 // The remote branch $b deleted, only while it is still at commit $r.
-const DELETE_REF = 'git push -q --force-with-lease="refs/heads/$b:$r" origin ":refs/heads/$b" 2>&1 || exit 1; echo deleted'
+const DELETE_REF = 'git push -q --force-with-lease="refs/heads/$b:$r" origin ":refs/heads/$b" 2>"$_e" || { cat "$_e"; exit 1; }; echo deleted'
 // Each script runs in the task's worktree ($1); its other arguments follow.
 // The last line of a successful run is its result (a commit or a link).
-const IN = 'cd "$1" || exit 1; shift;'
+// $_e holds a git or gh call's stderr, printed on stdout only when it fails: a
+// warning is never read as a result, and an error still shows where
+// herdr-core returns no stderr.
+const IN = `cd "$1" || exit 1; shift; _e=$(mktemp) || exit 1; trap 'rm -f "$_e"' EXIT;`
 // Does merged PR head $p hold HEAD ($h)? A head pushed from elsewhere is fetched first.
 const HOLDS = `{ [ "$p" = "$h" ] || { git cat-file -e "$p^{commit}" 2>/dev/null || git fetch -q origin "$p" 2>/dev/null; git merge-base --is-ancestor "$h" "$p" 2>/dev/null; }; }`
 const CLEAN = `[ -z "$(git status --porcelain)" ] || { echo "uncommitted changes: commit them, then say you are done"; exit ${CODE.SEND_BACK}; };`
@@ -55,54 +66,54 @@ export const SCRIPT = {
 if ! git remote get-url origin >/dev/null 2>&1; then
   old=$(git rev-parse -q --verify "refs/heads/$t")
   if [ -n "$old" ] && ! git merge -q --no-edit "$old" >/dev/null 2>&1; then
-    f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict in $f"; exit ${CODE.SEND_BACK}; fi
+    f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; printf 'conflict in %s\\n' "$f"; exit ${CODE.SEND_BACK}; fi
   w=$(git worktree list --porcelain | awk -v b="branch refs/heads/$t" '/^worktree /{ p=substr($0, 10) } $0 == b { print p }')
-  [ -z "$w" ] || { echo "$t is checked out in $w: switch that folder to another branch, then try again"; exit 1; }
+  [ -z "$w" ] || { printf '%s\\n' "$t is checked out in $w: switch that folder to another branch, then try again"; exit 1; }
   git update-ref "refs/heads/$t" HEAD "$old" || exit 1
   git rev-parse HEAD; exit 0
 fi
 if git ls-remote -q --exit-code --heads origin "$t" >/dev/null; then
-  git fetch -q origin "$t" 2>&1 || exit 1
+  git fetch -q origin "$t" 2>"$_e" || { cat "$_e"; exit 1; }
   if ! git merge -q --no-edit "origin/$t" >/dev/null 2>&1; then
-    f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict in $f"; exit ${CODE.SEND_BACK}; fi
+    f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; printf 'conflict in %s\\n' "$f"; exit ${CODE.SEND_BACK}; fi
   ${AFTER_MERGE}
 fi
-git push -q origin "HEAD:refs/heads/$t" 2>&1 || exit 1
+git push -q origin "HEAD:refs/heads/$t" 2>"$_e" || { cat "$_e"; exit 1; }
 git rev-parse HEAD`,
-  push: `${IN} ${CLEAN} git push -q origin "HEAD:refs/heads/$1" 2>&1 || exit 1; git rev-parse HEAD`,
+  push: `${IN} ${CLEAN} git push -q origin "HEAD:refs/heads/$1" 2>"$_e" || { cat "$_e"; exit 1; }; git rev-parse HEAD`,
   // Opens the PR, or puts an open one back on the right base. Body on stdin.
   // A PR of the branch already merged (by hand, or a merge GitHub did but
   // answered with an error) whose head holds HEAD is the PR: no second one.
   // Commits after it need a new branch. As Shepherdr #706 (SHEP-59, MIT).
   pr: `${IN} ${CLEAN} b=$1 base=$2 h=$(git rev-parse HEAD) || exit 1
-cur=$(gh pr list --head "$b" --state open --json url,baseRefName -q '.[] | .baseRefName+" "+.url' 2>&1) || { echo "$cur"; exit 1; }
-cur=$(echo "$cur" | head -1)
+cur=$(gh pr list --head "$b" --state open --json url,baseRefName -q '.[] | .baseRefName+" "+.url' 2>"$_e") || { cat "$_e"; exit 1; }
+cur=$(printf '%s\\n' "$cur" | head -1)
 if [ -z "$cur" ]; then
-  m=$(gh pr list --head "$b" --state merged --json headRefOid,url -q '.[] | .headRefOid+" "+.url' 2>&1) || { echo "$m"; exit 1; }
+  m=$(gh pr list --head "$b" --state merged --json headRefOid,url -q '.[] | .headRefOid+" "+.url' 2>"$_e") || { cat "$_e"; exit 1; }
   if [ -n "$m" ]; then
-    while read -r p u; do ${HOLDS} && { echo "$u"; exit 0; }; done <<EOF
+    while read -r p u; do ${HOLDS} && { printf '%s\\n' "$u"; exit 0; }; done <<EOF
 $m
 EOF
-    u=$(echo "$m" | head -1); echo "$b already had PR \${u#* } merged: new commits need a new branch"; exit 1
+    u=$(printf '%s\\n' "$m" | head -1); printf '%s\\n' "$b already had PR \${u#* } merged: new commits need a new branch"; exit 1
   fi
 fi
-git push -q origin "HEAD:refs/heads/$b" 2>&1 || exit 1
-if [ -z "$cur" ]; then out=$(gh pr create --head "$b" --base "$base" --title "$3" --body-file - 2>&1) || { echo "$out"; exit 1; }; echo "$out" | tail -1; exit 0; fi
-if [ "\${cur%% *}" != "$base" ]; then e=$(gh pr edit "\${cur#* }" --base "$base" 2>&1) || { echo "$e"; exit 1; }; fi
-echo "\${cur#* }"`,
+git push -q origin "HEAD:refs/heads/$b" 2>"$_e" || { cat "$_e"; exit 1; }
+if [ -z "$cur" ]; then out=$(gh pr create --head "$b" --base "$base" --title "$3" --body-file - 2>"$_e") || { cat "$_e"; exit 1; }; printf '%s\\n' "$out" | tail -1; exit 0; fi
+if [ "\${cur%% *}" != "$base" ]; then gh pr edit "\${cur#* }" --base "$base" >/dev/null 2>"$_e" || { cat "$_e"; exit 1; }; fi
+printf '%s\\n' "\${cur#* }"`,
   // The commit, then the open PR as JSON on the last line. None open: the
   // merged PR of the branch whose head holds HEAD, marked merged (Shepherdr #706);
   // else its latest merged one, marked stray too: the step ends merged, saying
   // the task's commit is not in it. printf, never echo: dash's echo turns the
-  // \n of a commit message into a line break, cutting the JSON. gh's stderr
-  // is kept for its errors, but only its JSON line is read (a warning may
-  // follow it); none: gh's output as it was, unreadable, tried again.
-  prInfo: `${IN} h=$(git rev-parse HEAD) || exit 1; echo "$h"
-o=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup,files,additions,deletions,commits 2>&1) || { printf '%s\\n' "$o"; exit 1; }
+  // \n of a commit message into a line break, cutting the JSON. Commits are
+  // kept to their oids. Only gh's JSON line is read, its stderr apart; none:
+  // gh's output as it was, unreadable, tried again.
+  prInfo: `${IN} h=$(git rev-parse HEAD) || exit 1
+o=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup,files,additions,deletions,commits -q 'map(.commits |= map({oid}))' 2>"$_e") || { cat "$_e"; exit 1; }
 j=$(printf '%s\\n' "$o" | grep '^\\[' | tail -1)
-[ -n "$j" ] || { printf '%s\\n' "$o"; exit 0; }
+[ -n "$j" ] || { printf '%s\\n' "$h" "$o"; exit 0; }
 if [ "$j" = "[]" ]; then
-  m=$(gh pr list --head "$1" --state merged --json url,baseRefName,headRefOid -q '.[] | .headRefOid+" "+(. + {merged: true} | tojson)' 2>&1) || { printf '%s\\n' "$m"; exit 1; }
+  m=$(gh pr list --head "$1" --state merged --json url,baseRefName,headRefOid -q '.[] | .headRefOid+" "+(. + {merged: true} | tojson)' 2>"$_e") || { cat "$_e"; exit 1; }
   m=$(printf '%s\\n' "$m" | grep -E '^[0-9a-f]{40} ')
   while read -r p pj; do [ -n "$p" ] && ${HOLDS} && { j="[$pj]"; break; }; done <<EOF
 $m
@@ -110,12 +121,12 @@ EOF
   pj=$(printf '%s\\n' "$m" | head -1)
   if [ "$j" = "[]" ] && [ -n "$pj" ]; then j="[$(printf '%s\\n' "\${pj#* }" | sed 's/}$/,"stray":true}/')]"; fi
 fi
-printf '%s\\n' "$j"`,
+printf '%s\\n' "$h" "$j"`,
   // The branch's latest PR closed without a merge (--state closed lists merged ones too): its link.
-  prClosed: `${IN} gh pr list --head "$1" --state closed --json url,state -q '[.[] | select(.state == "CLOSED")][0].url // empty' 2>&1`,
+  prClosed: `${IN} gh pr list --head "$1" --state closed --json url,state -q '[.[] | select(.state == "CLOSED")][0].url // empty' 2>"$_e" || { cat "$_e"; exit 1; }`,
   // The step's method ($3), else the first the repo allows: merge commit, squash, rebase.
-  merge: `${IN} m=$3; [ -n "$m" ] || m=$(gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed -q 'if .mergeCommitAllowed then "merge" elif .squashMergeAllowed then "squash" else "rebase" end' 2>&1) || { echo "$m"; exit 1; }
-gh pr merge "$1" "--$m" --match-head-commit "$2" 2>&1 || exit 1; echo "$1"`,
+  merge: `${IN} m=$3; [ -n "$m" ] || m=$(gh repo view --json mergeCommitAllowed,squashMergeAllowed,rebaseMergeAllowed -q 'if .mergeCommitAllowed then "merge" elif .squashMergeAllowed then "squash" else "rebase" end' 2>"$_e") || { cat "$_e"; exit 1; }
+gh pr merge "$1" "--$m" --match-head-commit "$2" 2>"$_e" || { cat "$_e"; exit 1; }; printf '%s\\n' "$1"`,
   // Merged when GitHub has a merged PR from the branch into the target whose
   // head is HEAD (or holds it): squash and rebase merges leave no ancestor.
   // Else HEAD must be in the target and the branch hold a commit of its own:
@@ -128,9 +139,9 @@ gh pr merge "$1" "--$m" --match-head-commit "$2" 2>&1 || exit 1; echo "$1"`,
 if command -v gh >/dev/null; then
   if heads=$(gh pr list --head "$b" --base "$t" --state merged --json headRefOid -q '.[].headRefOid' 2>&1); then
     for p in $heads; do { [ "$p" = "$h" ] || git merge-base --is-ancestor "$h" "$p" 2>/dev/null; } && { echo "$h"; exit 0; }; done
-  else echo "$heads" | grep -qiE 'known GitHub host|not a git repository' || ghe=$heads; fi
+  else printf '%s\\n' "$heads" | grep -qiE 'known GitHub host|not a git repository' || ghe=$heads; fi
 fi
-git fetch -q origin "$t" 2>&1 || exit 1
+git fetch -q origin "$t" 2>"$_e" || { cat "$_e"; exit 1; }
 if git merge-base --is-ancestor HEAD "origin/$t"; then
   s=$(git config "branch.$b.wherdrstart")
   mine=$(git rev-list --no-merges \${s:+"$s.."}HEAD)
@@ -144,22 +155,22 @@ if git merge-base --is-ancestor HEAD "origin/$t"; then
   [ -n "$k" ] && [ -n "$(git rev-list -1 \${s:+"$s.."}"$k")" ] && git merge-base --is-ancestor "$k" HEAD && { echo "$h"; exit 0; }
   why="$b has no commit of its own: nothing was merged"
 else why="commit $(git rev-parse --short HEAD) is not in $t"; fi
-[ -z "$ghe" ] || { echo "$why (GitHub not checked: $(echo "$ghe" | head -1))"; exit 1; }
-echo "$why"; exit ${CODE.NOT_MERGED}`,
+[ -z "$ghe" ] || { printf '%s\\n' "$why (GitHub not checked: $(printf '%s\\n' "$ghe" | head -1))"; exit 1; }
+printf '%s\\n' "$why"; exit ${CODE.NOT_MERGED}`,
   // The engine's catch-up: the target merged into the task branch, pushed there.
-  catchUp: `${IN} ${CLEAN} git fetch -q origin "$1" 2>&1 || exit 1
+  catchUp: `${IN} ${CLEAN} git fetch -q origin "$1" 2>"$_e" || { cat "$_e"; exit 1; }
 if ! git merge -q --no-edit "origin/$1" >/dev/null 2>&1; then
-  f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with $1 in $f"; exit ${CODE.SEND_BACK}; fi
+  f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; printf '%s\\n' "conflict with $1 in $f"; exit ${CODE.SEND_BACK}; fi
 ${AFTER_MERGE}
-git push -q origin "HEAD:refs/heads/$2" 2>&1 || exit 1; git rev-parse HEAD`,
+git push -q origin "HEAD:refs/heads/$2" 2>"$_e" || { cat "$_e"; exit 1; }; git rev-parse HEAD`,
   // A push refused because the task branch ($1) is behind its remote: the
   // worktree takes the remote's commits (a fast-forward, else a merge), to push again.
-  sync: `${IN} ${CLEAN} git fetch -q origin "$1" 2>&1 || exit 1
-if git merge-base --is-ancestor HEAD FETCH_HEAD; then git merge -q --ff-only FETCH_HEAD 2>&1 || exit 1; ${AFTER_MERGE} echo "fast-forwarded to origin/$1"; exit 0; fi
+  sync: `${IN} ${CLEAN} git fetch -q origin "$1" 2>"$_e" || { cat "$_e"; exit 1; }
+if git merge-base --is-ancestor HEAD FETCH_HEAD; then git merge -q --ff-only FETCH_HEAD 2>"$_e" || { cat "$_e"; exit 1; }; ${AFTER_MERGE} printf '%s\\n' "fast-forwarded to origin/$1"; exit 0; fi
 if ! git merge -q --no-edit FETCH_HEAD >/dev/null 2>&1; then
-  f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; echo "conflict with origin/$1 in $f"; exit ${CODE.SEND_BACK}; fi
+  f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git merge --abort; printf '%s\\n' "conflict with origin/$1 in $f"; exit ${CODE.SEND_BACK}; fi
 ${AFTER_MERGE}
-echo "merged origin/$1"`,
+printf '%s\\n' "merged origin/$1"`,
   // Where the PR head ($1) stands against the task's commit: same; behind (in
   // its history: the task's later commits are not pushed yet); update (GitHub's
   // Update branch: a merge of the base, $2, into a head the worktree has); or
@@ -169,18 +180,18 @@ if [ "$(git rev-parse HEAD)" = "$p" ]; then echo same; elif git merge-base --is-
 elif [ -n "$2" ] && git rev-parse -q --verify "$p^2" >/dev/null && git merge-base --is-ancestor "$p^1" HEAD 2>/dev/null \
   && git fetch -q origin "$2" 2>/dev/null && git merge-base --is-ancestor "$p^2" FETCH_HEAD; then echo update; else echo foreign; fi`,
   // The remote task branch's tip ($1), as origin has it now: empty when it has none.
-  remoteHead: `${IN} r=$(git ls-remote origin "refs/heads/$1" 2>&1) || { echo "$r"; exit 1; }; echo "$r" | cut -f1`,
+  remoteHead: `${IN} r=$(git ls-remote origin "refs/heads/$1" 2>"$_e") || { cat "$_e"; exit 1; }; printf '%s\\n' "$r" | cut -f1`,
   // Runs again the failed or cancelled workflow runs of a commit.
-  rerun: `${IN} ids=$(gh run list --commit "$1" --json databaseId,conclusion -q '.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .conclusion != "") | .databaseId' 2>&1) || { echo "$ids"; exit 1; }
-for i in $ids; do gh run rerun "$i" --failed 2>&1 || exit 1; done`,
+  rerun: `${IN} ids=$(gh run list --commit "$1" --json databaseId,conclusion -q '.[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral" and .conclusion != "") | .databaseId' 2>"$_e") || { cat "$_e"; exit 1; }
+for i in $ids; do gh run rerun "$i" --failed 2>"$_e" || { cat "$_e"; exit 1; }; done`,
   // pipeline.watch, github: the runs of branch $1's tip now (asked of the
   // remote: a run listed by branch may be the previous commit's, its own not
   // registered yet), else of the task's commit; only workflow $2 when named.
-  ghRuns: `${IN} if [ -n "$1" ]; then v=$(git ls-remote -q origin "refs/heads/$1" 2>&1) || { echo "$v"; exit 1; }; v=\${v%%[[:space:]]*}
-  [ -n "$v" ] || { echo "no branch $1 on origin"; exit 1; }; else v=$(git rev-parse HEAD) || exit 1; fi
-gh run list --commit "$v" \${2:+--workflow "$2"} --limit 30 --json databaseId,workflowName,status,conclusion,headSha,url 2>&1`,
+  ghRuns: `${IN} if [ -n "$1" ]; then v=$(git ls-remote -q origin "refs/heads/$1" 2>"$_e") || { cat "$_e"; exit 1; }; v=\${v%%[[:space:]]*}
+  [ -n "$v" ] || { printf '%s\\n' "no branch $1 on origin"; exit 1; }; else v=$(git rev-parse HEAD) || exit 1; fi
+gh run list --commit "$v" \${2:+--workflow "$2"} --limit 30 --json databaseId,workflowName,status,conclusion,headSha,url 2>"$_e" || { cat "$_e"; exit 1; }`,
   // The failed jobs of run $1, then the tail of their logs.
-  ghFailed: `${IN} gh run view "$1" --json jobs -q '.jobs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral") | .name' 2>&1 | head -5 | paste -sd ',' -
+  ghFailed: `${IN} gh run view "$1" --json jobs -q '.jobs[] | select(.conclusion != "success" and .conclusion != "skipped" and .conclusion != "neutral") | .name' 2>/dev/null | head -5 | paste -sd ',' -
 gh run view "$1" --log-failed 2>&1 | tail -n 20`,
   // pipeline.watch, command: the step's command, in the worktree; its exit code is the answer.
   watchCommand: `${IN} sh -c "$1" 2>&1`,
@@ -218,21 +229,25 @@ printf '%s\\n' "$o"`,
   // default; the lease keeps a commit pushed meanwhile.
   dropBranch: `${IN} b=$1; u=$(git remote get-url origin 2>/dev/null) || { echo none; exit 0; }
 case $u in *bitbucket.org[:/]*) echo bitbucket; exit 0;; esac
-ask() { o=$("$@" 2>&1) || { echo "$o" | tail -1; exit 1; }; }
-ask git ls-remote origin "refs/heads/$b"; r=$(echo "$o" | cut -f1); [ -n "$r" ] || { echo none; exit 0; }
-ask gh pr list --head "$b" --state open --json url -q '.[0].url // empty'; [ -z "$o" ] || { echo "kept: an open PR uses it ($o)"; exit 0; }
-ask gh pr list --base "$b" --state open --json url -q '.[0].url // empty'; [ -z "$o" ] || { echo "kept: an open PR targets it ($o)"; exit 0; }
+ask() { o=$("$@" 2>"$_e") || { tail -1 "$_e"; exit 1; }; }
+ask git ls-remote origin "refs/heads/$b"; r=$(printf '%s\\n' "$o" | cut -f1); [ -n "$r" ] || { echo none; exit 0; }
+ask gh pr list --head "$b" --state open --json url -q '.[0].url // empty'; [ -z "$o" ] || { printf '%s\\n' "kept: an open PR uses it ($o)"; exit 0; }
+ask gh pr list --base "$b" --state open --json url -q '.[0].url // empty'; [ -z "$o" ] || { printf '%s\\n' "kept: an open PR targets it ($o)"; exit 0; }
 ask gh pr list --head "$b" --state merged --json headRefOid -q '.[].headRefOid'
 [ -n "$o" ] || { echo "kept: no merged PR of it"; exit 0; }
-echo "$o" | grep -qxF "$r" || { echo "kept: commit $(echo "$r" | cut -c1-7) was pushed after its merge"; exit 0; }
+printf '%s\\n' "$o" | grep -qxF "$r" || { echo "kept: commit $(printf '%s\\n' "$r" | cut -c1-7) was pushed after its merge"; exit 0; }
 ask gh api "repos/{owner}/{repo}/branches/$b" -q .protected; [ "$o" != true ] || { echo "kept: GitHub protects it"; exit 0; }
 ask gh repo view --json defaultBranchRef -q .defaultBranchRef.name; [ "$o" != "$b" ] || { echo "kept: it is the repository's default branch"; exit 0; }
 ${DELETE_REF}`,
   // Deletes remote branch $1 only while it is at commit $2.
   deleteRef: `${IN} b=$1 r=$2; ${DELETE_REF}`,
   // Remote branches holding the task's commit, for the protected-branch alert.
-  contains: `${IN} git fetch -q origin 2>&1 || exit 1; git branch -r --contains HEAD --format='%(refname:short)'`,
+  contains: `${IN} git fetch -q origin 2>"$_e" || { cat "$_e"; exit 1; }; git branch -r --contains HEAD --format='%(refname:short)'`,
 }
+
+// Scripts that push or merge get 300 s, not exec's 60: a slow remote, a big push.
+export const SLOW_SECS = 300
+export const SLOW = new Set<string>([SCRIPT.land, SCRIPT.push, SCRIPT.pr, SCRIPT.catchUp, SCRIPT.merge])
 
 export interface Check { name?: string, context?: string, status?: string, conclusion?: string, state?: string }
 // merged: no PR open, this one of the branch is merged already and holds the

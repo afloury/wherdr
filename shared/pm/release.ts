@@ -140,10 +140,10 @@ export function fixWatch(plan: PlannedStep[], s: StepState, status: 'working' | 
 // Before its agents are released, the task branch's committed work goes to
 // origin. A branch never pushed keeps its commits in the worktree, which stays.
 // Exit 0 with "pushed" or nothing; else why it could not push.
-export const PUSH_LEFT_SCRIPT = `cd "$1" || exit 1; b=$2
-r=$(git ls-remote --heads origin "refs/heads/$b" 2>&1) || { echo "$r"; exit 1; }
+export const PUSH_LEFT_SCRIPT = `cd "$1" || exit 1; b=$2; _e=$(mktemp) || exit 1; trap 'rm -f "$_e"' EXIT
+r=$(git ls-remote --heads origin "refs/heads/$b" 2>"$_e") || { cat "$_e"; exit 1; }
 [ -n "$r" ] || exit 0
-git fetch -q origin "$b" 2>&1 || exit 1
+git fetch -q origin "$b" 2>"$_e" || { cat "$_e"; exit 1; }
 [ -z "$(git rev-list FETCH_HEAD..HEAD)" ] && exit 0
-git push -q origin "HEAD:refs/heads/$b" 2>&1 || exit 1
+git push -q origin "HEAD:refs/heads/$b" 2>"$_e" || { cat "$_e"; exit 1; }
 echo pushed`

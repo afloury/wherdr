@@ -6,12 +6,12 @@ import { PATH_SETUP, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
 import type { PmStore } from './pmStore'
 import { mayMerge } from '../../shared/pm/guards'
-import { BB_STRATEGY, CODE, RETRY_MS, SCRIPT, bbReady, keepsBranch, commandState, guardAction, isTransient, leaks, outputTail, prReady, readPrInfo, receiptId, runsState, type ActionResult, type GhRun, type PrInfo } from '../../shared/pm/actions'
+import { BB_STRATEGY, CODE, RETRY_MS, SCRIPT, SLOW, SLOW_SECS, allText, bbReady, errorText, keepsBranch, commandState, guardAction, isTransient, leaks, outputTail, prReady, readPrInfo, receiptId, runsState, type ActionResult, type GhRun, type PrInfo, type ShellResult } from '../../shared/pm/actions'
 import type { ResolvedGuards } from '../../shared/pm/guards'
 import type { BbStatus } from '../../shared/pm/actions'
 import { isPrMerge, type MergeBy, type StepAction } from '../../shared/pm/workflow'
 
-type Shell = (script: string, args: string[], input?: string) => Promise<{ code: number | null, out: string }>
+type Shell = (script: string, args: string[], input?: string) => Promise<ShellResult>
 export interface ActionDeps {
   store: Pick<PmStore, 'receipt' | 'saveReceipt'>
   sh: Shell
@@ -41,13 +41,10 @@ const merging = new Set<Promise<unknown>>()
 export const mergesSettled = (ms: number) =>
   Promise.race([Promise.allSettled([...merging]), pause(ms)]).then(() => merging.size === 0)
 
-// The shell of a project's machine, through herdr-core. stderr is kept: a
-// transient error is often only there.
+// The shell of a project's machine, through herdr-core. stdout and stderr
+// stay apart: a warning on stderr (ssh, gh) is never read as the result.
 export const actionShell = (deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined): Shell =>
-  async (script, args, input) => {
-    const r = await exec(deps, on, `${PATH_SETUP}\n${script}`, args, input)
-    return { code: r.code, out: [r.out, r.err].filter(Boolean).join('\n') }
-  }
+  (script, args, input) => exec(deps, on, `${PATH_SETUP}\n${script}`, args, input, SLOW.has(script) ? SLOW_SECS : undefined)
 
 // Only merges of the base since the reviewed commit (the task's own change the same): not reviewed again.
 const onlyBase = async (deps: ActionDeps, wt: string, base: string, from: string, to: string) => {
@@ -60,7 +57,7 @@ const onlyBase = async (deps: ActionDeps, wt: string, base: string, from: string
 // once so the PR does not keep the unfixed merge.
 export async function takeUpdate(sh: Shell, wt: string, branch: string, guards: ResolvedGuards, by: MergeBy):
 Promise<{ ok: true, head: string } | { ok: false, error: string, toAgent?: boolean }> {
-  const failed = (r: { code: number | null, out: string }) => ({ ok: false as const, error: lastLine(r.out) || `exit code ${r.code}`, ...(r.code === CODE.SEND_BACK ? { toAgent: true } : {}) })
+  const failed = (r: ShellResult) => ({ ok: false as const, error: lastLine(errorText(r)) || `exit code ${r.code}`, ...(r.code === CODE.SEND_BACK ? { toAgent: true } : {}) })
   const y = await sh(SCRIPT.sync, [wt, branch])
   if (y.code !== 0) return failed(y)
   const no = guardAction(guards, { kind: 'git.push' }, { branch, by })
@@ -118,11 +115,12 @@ export async function runAction(deps: ActionDeps, job: ActionJob): Promise<Actio
   }
 }
 
-// Runs a script in the worktree; a transient error is tried again.
-async function run(deps: ActionDeps, script: string, args: string[], input?: string) {
+// Runs a script in the worktree; a transient error is tried again, a timeout
+// too unless `once` (a merge cut off may have gone through).
+async function run(deps: ActionDeps, script: string, args: string[], input?: string, once = false) {
   for (let i = 0; ; i++) {
     const r = await deps.sh(script, args, input)
-    if (r.code === 0 || !isTransient(r.code, r.out) || i >= RETRY_MS.length) return r
+    if (r.code === 0 || (once && r.code === null) || !isTransient(r.code, allText(r)) || i >= RETRY_MS.length) return r
     await (deps.sleep ?? pause)(RETRY_MS[i]!)
   }
 }
@@ -134,8 +132,8 @@ type Done = ActionResult & { reached?: string[] }
 async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promise<Done> {
   const { action: a, worktree: wt, branch } = job
   const name = a.kind.split('.')[1]
-  const fail = (r: { code: number | null, out: string }): ActionResult =>
-    ({ ok: false, error: `${name}: ${r.code === null ? 'timed out' : whyFailed(r.out) || `exit code ${r.code}`}`, ...(r.code === CODE.SEND_BACK ? { toAgent: true } : {}) })
+  const fail = (r: ShellResult): ActionResult =>
+    ({ ok: false, error: `${name}: ${r.code === null ? 'timed out' : whyFailed(errorText(r)) || `exit code ${r.code}`}`, ...(r.code === CODE.SEND_BACK ? { toAgent: true } : {}) })
   const commit = async (script: string, args: string[]) => {
     const r = await run(deps, script, [wt, ...args])
     return r.code === 0 ? { ok: true, commit: lastLine(r.out) } : fail(r)
@@ -156,7 +154,8 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
     case 'github.merge': {
       // lag: waits for GitHub to show a fresh push; ci: waits for its checks. Counted apart.
       // unread: PR details that could not be read, tried again as a transient error.
-      let pushed = false, synced = false, lag = 0, ci = 0, unread = 0
+      // cut: merges that timed out, after which GitHub is asked again first.
+      let pushed = false, synced = false, lag = 0, ci = 0, unread = 0, cut = 0
       for (;;) {
         const r = await run(deps, SCRIPT.prInfo, [wt, branch])
         if (r.code !== 0) return fail(r)
@@ -228,10 +227,12 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
         if (!ready.ok && ready.later && ci < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[ci++]!); continue }
         if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
         if (await job.halted?.()) return { ok: false, error: 'merge: the task was stopped' }
-        const m = await run(deps, SCRIPT.merge, [wt, pr!.url, head.trim(), a.method ?? ''])
+        const m = await run(deps, SCRIPT.merge, [wt, pr!.url, head.trim(), a.method ?? ''], undefined, true)
+        // Timed out: it may have merged. The PR is read again before any new try.
+        if (m.code === null && cut++ < MERGE_RESUMES) continue
         if (m.code === 0) return { ok: true, link: pr!.url, commit: head.trim(), base: pr!.baseRefName, reached: [pr!.baseRefName] }
         // GitHub's refusal ends with the commands to fix it: those are the agent's (the catch-up), not the error's.
-        const stuck = CONFLICT.test(m.out) ? 'conflicts with' : /not up to date/i.test(m.out) ? 'is behind' : undefined
+        const stuck = CONFLICT.test(allText(m)) ? 'conflicts with' : /not up to date/i.test(allText(m)) ? 'is behind' : undefined
         return stuck ? { ok: false, error: `merge: the PR ${stuck} ${pr!.baseRefName}`, catchUp: pr!.baseRefName, commit: head.trim() } : fail(m)
       }
     }
@@ -261,7 +262,7 @@ async function bitbucketMerged(deps: ActionDeps, wt: string, branch: string, tar
 // guard on the PR's destination, its head pushed when behind, its build
 // statuses waited for, then a merge commit unless the step names a method.
 // Bitbucket gives a commit's first 12 characters.
-async function bitbucketMerge(deps: ActionDeps, job: ActionJob, fail: (r: { code: number | null, out: string }) => ActionResult): Promise<Done> {
+async function bitbucketMerge(deps: ActionDeps, job: ActionJob, fail: (r: ShellResult) => ActionResult): Promise<Done> {
   const { action: a, worktree: wt, branch } = job
   const api = async <T>(method: string, path: string, arg: string) => {
     const r = await run(deps, SCRIPT.bitbucket, [wt, method, path, arg])
@@ -322,7 +323,7 @@ export async function dropMergedBranch(sh: Shell, j: { worktree: string, branch:
   const no = keepsBranch(j.guards, j.branch, j.bases)
   if (no) return kept(no)
   const r = await sh(SCRIPT.dropBranch, [j.worktree, j.branch])
-  if (r.code !== 0) return kept(lastLine(r.out) || `exit code ${r.code}`)
+  if (r.code !== 0) return kept(lastLine(errorText(r)) || `exit code ${r.code}`)
   const out = lastLine(r.out)
   if (out === 'bitbucket') return dropOnBitbucket(sh, j.worktree, j.branch, kept)
   return out === 'deleted' ? `deleted the remote branch ${j.branch}` : out.startsWith('kept: ') ? kept(out.slice(6)) : undefined
@@ -335,13 +336,13 @@ async function dropOnBitbucket(sh: Shell, wt: string, branch: string, kept: (why
   const get = async <T>(path: string, q: string) => {
     const r = await sh(SCRIPT.bitbucket, [wt, 'GET', path, q])
     const lines = r.out.trim().split('\n'), status = Number(lines.pop())
-    if (r.code !== 0 || status !== 200) throw new Error(lastLine(r.out) || `exit code ${r.code}`)
+    if (r.code !== 0 || status !== 200) throw new Error(lastLine(errorText(r)) || `exit code ${r.code}`)
     return JSON.parse(lines.pop() || '{}') as T
   }
   const list = async <T>(path: string, q: string) => (await get<{ values?: T[] }>(path, q)).values ?? []
   try {
     const rh = await sh(SCRIPT.remoteHead, [wt, branch])
-    if (rh.code !== 0) return kept(lastLine(rh.out))
+    if (rh.code !== 0) return kept(lastLine(errorText(rh)))
     const head = lastLine(rh.out)
     if (!head) return
     // One open PR is enough to keep it: asked apart, so no page of merged ones hides it.
@@ -356,7 +357,7 @@ async function dropOnBitbucket(sh: Shell, wt: string, branch: string, kept: (why
     if (rules.next) return kept('too many Bitbucket branch restrictions to check')
     if (await restricted(rules.values ?? [], branch, () => get<BbModel>('/branching-model', 'fields=development,production,branch_types'))) return kept('a Bitbucket branch restriction forbids deleting it')
     const d = await sh(SCRIPT.deleteRef, [wt, branch, head])
-    return d.code === 0 ? `deleted the remote branch ${branch}` : kept(lastLine(d.out))
+    return d.code === 0 ? `deleted the remote branch ${branch}` : kept(lastLine(errorText(d)))
   }
   catch (e) { return kept(`Bitbucket: ${(e as Error).message}`) }
 }
@@ -389,7 +390,7 @@ export async function watch(deps: Pick<ActionDeps, 'sh'>, job: Pick<ActionJob, '
     return commandState(r.code, r.out)
   }
   const r = await deps.sh(SCRIPT.ghRuns, [job.worktree, a.branch ?? '', a.workflow ?? ''])
-  if (r.code !== 0) return isTransient(r.code, r.out) ? { ok: false, later: true } : { ok: false, error: `pipeline: ${lastLine(r.out) || `exit code ${r.code}`}` }
+  if (r.code !== 0) return isTransient(r.code, allText(r)) ? { ok: false, later: true } : { ok: false, error: `pipeline: ${lastLine(errorText(r)) || `exit code ${r.code}`}` }
   let runs: GhRun[]
   try { runs = JSON.parse(r.out.trim().split('\n').pop() || '[]') }
   catch { return { ok: false, later: true } }

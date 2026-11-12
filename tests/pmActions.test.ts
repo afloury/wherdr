@@ -151,6 +151,12 @@ describe('a merge interrupted by a restart', () => {
     expect(f.receipts.get('A-1.1.merge')?.state).toBe('done')
   })
 
+  it('reads the PR again after a merge that timed out, never merging it blindly twice', async () => {
+    const f = fakeDeps([pr(), { code: 0, out: 'same' }, { code: null, out: '' }, pr({ merged: true }), { code: 0, out: 'origin/dev' }])
+    expect(await runAction(f.deps, job({ step: 'merge', action: merge }))).toMatchObject({ ok: true, link: 'https://pr/1', note: 'already merged on GitHub' })
+    expect(f.calls).toHaveLength(5)
+  })
+
   it('goes to the user when the PR was closed without a merge', async () => {
     const f = cut([{ code: 0, out: 'abc\n[]' }, { code: 0, out: 'https://pr/1' }])
     expect(await f.go()).toEqual({ ok: false, error: 'merge: the PR was closed without being merged (https://pr/1): reopen it, or open a new one' })
@@ -453,7 +459,7 @@ describe('a PR already merged on GitHub', () => {
     fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
 case "$*" in
   *"--state merged"*) while read -r h u b; do case "$*" in *tojson*) echo "$h {\\"url\\":\\"$u\\",\\"baseRefName\\":\\"\${b:-dev}\\",\\"headRefOid\\":\\"$h\\",\\"merged\\":true}";; *) echo "$h $u";; esac; done < "${merged}";;
-  *"--state open"*" -q "*) ;;
+  *"--state open"*" -q .["*) ;;
   *"--state open"*) echo '[]';;
   "pr create"*) echo "https://pr/new";;
   *) echo "unexpected gh $*" >&2; exit 1;;

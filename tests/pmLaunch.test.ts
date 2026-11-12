@@ -96,7 +96,7 @@ async function setup(opts: { installed?: string[], exits?: (number | null)[], te
       const failed = opts.fails?.(script!)
       if (failed) return { code: failed, stdout: '' }
       if (script!.includes('command -v')) return { code: 0, stdout: Buffer.from(args.filter(a => (opts.installed ?? ['claude']).includes(a)).join('\n')).toString('base64') }
-      if (script!.includes('$HOME')) return { code: 0, stdout: Buffer.from('/home/u').toString('base64') }
+      if (script!.includes('printf %s "$HOME"')) return { code: 0, stdout: Buffer.from('/home/u').toString('base64') }
       if (script!.includes('df -Pk /tmp')) return { code: 0, stdout: Buffer.from(String(opts.tmpFreeKb ?? 9e6)).toString('base64') }
       if (p.input) files[args[0]!] = Buffer.from(p.input as string, 'base64').toString()
       return { code: 0, stdout: Buffer.from(opts.exec?.(script!) ?? '').toString('base64') }
