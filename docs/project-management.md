@@ -336,6 +336,11 @@ herdr-core runs with; wherdr never stores them.
 The ⋯ menu adds *Change log* and *Save as template* (copies the saved workflow
 into your templates; the project is untouched).
 
+An accepted workflow change reaches the tasks already under way: each stays on its step,
+found by its id. A task whose step is gone goes on to the first step of the new
+plan it has not passed yet, as if it had just reached it (an action step runs
+its action), and its Log says so.
+
 When the project's coordinator proposes a change to the workflow (only after
 your request), a square marks the project's row (*1 to review*) and the
 **Workflow** tab, whose first row, *Change proposed by the coordinator*, opens
@@ -909,7 +914,8 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 - **A review to settle** after several send-backs: each choice the engine offers,
   with what it does.
 - **A stopped task**: who stopped it and why, then *Continue*, *Take it as it is*
-  or *Archive*, each with what it does.
+  or *Archive*, each with what it does. *Continue* on a step that ends with an
+  action runs that action again.
 - **A step that ends with you** (*Done*, or the step's own button): what to do,
   and its button, with *Open the PR* when the task has one.
 - **The PR** is any link a step gave as its proof (`evidence: ["link"]`, such as

@@ -187,6 +187,20 @@ describe('stop and resume on the server', () => {
     expect(c.log!.at(-1)).toMatchObject({ by: 'user', text: 'work: continued' })
   })
 
+  it('stopped at an action step, continue runs its action again', async () => {
+    const { store, deps } = await setup()
+    const t = (await store.workflow('WH'))!
+    const land = { id: 'land', ends: 'action', action: { kind: 'git.land', target: 'develop' } } as const
+    await store.saveWorkflow('WH', { ...t, taskTypes: { ...t.taskTypes, simple: { steps: [{ id: 'todo' }, 'work', land, { id: 'done' }] } } }, { by: 'user' })
+    const task = (await store.task('WH-1'))!
+    await store.saveTask({ ...task, step: { ...task.step!, at: 2, tries: { land: 1 }, yourTurn: { reason: 'action', badge: 'land: failed' } } })
+    await stopTask(deps, 'WH-1', user, 'stuck', 'user')
+    const c = await resumeTask(deps, 'WH-1', 'continue', user, 'user')
+    expect(c).toMatchObject({ state: 'working', step: { at: 2, acting: true, tries: { land: 2 } } })
+    expect(c.step?.yourTurn).toBeUndefined()
+    expect(c.log!.at(-1)).toMatchObject({ by: 'user', text: 'land: continued' })
+  })
+
   it('take it as it is moves to the next step; archive ends the task and keeps its branch', async () => {
     const { deps } = await setup()
     await stopTask(deps, 'WH-1', user, '', 'user')
