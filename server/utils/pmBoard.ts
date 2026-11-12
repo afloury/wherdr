@@ -128,6 +128,8 @@ export const userStep = (deps: CoreAdminDeps & { store: PmStore }, id: unknown, 
 // (a merge the branch rule gives the engine); its guard is checked again.
 // Tasks whose engine action runs now: one at a time (the user's gesture, the engine's pass).
 const running = new Set<string>()
+// A step action of this task runs now in this process (its `acting` is not stale).
+export const actionRunning = (id: string) => running.has(id)
 export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: unknown, by: MergeBy, userSaid = false): Promise<Task> {
   const { store } = deps
   const task = await store.task(id)

@@ -9,6 +9,7 @@ import type { Report } from './report'
 import type { TaskTldr } from './summary'
 import type { WorkReport } from './history'
 import type { Mark } from './times'
+import type { Sentinel } from './sentinel'
 import { isPublic, publicWorkerSection } from './visibility'
 import { CODEX_NO_UPDATE } from '../codexLaunch'
 import type { Recovery } from './incident'
@@ -63,6 +64,7 @@ export interface Task {
   addedBy?: string // who added it: 'user', 'automation', or a coordinator's key (MAIN for the main one)
   held?: string // an automatic start waits for memory on its machine (memory.ts): the engine starts it once memory is back
   machineWait?: string // the engine's start found this machine (key) unreachable: held, it starts once a machine that fits is back (startHeld, startChained)
+  sentinel?: Sentinel // the liveness sentinel's tries at its current step (sentinel.ts)
   reviewWait?: string // the reviewer account its review waits on, in that account's queue (reviewQueue.ts)
   files?: string[] // the files or folders it plans to change (files.ts)
   changed?: string[] // what it changed since its branch started, as the engine last read it
