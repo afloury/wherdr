@@ -11,7 +11,7 @@ import type { Terminal } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 import type { WebglAddon } from '@xterm/addon-webgl'
 import { loadWebgl, loadXterm } from '~/utils/xtermLoader'
-import { reloadIfNewBuild } from '~/composables/useAppVersion'
+import { offerNewBuild } from '~/composables/useAppVersion'
 import { proposeTerminalSize, terminalPixelWidth } from '~/utils/terminalSize'
 import { writeTerminalFrame } from '~/utils/terminalFrame'
 import { guardWebglCanvasSize } from '~/utils/terminalRenderer'
@@ -81,6 +81,15 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     if (coreStream && sendTerm({ type: 'take.control' })) controlPending = false
     else controlPending = true
   }
+  // What a socket reported holds for that socket only. The controller outlives
+  // the view (Conversation/Terminal toggle) and sockets get replaced: a stale
+  // coreStream would skip the next fit and attach at xterm's default 80×24.
+  function forgetStream() {
+    mouseSupported = false
+    coreStream = false
+    coreControl = true
+    if (sizeBanner) { sizeBanner = null; opts.setBanner(null) }
+  }
   // Watching a terminal taller than this screen: shift it so the cursor row,
   // where the newest output is, stays in view.
   function followCursor() {
@@ -130,8 +139,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       [xterm, gl] = await Promise.all([loadXterm(), renderer === 'webgl' ? loadWebgl().catch(() => null) : null])
     } catch {
       // A deployment may have removed this version's xterm files (not
-      // precached, shared/precache.ts): move to the new version.
-      void reloadIfNewBuild()
+      // precached, shared/precache.ts): the banner offers the new version.
+      void offerNewBuild()
       if (seq !== mountSeq || disposed) return false
       mounting = false
       loading.value = false
@@ -406,10 +415,12 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       try { tws.close(1000) }
       catch { /* already closed */ }
     }
+    forgetStream()
     fitNow(false)
-    const q = new URLSearchParams({ pane: paneId, cols: String(term.cols), rows: String(term.rows) })
+    // The size this attach asks for: the server's, until a resize says otherwise.
+    const asked = { cols: term.cols, rows: term.rows }
+    const q = new URLSearchParams({ pane: paneId, cols: String(asked.cols), rows: String(asked.rows) })
     if (takeover) q.set('takeover', '1')
-    mouseSupported = false
     loading.value = true
     twsIntent = true
     let closedReason: string | null = null
@@ -433,8 +444,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         lastErr = lastErr || t('the machine sent nothing in time')
         try { ws.close() } catch { /* already closed */ }
       }, 12000)
-      if (term) lastSize = { cols: term.cols, rows: term.rows }
+      lastSize = asked
       ws.send(JSON.stringify({ type: 'visibility', visible: !document.hidden }))
+      // A fit measured while the socket connected had nowhere to go.
+      fitNow(true)
     }
     ws.onmessage = (e) => {
       if (tws !== ws) return
@@ -501,11 +514,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       clearTimeout(handshake)
       clearTimeout(frameWait)
       tws = null
-      mouseSupported = false
-      coreStream = false
-      coreControl = true
+      forgetStream()
       followCursor()
-      if (sizeBanner) { sizeBanner = null; opts.setBanner(null) }
       loading.value = false
       probe.cancel()
       if (!twsIntent || disposed) return
@@ -534,7 +544,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   function disconnect() {
     clearVirtualModifiers()
     if (smoothTouchScrolling.value) { scrollInputVersion.value++; touchEpoch++ }
-    mouseSupported = false
+    forgetStream()
     twsIntent = false
     clearTimeout(twsTimer)
     clearTimeout(handshake)

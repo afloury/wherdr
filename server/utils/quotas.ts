@@ -22,7 +22,7 @@ import { spawn } from 'node:child_process'
 import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
-import type { AccountQuota, ClaudeSetup, ClaudeSetupState, Quota, QuotaAccount, QuotaWindow, Quotas } from '../../shared/types'
+import type { AccountQuota, ClaudeSetup, ClaudeSetupState, Quota, QuotaAccount, QuotaCredits, QuotaWindow, Quotas } from '../../shared/types'
 import { type QuotaProgram, accountKey, uniqueKey } from '../../shared/quotaAccount'
 import { type PacingEntry, pacingEntry } from '../../shared/pacingLog'
 import { readAccountNames } from './accountNames'
@@ -111,14 +111,38 @@ export function codexLimitReset(message: string, at: number): number | null {
   return d.getTime()
 }
 
+// Credits of the account, from `rate_limits.credits` (recent Codex versions:
+// `has_credits`, `unlimited`, `balance` as a string): null without any.
+export function codexCredits(c: Json | null | undefined): QuotaCredits | null {
+  if (!c || !(c.has_credits || c.unlimited)) return null
+  const b = c.balance == null || c.balance === '' ? NaN : Number(c.balance)
+  return { unlimited: Boolean(c.unlimited), balance: Number.isFinite(b) ? b : null }
+}
+
 // Newest limit state of a Codex conversation (read from the end): the last
 // `rate_limits` with numbers, or "limit reached" (`limited`): Codex writes no
 // numbers then (primary/secondary null, no credits) and only reports the error
 // `usage_limit_exceeded` (or sets `rate_limit_reached_type`). Whichever comes
 // last wins, so a later reading with numbers brings the gauges back.
-export type CodexLimits = { rl: Json, at: number, limited?: undefined } | { limited: { resetsAt: number | null }, at: number, rl?: undefined }
+// `credits`: those of the newest `rate_limits` (the null one written just
+// before the error carries them too).
+export type CodexLimits = ({ rl: Json, at: number, limited?: undefined } | { limited: { resetsAt: number | null }, at: number, rl?: undefined }) & { credits?: QuotaCredits }
 export function lastCodexLimits(text: string): CodexLimits | null {
   const lines = text.split('\n')
+  const hit = lastLimits(lines)
+  if (!hit) return null
+  for (let i = lines.length - 1; i >= 0; i--) {
+    if (!lines[i]!.includes('"credits"')) continue
+    try {
+      const rl = JSON.parse(lines[i]!).payload?.rate_limits
+      if (!rl || !('credits' in rl)) continue
+      const credits = codexCredits(rl.credits)
+      return credits ? { ...hit, credits } : hit
+    } catch { /* cut line */ }
+  }
+  return hit
+}
+function lastLimits(lines: string[]): CodexLimits | null {
   for (let i = lines.length - 1; i >= 0; i--) {
     const l = lines[i]!
     const reached = l.includes('usage_limit_exceeded')
@@ -284,7 +308,9 @@ export function latestCodexQuota(readings: CodexReading[]): Quota | null {
     readings = readings.filter(r => !r.q.limited)
   }
   const pick = (k: 'five' | 'week') => latestWindow(readings.flatMap(r => (r.q[k] ? [{ w: r.q[k]!, stamp: r.stamp }] : [])))
-  return quota(pick('five'), pick('week'), Math.max(...readings.map(r => r.q.at)))
+  const q = quota(pick('five'), pick('week'), Math.max(...readings.map(r => r.q.at)))
+  const credits = readings.reduce((a, b) => (b.stamp > a.stamp ? b : a)).q.credits
+  return q && credits ? { ...q, credits } : q
 }
 
 // Codex account fingerprint of a conversation: `creator_account_id` of its
@@ -372,7 +398,8 @@ export async function readCodexMachine(fs: MachineFs, home: string): Promise<{ q
       const len = Math.min(s!.size, max)
       try {
         const hit = lastCodexLimits((await fs.read(f, s!.size - len, len)).toString('utf8'))
-        const q = hit && (hit.limited ? { five: null, week: null, at: hit.at || s!.mtimeMs, limited: hit.limited } : codexQuota(hit.rl, hit.at || s!.mtimeMs))
+        const read = hit && (hit.limited ? { five: null, week: null, at: hit.at || s!.mtimeMs, limited: hit.limited } : codexQuota(hit.rl, hit.at || s!.mtimeMs))
+        const q = read && hit!.credits ? { ...read, credits: hit!.credits } : read
         if (q) return { q, stamp: Math.max(started, hit!.at || s!.mtimeMs), account }
       } catch { return empty /* unreadable file: never reuse an older identity */ }
       if (len === s!.size) break

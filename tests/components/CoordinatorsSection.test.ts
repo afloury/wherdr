@@ -1,13 +1,15 @@
 // WHR-398/403: the COORDINATORS section under Alfred: the project
-// coordinators that run. One tap opens a conversation.
+// coordinators that run, or whose conversation stopped (WHR-136). One tap
+// opens a conversation, or offers to resume the stopped one.
 import { afterEach, expect, it, vi } from 'vitest'
 import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody } from 'h3'
 import CoordinatorsSection from '~/components/CoordinatorsSection.vue'
 import { nextTick } from 'vue'
 import { appConfig, coarse, curPane, desk, herdrState } from '~/composables/useHerdr'
-import { alfred, coordinators, paneCoordinatorName } from '~/composables/useCoordinators'
+import { alfred, coordinators, loadCoordinators, paneCoordinatorName } from '~/composables/useCoordinators'
 import { menuState } from '~/composables/useUi'
+import { machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 import { MAIN, type CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
 
@@ -23,7 +25,9 @@ registerEndpoint('/api/pm/coordinator-agent', { method: 'POST', handler: async (
 const pane = (id: string, coreAddress: string) => ({ id, coreAddress, status: 'idle', agent: 'claude', workspace: 'w', tab: 't' }) as Pane
 const view = (project: string, more: Partial<CoordinatorView> = {}): CoordinatorView => ({ project, name: project, agent: { program: 'claude' }, ...more })
 let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
-afterEach(() => { w?.unmount(); w = null; posts.length = 0; navigate.mockReset(); document.body.innerHTML = '' })
+// A coordinators read still in flight would answer the next test's first one
+// with this test's views (loadCoordinators shares it): let it end first.
+afterEach(async () => { w?.unmount(); w = null; posts.length = 0; navigate.mockReset(); document.body.innerHTML = ''; await loadCoordinators() })
 
 it('lists the running project coordinators only (Alfred, the main one, has its own row)', async () => {
   herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1')] }
@@ -36,6 +40,23 @@ it('lists the running project coordinators only (Alfred, the main one, has its o
   await co.trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w%3Ap1'))
   expect(posts).toEqual([])
+})
+
+it('shows a coordinator whose terminal ended as stopped, and resumes its conversation on demand (WHR-136)', async () => {
+  // Panes not read yet: not stopped, no row.
+  herdrState.value = { ok: false, workspaces: [], panes: [] }
+  views = [view('CO', { terminal: 'host/t1', ran: { program: 'codex' } })]
+  w = await mountSuspended(CoordinatorsSection, { attachTo: document.body })
+  await vi.waitFor(() => expect(coordinators.value).toHaveLength(1))
+  expect(w.findAll('[data-testid="coordinator-row"]')).toHaveLength(0)
+  herdrState.value = { ok: true, workspaces: [], panes: [] }
+  await vi.waitFor(() => expect(w!.findAll('[data-testid="coordinator-row"]')).toHaveLength(1))
+  const row = w.find('[data-testid="coordinator-row"]')
+  expect(row.text()).toContain('Codex · Stopped')
+  await row.trigger('click')
+  await vi.waitFor(() => expect(document.querySelector('[data-testid="coordinator-stopped-new"]')).not.toBeNull())
+  ;(document.querySelector('[data-testid="coordinator-stopped-resume"]') as HTMLElement).click()
+  await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', resume: true }]))
 })
 
 it('shows the coordinator whose conversation is open as selected, one at a time, following navigation', async () => {
@@ -52,6 +73,21 @@ it('shows the coordinator whose conversation is open as selected, one at a time,
     await nextTick()
     expect(current()).toEqual([[false, undefined], [false, undefined]])
   } finally { curPane.value = null }
+})
+
+it('follows the home tab: a personal tab hides a work project, All shows all (WHR-152)', async () => {
+  herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1'), pane('w:p2', 'host/t2')] }
+  views = [view('HOME', { terminal: 'host/t1', machines: ['laptop'] }), view('WORK', { terminal: 'host/t2', machines: ['office'] })]
+  machineGroups.value = [{ id: '*group:personal', name: 'Personal', machines: ['laptop'] }, { id: '*group:work', name: 'Work', machines: ['office'] }]
+  try {
+    machineBarSaved.value = '*group:personal'
+    w = await mountSuspended(CoordinatorsSection)
+    const shown = () => w!.findAll('[data-testid="coordinator-row"]').map(r => r.text())
+    await vi.waitFor(() => expect(shown()).toHaveLength(1))
+    expect(shown()[0]).toContain('HOME coordinator')
+    machineBarSaved.value = '*'
+    await vi.waitFor(() => expect(shown()).toHaveLength(2))
+  } finally { machineGroups.value = []; machineBarSaved.value = null }
 })
 
 it('is hidden while project management is off', async () => {

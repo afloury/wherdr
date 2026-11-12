@@ -63,7 +63,7 @@ describe('validateTemplate', () => {
     steps[4].action = { kind: 'github.merge', method: 'fast', checks: [''] }
     steps[2].action.method = 'squash'
     expect(validateTemplate(t)).toEqual([
-      { path: 'taskTypes.simple.steps[2].action.method', message: 'only for github.merge' },
+      { path: 'taskTypes.simple.steps[2].action.method', message: 'only for github.merge or bitbucket.merge' },
       { path: 'taskTypes.simple.steps[4].action.method', message: 'must be one of merge, squash, rebase' },
       { path: 'taskTypes.simple.steps[4].action.checks', message: 'must be a list of check names' },
     ])

@@ -8,6 +8,7 @@ import { herdrState } from '~/composables/useHerdr'
 import { coordinators, resumedCoordinators } from '~/composables/useCoordinators'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
+import { github } from '#shared/pm/examples'
 
 const { navigate } = vi.hoisted(() => ({ navigate: vi.fn() }))
 mockNuxtImport('navigateTo', () => navigate)
@@ -23,12 +24,13 @@ registerEndpoint('/api/pm/coordinator-start', { method: 'POST', handler: async (
   return { terminal: 'host/t9' }
 } })
 
-const folders: Record<string, { exists: boolean, git: boolean, empty: boolean }> = {
-  '/repos/web': { exists: true, git: true, empty: false },
+const folders: Record<string, { exists: boolean, git: boolean, remote?: boolean, empty: boolean }> = {
+  '/repos/web': { exists: true, git: true, remote: true, empty: false },
   '/repos/new-app': { exists: false, git: false, empty: false },
   '/repos/clients': { exists: true, git: false, empty: false },
 }
-registerEndpoint('/api/pm/overview', () => ({ enabled: true, projects: [], templates: [] }))
+registerEndpoint('/api/pm/overview', () => ({ enabled: true, projects: [], templates: [{ id: 'github' }] }))
+registerEndpoint('/api/pm/template', { method: 'GET', handler: () => ({ template: github, log: [] }) })
 registerEndpoint('/api/pm/repos', () => ({ home: '/repos', repos: ['/repos/api', '/repos/web'] }))
 registerEndpoint('/api/pm/folder', (e) => {
   const at = String(new URL(e.node.req.url!, 'http://x').searchParams.get('path')).replace(/^~/, '/repos')
@@ -43,7 +45,11 @@ for (const url of ['/api/pm/template', '/api/pm/project']) {
   } })
 }
 
-const stubs = { AppSheet: { template: '<section><slot /><slot name="footer" /></section>' } }
+const stubs = {
+  AppSheet: { template: '<section><slot /><slot name="footer" /></section>' },
+  // The folder browser: chooses a folder of the machine at once.
+  DirBrowser: { emits: ['choose'], template: '<button data-testid="browse-choose" @click="$emit(\'choose\', \'/repos/clients\')" />' },
+}
 const running = { id: 'w1:p1', coreAddress: 'host/t1', status: 'idle', agent: 'codex', workspace: 'w1', tab: 't' } as Pane
 async function openSheet(v: CoordinatorView[], panes: Pane[] = []) {
   views = v
@@ -134,6 +140,7 @@ it('adds a project from a git repository, a new folder or a folder without git, 
   await vi.waitFor(() => expect(w.findAll('[data-repo]').map(b => b.text())).toEqual(['api~/api', 'web~/web']))
   await w.get('[data-repo="/repos/web"]').trigger('click')
   expect(await folder('git')).toBe(false)
+  expect(w.find('[data-testid="project-no-remote"]').exists()).toBe(false)
   expect((w.get('#projectName').element as HTMLInputElement).value).toBe('web')
   expect((w.get('#projectKey').element as HTMLInputElement).value).toBe('WEB')
   // A folder without git: taken as it is, no git option either.
@@ -149,14 +156,32 @@ it('adds a project from a git repository, a new folder or a folder without git, 
   expect(w.find('[data-testid="project-template"]').exists()).toBe(false)
   await w.get('[data-testid="project-git-init"]').trigger('click')
   await vi.waitFor(() => expect(w.find('[data-testid="project-template"]').exists()).toBe(true))
+  // git init makes a repository without a remote: the saved github cannot finish a task there, vibe can.
+  expect(w.get('[data-testid="project-no-remote"]').text()).toContain('git remote add origin <url>')
+  await vi.waitFor(() => expect(w.get('[data-testid="project-needs-remote"]').text()).toContain('github pushes or opens pull requests'))
+  await w.get('[data-testid="project-use-vibe"]').trigger('click')
+  expect(w.find('[data-testid="project-needs-remote"]').exists()).toBe(false)
   expect(w.get('[data-testid="project-template"]').text()).toContain('vibe (example)')
-  expect(w.text()).toContain('Settings › Projects › Templates')
+  expect(w.text()).toContain('Settings › Projects › Template library')
   await w.get('[data-testid="project-start"]').trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w2%3Ap1'))
   // The example is copied into the project's workflow, not saved into the library.
   expect(posts.map(p => p.url)).toEqual(['/api/pm/project', '/api/pm/coordinator-start'])
   expect(posts[0]!.body).toEqual({ key: 'NA', name: 'Shop', machine: '', path: '/repos/new-app', template: 'example:vibe', plain: true, create: true, gitInit: true })
   expect(posts[1]!.body).toEqual({ project: 'NA', program: 'claude' })
+  w.unmount()
+})
+
+it('a browsed folder fills name and key, shows as ~/…, is probed and can start', async () => {
+  const w = await openSheet([{ project: '_main', name: 'Main coordinator', main: true, agent: opus }])
+  await w.get('[data-testid="project-add"]').trigger('click')
+  await w.get('[aria-label="Browse"]').trigger('click')
+  await w.get('[data-testid="browse-choose"]').trigger('click')
+  await vi.waitFor(() => expect(w.find('[data-testid="project-folder"]').attributes('data-folder')).toBe('plain'), { timeout: 2000 })
+  expect((w.get('#projectPath').element as HTMLInputElement).value).toBe('~/clients')
+  expect((w.get('#projectName').element as HTMLInputElement).value).toBe('clients')
+  expect((w.get('#projectKey').element as HTMLInputElement).value).toBe('CLN')
+  expect(w.get('[data-testid="project-start"]').attributes('disabled')).toBeUndefined()
   w.unmount()
 })
 

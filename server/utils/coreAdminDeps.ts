@@ -1,5 +1,6 @@
 import { coreInputDeps } from './coreInput'
-import { getState, poll } from './state'
+import { takingTurns } from './terminalTurns'
+import { getState, heldMessages, poll, transcripts } from './state'
 import { staleCoreDocs } from './readCoreState'
 import { recentDirs, rememberDir } from './actions'
 import type { CoreAdminDeps } from './coreCreate'
@@ -8,7 +9,8 @@ import type { CoreAdminDeps } from './coreCreate'
 export function coreAdminDeps(): CoreAdminDeps {
   const d = coreInputDeps()
   return {
-    call: d.call,
+    // The engine's messages (wakes, reports…) wait for the user's, and the reverse.
+    call: takingTurns(d.call),
     machines: () => getState().machines ?? [],
     panes: () => getState().panes,
     workspaces: () => getState().workspaces,
@@ -17,5 +19,8 @@ export function coreAdminDeps(): CoreAdminDeps {
     settle: () => { staleCoreDocs(); return poll() },
     recent: m => recentDirs({ local: m.local, key: m.key, profileId: null }),
     remember: (dir, m) => rememberDir(dir, { local: m.local, key: m.key, profileId: null }),
+    chat: async pane => (await transcripts.chat(pane)).items ?? null,
+    hold: (pane, text, byHolder) => heldMessages.hold(pane, text, undefined, byHolder),
+    handOver: (address, id, typed) => heldMessages.handOver(address, id, typed),
   }
 }

@@ -4,7 +4,9 @@
 import { coreCall, CoreError } from './core'
 import { HerdrError } from './herdr'
 import { keepPastes } from './pastes'
-import { isBareBang, isSlashCommand } from '../../shared/queuedMatch'
+import { fieldHolds, isBareBang, isSlashCommand } from '../../shared/queuedMatch'
+import { corePaint, readDraft, sameText } from './coreDraft'
+import { inTurn, typingInto } from './terminalTurns'
 import type { Pane } from '../../shared/types'
 
 type Call = <T>(method: string, params: object, timeout: number) => Promise<T>
@@ -15,7 +17,11 @@ export interface CoreInputDeps {
   refresh: () => void
   /** After a Stop from the conversation: the prompt Claude put back into its field, taken out of it. */
   takeBack?: (p: Pane) => Promise<{ text: string, lost: number } | null>
+  /** Claude: text in its input field now (its gray suggestion left out), null when empty. */
+  field?: (p: Pane) => Promise<string | null>
   settleMs?: number
+  /** Quiet time after a send before the next writer of the terminal (see terminalTurns.ts). */
+  turnSettleMs?: number
 }
 
 const KEY_RE = /^[a-z0-9+\-]{1,24}$/i
@@ -31,6 +37,15 @@ export function coreInputDeps(): CoreInputDeps {
     pane: id => findPane(id),
     panes: () => getState().panes,
     refresh: () => { setTimeout(() => { void poll() }, 100) },
+    field: async (p) => {
+      const endpoint = process.env.HC_SOCKET || ''
+      const plain = String(((await coreCall(endpoint, 'terminal.read', { terminal: p.coreAddress, lines: 0 }, 4000)) as { text?: string }).text || '')
+      const seen = readDraft(plain, p.agent)
+      if (!seen) return null
+      // The plain screen draws Claude's gray suggestion like typed text: the colored one tells them apart.
+      const typed = readDraft(await corePaint(endpoint, p.coreAddress || ''), p.agent)
+      return typed && sameText(typed.text, seen.text) ? typed.text : null
+    },
     takeBack: (p) => {
       const call = (method: string, params: object, t: number) => coreCall(process.env.HC_SOCKET || '', method, params, t)
       return takeBackFromClaude(p, {
@@ -63,18 +78,46 @@ export function failure(e: unknown): never {
 }
 
 // Message from the composer: pasted, then submitted with Enter once nobody types.
+// It waits its turn behind wherdr's other writers of this terminal (a wake
+// being typed, see terminalTurns.ts), then goes.
+// Claude: never typed into an input field that already holds text (a message
+// left there, a draft typed in the terminal): Claude would submit both as one
+// message. It is refused instead, and the conversation shows that text with
+// Send now / Clear (see coreDraft.ts): the user decides, then sends again.
 export async function coreSend(deps: CoreInputDeps, b: { pane_id?: unknown, text?: unknown, pastes?: unknown }) {
   const p = target(deps, b.pane_id)
   const text = typeof b.text === 'string' ? b.text : ''
   if (!text.trim() || isBareBang(text)) throw new HerdrError('empty', 'Empty message')
   if (text.length > MAX_TEXT) throw new HerdrError('too_large', 'Message too large')
-  if (!isSlashCommand(text)) keepPastes(text, b.pastes)
+  const waited = typingInto(p.coreAddress!)
+  return inTurn(p.coreAddress!, () => typeIn(deps, p, text, b.pastes, waited), deps.turnSettleMs)
+}
+
+// Behind another writer (or just after it), Claude may still be taking its
+// text out of the field: a few looks before calling the field busy.
+const BUSY_LOOKS = 5
+
+async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknown, waited: boolean) {
+  const field = p.agent === 'claude' ? deps.field : undefined
+  for (let i = 0; field && await field(p).catch(() => null); i++) {
+    if (!waited || i >= BUSY_LOOKS) throw new HerdrError('input_busy', 'Claude’s input still holds text that was not sent: send it or clear it first, then send again.')
+    await new Promise(res => setTimeout(res, deps.settleMs ?? 400))
+  }
+  if (!isSlashCommand(text)) keepPastes(text, pastes)
   try {
     const r = await deps.call<{ started?: boolean | null }>('terminal.send', { terminal: p.coreAddress, text }, 30000)
     let started = r?.started ?? null
-    // Claude takes a multi-line send (text + "\n@file") as a paste and leaves it in its
-    // input: core reports no turn started. One more Enter submits it; on an empty input it is harmless.
-    if (started === false && text.includes('\n')) {
+    // Claude takes a multi-line send (photo lines, text + "\n@file") as a paste and
+    // leaves it in its input: core reports no turn started. Our text alone still
+    // there (also during a turn, where Enter queues it): one more Enter submits it.
+    if (field && started !== true) {
+      await new Promise(res => setTimeout(res, deps.settleMs ?? 400))
+      if (fieldHolds(await field(p).catch(() => null), text, true)) {
+        await deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['enter'] }, 10000)
+        started = null // unconfirmed: Enter pressed, no turn observed yet
+      }
+    } else if (started === false && text.includes('\n')) {
+      // Without a field reading: on an empty input, one more Enter is harmless.
       await new Promise(res => setTimeout(res, deps.settleMs ?? 400))
       const t = await deps.call<{ status?: string | { state?: string } | null }>('terminal.get', { terminal: p.coreAddress }, 3000).catch(() => null)
       const state = typeof t?.status === 'string' ? t.status : t?.status?.state

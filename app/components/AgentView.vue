@@ -26,6 +26,9 @@ import { cellMode, showComposer, terminalAttachment } from '~/utils/viewMode'
 import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
+import { uiOpenPanel } from '~/utils/settingsPanel'
+import type { UiOpenEvent } from '#shared/uiOpen'
+import type { UiShowEvent } from '#shared/uiShow'
 
 const props = defineProps<{ paneId: string, cell?: boolean, active?: boolean, embedded?: boolean, selectedMode?: PaneViewMode }>()
 const emit = defineEmits<{ activate: [], 'update:selectedMode': [mode: PaneViewMode] }>()
@@ -33,6 +36,33 @@ const core = useRuntimeConfig().public.core
 const paneChat = (p: Pane | null | undefined) => hasChat(p)
 const route = useRoute()
 const router = useRouter()
+// An agent's `ui open` for this conversation (shared/uiOpen.ts), sent to this
+// device only when the user uses it: Settings beside it on a computer
+// (`show: 'panel'`, when the window has room), else the card the agent ends
+// its reply with. A bar above the message field stands in for that card only
+// when the reply is over without it. It never moves the user away: the card
+// waits for their tap.
+const uiCard = ref<UiOpenEvent | null>(null)
+const turnOpens = ref<string[]>([])
+watch([uiCard, turnOpens], ([e, opens]) => { if (e && opens.includes(e.link)) uiCard.value = null })
+const uiBar = computed(() => pane.value?.status === 'working' ? null : uiCard.value)
+watch(uiOpenRequest, (e) => {
+  if (!e || e.pane !== props.paneId) return
+  uiOpenRequest.value = null
+  const panel = e.show === 'card' ? null : uiOpenPanel(e.link, route, sidePanelRoom.value)
+  if (!panel) { uiCard.value = e; return }
+  uiCard.value = null
+  uiOpenedBy.value = { by: e.by, section: panel.query.section }
+  router.push(panel)
+})
+// An agent's `ui show` (shared/uiShow.ts): beside the conversation when the
+// window has room, else a card that opens it in a sheet (UiShowPanel.vue).
+const showCard = ref<UiShowEvent | null>(null)
+watch(uiShowRequest, (e) => {
+  if (!e || e.pane !== props.paneId) return
+  uiShowRequest.value = null
+  if (sidePanelRoom.value) { showCard.value = null; uiShown.value = e } else showCard.value = e
+})
 
 // Pane being viewed (no notification for it, read as soon as it finishes): the active
 // cell. Only the view that set it clears it (the next view of the same pane
@@ -89,8 +119,11 @@ const workspace = computed(() => herdrState.value.workspaces.find(w => w.id === 
 // Several panes in the tab (cell or full screen): each pane carries its
 // own name; the space name stays in the tab header.
 const ownTitle = computed(() => Boolean(props.cell || (tabEnt.value && tabEnt.value.panes.length > 1)))
-// A coordinator's conversation is titled by its name; its session title stays the subtitle.
-const headTitle = computed(() => (pane.value ? paneCoordinatorName(pane.value) || desktopHeaderTitle(pane.value, workspace.value, ownTitle.value) : herdrState.value.ok ? '—' : ''))
+// A coordinator's conversation is titled by its name, a task agent's by its task
+// (read once here when the list never showed); the session title stays the subtitle.
+onMounted(() => { if (!Object.keys(taskAgents.value).length) loadTaskAgents() })
+const badge = computed(() => paneBadge(pane.value))
+const headTitle = computed(() => (pane.value ? paneCoordinatorName(pane.value) || paneTaskTitle(pane.value, !badge.value) || desktopHeaderTitle(pane.value, workspace.value, ownTitle.value) : herdrState.value.ok ? '—' : ''))
 const subtitle = computed(() => {
   const s = pane.value ? conversationSubtitle(pane.value, workspace.value) : ''
   return s && s !== headTitle.value ? s : ''
@@ -127,7 +160,7 @@ const ctl = createTerminal(props.paneId, {
 const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void, focusSearch: () => void, gotoUnanswered: () => void } | null>(null)
 // Questions of the agent's last message the draft does not answer yet (ChatView): the composer's reminder.
 const unanswered = ref(0)
-const composer = ref<{ focus: () => void, focusEnd: () => void, focusAnswer: (at: number) => void, blur: () => void, addImages: (files: File[]) => Promise<void>, addFiles: (files: File[]) => Promise<number>, stop: () => boolean } | null>(null)
+const composer = ref<{ focus: () => void, focusEnd: () => void, focusAnswer: (at: number) => void, blur: () => void, addImages: (files: File[]) => Promise<void>, addFiles: (files: File[]) => Promise<number>, stop: () => boolean, sendText: (text: string) => Promise<void> } | null>(null)
 const searchOpen = ref(typeof route.query.q === 'string' && typeof route.query.hit === 'string')
 
 // Pane closed while being viewed. A pane just created may be missing
@@ -240,7 +273,7 @@ function onSent(q: QueuedMessage | null) {
 }
 // As soon as the server lists them, the server state wins; once taken, they stay
 // until the transcript is read again (see utils/outbox.ts prune).
-watch(pane, p => outboxPrune(props.paneId, p?.queued || []))
+watch(pane, p => outboxSync(props.paneId, p, herdrState.value.ok))
 
 const prompt = computed(() => (pane.value && pane.value.status === 'blocked' && pane.value.prompt && pane.value.prompt.options ? pane.value.prompt : null))
 watch(() => JSON.stringify(prompt.value), () => nextTick(() => chatRef.value?.scrollToEnd(false)))
@@ -258,7 +291,7 @@ const filesOpen = ref(false)
 const termShown = computed(() => mode.value === 'term')
 const interactionWindow = interactionWindowFor(props.paneId)
 const interactionOpen = ref(interactionWindow.resume(pane.value?.interaction || 'unknown'))
-const interactionAvailable = computed(() => mode.value === 'chat' && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value))
+const interactionAvailable = computed(() => mode.value === 'chat' && linkShown.value && !offlineView.value && !machineDown.value && !paneStale(pane.value))
 const interactive = computed(() => pane.value?.interaction === 'terminal')
 // No polling: the window only changes with an observation (watchers below) or
 // when a debounce ends, which gets a single timeout. A hidden page arms none
@@ -292,7 +325,7 @@ const coreDeskComposer = computed(() => core && desk.value && live.value && !pro
 const composerShown = computed(() => (coreDeskComposer.value || showComposer({ desk: desk.value, live: live.value, mode: mode.value, cell: Boolean(props.cell) })) && !(mode.value === 'chat' && interactionOpen.value))
 const canAttachTerminal = computed(() => terminalAttachment({
   desk: desk.value, live: live.value, mode: mode.value,
-  available: Boolean(pane.value && eventsOpen.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
+  available: Boolean(pane.value && linkShown.value && !offlineView.value && !machineDown.value && !paneStale(pane.value)),
 }))
 
 async function sendFiles(files: File[]) {
@@ -387,7 +420,7 @@ function openAgentMenu() { openMenu(agentMenu.value) }
 
 // Terminal keys: under the terminal, and in the active side-by-side cell on a
 // touch screen (iPad without a hardware keyboard: Esc, arrows, ^C).
-const keysAvailable = computed(() => Boolean(pane.value) && live.value && eventsOpen.value && !offlineView.value && !machineDown.value)
+const keysAvailable = computed(() => Boolean(pane.value) && live.value && linkShown.value && !offlineView.value && !machineDown.value)
 const keybarToggleShown = computed(() => compactPhone.value && keysAvailable.value && !interactionShown.value)
 const keybarId = computed(() => `pane-keys-${encodeURIComponent(props.paneId)}`)
 const keybarShown = computed(() => keysAvailable.value && (compactPhone.value ? phoneKeysOpen.value
@@ -542,7 +575,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         />
         <PhoneIdentity v-if="compactPhone && pane" :pane="pane" :workspace="workspace" @overview="openPlan" />
         <div v-else class="agent-head">
-          <div class="agent-title">{{ headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
+          <div class="agent-title"><AlfredEmblem v-if="isAlfredPane(pane)" class="head-emblem" /><ProjectBadge v-if="badge" class="head-badge" :text="badge.text" :color="badge.color" />{{ badge?.coordinator ? tl('coordinator') : headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
           <div class="agent-meta">
             <!-- No state known yet (startup): nothing rather than "closed". -->
             <StatusPill v-if="pane || herdrState.ok" :pane="pane" kind />
@@ -614,10 +647,10 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     >
       <ChatView
         ref="chatRef" v-model:search="searchOpen" :pane="pane" :local-queued="localQueued"
-        @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @answered="composer?.focusAnswer($event)" @unanswered="unanswered = $event" @sent="onSent"
+        @goto-term="setMode('term')" @restored="composer?.focus()" @quote="composer?.focusEnd()" @answered="composer?.focusAnswer($event)" @choose="composer?.sendText($event)" @unanswered="unanswered = $event" @opens="turnOpens = $event" @sent="onSent"
       />
     </div>
-    <div v-else-if="mode === 'term' && (!eventsOpen || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
+    <div v-else-if="mode === 'term' && (!linkShown || offlineView || machineDown)" class="chat-empty offline-terminal"><UIcon name="i-lucide-wifi-off" class="chat-empty-icon" /><p>{{ t('Terminal unavailable offline') }}</p></div>
     <TerminalView
       v-else-if="mode === 'term'" :ctl="ctl" :class="enter ? (enter > 0 ? 'enter-next' : 'enter-prev') : undefined" :style="swipeStyle"
     />
@@ -631,12 +664,14 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     <button v-else-if="(interactive || interactionOpen) && interactionAvailable" type="button" class="interactive-terminal-reopen" @click="reopenInteraction">
       <UIcon name="i-lucide-square-terminal" />{{ tl('Open interactive terminal', 'Ouvrir le terminal interactif') }}
     </button>
-    <ChoicesPanel v-if="prompt && !interactionOpen && !interactive && !termShown && eventsOpen && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :keys="live" />
+    <ChoicesPanel v-if="prompt && !interactionOpen && !interactive && !termShown && linkShown && !offlineView && !machineDown" :pane-id="paneId" :prompt="prompt" :keys="live" />
     <div v-if="keybarToggleShown" class="phone-keybar-controls">
       <button type="button" class="phone-keybar-toggle" :class="{ on: phoneKeysOpen }" :aria-label="t('Show or hide terminal keys')" :aria-expanded="phoneKeysOpen" :aria-controls="keybarId"
         @pointerdown.prevent @mousedown.prevent @click.stop="togglePhoneKeys"><UIcon :name="phoneKeysOpen ? 'i-lucide-chevron-down' : 'i-lucide-chevron-up'" /></button>
     </div>
     <Keybar v-if="keybarShown" :id="keybarId" :ctl="ctl" :compact="compactPhone" :terminal="termShown" @keyboard="toggleComposerKeyboard" />
+    <UiOpenCard v-if="uiBar" :event="uiBar" @close="uiCard = null" />
+    <UiShowCard v-if="showCard" :event="showCard" @close="showCard = null" />
     <Composer v-if="composerShown" ref="composer" :pane="pane" :pane-id="paneId" :send-keys="ctl.sendKeys" :conversation="mode === 'chat'" :term-shown="termShown" :esc-stops="!searchOpen" :take-back="mode === 'chat'" :unanswered="mode === 'chat' ? unanswered : 0" @sent="onSent" @pointerdown="takeTerminalControl" @keydown="onComposerKey" @show-terminal="setMode('term')" @show-unanswered="chatRef?.gotoUnanswered()" />
     </div>
     </div>
@@ -651,4 +686,6 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
 .dismissible-transcript-note > span { flex: 1; padding: 7px 0; }
 .dismissible-transcript-note > button { flex: none; align-self: stretch; min-width: 40px; min-height: 40px; color: var(--muted); font: 22px/1 var(--sans); border-radius: 6px; touch-action: manipulation; }
 .dismissible-transcript-note > button:hover, .dismissible-transcript-note > button:focus-visible { color: var(--text); background: var(--line-soft); }
+.head-badge { margin-right: 8px; }
+.head-emblem { display: inline-block; width: 18px; margin-right: 8px; vertical-align: -1px; }
 </style>

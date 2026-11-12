@@ -2,14 +2,22 @@
 // its current step; its live indicator is the herdr-core state of the agent
 // that holds that step (none for holder: none); anything waiting for the user
 // puts it in Your turn, whatever its step, with a badge saying what to do.
-import type { Holder } from './workflow'
-import type { PlannedStep, StepState } from './steps'
-import type { Run, Task, WaitKind } from './run'
+import { actionField, type Holder } from './workflow'
+import { stepLabels, waitsToMerge, type PlannedStep, type StepState } from './steps'
+import type { Run, SpecNote, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
 import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
 import { afterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
+import type { Report } from './report'
+import type { WorkReport } from './history'
 import { timesOf, type Times } from './times'
+import { sameFilesText } from './files'
+import { MERGE_REFUSED, ordinal } from './mergeQueue'
+import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
+import { AGENT_ENDED, retriesAction, waitsShort } from './release'
+import { recovering } from './incident'
+import { showIds } from './projectKey'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -17,9 +25,11 @@ export const PHASES: Phase[] = ['todo', 'working', 'done']
 export interface Card {
   id: string
   shown: string // the id as the user sees it, with the project's current key (projectKey.ts)
+  color?: string // its project's badge color
   project: string
   title: string
   description: string
+  specNotes?: SpecNote[] // spec changes after the description, newest last
   column: string // the step's column in its project's view
   phase: Phase // the column in the all-projects view
   step?: string // the current step's id, once started
@@ -37,18 +47,32 @@ export interface Card {
   removable?: true // never started (no agent, worktree or branch): the user may remove it
   after?: string[] // tasks of the same project it starts after
   prNow?: string // its PR as the engine last read it (prNow)
+  branch?: string // its working branch, once an agent worked on it
+  pr?: { base: string, commits?: number } // its PR's base and commit count, as the engine last read them
   held?: string // waits for memory on its machine
+  sameFiles?: string // to do behind this started task, which touches its files (files.ts)
+  machine?: string // the machine it went to, named, when its project allows several
+  queue?: number // its place in its project's merge queue (mergeQueue.ts)
+  queueOut?: string // why it stepped out of the queue's line
   asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
+  report?: Report // a problem the user reported, open (report.ts)
+  workReports?: WorkReport[] // the worker's reports as they arrived (Comments, history.ts)
+  tldr?: string // what the user needs to decide, in a few lines (summary.ts)
+  tldrWaits?: true // a new TL;DR waits for the pace: the notes show instead
   times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
+  archived?: number // when it was archived: off the board, in the Done column's archived list (archive.ts)
 }
 
 // A machine a project allows, for "Start on…": unready, the last check's failures ('' ready, none never checked).
 export interface BoardMachine { key: string, label: string, online: boolean, unready?: string }
-// types: the project's task types, each with its steps in one line ("work → review → merge").
+// types: the project's task types, each with its steps in one line ("work → review → merge")
+// and the weight its tasks get when none is set ("heavy (screenshots)").
 // machines: only for a project that allows more than its own, home first.
-export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string }[], machines?: BoardMachine[] }
+// base: the project's working branch, to tell a task that goes elsewhere.
+export interface BoardProject { base?: string, key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string, weight?: string }[], machines?: BoardMachine[] }
 // GET /api/pm/board
-export interface Board { projects: BoardProject[], cards: Card[] }
+// archived: each project's count of archived tasks, left out of cards (GET /api/pm/archived lists them).
+export interface Board { projects: BoardProject[], cards: Card[], archived?: Record<string, number> }
 
 export const columnOf = (s: PlannedStep) => s.column || s.id
 
@@ -78,31 +102,51 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ? runs.filter(r => r.task === task.id && r.role === holder && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
     : undefined
   const stall = stallOf(task, plan, now)
-  const yourTurn = s?.yourTurn?.badge || (task.state === 'waiting' ? task.waiting || 'Waiting' : undefined)
+  const branch = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]?.branch
+  // A done task (merged, archived) is never the user's turn.
+  // In the merge queue, waiting its turn or out of line: a refused merge is the queue's, not the user's.
+  const queue = task.queue && !s?.done ? task.queue : undefined
+  const queueOut = queue ? task.queueOut : undefined
+  // A refused merge out of line is the user's: the engine does not try it again at that commit.
+  const queued = (queue ?? 0) > 1 || (!!queueOut && !queueOut.startsWith(MERGE_REFUSED))
+  const yourTurn = s?.done ? undefined : (queued && s?.yourTurn?.reason === 'action' ? undefined : s?.yourTurn?.badge) || (task.state === 'waiting' && !recovering(task) ? task.waiting || 'Waiting' : undefined)
     || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
+    // Work handed to an agent that cannot do it, no coordinator woken for it: the user's.
+    || (s?.agent?.waits && s.agent.told === 'user' && !s.done ? s.agent.waits : undefined)
   return {
     id: task.id, shown: task.id, project: task.project, title: task.title, description: task.description,
+    ...(task.specNotes?.length ? { specNotes: task.specNotes } : {}),
     column: plan.length ? columnOf((s?.done ? plan.at(-1) : step) ?? plan[0]!) : 'To do',
     phase: s?.done ? 'done' : started || running ? 'working' : 'todo',
     ...(step ? { step: step.id } : {}),
     holder,
     ...(run?.terminal ? { terminal: run.terminal } : {}),
+    ...(branch ? { branch } : {}),
+    ...(task.prBase ? { pr: task.prBase } : {}),
     ...(yourTurn ? { yourTurn } : {}),
     ...(stall ? { stall } : {}),
-    ...(step?.ends === 'user' && started && !s?.done ? { userLabel: step.userLabel || 'Done' } : {}),
+    ...(queue ? { queue } : {}),
+    ...(queueOut ? { queueOut } : {}),
+    ...(step?.ends === 'user' && started && !s?.done ? { userLabel: stepLabels(step).button } : {}),
     tags: task.tags ?? [],
-    // Then the links steps gave as their proof (the PR), labelled by step; each address once.
-    links: [...task.links ?? [], ...plan.flatMap(p => (s?.proofs[p.id]?.link ? [{ label: p.id, url: s.proofs[p.id]!.link! }] : []))]
+    // Then the links steps gave as their proof, labelled 'PR' when a pull request, else by step; each address once.
+    links: [...task.links ?? [], ...plan.flatMap((p) => { const url = s?.proofs[p.id]?.link; return url ? [{ label: isPrUrl(url) ? 'PR' : p.id, url }] : [] })]
       .filter((l, i, all) => all.findIndex(x => x.url === l.url) === i),
     log: (task.log ?? []).slice(-30),
     plan,
     ...(s ? { state: s } : {}),
+    ...(task.workReports?.length ? { workReports: task.workReports } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
     ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
-    ...(task.held && task.state === 'todo' ? { held: task.held } : {}),
+    // Waiting for the engine to resume it after an incident, or for its agent to start again (watchdog.ts): shown as a wait, not the user's turn.
+    ...(task.held && (task.state === 'todo' || task.state === 'working') ? { held: task.held } : recovering(task) ? { held: task.held || task.waiting || 'Waiting' } : {}),
+    ...(task.sameFiles && task.state === 'todo' ? { sameFiles: task.sameFiles } : {}),
+    ...(task.report ? { report: task.report } : {}),
+    ...(task.tldrHeld ? { tldrWaits: true as const } : task.tldr?.text ? { tldr: task.tldr.text } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
     ...(s?.started ? { times: timesOf(task, plan, runs, now) } : {}),
+    ...(task.archived ? { archived: task.archived } : {}),
   }
 }
 
@@ -119,9 +163,31 @@ export function handleLabel(c: Pick<Card, 'stopped' | 'asks' | 'state' | 'stall'
 }
 
 // A task waiting for the user, as the sidebar's Tasks to handle lists it (GET /api/pm/handle).
-export interface ToHandle { id: string, shown: string, title: string, action: string, label: string }
-export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn)
-  .map(c => ({ id: c.id, shown: c.shown, title: c.title, action: c.yourTurn!.split('\n')[0]!, label: handleLabel(c) }))
+// project: the task's project (its fixed key); terminal: the agent that asks (a question, a permission, a login), whose conversation a tap opens.
+// The card's texts for people with each stored task id in its shown form
+// (CP-16 → CMP-16), texts stored before a key change too; its ids stay stored.
+export function shownTexts(projects: Parameters<typeof showIds>[0], c: Card): Card {
+  const show = <T>(v: T) => showIds(projects, v)
+  return {
+    ...c, description: show(c.description), ...(c.specNotes ? { specNotes: c.specNotes.map(n => ({ ...n, text: show(n.text) })) } : {}), log: c.log.map(e => ({ ...e, text: show(e.text) })),
+    ...(c.yourTurn ? { yourTurn: show(c.yourTurn) } : {}), ...(c.stall ? { stall: { ...c.stall, reason: show(c.stall.reason) } } : {}),
+    ...(c.stopped ? { stopped: { ...c.stopped, why: show(c.stopped.why) } } : {}), ...(c.asks ? { asks: { ...c.asks, text: show(c.asks.text) } } : {}),
+    ...(c.queueOut ? { queueOut: show(c.queueOut) } : {}), ...(c.held ? { held: show(c.held) } : {}), ...(c.tldr ? { tldr: show(c.tldr) } : {}),
+    ...(c.workReports ? { workReports: c.workReports.map(r => ({ ...r, text: show(r.text) })) } : {}),
+  }
+}
+
+export interface ToHandle { id: string, shown: string, project: string, color?: string, title: string, action: string, label: string, terminal?: string }
+export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn).map(taskRow)
+// Any task as that row (a `task <ID>` block in a chat, ChatTaskCard.vue): in
+// Your turn, what to do and its short action; else where it stands and its column.
+export function taskRow(c: Card): ToHandle {
+  const turn = c.yourTurn?.split('\n')[0]
+  const action = turn ?? (c.stopped ? `Stopped: ${c.stopped.why}` : c.held || c.sameFiles || (c.phase === 'done' ? 'Finished' : c.phase === 'todo' ? 'Not started yet' : c.holder === 'reviewer' ? 'Being reviewed' : 'Being worked on'))
+  return { id: c.id, shown: c.shown, project: c.project, ...(c.color ? { color: c.color } : {}), title: c.title, action, label: turn ? handleLabel(c) : c.column, ...(asker(c) ? { terminal: asker(c) } : {}) }
+}
+// The agent a task waits on, when what it waits for is that agent's question or permission.
+export const asker = (c: Pick<Card, 'asks' | 'stopped' | 'terminal'>) => (c.asks && !c.stopped ? c.terminal : undefined)
 
 // The card's one-tap link: its PR when it has one, else its first link.
 // A task the user may stop: started, not done, not stopped already.
@@ -136,8 +202,28 @@ export const waitsFor = (c: Pick<Card, 'after'>, cards: Pick<Card, 'id' | 'phase
   (c.after ?? []).filter(id => cards.some(x => x.id === id && x.phase !== 'done'))
 
 export const mainLink = (c: Pick<Card, 'links'>) => c.links.find(l => /^pr$/i.test(l.label)) ?? c.links[0]
-// A GitHub PR's link reads 'PR #12'; any other keeps its label.
-export const linkLabel = (l: { label: string, url: string }) => { const n = /\/pull\/(\d+)/.exec(l.url)?.[1]; return n ? `PR #${n}` : l.label }
+// A pull request's address, whatever its host: GitHub /pull/12, Bitbucket
+// /pull-requests/12, GitLab /merge_requests/12, Azure DevOps /pullrequest/12;
+// a proof stored with a sentence's period after it ('…/12.') still counts.
+const PR_URL = /\/(?:pull|pull-requests|merge_requests|pullrequest)\/(\d+)(?![\w-])/i
+const prNumber = (url: string) => PR_URL.exec(url)?.[1]
+export const isPrUrl = (url: string) => !!prNumber(url)
+// The card's PR: its first link to a pull request.
+export const prLink = (c: Pick<Card, 'links'>) => c.links.find(l => isPrUrl(l.url))
+// A PR's link reads 'PR #12'; any other keeps its label.
+export const linkLabel = (l: { label: string, url: string }) => { const n = prNumber(l.url); return n ? `PR #${n}` : l.label }
+
+// A commit's page on the Git host, read from a PR link of the task (GitHub,
+// GitLab, Azure DevOps /commit/<sha>, Bitbucket /commits/<sha>); none without one.
+const COMMIT_PATH: Record<string, string> = { 'pull': 'commit', 'pull-requests': 'commits', 'merge_requests': 'commit', 'pullrequest': 'commit' }
+export function commitUrl(sha: string, links: { url: string }[]): string | undefined {
+  if (!/^[0-9a-f]{7,64}$/i.test(sha)) return undefined
+  for (const l of links) {
+    const m = /^(https?:\/\/.+?)\/(pull|pull-requests|merge_requests|pullrequest)\/\d+/i.exec(l.url)
+    if (m) return `${m[1]}/${COMMIT_PATH[m[2]!.toLowerCase()]}/${sha}`
+  }
+  return undefined
+}
 
 // The tags of the cards, once each, to filter the board by.
 export const boardTags = (cards: Pick<Card, 'tags'>[]) => [...new Set(cards.flatMap(c => c.tags))].sort()
@@ -145,10 +231,11 @@ export const boardTags = (cards: Pick<Card, 'tags'>[]) => [...new Set(cards.flat
 // The columns shown: Your turn first, then the project's columns (or To do /
 // Working / Done for all projects). A card in Your turn is in no other column.
 export function boardLanes(cards: Card[], columns: string[] | null): { id: string, cards: Card[] }[] {
+  const mine = (c: Card) => !!turnText(c) || mergeWaits(c) !== undefined
   const lane = (c: Card) => (columns ? c.column : c.phase)
   return [
-    { id: 'your-turn', cards: cards.filter(c => c.yourTurn) },
-    ...(columns ?? PHASES).map(id => ({ id, cards: cards.filter(c => !c.yourTurn && lane(c) === id) })),
+    { id: 'your-turn', cards: cards.filter(mine) },
+    ...(columns ?? PHASES).map(id => ({ id, cards: cards.filter(c => !mine(c) && lane(c) === id) })),
   ]
 }
 
@@ -171,10 +258,30 @@ export function prNow(pr: (PrInfo & { mergeStateStatus?: string }) | undefined, 
 // The checks the task's merge step waits for.
 export const requiredChecks = (plan: PlannedStep[]) => plan.flatMap(p => (p.action?.kind === 'github.merge' ? p.action.checks ?? [] : []))
 
-export interface CardStatus { text: string, tone: 'wait' | 'bad' | 'ok', at?: number }
-const MERGES = ['github.merge', 'git.verify-merged']
+// approved: when the user approved the merge (it merges by itself), said before the text.
+export interface CardStatus { text: string, tone: 'wait' | 'bad' | 'ok', at?: number, approved?: number }
+
+// The status line: the approval first (its date on the sheet), then the text and its time.
+export function statusText(s: CardStatus, when: (at: number) => string, dated = false): string {
+  const approval = s.approved === undefined ? '' : `Approved${dated ? ` on ${when(s.approved)}` : ''}, merges by itself`
+  return [approval, s.at ? `${s.text} ${when(s.at)}` : s.text].filter(Boolean).join(' · ')
+}
+const MERGES = ['github.merge', 'bitbucket.merge', 'git.verify-merged']
 const bad = (text: string): CardStatus => ({ text, tone: 'bad' })
-const blocked = (error: string) => bad(/check\(s\) failed/.test(error) ? 'checks failed' : `blocked: ${error.replace(/^[\w-]+: /, '')}`)
+// Its checks red at its merge step, as "Checks failed (smoke)"; undefined otherwise.
+export function redAtMerge(c: Pick<Card, 'plan' | 'state' | 'prNow' | 'queueOut'>): string | undefined {
+  const s = c.state
+  if (!s?.started || s.done || c.plan[s.at]?.action?.kind !== 'github.merge') return
+  // The engine's last read of the PR decides (a rerun may turn it green while the fix is still handed out); without one, the queue and the handed fix.
+  const red = c.prNow ? (c.prNow.startsWith('checks failed') ? c.prNow : undefined)
+    : c.queueOut === 'checks failed' || s.agent?.kind === 'ci-to-agent' ? 'checks failed' : undefined
+  return red && `C${red.slice(1)}`
+}
+// A refused action in plain words; waiting, not bad, once the agent took it on.
+const refused = (error: string, told?: Told): CardStatus => {
+  const said = refusalSaid(error, told)
+  return { text: said.short, tone: told ? 'wait' : 'bad' }
+}
 const ofPr = (pr: string): CardStatus => (pr === 'merged'
   ? { text: 'merged on GitHub', tone: 'ok' }
   : { text: `PR open · ${pr}`, tone: /^(checks failed|blocked|conflict)/.test(pr) ? 'bad' : 'wait' })
@@ -182,20 +289,86 @@ const ofPr = (pr: string): CardStatus => (pr === 'merged'
 // Where a task's PR and merge stand, in one short line: from its step state
 // and what the engine last read of its PR. None before a PR, or once stopped.
 // A done task merged by a step: 'merged', at the time it was done.
-export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' | 'held'>): CardStatus | undefined {
+export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' | 'held' | 'queue' | 'queueOut' | 'sameFiles'> & { log?: Card['log'] }): CardStatus | undefined {
   const s = c.state
   if (c.held) return { text: c.held, tone: 'wait' }
+  if (c.sameFiles) return { text: sameFilesText(c.sameFiles), tone: 'wait' }
   if (!s?.started || c.stopped) return
   if (s.done) {
     const merged = c.plan.some(p => p.action && MERGES.includes(p.action.kind) && s.proofs[p.id] && Object.keys(s.proofs[p.id]!).length)
     return merged ? { text: 'merged', tone: 'ok', ...(s.since ? { at: s.since } : {}) } : undefined
   }
+  // Red checks at the merge step: the worker fixes them, or waits to (why); never "merges by itself" meanwhile.
+  const red = redAtMerge(c)
+  if (red) return !s.agent ? bad(red) : s.agent.waits ? bad(`${red}: waits for its worker, ${waitsShort(s.agent.waits)}`) : { text: `${red}: fixing: the worker is on it`, tone: 'wait' }
+  if (s.agent?.waits) return { text: s.agent.waits, tone: 'bad' }
+  // In the merge queue: its place in line, or why it stepped out.
+  if (c.queueOut) return { text: `in merge queue, out of line: ${c.queueOut}`, tone: c.queueOut === 'checks failed' ? 'bad' : 'wait', ...(s.approved && !s.acting ? { approved: s.approved.at } : {}) }
+  if (s.agent) return { text: retriesAction(c.plan, s) ? 'the agent is fixing it' : 'the agent is updating the PR', tone: 'wait' }
   const kind = c.plan[s.at]?.action?.kind
   const failed = s.yourTurn?.reason === 'action' ? s.yourTurn.error ?? '' : undefined
-  if (kind === 'github.pr') return s.acting ? { text: 'opening the PR', tone: 'wait' } : failed !== undefined ? blocked(failed) : undefined
-  const pr = c.plan.slice(0, s.at).some(p => p.action?.kind === 'github.pr') ? c.prNow : undefined
-  if (failed !== undefined) return pr?.startsWith('checks failed') ? ofPr(pr) : blocked(failed)
+  if (kind === 'pipeline.watch' && s.acting) return { text: 'watching the pipeline', tone: 'wait' }
+  if (kind === 'github.pr') return s.acting ? { text: 'opening the PR', tone: 'wait' } : failed !== undefined ? refused(failed) : undefined
+  const opened = c.plan.slice(0, s.at).some(p => p.action?.kind === 'github.pr') ? c.prNow : undefined
+  // Mergeable on GitHub, but a review is still ahead (or under way): not ready to merge yet.
+  const pr = opened === 'ready to merge' && c.plan.slice(s.at).some(p => p.ends === 'verdict') ? 'review pending' : opened
+  const approval = s.approved && !s.acting ? { approved: s.approved.at } : {}
+  if (c.queue && !pr?.startsWith('checks failed')) return { text: `${ordinal(c.queue)} in merge queue`, tone: 'wait', ...approval }
+  if (failed !== undefined) return pr?.startsWith('checks failed') ? ofPr(pr) : refused(failed, agentCatchingUp(c))
+  // A merge waiting for the user, updated with its base; once approved, it merges by itself.
+  if (s.catchUp) return { text: `updating with ${s.catchUp.base}`, tone: 'wait', ...approval }
+  if (s.approved && !s.acting) return { text: pr && pr !== 'ready to merge' ? pr : '', tone: 'wait', ...approval }
   // The merge runs: it waits for the checks, then merges.
   if (s.acting && kind && MERGES.includes(kind)) return pr && pr !== 'ready to merge' && kind === 'github.merge' ? ofPr(pr) : { text: 'merging', tone: 'wait' }
   return pr ? ofPr(pr) : undefined
+}
+
+// Which branch a task's work goes into, for the branch line of its sheet and
+// card: its PR's base as the engine last read it, else the branch the next
+// step names (the PR's base, the branch it lands on), else the last one the
+// plan names, else the project's working branch. pending: its PR is still to open.
+export interface BranchLine { head: string, base: string, commits?: number, pending?: true }
+export function branchLine(c: Pick<Card, 'branch' | 'pr' | 'plan' | 'state'>, projectBase?: string): BranchLine | undefined {
+  if (!c.branch) return
+  if (c.pr) return { head: c.branch, base: c.pr.base, ...(c.pr.commits ? { commits: c.pr.commits } : {}) }
+  const target = (s: PlannedStep) => { const f = s.action && actionField(s.action.kind); return f ? s.action![f] : undefined }
+  const at = c.state?.started && !c.state.done ? c.state.at : c.plan.length
+  const step = c.plan.slice(at).find(target) ?? c.plan.slice(0, at).reverse().find(target)
+  const base = step ? target(step) : projectBase
+  if (!base) return
+  return { head: c.branch, base, ...(step?.action?.kind === 'github.pr' && c.plan.indexOf(step) >= at ? { pending: true as const } : {}) }
+}
+
+// An approved merge on its way: what it waits for, in a few words (its place
+// in the merge queue, its checks, its machine back online…), from the task's
+// approval kept on the server. undefined once it merged, failed or was
+// refused (the user's turn again), or when no merge was approved.
+export function mergeWaits(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'yourTurn' | 'prNow' | 'held' | 'queue' | 'queueOut' | 'sameFiles'>): string | undefined {
+  const s = c.state
+  if (!s?.approved || s.done || c.stopped || c.yourTurn || !waitsToMerge(c.plan[s.at])) return
+  const pr = c.prNow && c.prNow !== 'ready to merge' && c.prNow !== 'merged' ? c.prNow : undefined
+  return cardStatus(c)?.text || pr || 'waiting for its turn to merge'
+}
+
+// An approved merge that can go on now: its Merge loading. Not while its checks are red.
+export const mergeGoesNow = (c: Parameters<typeof mergeWaits>[0]) => mergeWaits(c) !== undefined && !redAtMerge(c)
+
+// How long an update with the base may run before its conflict counts as stuck.
+const CATCH_UP_STUCK_MS = 3 * 60_000
+
+// An approved merge that waits on something the engine cannot do by itself (a
+// conflict or red checks no agent is on, its worker ended, its machine down):
+// what, in plain words. The user's way out is Start the worker
+// (pmMechanic.ts startWorkerFor). undefined: the merge goes on alone. Work
+// handed to its worker that waits counts even once it is the user's turn (no
+// coordinator took it over: agent.told 'user').
+export function mergeStuck(c: Parameters<typeof mergeWaits>[0], now = Date.now()): string | undefined {
+  const s = c.state
+  const handed = !!s?.agent?.waits && !s.done && !c.stopped && waitsToMerge(c.plan[s.at])
+  if (!handed && mergeWaits(c) === undefined) return
+  if (s!.agent?.waits === AGENT_ENDED) return 'Its worker ended before finishing what the merge needs. Start it again to finish; the merge then goes on.'
+  if (s!.agent?.waits) return `${s!.agent.waits}. Start the worker again to go on with the merge.`
+  if (!s || s.agent) return
+  if (s.catchUp && now - s.catchUp.at >= CATCH_UP_STUCK_MS) return `Its PR conflicts with ${s.catchUp.base} and no agent is solving it. Start the worker to solve the conflict; the merge then goes on.`
+  if (redAtMerge(c)) return 'Its PR\'s checks failed and no agent is fixing them. Start the worker to fix them; the merge then goes on.'
 }
