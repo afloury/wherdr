@@ -943,7 +943,11 @@ of the entry. An agent that is not on screen here opens the sheet instead.
   commit, from the start. The step's time limit starts again.
 - **A refused merge or a blocked task**: the reason in plain words, and what you
   can do (start it, open its agent). A failed action step (a merge GitHub
-  refused) has *Try again* at the top of the sheet, which runs it again.
+  refused) has *Try again* at the top of the sheet, which runs it again and
+  writes its result in the task's History each time, even when it fails the
+  same way. PR details that come back unreadable are read again (1, 2, 4 and
+  8 minutes later), then the error ends with the last lines of the output,
+  private parts masked.
 
 On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
 *Start*, *Open the agent*) stay pinned at the bottom of the sheet while its
