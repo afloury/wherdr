@@ -4,7 +4,7 @@
 // noted on the task before it runs, so it is never made twice. A move that
 // tries to fix a block counts (shared/pm/selfFix.ts): past its tries, or with
 // nothing left to try, the coordinator is woken once, with what was tried.
-import { CODE, SCRIPT, guardAction, readPrInfo, taskGuards, type PrInfo } from '../../shared/pm/actions'
+import { CODE, SCRIPT, errorText, guardAction, readPrInfo, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, infraLog, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { FIX_MOVE, blockOf, escalation, fixOf, mayTry, noteFix } from '../../shared/pm/selfFix'
 import { addSkip, wakesFor } from '../../shared/pm/wakes'
@@ -495,15 +495,15 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
     case 'sync-push': {
       // The remote's commits in the worktree, then the push again; a conflict is the worker's.
       const r = await sh(SCRIPT.sync, [run.worktree, run.branch])
-      if (r.code === CODE.SEND_BACK) return hand(`${lastLine(r.out)}. Merge origin/${run.branch} into your branch, resolve the conflicts, commit, then say you are done.`)
-      if (r.code !== 0) return lastLine(r.out)
+      if (r.code === CODE.SEND_BACK) return hand(`${lastLine(errorText(r))}. Merge origin/${run.branch} into your branch, resolve the conflicts, commit, then say you are done.`)
+      if (r.code !== 0) return lastLine(errorText(r))
       return `${lastLine(r.out)}; step ${(await stepAction(deps, task.id, 'engine')).step?.yourTurn?.badge ?? 'went on'}`
     }
     case 'fix-base': {
       const refused = guardAction(f.guards, { kind: 'github.pr', base: move.base }, { branch: run.branch, by: 'engine' })
       if (refused) return refused
       const r = await sh(SCRIPT.pr, [run.worktree, run.branch, move.base, `${shownTaskId(await deps.store.projects(), task.id)}: ${task.title}`], task.description || task.title)
-      return r.code === 0 ? `PR base set to ${move.base}` : lastLine(r.out)
+      return r.code === 0 ? `PR base set to ${move.base}` : lastLine(errorText(r))
     }
     case 'catch-up': {
       // A merge step waiting for the user: the card says it is updating, until the PR is clean.
@@ -513,18 +513,18 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
       const r = await sh(SCRIPT.catchUp, [run.worktree, move.base, run.branch])
       if (r.code === CODE.SEND_BACK) {
         return hand(waiting
-          ? `${lastLine(r.out)}. Merge origin/${move.base} into your branch, resolve the conflicts, commit, then stop: the engine pushes it.`
-          : `${lastLine(r.out)}. Merge origin/${move.base} into your branch, fix it, commit, then say you are done.`)
+          ? `${lastLine(errorText(r))}. Merge origin/${move.base} into your branch, resolve the conflicts, commit, then stop: the engine pushes it.`
+          : `${lastLine(errorText(r))}. Merge origin/${move.base} into your branch, fix it, commit, then say you are done.`)
       }
       if (waiting) {
         const head = r.code === 0 ? lastLine(r.out) : undefined
         const since = reviewedCommit(f.plan, task.step!) ?? from
         await stepEvent(deps, task.id, f.plan, head
           ? { kind: 'caught-up', head, ...(f.head !== from ? { review: { since, head } } : {}) }
-          : { kind: 'caught-up', error: `update with ${move.base}: ${lastLine(r.out)}` })
+          : { kind: 'caught-up', error: `update with ${move.base}: ${lastLine(errorText(r))}` })
       }
       if (r.code === 0) return `caught up with ${move.base}`
-      return catchUpGaveUp(task, f.head) ? `${lastLine(r.out)} (failed ${CATCH_UP_TRIES} times: wherdr stops updating this commit)` : lastLine(r.out)
+      return catchUpGaveUp(task, f.head) ? `${lastLine(errorText(r))} (failed ${CATCH_UP_TRIES} times: wherdr stops updating this commit)` : lastLine(errorText(r))
     }
     case 'take-update': {
       const at = await sh(SCRIPT.headOf, [run.worktree, f.pr!.headRefOid, f.pr!.baseRefName])
@@ -541,7 +541,7 @@ async function perform(deps: PmLaunchDeps, task: Task, run: Run, move: Move, f: 
     }
     case 'rerun-ci': {
       const r = await sh(SCRIPT.rerun, [run.worktree, f.head!])
-      return r.code === 0 ? `ran ${move.checks.join(', ')} again` : lastLine(r.out)
+      return r.code === 0 ? `ran ${move.checks.join(', ')} again` : lastLine(errorText(r))
     }
     case 'ci-to-agent': return hand(redCiText(move.checks, f.head!))
   }

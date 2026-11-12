@@ -4,6 +4,7 @@
 // rules are in shared/pm/release.ts.
 import { LABEL, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PUSH_LEFT_SCRIPT, RELEASED_WHY, idleSince, releaseDue, waitsForUser, waitsInQueue } from '../../shared/pm/release'
+import { errorText } from '../../shared/pm/actions'
 import { handoverText } from '../../shared/pm/stop'
 import { runOn, startTask, type PmLaunchDeps } from './pmLaunch'
 import { actionShell } from './pmActions'
@@ -27,8 +28,8 @@ const unpushedLogged = new Set<string>()
 // pushed, nothing to push, or why not.
 async function pushLeft(deps: PmLaunchDeps, run: Run): Promise<{ error?: string, pushed?: true }> {
   const r = await Promise.resolve().then(() => actionShell(deps, runOn(deps, run))(PUSH_LEFT_SCRIPT, [run.worktree, run.branch])).catch((e: Error) => ({ code: 1, out: e.message }))
-  const last = r.out.trim().split('\n').pop()?.trim().slice(0, 300) ?? ''
-  return r.code === 0 ? (last === 'pushed' ? { pushed: true } : {}) : { error: last || 'git push failed' }
+  const last = (s: string) => s.trim().split('\n').pop()?.trim().slice(0, 300) ?? ''
+  return r.code === 0 ? (last(r.out) === 'pushed' ? { pushed: true } : {}) : { error: last(errorText(r)) || 'git push failed' }
 }
 
 export async function releaseIdle(deps: PmLaunchDeps, now = Date.now()) {

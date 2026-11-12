@@ -10,7 +10,7 @@
 // elsewhere it is a plain copy, still much lighter than npm ci (no network, no
 // resolver, a few MB of memory instead of about 1 GB).
 import { SETUP_TIMEOUT, durationSecs, type Template, type WorktreeSetup } from '../../shared/pm/workflow'
-import type { CoreAdminDeps } from './coreCreate'
+import { PATH_SETUP, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
 
 // Arguments: clone, worktree, lockfile, then the files to copy and the
@@ -55,8 +55,10 @@ exit 0`
 
 // The setup command, in the worktree: prints `run <code> <seconds>`, then its
 // last output lines (`out <line>`) when it fails. Its output stays in the git
-// folder (wherdr-setup.log), read back when it runs past its time.
-export const RUN_SCRIPT = `dir=$1 cmd=$2
+// folder (wherdr-setup.log), read back when it runs past its time. PATH_SETUP:
+// node and the rest from Homebrew or nvm, as a login shell would find them.
+export const RUN_SCRIPT = `${PATH_SETUP}
+dir=$1 cmd=$2
 g=$(git -C "$dir" rev-parse --absolute-git-dir) || exit 1
 : > "$g/wherdr-setup.failed"; start=$(date +%s)
 (cd "$dir" && sh -c "$cmd") > "$g/wherdr-setup.log" 2>&1 </dev/null; code=$?
