@@ -72,6 +72,13 @@ Promise<{ ok: true, head: string } | { ok: false, error: string, toAgent?: boole
 // GitHub's words for a PR in conflict with its base.
 const CONFLICT = /not mergeable|merge conflict|cannot be cleanly created/i
 const lastLine = (out: string) => out.trim().split('\n').pop()?.trim().slice(0, 300) || ''
+// Why a script failed: a refused push says it on its "! [rejected]" line
+// (git's hints and "failed to push" come after it); else the last line.
+export function whyFailed(out: string) {
+  const lines = out.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('hint:'))
+  const m = lines.map(l => /^! \[(?:remote )?rejected\]\s+\S+ -> (\S+) \((.+)\)$/.exec(l)).find(Boolean)
+  return (m ? `push to ${m[1]} refused: ${m[2]}` : lines.at(-1) ?? '').slice(0, 300)
+}
 const pause = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 // After a push, how long to wait for GitHub to show the new PR head: about a minute.
 const LAG_MS = [2_000, 4_000, 8_000, 15_000, 15_000, 15_000]
@@ -128,7 +135,7 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
   const { action: a, worktree: wt, branch } = job
   const name = a.kind.split('.')[1]
   const fail = (r: { code: number | null, out: string }): ActionResult =>
-    ({ ok: false, error: `${name}: ${r.code === null ? 'timed out' : lastLine(r.out) || `exit code ${r.code}`}`, ...(r.code === CODE.SEND_BACK ? { toAgent: true } : {}) })
+    ({ ok: false, error: `${name}: ${r.code === null ? 'timed out' : whyFailed(r.out) || `exit code ${r.code}`}`, ...(r.code === CODE.SEND_BACK ? { toAgent: true } : {}) })
   const commit = async (script: string, args: string[]) => {
     const r = await run(deps, script, [wt, ...args])
     return r.code === 0 ? { ok: true, commit: lastLine(r.out) } : fail(r)

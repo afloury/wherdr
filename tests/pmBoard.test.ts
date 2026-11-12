@@ -3,8 +3,10 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
-import { board, userStep } from '../server/utils/pmBoard'
+import { board, stepAction, userStep } from '../server/utils/pmBoard'
+import { SCRIPT } from '../shared/pm/actions'
 import { company, wherdr } from '../shared/pm/examples'
+import type { Template } from '../shared/pm/workflow'
 import { cardOf, cardStatus, linkLabel, mergeGoesNow, prNow, requiredChecks, shownTexts, statusText } from '../shared/pm/board'
 import { planSteps } from '../shared/pm/steps'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
@@ -113,4 +115,67 @@ it('a card\'s texts read each task id with its project\'s shown key, stored befo
   expect(c.description).toBe('After CMP-16')
   expect(c.log[0]!.text).toBe('waits for CMP-16 on branch task/CP-16')
   expect([c.id, c.after]).toEqual(['CP-17', ['CP-16']])
+})
+
+// The wherdr project's simple task (todo, work, pr, review, merge, done) at pr,
+// its worker's worktree on this machine; git answers through `git`.
+async function atPr(git: (script: string, args: string[]) => { code: number, out: string }) {
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-board-'))
+  const store = createPmStore(dir)
+  await store.setEnabled(true)
+  await store.saveTemplate(wherdr)
+  await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'WH', name: 'wherdr', machine: '', path: '/src/wh', template: 'wherdr', addedAt: 1 }] }))
+  const task = await store.addTask({ project: 'WH', title: 'Fix it', type: 'simple' })
+  await store.saveTask({ ...task, state: 'working', step: { at: 2, started: true, proofs: {}, rounds: {}, yourTurn: { reason: 'action', badge: 'pr: failed', error: 'failed' } } })
+  await store.saveRun({ id: 'r1', task: task.id, role: 'worker', program: 'claude', model: 'm', machine: '', worktree: '/w', branch: 'task/WH-1', instructions: '/i', attempt: 1, state: 'running', startedAt: 1 })
+  const scripts: string[][] = []
+  const call = async (method: string, p: { argv: string[] }) => {
+    if (method !== 'machine.exec') throw new Error(`unexpected ${method}`)
+    const [, , script, , ...args] = p.argv
+    scripts.push(args)
+    const r = git(script!, args)
+    return { code: r.code, stdout: Buffer.from(r.out).toString('base64') }
+  }
+  const deps = { store, call, machines: () => [{ key: '', label: 'here', local: true }] } as unknown as CoreAdminDeps & { store: typeof store }
+  // The new workflow: pr and merge replaced by a landing on develop, now open to the engine.
+  const t = (await store.workflow('WH'))!
+  const land = { id: 'land', column: 'Merging', ends: 'action', action: { kind: 'git.land', target: 'develop' } } as const
+  const next: Template = { ...t, guards: { protected: ['main'], merge: { protected: 'user', others: 'engine' } },
+    taskTypes: { ...t.taskTypes, simple: { steps: [{ id: 'todo' }, 'work', land, { id: 'done' }] } } }
+  await store.saveWorkflow('WH', next, { by: 'user' })
+  return { store, deps, scripts, id: task.id }
+}
+
+it('a workflow change that replaces pr and merge with a landing moves the task onto it, and the engine lands', async () => {
+  const { store, deps, scripts, id } = await atPr(script => (script.includes(SCRIPT.land) ? { code: 0, out: 'abc123' } : { code: 1, out: '' }))
+  const moved = (await store.task(id))!
+  expect(moved.step).toMatchObject({ at: 2, acting: true, tries: { land: 1 } })
+  expect(moved.step?.yourTurn).toBeUndefined()
+  expect(moved.log!.at(-1)).toMatchObject({ by: 'engine', text: 'workflow changed: pr is gone, on to land' })
+  const after = await stepAction(deps, id, 'engine')
+  expect(scripts[0]).toEqual(['/w', 'develop'])
+  expect(after.step).toMatchObject({ done: true, proofs: { land: { commit: 'abc123' } } })
+})
+
+it('a refused push leaves why in the task\'s log', async () => {
+  const refused = ' ! [remote rejected] HEAD -> develop (protected branch hook declined)\nerror: failed to push some refs\nhint: see the docs'
+  const { deps, id } = await atPr(() => ({ code: 1, out: refused }))
+  const after = await stepAction(deps, id, 'engine')
+  expect(after.step).toMatchObject({ at: 2, yourTurn: { reason: 'action' } })
+  expect(after.log!.at(-1)).toMatchObject({ by: 'engine', text: 'land: push to develop refused: protected branch hook declined' })
+})
+
+it('the first accepted workflow moves tasks that followed the default one', async () => {
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-board-'))
+  const store = createPmStore(dir)
+  await store.setEnabled(true)
+  await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'NP', name: 'new', machine: '', path: '/src/np', addedAt: 1 }] }))
+  expect((await store.workflow('NP'))?.version).toBe(0) // the default: todo, work, done
+  const task = await store.addTask({ project: 'NP', title: 'Fix it', type: 'task' })
+  await store.saveTask({ ...task, state: 'working', step: { at: 1, started: true, proofs: {}, rounds: {} } })
+  const land = { id: 'land', ends: 'action', action: { kind: 'git.land', target: 'develop' } } as const
+  await store.saveWorkflow('NP', { id: 'np', prefs: { agent: 'claude', model: 'sonnet' }, taskTypes: { task: { steps: [{ id: 'todo' }, land, { id: 'done' }] } } }, { by: 'user' })
+  const moved = (await store.task(task.id))!
+  expect(moved.step).toMatchObject({ at: 1, acting: true, tries: { land: 1 } })
+  expect(moved.log!.at(-1)).toMatchObject({ by: 'engine', text: 'workflow changed: work is gone, on to land' })
 })
