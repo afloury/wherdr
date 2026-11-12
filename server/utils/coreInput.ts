@@ -108,14 +108,13 @@ async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknow
     const r = await deps.call<{ started?: boolean | null }>('terminal.send', { terminal: p.coreAddress, text }, 30000)
     let started = r?.started ?? null
     // Claude takes a multi-line send (photo lines, text + "\n@file") as a paste and
-    // leaves it in its input: core reports no turn started. Our text alone still
-    // there (also during a turn, where Enter queues it): one more Enter submits it.
+    // may leave it in its input: core reports no turn started. A large photo is
+    // read and resized before its "[Image #N]" shows, and an Enter pressed before
+    // that is lost. Our text alone there, each photo as its placeholder (also
+    // during a turn, where Enter queues it): Enter, and once more if it stays.
     if (field && started !== true) {
-      await new Promise(res => setTimeout(res, deps.settleMs ?? 400))
-      if (fieldHolds(await field(p).catch(() => null), text, true)) {
-        await deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['enter'] }, 10000)
-        started = null // unconfirmed: Enter pressed, no turn observed yet
-      }
+      const enters = await submitLeftInput(deps, p, field, text)
+      if (enters) started = null // unconfirmed: Enter pressed, no turn observed yet
     } else if (started === false && text.includes('\n')) {
       // Without a field reading: on an empty input, one more Enter is harmless.
       await new Promise(res => setTimeout(res, deps.settleMs ?? 400))
@@ -128,6 +127,30 @@ async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknow
     }
     return { ok: true, started }
   } catch (e) { failure(e) } finally { deps.refresh() }
+}
+
+// Looks at Claude's field after a send it did not start: up to this many,
+// settleMs apart (about 6 s by default), for the photos to show.
+const SUBMIT_LOOKS = 15
+
+// Our message left in Claude's field: waits (bounded) until the field holds
+// it whole, placeholders included, then presses Enter; if it is still there
+// after that, presses Enter once more. The field was empty before the send,
+// so other text there is ours still being drawn (a photo path not yet an
+// "[Image #N]"); Enter is never pressed on it. Stops at an empty field (the
+// message was taken). Returns the Enters pressed.
+async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) => Promise<string | null>, text: string): Promise<number> {
+  let enters = 0
+  for (let i = 0; i < SUBMIT_LOOKS && enters < 2; i++) {
+    await new Promise(res => setTimeout(res, deps.settleMs ?? 400))
+    const now = await field(p).catch(() => null)
+    if (!now) break
+    if (fieldHolds(now, text, true)) {
+      await deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['enter'] }, 10000)
+      enters++
+    } else if (enters) break // changed after our Enter: someone else's now
+  }
+  return enters
 }
 
 // Raw route: text + Enter is a message, named keys go through terminal.keys.

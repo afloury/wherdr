@@ -106,4 +106,10 @@ describe('message left in Claude\'s input field', () => {
     // Someone else's text glued after ours in the field: the field keeps its own bubble.
     expect(inputShown(list, `${FIELD} and more`)).toBe(false)
   })
+
+  it('still being sent (the server waits to submit it): no "Not sent" bubble of the field yet', () => {
+    const list = pendingQueue({ mine: [{ ...sent, state: 'sending' as const }], claude: [], items: [], screen: null, idle: true, input: FIELD })
+    expect(pendingLabel(list[0]!, 'sending', 'claude')).toEqual({ kind: 'sending' })
+    expect(inputShown(list, FIELD)).toBe(true)
+  })
 })

@@ -99,13 +99,29 @@ describe('core input routes', () => {
     for (const [text, after, enters] of [[msg, '[Image #120] what is wrong here?', 1], [msg, '', 0], [msg, '[Image #120] what is wrong here? more', 0],
       // A long paste, shown as its stand-in: still ours alone.
       [long, '[Image #120] what is wrong here? [Pasted text #1 +29 lines]', 1], [long.split('\n').slice(1).join('\n'), '[Pasted text #1 +29 lines]', 1]] as const) {
-      const t = deps(m => (m === 'terminal.send' ? { started: false } : {}))
-      t.d.settleMs = 1
       let reads = 0
-      t.d.field = async () => (reads++ ? after : null)
+      let entered = false
+      const t = deps((m) => { if (m === 'terminal.keys') entered = true; return m === 'terminal.send' ? { started: false } : {} })
+      t.d.settleMs = 1
+      t.d.field = async () => (reads++ && !entered ? after : null)
       await coreSend(t.d, { pane_id: 't1', text })
       expect(t.calls.filter(c => c[0] === 'terminal.keys')).toHaveLength(enters)
     }
+  })
+
+  it('a photo message: Enter only once Claude shows its placeholder, and once more if it stays (never a third)', async () => {
+    const msg = '/home/user/.cache/herdr-web/uploads/a.jpg\nwhat is wrong here?'
+    // Claude still reading the photo: its path is in the field, then "[Image #3]".
+    const screens = [null, '/home/user/.cache/herdr-web/uploads/a.jpg what is wrong here?', '/home/user/.cache/herdr-web/uploads/a.jpg what is wrong here?', '[Image #3] what is wrong here?']
+    const seen: (string | null)[] = []
+    let reads = 0
+    let last: string | null = null
+    const t = deps((m) => { if (m === 'terminal.keys') seen.push(last); return m === 'terminal.send' ? { started: false } : {} })
+    t.d.settleMs = 1
+    t.d.field = async () => (last = screens[Math.min(reads++, screens.length - 1)]!)
+    expect(await coreSend(t.d, { pane_id: 't1', text: msg })).toEqual({ ok: true, started: null })
+    // The first Enter after the placeholder; the message stayed: one automatic resubmit.
+    expect(seen).toEqual(['[Image #3] what is wrong here?', '[Image #3] what is wrong here?'])
   })
 
   it('sends a multi-line "!" command as it is, in one terminal.send', async () => {
