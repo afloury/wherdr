@@ -126,13 +126,16 @@ export function noteBody(input: unknown): string | { error: string } {
 // The note-folder targets a body links to, as paths from the folder: a note
 // (<id>.md) or a file. Web and in-app (#/…) links are left out; a link that
 // would leave the folder is an error.
+// A badge's link ([[label|icon|colour|plans/x.md]]) counts like any other.
 export function noteLinks(body: string): string[] | { error: string } {
   const out: string[] = []
-  for (const m of body.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)) {
-    const target = m[1]!.split('#')[0]!
-    if (/^[a-z][a-z0-9+.-]*:/i.test(m[1]!) || m[1]!.startsWith('#') || !target) continue
+  const hrefs = [...body.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)].map(m => m[1]!)
+  for (const b of noteBadges(body, () => '').badges) if (b.kind === 'custom' && b.link) hrefs.push(b.link)
+  for (const href of hrefs) {
+    const target = href.split('#')[0]!
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('#') || !target) continue
     const note = /^([^/]+)\.md$/.exec(target)
-    if (!(note && noteId(note[1]!)) && !filePath(target)) return { error: `${m[1]}: a link inside the notes is <id>.md or <folder>/<name>.md, never .. nor an absolute path` }
+    if (!(note && noteId(note[1]!)) && !filePath(target)) return { error: `${href}: a link inside the notes is <id>.md or <folder>/<name>.md, never .. nor an absolute path` }
     out.push(target)
   }
   return out

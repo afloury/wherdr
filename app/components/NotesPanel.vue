@@ -43,7 +43,7 @@ watch(notesOpen, (v) => {
     </header>
     <div class="ui-show-body"><NotesList @leave="leave" /></div>
   </aside>
-  <AppSheet v-else-if="!panel" v-model:open="sheetOpen" :title="tl('Notes')" wide>
+  <AppSheet v-else-if="!panel" v-model:open="sheetOpen" :title="tl('Notes')" wide full screen>
     <NotesList @leave="leave" />
   </AppSheet>
 </template>
