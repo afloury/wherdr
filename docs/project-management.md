@@ -78,6 +78,11 @@ saved workflow into your templates; the project is untouched) and *Start over
 from a template* (pick a template or an example, read the difference, replace).
 Neither *Save* nor *Start over* changes the project's [guards](#guards).
 
+A saved change reaches the tasks already under way: each stays on its step,
+found by its id. A task whose step is gone goes on to the first step of the new
+plan it has not passed yet, as if it had just reached it (an action step runs
+its action), and its Log says so.
+
 When the project's coordinator proposes a change to the workflow (only after
 your request), a square marks the project's row (*1 to review*) and the
 **Workflow** tab, whose first row, *Change proposed by the coordinator*, opens
@@ -209,7 +214,8 @@ needs from you and the buttons for it, before its Description, Plan and Log.
 - **A review to settle** after several send-backs: each choice the engine offers,
   with what it does.
 - **A stopped task**: who stopped it and why, then *Continue*, *Take it as it is*
-  or *Archive*, each with what it does.
+  or *Archive*, each with what it does. *Continue* on a step that ends with an
+  action runs that action again.
 - **A step that ends with you** (*Merged*, or the step's own button): what to do,
   and its button.
 - **An agent's question or permission**: its text, and a button to open that agent.

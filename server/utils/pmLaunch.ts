@@ -9,7 +9,7 @@ import { CoreError } from './core'
 import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, kindsOf, launchFailure, machineOn, type CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
-import { initialState, onEvent } from '../../shared/pm/steps'
+import { actAgain, initialState, onEvent } from '../../shared/pm/steps'
 import { doneSection, runFiles } from '../../shared/pm/advance'
 import { isPublic } from '../../shared/pm/visibility'
 import { cloneOn, taskMachine } from '../../shared/pm/project'
@@ -89,11 +89,13 @@ export async function startTask(deps: PmLaunchDeps, id: unknown, { handover, rev
   const plan = workerPlan(t, task)
   if ('reason' in plan) return wait(store, task, plan.reason)
   // Stopped at a step the worker does not hold (the review): no new worker. That
-  // step's holder is told again (the reviewer started again) by the next advance pass.
+  // step's holder is told again (the reviewer started again) by the next advance
+  // pass, and an action step's action runs again.
   const s = task.step
-  const held = s?.started && !s.done ? taskPlan(t, task, p)[s.at] : undefined
+  const steps = s?.started && !s.done ? taskPlan(t, task, p) : undefined
+  const held = steps?.[s!.at]
   if (held && held.holder !== 'worker' && !revive) {
-    const { told: _told, ...step } = s!
+    const { told: _told, ...step } = actAgain(steps!, s!)
     return store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, step })
   }
   const { machine } = placed

@@ -100,8 +100,9 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     state = back.state
     const log = back.effects.find(e => e.kind === 'log')
     if (log?.kind === 'log') return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', log.text)
-    const said = [result.note, result.alert].filter(Boolean).join('. ')
-    if (said) return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', `${act.step}: ${said}`)
+    // A failed action always says why in the log, not only on the card.
+    const said = [result.ok ? '' : result.error || `${act.action.kind} failed`, result.note, result.alert].filter(Boolean).join('. ')
+    if (said) return store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', said.startsWith(`${act.step}: `) ? said : `${act.step}: ${said}`)
   }
   return store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
 }
