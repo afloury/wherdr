@@ -4,7 +4,7 @@
 // noted on the task before it runs, so it is never made twice. A move that
 // tries to fix a block counts (shared/pm/selfFix.ts): past its tries, or with
 // nothing left to try, the coordinator is woken once, with what was tried.
-import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
+import { CODE, SCRIPT, guardAction, readPrInfo, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, infraLog, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { FIX_MOVE, blockOf, escalation, fixOf, mayTry, noteFix } from '../../shared/pm/selfFix'
 import { addSkip, wakesFor } from '../../shared/pm/wakes'
@@ -377,10 +377,10 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       facts.loggedIn = (await exec(deps, on, `${PATH_SETUP}\n${LOGIN_SCRIPT}`, [run.program]).catch(() => null))?.code === 0
     } else if (task.step && plan.slice(0, task.step.at).some(s => s.action?.kind === 'github.pr')) {
       const r = await sh(SCRIPT.prInfo, [run.worktree, run.branch])
-      if (r.code !== 0) continue
-      const lines = r.out.split('\n')
-      try { facts.pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] } catch { continue }
-      facts.head = lines[0]?.trim()
+      const info = r.code === 0 ? readPrInfo(r.out) : undefined
+      if (!info) continue
+      facts.pr = info.prs[0]
+      facts.head = info.head
       // The worker pushed the work the engine handed it: the step's Your turn, if any, comes back.
       const work = task.step?.agent
       if (work?.head && facts.pr && facts.pr.headRefOid !== work.head) {
@@ -405,9 +405,8 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       // A PR its worker opened (no PR step): read for its base only, the branch
       // line's; the one linked, not another PR of the branch. Not found: left as it was.
       const link = prLink(task), r = await sh(SCRIPT.prInfo, [run.worktree, run.branch]).catch(() => null)
-      let prs: PrInfo[] = []
-      try { if (r?.code === 0) prs = JSON.parse(r.out.split('\n').at(-1) || '[]') as PrInfo[] } catch { /* read again next tick */ }
-      const pr = linkedPr(prs, link)
+      // Unreadable: read again next tick.
+      const pr = linkedPr(r?.code === 0 ? readPrInfo(r.out)?.prs ?? [] : [], link)
       if (pr) facts.task = task = await keepPrBase(store, task, pr)
     }
     // A stall: the coordinator's wake, one nudge, then the user's (pmStall.ts).
