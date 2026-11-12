@@ -164,3 +164,18 @@ it('a refused push leaves why in the task\'s log', async () => {
   expect(after.step).toMatchObject({ at: 2, yourTurn: { reason: 'action' } })
   expect(after.log!.at(-1)).toMatchObject({ by: 'engine', text: 'land: push to develop refused: protected branch hook declined' })
 })
+
+it('the first accepted workflow moves tasks that followed the default one', async () => {
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-board-'))
+  const store = createPmStore(dir)
+  await store.setEnabled(true)
+  await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'NP', name: 'new', machine: '', path: '/src/np', addedAt: 1 }] }))
+  expect((await store.workflow('NP'))?.version).toBe(0) // the default: todo, work, done
+  const task = await store.addTask({ project: 'NP', title: 'Fix it', type: 'task' })
+  await store.saveTask({ ...task, state: 'working', step: { at: 1, started: true, proofs: {}, rounds: {} } })
+  const land = { id: 'land', ends: 'action', action: { kind: 'git.land', target: 'develop' } } as const
+  await store.saveWorkflow('NP', { id: 'np', prefs: { agent: 'claude', model: 'sonnet' }, taskTypes: { task: { steps: [{ id: 'todo' }, land, { id: 'done' }] } } }, { by: 'user' })
+  const moved = (await store.task(task.id))!
+  expect(moved.step).toMatchObject({ at: 1, acting: true, tries: { land: 1 } })
+  expect(moved.log!.at(-1)).toMatchObject({ by: 'engine', text: 'workflow changed: work is gone, on to land' })
+})

@@ -283,7 +283,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       if (errors.length) throw badInput(errors)
       const old = await readJson<Template>(workflowFile(key))
       const version = await saveVersioned(workflowFile(key), workflowLogFile(key), { ...(t as Template), id: key.toLowerCase() }, old, by, said)
-      if (old) await replanTasks(key, old, t as Template)
+      // Before the first one, the tasks followed the default workflow.
+      await replanTasks(key, old ?? defaultWorkflow(key), t as Template)
       return { id: key.toLowerCase(), version }
     }),
     runs,
