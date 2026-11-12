@@ -11,7 +11,7 @@ import { addSkip, wakesFor } from '../../shared/pm/wakes'
 import { MAIN } from '../../shared/pm/coordinator'
 import { inMergeQueue, mergeOrder, ordinal, queueOut } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
-import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
+import { caughtUpSettled, onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
 import { LABEL, linkedPr, prLink, taskPlan, trustKeys, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP } from './coreCreate'
 import { HerdrError } from './herdr'
@@ -396,6 +396,11 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       if (seen) prSeen.set(task.id, seen)
       else prSeen.delete(task.id)
       facts.task = task = await keepPrBase(store, task, facts.pr)
+      // Updated with its base and read clean by GitHub at that commit: the user's turn again.
+      if (task.step?.caughtUp && caughtUpSettled(task.step.caughtUp, facts.pr, now)) {
+        const { caughtUp: _, ...step } = task.step
+        facts.task = task = await store.saveTask({ ...task, step })
+      }
       const st = run.terminal ? await deps.call<{ status?: string | { state?: string } }>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null) : null
       const s = typeof st?.status === 'string' ? st.status : st?.status?.state
       facts.agentBusy = s === 'working' || s === 'blocked'
