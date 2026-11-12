@@ -27,6 +27,7 @@ import { uiTargetList } from '../uiTargets'
 import { uiGuide } from './uiGuide'
 import { projectPlace } from './places'
 import { parseFiles } from './files'
+import { NOTES_COMMANDS, NOTES_RULE, parseNotes, type NotesCommand } from '../notes'
 import { MERGE_METHODS, contributorPrsLine, type MergeMethod } from './contributorPr'
 
 // The agent of a coordinator: the project's default, and the one its kept
@@ -135,6 +136,7 @@ export type Command =
   // Show a place beside the coordinator's conversation (shared/uiOpen.ts).
   | { name: 'ui open', link: string }
   | { name: 'ui targets' }
+  | { name: 'notes', notes: NotesCommand } // the notes whiteboard (shared/notes.ts): the scopes the project shows in
   // A button in the reply that only the user's click runs (shared/uiActions.ts).
   | { name: 'ui action', action: UiAction, task: string }
   // A file of its folder or a task's screenshots beside it (shared/uiShow.ts).
@@ -237,6 +239,10 @@ function parseWords(argv: unknown): Command | { error: string } {
     i++
   }
   const [w0, w1, w2, w3, ...rest] = words
+  if (w0 === 'notes') {
+    const notes = parseNotes(words.slice(1), flags)
+    return 'error' in notes ? notes : { name: 'notes', notes }
+  }
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
@@ -477,7 +483,7 @@ b64() { base64 | tr -d '\\n'; }
 body='{"argv64":[' sep=
 for a in "$@"; do body="$body$sep\\"$(printf %s "$a" | b64)\\"" sep=,; done
 body="$body]"
-case "$route $1 $2 $3 $4" in "pm/cli template edit"*|"alfred/cli project workflow edit"*|"alfred/cli project memory "*|"pm/cli automation propose"*) case " $* " in *" --remove "*) ;; *) body="$body,\\"input64\\":\\"$(b64)\\"" ;; esac ;; esac
+case "$route $1 $2 $3 $4" in "pm/cli template edit"*|"alfred/cli project workflow edit"*|"alfred/cli project memory "*|"pm/cli automation propose"*|*" notes add"*|*" notes edit "*|*" notes file put "*) case " $* " in *" --remove "*) ;; *) body="$body,\\"input64\\":\\"$(b64)\\"" ;; esac ;; esac
 out=$(mktemp) hdr=$(mktemp) || exit 1
 code=$(printf '%s}' "$body" | curl -sS -D "$hdr" -o "$out" -w '%{http_code}' -X POST --data-binary @- \\
   -H 'content-type: application/json' -H "origin: $WHERDR_URL" -H "authorization: Bearer $tok" "$WHERDR_URL/api/$route")
@@ -564,7 +570,8 @@ const stepLine = (s: PlannedStep) => `- ${s.id} (${s.column ?? s.id}): ${[
   s.sendBack && `sends back to ${s.sendBack} (${s.rounds ?? 2} rounds)`, s.recheck && `recheck ${s.recheck}`, s.timeout && `timeout ${s.timeout}`,
 ].filter(Boolean).join(', ')}`
 
-export const commandList = (t?: Template | null) => COMMANDS.filter(c => !c.usage.startsWith(GUARDED_COMMAND) || t?.guards?.contributorPrs).map(c => `- \`wherdr pm ${c.usage}\`: ${c.does}`)
+export const commandList = (t?: Template | null) => [...COMMANDS.filter(c => !c.usage.startsWith(GUARDED_COMMAND) || t?.guards?.contributorPrs).map(c => `- \`wherdr pm ${c.usage}\`: ${c.does}`),
+  ...NOTES_COMMANDS.map(c => `- \`wherdr pm ${c.usage}\`: ${c.does}`), `- ${NOTES_RULE}`]
 
 // The files of the coordinator's folder wherdr rewrites, path → text (its own
 // files: OWN_ROLE_FILES). Nothing outside it.
