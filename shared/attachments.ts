@@ -27,9 +27,6 @@ export const ATTACH_MAX = Math.max(...Object.values(ATTACH_LIMITS))
 // Bytes read to tell text from binary (like git: a NUL byte means binary).
 export const SNIFF_BYTES = 8192
 
-// Store on the agent's machine, relative to its $HOME.
-export const ATTACH_SUBDIR = '.cache/herdr-web/files'
-
 const EXT_GROUPS: Record<Exclude<RefuseReason, 'binary' | 'pdf' | 'too_large' | 'empty'>, string[]> = {
   archive: ['zip', 'tar', 'gz', 'tgz', 'bz2', 'tbz', 'xz', 'txz', 'zst', '7z', 'rar', 'lz', 'lzma', 'z', 'cab', 'jar', 'war', 'ear', 'dmg', 'iso', 'img', 'pkg', 'deb', 'rpm', 'apk', 'ipa', 'xip', 'whl', 'nupkg', 'crx'],
   video: ['mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm', 'wmv', 'flv', 'mpg', 'mpeg', '3gp', 'ogv', 'mts'],
@@ -124,11 +121,6 @@ export function attachmentDisplayName(stored: string): string {
   return base.replace(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{6}-/, '')
 }
 
-// Absolute path of a stored file on a machine whose home is `home`.
-export function attachmentPath(home: string, stored: string): string {
-  return `${String(home).replace(/\/+$/, '')}/${ATTACH_SUBDIR}/${stored}`
-}
-
 // Reference written in the message: `@<path>` puts a text file's content in
 // Claude's context; anything else goes as a plain path the agent opens.
 export function attachmentRef(agent: string | null | undefined, kind: AttachKind, path: string): string {
@@ -136,10 +128,18 @@ export function attachmentRef(agent: string | null | undefined, kind: AttachKind
 }
 
 // A message line that is only an attached file (with or without "@").
-const LINE_RE = /^@?(\/\S*\/\.cache\/herdr-web\/files\/[^\s/]+)$/
+// v2 wrote it under <home>/.cache/herdr-web/files/ (kept for old conversations).
+// v3 hands it to herdr-core's terminal.put, which writes it under its state
+// folder: <state>/herdr-core/<session>/files/<terminal>/<stored name>. The
+// folder is core's, on the agent's machine; the name is the one wherdr gives
+// (STORED_NAME_RE), so a photo or a pasted file there is not taken for one.
+const V2_LINE_RE = /^@?(\/\S*\/\.cache\/herdr-web\/files\/[^\s/]+)$/
+const V3_LINE_RE = new RegExp(`^@?(/\\S*/herdr-core/[^\\s/]+/files/[^\\s/]+/(${STORED_NAME_RE.source.slice(1, -1)}))$`)
 export function parseAttachmentLine(line: string): { path: string, name: string } | null {
-  const m = LINE_RE.exec(String(line || '').trim())
-  return m ? { path: m[1]!, name: attachmentDisplayName(m[1]!) } : null
+  const l = String(line || '').trim()
+  const v3 = V3_LINE_RE.exec(l)
+  const path = v3 && isStoredAttachmentName(v3[2]!) ? v3[1]! : V2_LINE_RE.exec(l)?.[1]
+  return path ? { path, name: attachmentDisplayName(path) } : null
 }
 export const isAttachmentLine = (line: string) => parseAttachmentLine(line) !== null
 
