@@ -74,3 +74,22 @@ describe('notes scope rules', () => {
     expect(parseCommand(['notes', 'remove', 'a', '--scope', 'all'])).toHaveProperty('error')
   })
 })
+
+describe('notes under load and linked files', () => {
+  it('keeps both notes when two agents add the same title at once', async () => {
+    const store = notesStore(path.join(dir, 'notes'))
+    const r = await Promise.allSettled([1, 2, 3].map(i => store.add({ title: 'Same', scope: 'all', body: `body ${i}` }, 'Alfred')))
+    expect(r.map(x => x.status)).toEqual(['fulfilled', 'fulfilled', 'fulfilled'])
+    expect((await store.list()).map(n => n.body).sort()).toEqual(['body 1', 'body 2', 'body 3'])
+  })
+
+  it('lets a coordinator change a linked file only when no note outside its scopes links to it', async () => {
+    const wd = { by: 'coordinator WD', project }
+    await run(['add', 'Work plan', '--scope', 'work'], '[Plan](plans/work.md)')
+    await run(['file', 'put', 'plans/work.md'], '# Work\n')
+    await expect(run(['file', 'put', 'plans/work.md'], '# Gone\n', wd)).rejects.toThrow(/outside your scopes \(work-plan\)/)
+    await expect(run(['file', 'remove', 'plans/work.md'], undefined, wd)).rejects.toThrow(/outside your scopes/)
+    expect((await run(['show', 'plans/work.md'])).text).toBe('# Work\n')
+    expect(await run(['file', 'put', 'plans/home.md'], '# Home\n', wd)).toMatchObject({ put: 'plans/home.md' })
+  })
+})
