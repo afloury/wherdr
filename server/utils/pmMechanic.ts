@@ -381,6 +381,8 @@ async function followTask(deps: PmLaunchDeps, task: Task, projects: Project[], r
     if (task.queue) { const { queue: _, queueOut: __, ...t } = task; await store.saveTask(t) }
     return
   }
+  // Its step action runs (outside the tick): followed once it ended, never from an older copy.
+  if (actionRunning(task.id)) return
   const p = projects.find(x => x.key === task.project)
   const t = p ? await store.workflow(p.key) : null
   if (!p || !t) { await noteCannotFollow(store, task, 'its project or workflow is missing'); return }
@@ -400,6 +402,8 @@ async function followTask(deps: PmLaunchDeps, task: Task, projects: Project[], r
   } else if (task.step && plan.slice(0, task.step.at).some(s => s.action?.kind === 'github.pr')) {
     const r = await sh(SCRIPT.prInfo, [run.worktree, run.branch])
     const info = r.code === 0 ? readPrInfo(r.out) : undefined
+    // Its action ran or started while the PR was read: this copy is old, the next tick follows it.
+    if (await changed(deps, task)) return
     if (!info) { await noteCannotFollow(store, task, `could not read the PR: ${lastLine(r.out) || (r.code === 0 ? 'unreadable answer' : `exit ${r.code}`)}`); return }
     facts.pr = info.prs[0]
     facts.head = info.head
@@ -408,20 +412,23 @@ async function followTask(deps: PmLaunchDeps, task: Task, projects: Project[], r
     if (work?.head && facts.pr && facts.pr.headRefOid !== work.head) {
       const retry = retriesAction(plan, task.step!)
       facts.task = task = await store.logTask({ ...task, step: agentBack(task.step!) }, 'engine', `${work.kind}: the worker pushed it${retry ? `, ${plan[task.step!.at]!.id} is tried again` : ''}`)
-      if (retry) startAction(deps, task.id)
+      // Started outside the tick: nothing more is written from this copy, the next tick follows it.
+      if (retry) { startAction(deps, task.id); return }
     }
     // Kept for the board: a task is stalled only while its CI is still red (pm/blocked.ts).
     const ci = ciOf(facts.pr, facts.head)
-    if (ci && (ci.head !== task.ci?.head || ci.red !== task.ci?.red || !!ci.running !== !!task.ci?.running)) facts.task = task = await store.saveTask({ ...task, ci })
+    if (ci && (ci.head !== task.ci?.head || ci.red !== task.ci?.red || !!ci.running !== !!task.ci?.running)) facts.task = task = (await store.updateTask(task.id, x => ({ ...x, ci }))) ?? task
     const seen = prNow(facts.pr, requiredChecks(plan))
     if (seen) prSeen.set(task.id, seen)
     else prSeen.delete(task.id)
     facts.task = task = await keepPrBase(store, task, facts.pr)
     // Updated with its base and read clean by GitHub at that commit: the user's turn again.
-    if (task.step?.caughtUp && caughtUpSettled(task.step.caughtUp, facts.pr, now)) {
-      const { caughtUp: _, ...step } = task.step
-      facts.task = task = await store.saveTask({ ...task, step })
-    }
+    const settled = task.step?.caughtUp && caughtUpSettled(task.step.caughtUp, facts.pr, now) ? task.step.caughtUp : undefined
+    if (settled) facts.task = task = (await store.updateTask(task.id, (x) => {
+      if (!x.step || JSON.stringify(x.step.caughtUp) !== JSON.stringify(settled)) return x
+      const { caughtUp: _, ...step } = x.step
+      return { ...x, step }
+    })) ?? task
     const st = run.terminal ? await deps.call<{ status?: string | { state?: string } }>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null) : null
     const s = typeof st?.status === 'string' ? st.status : st?.status?.state
     facts.agentBusy = s === 'working' || s === 'blocked'
@@ -436,34 +443,42 @@ async function followTask(deps: PmLaunchDeps, task: Task, projects: Project[], r
     const pr = linkedPr(r?.code === 0 ? readPrInfo(r.out)?.prs ?? [] : [], link)
     if (pr) facts.task = task = await keepPrBase(store, task, pr)
   }
+  if (await changed(deps, task)) return
   // A stall: the coordinator's wake, one nudge, then the user's (pmStall.ts).
   facts.task = task = await noteStall(deps, task, plan, runs, run.worktree, sh, now).catch(() => task)
   facts.task = task = await noteCannotFollow(store, task)
   return { facts, run, sh }
 }
 
+// The task moved on since this copy was read (its step action started, ran or
+// ended meanwhile): nothing is written from the copy, the next tick reads it again.
+async function changed(deps: PmLaunchDeps, task: Task) {
+  if (actionRunning(task.id)) return true
+  const fresh = await deps.store.task(task.id)
+  return !fresh || JSON.stringify(fresh.step) !== JSON.stringify(task.step) || JSON.stringify(fresh.log?.at(-1)) !== JSON.stringify(task.log?.at(-1))
+}
+
 // At most one mechanical move for a followed task; returns it, if made.
 async function moveTask(deps: PmLaunchDeps, facts: MechFacts, run: Run, sh: Seen['sh'], now: number): Promise<{ task: string, move: Move['kind'] } | undefined> {
   const { store } = deps
   let task = facts.task
-  // Its step action runs (started outside the tick): no move beside it, the next tick reads its result.
-  if (actionRunning(task.id)) return
+  // Its step action runs, or ran since the task was read: no move beside it, the next tick reads its result.
+  if (await changed(deps, task)) return
   const block = blockOf(task)
-  if (block && !fixOf(task, block)) task = await store.saveTask({ ...task, selfFix: noteFix(task, block, now) })
+  if (block && !fixOf(task, block)) task = (await store.updateTask(task.id, x => ({ ...x, selfFix: noteFix(x, block, now) }))) ?? task
   const next = nextMove({ ...facts, task })
   const fix = block && next && FIX_MOVE[block] === next.move.kind ? block : undefined
   // No move, or past its tries: the coordinator's, once.
   if (!next || (fix && !mayTry(task, fix))) { await escalate(deps, task, run, now); return }
   const tried = fix && { selfFix: noteFix(task, fix, now, TRY_TEXT[next.move.kind]) }
-  const noted = await store.saveTask({ ...task, mech: { ...task.mech, [next.key]: now }, ...tried })
+  const noted = (await store.updateTask(task.id, x => ({ ...x, mech: { ...x.mech, [next.key]: now }, ...tried })))!
   const text = await perform(deps, noted, run, next.move, facts, sh).catch((e: Error) => `failed: ${e.message}`)
   // Not delivered (the agent's terminal is gone): tried again on a later tick.
   if (text === null) {
-    const { [next.key]: _, ...mech } = (await store.task(task.id))!.mech ?? {}
-    await store.saveTask({ ...(await store.task(task.id))!, mech })
+    await store.updateTask(task.id, (x) => { const { [next.key]: _, ...mech } = x.mech ?? {}; return { ...x, mech } })
     return
   }
-  await store.logTask((await store.task(task.id))!, 'engine', `${next.move.kind}: ${text}`)
+  await store.updateTask(task.id, x => x, { by: 'engine', text: `${next.move.kind}: ${text}` })
   return { task: task.id, move: next.move.kind }
 }
 
@@ -596,17 +611,18 @@ async function queueTick(deps: PmLaunchDeps, seen: Seen[]) {
       const place = order.indexOf(x.facts.task.id) + 1, out = x.facts.queueOut
       x.facts.queue = place
       if (x.facts.task.queue === place && x.facts.task.queueOut === out) continue
-      const { queueOut: _, ...t } = { ...x.facts.task, queue: place }
       const said = !x.facts.task.queue ? `in the merge queue${out ? `, out of line: ${out}` : `, ${ordinal(place)}`}`
         : place === 1 && !out && (x.facts.task.queue !== 1 || x.facts.task.queueOut) ? 'first in the merge queue: it merges now' : undefined
-      const next = out ? { ...t, queueOut: out } : t
-      x.facts.task = await (said ? deps.store.logTask(next, 'engine', said) : deps.store.saveTask(next))
+      // Its place only, on the task as it is now: a step action that ended meanwhile stays.
+      x.facts.task = (await deps.store.updateTask(x.facts.task.id, (fresh) => {
+        const { queueOut: _, ...t } = { ...fresh, queue: place }
+        return out ? { ...t, queueOut: out } : t
+      }, said ? { by: 'engine', text: said } : undefined)) ?? x.facts.task
     }
   }
   // Out of the queue (merged, stopped, waiting for the user): its place goes.
   for (const x of seen.filter(y => y.facts.task.queue && !queued.includes(y))) {
-    const { queue: _, queueOut: __, ...t } = x.facts.task
-    x.facts.task = await deps.store.saveTask(t)
+    x.facts.task = (await deps.store.updateTask(x.facts.task.id, ({ queue: _, queueOut: __, ...t }) => t)) ?? x.facts.task
   }
 }
 
@@ -624,6 +640,6 @@ async function stepEvent(deps: PmLaunchDeps, id: string, plan: PlannedStep[], ev
 export async function keepPrBase(store: PmStore, task: Task, pr: PrInfo | undefined): Promise<Task> {
   const want = pr ? { base: pr.baseRefName, ...(pr.commits ? { commits: pr.commits.length } : {}) } : undefined
   if (JSON.stringify(want) === JSON.stringify(task.prBase)) return task
-  const { prBase: _, ...rest } = task
-  return store.saveTask(want ? { ...rest, prBase: want } : rest)
+  // On the task as it is now: a step action that ended meanwhile stays.
+  return (await store.updateTask(task.id, ({ prBase: _, ...rest }) => (want ? { ...rest, prBase: want } : rest))) ?? task
 }

@@ -32,7 +32,7 @@ describe('step actions outside the ticks', () => {
   })
 
   // WH-1 at its merge, acting; checks: its PR's checks. merge: the merge command's answer.
-  async function setup(checks: { name: string, status: string, conclusion?: string }[], merge: () => Promise<unknown>) {
+  async function setup(checks: { name: string, status: string, conclusion?: string }[], merge: () => Promise<unknown>, onPrInfo?: () => Promise<void>) {
     const store = createPmStore(dir)
     await store.setEnabled(true)
     await store.saveTemplate(flow)
@@ -44,7 +44,7 @@ describe('step actions outside the ticks', () => {
     const call = async (method: string, p: Record<string, unknown>) => {
       if (method === 'machine.exec') {
         const script = (p.argv as string[])[2]!
-        if (script.includes('gh pr list')) return out(0, `abc\n${JSON.stringify([pr])}`)
+        if (script.includes('gh pr list')) { await onPrInfo?.(); return out(0, `abc\n${JSON.stringify([pr])}`) }
         if (script.includes('cat-file -e')) return out(0, 'same')
         if (script.includes('gh pr merge')) return merge()
         if (script.includes('command -v')) return out(0, 'claude')
@@ -84,6 +84,19 @@ describe('step actions outside the ticks', () => {
     expect(s.watch!.next).toBeGreaterThan(Date.now())
     expect(merge).not.toHaveBeenCalled()
     expect(actionRunning('WH-1')).toBe(false)
+  })
+
+  it('an action that ends while the mechanic reads the PR is never undone by the mechanic\'s older copy', async () => {
+    let ended: (() => Promise<void>) | undefined
+    const { store, deps } = await setup([{ name: 'ci', status: 'IN_PROGRESS' }], async () => ({ code: 0, stdout: '' }), async () => { const e = ended; ended = undefined; await e?.() })
+    const t = (await store.task('WH-1'))!
+    await store.saveTask({ ...t, step: { ...t.step!, acting: undefined, watch: undefined } })
+    // As a merge the user started would: done, with its log line, while the PR is being read.
+    ended = async () => { const x = (await store.task('WH-1'))!; await store.logTask({ ...x, step: { ...x.step!, at: 4, done: true } }, 'engine', 'merge: merged') }
+    await mechanicTick(deps)
+    const after = (await store.task('WH-1'))!
+    expect(after.step).toMatchObject({ at: 4, done: true })
+    expect(after.log!.map(l => l.text)).toContain('merge: merged')
   })
 
   it('a hung action frees its task after the limit, with a log line', async () => {
