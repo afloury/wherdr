@@ -5,7 +5,7 @@
 import { READ_HOLD, SENTINEL_LOG, SENTINEL_MS, isReadHold, seenBy, sentinelDue, sentinelFired, strandedAction } from '../../shared/pm/sentinel'
 import { taskPlan, type Task } from '../../shared/pm/run'
 import { showIds } from '../../shared/pm/projectKey'
-import { actionRunning, stepAction } from './pmBoard'
+import { actionRunning, startAction } from './pmBoard'
 import { wakeCoordinators } from './pmWakes'
 import type { PmLaunchDeps } from './pmLaunch'
 import type { PmStore } from './pmStore'
@@ -49,7 +49,7 @@ async function agentWorking(deps: PmLaunchDeps, task: Task) {
 export interface SentinelOpts {
   ms?: number
   wake?: (task: Task, why: string) => Promise<string[]>
-  act?: (id: string) => Promise<Task> // runs the step's action again (stepAction)
+  act?: (id: string) => Promise<unknown> // starts the step's action again (startAction), never waited for
 }
 
 // Each quiet working task: said, re-entered, looked at again after 2N, 4N…;
@@ -58,7 +58,12 @@ export async function sentinelTick(deps: PmLaunchDeps, now = Date.now(), opts: S
   const { store } = deps
   const ms = opts.ms ?? SENTINEL_MS
   const wake = opts.wake ?? ((task: Task, why: string) => wakeCoordinators(deps, task, why, now))
-  const act = opts.act ?? ((id: string) => stepAction(deps, id, 'engine'))
+  // Refused once started (after the tick went on): its running mark goes so the step can move.
+  const clear = async (id: string, e: Error) => {
+    const fresh = await store.task(id)
+    if (fresh?.step?.acting) await store.logTask({ ...fresh, step: { ...fresh.step, acting: undefined } }, 'engine', `cleared its running mark (running its action again failed: ${e.message})`)
+  }
+  const act = opts.act ?? (async (id: string) => { startAction(deps, id, e => clear(id, e)) })
   const projects = await store.projects(), fired: string[] = []
   for (const task of await store.tasks()) {
     try {

@@ -40,7 +40,7 @@ export interface StepState {
   fix?: string // what the worker must fix, when an engine action sent the task back to it
   rereview?: Rereview // the PR head moved after the review: only that change is reviewed again
   acting?: boolean // an engine action is running
-  watch?: { from: number, next: number } // pipeline.watch: since when, and its next poll
+  watch?: { from: number, next: number } // pipeline.watch or a merge waiting for CI: since when, and its next look
   notify?: string // for the coordinator, once: what a watched pipeline said when it failed
   yourTurn?: YourTurn
   agent?: AgentWork
@@ -138,6 +138,9 @@ export const rereviewText = ({ since, head }: Rereview) => [
 export interface StepResult { state: StepState, effects: Effect[], refused?: string }
 
 const UNIT = { s: 1000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const
+// A merge's wait for its checks or GitHub's lag, rechecked by the engine's passes (never a sleep in a tick).
+export const MERGE_WAIT = { every: 30_000, timeout: 15 * 60_000 }
+const MERGE_KINDS = new Set(['github.merge', 'bitbucket.merge'])
 export const durationMs = (d: string) => Number(d.slice(0, -1)) * UNIT[d.slice(-1) as keyof typeof UNIT]
 
 const PROOF: Record<Exclude<Evidence, 'screenshots'>, string> = { link: 'a link', commit: 'the commit', report: 'your report', 'proposed-tasks': 'the proposed tasks' }
@@ -215,7 +218,8 @@ const hasAgent = (s: Step) => !!s.holder && s.holder !== 'none'
 function act(s: StepState, step: PlannedStep, effects: Effect[], now: number): StepState {
   const attempt = (s.tries?.[step.id] ?? 0) + 1
   effects.push({ kind: 'action', step: step.id, action: step.action!, attempt })
-  const watch = step.action!.kind === 'pipeline.watch' ? { watch: { from: now, next: now } } : {}
+  // A new attempt waits afresh: a merge's earlier wait for CI counts no more.
+  const watch = { watch: step.action!.kind === 'pipeline.watch' ? { from: now, next: now } : undefined }
   return { ...s, acting: true, yourTurn: undefined, ...watch, tries: { ...s.tries, [step.id]: attempt } }
 }
 
@@ -375,6 +379,12 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
         const from = state.watch?.from ?? now, limit = w.timeout ?? WATCH.timeout
         if (now - from < durationMs(limit)) return { state: { ...state, watch: { from, next: now + durationMs(w.every ?? WATCH.every) } }, effects }
         error = `pipeline: still running after ${limit}`
+      }
+      // A merge waiting for its checks or for GitHub to show a push: a later pass checks again, up to MERGE_WAIT.
+      else if (ev.later && MERGE_KINDS.has(step.action?.kind ?? '')) {
+        const from = state.watch?.from ?? now
+        if (now - from < MERGE_WAIT.timeout) return { state: { ...state, watch: { from, next: now + MERGE_WAIT.every } }, effects }
+        error = `${error ?? 'merge: still waiting'} after ${Math.round(MERGE_WAIT.timeout / 60_000)} min`
       }
       else if (ev.later) return { state, effects }
       const proofs = ev.evidence ? { ...state.proofs, [step.id]: { ...state.proofs[step.id], ...ev.evidence } } : state.proofs

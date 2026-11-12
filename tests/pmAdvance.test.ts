@@ -374,6 +374,9 @@ describe('advanceTick (store and a fake herdr-core)', () => {
     const { createPmStore } = await import('../server/utils/pmStore')
     const { advanceTick } = await import('../server/utils/pmAdvance')
     const { startChained } = await import('../server/utils/pmMechanic')
+    const { actionsSettled } = await import('../server/utils/pmBoard')
+    // The step actions a tick starts run outside it: each tick here waits for them.
+    const tick = async (d: Parameters<typeof advanceTick>[0]) => { await advanceTick(d); await actionsSettled() }
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-advance-'))
     try {
       const store = createPmStore(dir)
@@ -405,7 +408,7 @@ describe('advanceTick (store and a fake herdr-core)', () => {
       }
       const deps = { store, call, machines: () => [{ key: '', local: true, label: 'host' }], launchWatchMs: 0 } as unknown as Parameters<typeof advanceTick>[0]
 
-      await advanceTick(deps)
+      await tick(deps)
       let task = (await store.task(t.id))!
       // The worker's done went on to the PR, opened at once; its signal is cleared.
       expect(plan[task.step!.at]!.id).toBe('review')
@@ -418,41 +421,41 @@ describe('advanceTick (store and a fake herdr-core)', () => {
       expect(pr).toContain('feature/CO-1-fix')
       expect(pr).not.toContain('task/CO-1')
 
-      await advanceTick(deps)
+      await tick(deps)
       task = (await store.task(t.id))!
       const started = calls.find(([m]) => m === 'terminal.run')![1]
       expect(started).toMatchObject({ cwd: '/w', labels: { 'wherdr.role': 'reviewer', 'wherdr.task': t.id }, env: { DISABLE_AUTOUPDATER: '1' } })
       expect(started.line).toContain(`exec claude '--model' 'opus' 'Read /h/.wherdr/pm/tasks/CO-1/review.md and follow it.'`)
       expect(task.run).not.toBe('r1')
       expect(task.step!.told).toBe(task.step!.since)
-      await advanceTick(deps) // nothing new: told once
+      await tick(deps) // nothing new: told once
       expect(calls.filter(([m]) => m === 'terminal.run')).toHaveLength(1)
 
       // A major finding: back to the worker, its old note removed (a stale link proves nothing).
       verdict = major
       terms['h/t2']!['wherdr.report'] = 'done'
-      await advanceTick(deps)
+      await tick(deps)
       expect(plan[(await store.task(t.id))!.step!.at]!.id).toBe('work')
-      await advanceTick(deps)
+      await tick(deps)
       const sent = calls.filter(([m, p]) => m === 'terminal.send' && p.terminal === 'h/t1').map(([, p]) => p.text as string)
       expect(sent.at(-1)).toContain('no-test [major] No test')
       expect(calls.some(([m, p]) => m === 'machine.exec' && (p.argv as string[]).includes('/h/.wherdr/pm/tasks/CO-1/report.md') && (p.argv as string[])[2] === 'rm -f "$1"')).toBe(true)
       // The fix, then the review again in the same reviewer's terminal.
       terms['h/t1']!['wherdr.report'] = 'done'
-      await advanceTick(deps) // the PR again (same branch), then the review
-      await advanceTick(deps)
+      await tick(deps) // the PR again (same branch), then the review
+      await tick(deps)
       expect(calls.filter(([m, p]) => m === 'terminal.send' && p.terminal === 'h/t2').at(-1)![1].text).toBe('Review again: read /h/.wherdr/pm/tasks/CO-1/review.md and follow it.')
       expect(calls.filter(([m]) => m === 'terminal.run')).toHaveLength(1)
       verdict = '{"findings":[]}'
       terms['h/t2']!['wherdr.report'] = 'done'
-      await advanceTick(deps)
+      await tick(deps)
       task = (await store.task(t.id))!
       expect(plan[task.step!.at]!.id).toBe('merge')
       expect(task.log?.at(-1)?.text).toBe('review: verdict, 0 finding(s)')
 
       // Merged (pmMechanic's move): the task is done, its agents stop, the chained one starts.
       await store.saveTask({ ...task, step: onEvent(plan, task.step!, { kind: 'action-result', ok: true }, 9).state })
-      await advanceTick(deps)
+      await tick(deps)
       expect(calls.filter(([m]) => m === 'terminal.kill').map(([, p]) => p.terminal).sort()).toEqual(['h/t1', 'h/t2'])
       expect((await store.runs()).every(r => r.state === 'ended')).toBe(true)
       expect((await store.task(next.id))!.state).toBe('todo')

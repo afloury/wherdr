@@ -4,6 +4,7 @@
 // the worktree (agentEnv). Nothing is ever
 // started twice blindly: the run is saved before the terminal, and a restart
 // finds it again by its labels (reconcileRuns).
+import { Holds } from './pmHold'
 import { projectPlace } from '../../shared/pm/places'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { CoreError } from './core'
@@ -112,13 +113,13 @@ export const runOn = (deps: CoreAdminDeps, run: Pick<Run, 'machine'>) => machine
 
 // The task and role of each agent being started now: a second start of the
 // same one, from anywhere (user, coordinator, the engine's chain, a held start,
-// a revive), is refused while the first runs, never run beside it.
-const starting = new Set<string>()
+// a revive), is refused while the first runs, never run beside it; a start
+// hung past 10 minutes no longer holds it (pmHold.ts).
+const starting = new Holds('start of', 10 * 60_000)
 export async function oneStart<T>(task: string, role: Run['role'], fn: () => Promise<T>): Promise<T> {
-  const key = `${task}\u0000${role}`
-  if (starting.has(key)) throw new HerdrError('busy', `The ${role} of ${task} is already starting`)
-  starting.add(key)
-  try { return await fn() } finally { starting.delete(key) }
+  const release = starting.take(`${task} ${role}`, `the ${role}'s start`)
+  if (!release) throw new HerdrError('busy', `The ${role} of ${task} is already starting`)
+  try { return await fn() } finally { release() }
 }
 
 // A worker run of the task whose terminal still runs: a new one would share its worktree.
