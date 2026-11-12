@@ -1893,11 +1893,9 @@ body.kb .composer { padding-bottom: 8px; }
 /* A bar pinned (sticky) at the bottom of the body is its last element and
    carries the end gap and the home bar's room itself: the body adds no padding
    below it, so a sticky bottom: 0 sits on the sheet's edge and nothing scrolls
-   under it. The folder picker's buttons; a task's To do buttons on the phone. */
+   under it. The folder picker's buttons; a task's To do buttons on the phone
+   (TaskTodo.vue, next to its sticky rule). */
 .hw-sheet > [data-slot="body"]:has(.dir-actions) { padding-bottom: 0; }
-@media (max-width: 699px) {
-  .hw-sheet > [data-slot="body"]:has(.todo-actions > .todo-buttons:not(:empty)) { padding-bottom: 0; }
-}
 .hw-sheet-title { min-width: 0; font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); overflow-wrap: anywhere; }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
 /* Before the title (a task's id badge): the title follows it. */

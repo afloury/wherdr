@@ -153,6 +153,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
 @media (max-width: 699px) {
   .todo-shot img { max-height: 26vh; }
   .todo-actions .task-sheet-actions > * { flex: 1 1 auto; justify-content: center; }
+  :global(.hw-sheet > [data-slot="body"]:has(.todo-actions > .todo-buttons:not(:empty))) { padding-bottom: 0; }
   .todo-actions:has(> .todo-buttons:not(:empty)) { order: 1; margin-top: auto; position: sticky; bottom: 0; z-index: 1; padding: 10px 0 calc(10px + var(--sheet-safe, 0px)); background: var(--sheet-bg, var(--bg)); border-top: 1px solid var(--line-soft); }
 }
 /* On a computer the screenshots wrap as a grid. */
