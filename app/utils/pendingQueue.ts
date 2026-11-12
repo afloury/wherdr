@@ -144,8 +144,11 @@ export function pendingQueue(o: {
 
 // Claude's field holds exactly messages already shown as waiting there: its
 // own "Not sent" bubble would show the same message twice (Send now / Clear stay).
-export const inputShown = (list: Pick<PendingMessage, 'raw' | 'inInput'>[], input: string | null | undefined) =>
-  Boolean(input) && list.some(q => q.inInput && fieldHolds(input, q.raw, true))
+// A message still being sent counts too: the server waits for Claude to show
+// its photos, then submits it (once more if it stays), so it is "sending",
+// not "Not sent", until the server answers.
+export const inputShown = (list: Pick<PendingMessage, 'raw' | 'inInput' | 'state'>[], input: string | null | undefined) =>
+  Boolean(input) && list.some(q => (q.inInput || q.state === 'sending') && fieldHolds(input, q.raw, true))
 
 // What a waiting message is waiting on (see waitingOn in ChatView.vue).
 export type WaitingOn = 'stopped' | 'question' | 'working' | 'sending' | 'installing'

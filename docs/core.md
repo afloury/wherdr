@@ -117,8 +117,11 @@ check that the box emptied and a turn started) and **Clear**. When Claude's queu
 "ctrl+enter to send now", the conversation offers **Send now** too. Each action re-reads the
 screen first and refuses a box that changed (`server/utils/coreDraft.ts`).
 A message sent from wherdr that Claude left in that box (a photo message is pasted, and
-Claude may keep a paste there) is pressed Enter once more when the box holds it alone,
-also during a turn; while it stays there, its bubble reads **Not sent yet · waiting in
+Claude may keep a paste there; a large photo is read and resized before its `[Image #N]`
+shows, and an Enter pressed before that is lost) is submitted by wherdr: it waits up to
+about six seconds for the box to hold that message alone, each photo as its placeholder,
+presses Enter, and presses it once more if the message is still there, also during a turn.
+Until the send answers, the bubble reads **sending…**, not **Not sent**. While it stays there, its bubble reads **Not sent yet · waiting in
 the agent's input**, never **Read by the agent**, and the box's own bubble is not shown
 twice. A new message is never typed into a box that holds text: Claude would submit both
 as one message. The send is refused ("Not sent", with Retry): send or clear that text

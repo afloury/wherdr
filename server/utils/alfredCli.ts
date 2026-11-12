@@ -27,8 +27,9 @@ import { projectPlace } from '../../shared/pm/places'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { DATA_DIR } from './env'
 import { openUi, uiTargetsList, type UiOpenDeps } from './uiOpen'
+import { notesStore, runNotes, type NotesStore } from './notesStore'
 
-type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, dataDir?: string, herdrProjects?: string, clients?: UiOpenDeps['clients'] }
+type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, dataDir?: string, notes?: NotesStore, herdrProjects?: string, clients?: UiOpenDeps['clients'] }
 
 // A turn the server saw start over an hour ago is not trusted any more (as a coordinator's).
 const TURN_MS = 3_600_000
@@ -130,6 +131,7 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       return { link: `${deps.urls.remote ?? deps.urls.local}/#/a/${encodeURIComponent(pane.id)}`, note: 'Give the user this link; the sidebar shows it too' }
     }
     case 'ui targets': return uiTargetsList()
+    case 'notes': return runNotes(deps.notes ?? notesStore(path.join(deps.dataDir ?? DATA_DIR, 'notes')), cmd.notes, input, { by: ALFRED }, deps.settingsFile)
     case 'ui open': return openUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope: MAIN, main: true, raw: cmd.link, turn: (await alfredTurn())?.kind ?? 'none', by: ALFRED })
     case 'settings': return { settings: await readSettings(deps.settingsFile), values: SETTING_VALUES, note: 'Alfred changes only the settings listed in values, to one of their values (1 = on, 0 = off)' }
     case 'setting set': {

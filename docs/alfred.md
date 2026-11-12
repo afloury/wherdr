@@ -40,7 +40,7 @@ only after your yes in the chat. With `--propose` instead (only in a turn that f
 message), nothing changes yet: Alfred's reply carries a [card you apply](conversation.md#project-changes-alfred-proposes)
 with the change's lines, *Show me*, *Cancel* and *Apply*. When the answer names a `remote` machine (a project on another
 machine, its coordinator), Alfred makes the change only when you asked for it. No `wherdr alfred`
-command deletes anything (removing a project's machine leaves its clone and tasks there): removing a project, a template or a setting stays yours, in Settings.
+command deletes anything but its own [notes](#notes) (removing a project's machine leaves its clone and tasks there): removing a project, a template or a setting stays yours, in Settings.
 The one removal a coordinator has is `wherdr pm task remove`, for a task never started.
 
 Proposing and delegating (no `--apply`):
@@ -58,6 +58,33 @@ $ wherdr alfred project template WEB company
 { "dryRun": true, "change": ["project WEB template: none → company"],
   "next": "Show this to the user; only after their yes, run: wherdr alfred project template WEB company --apply" }
 ```
+
+## Notes
+
+Notes are your whiteboard: short reminders and plans that Alfred and the
+coordinators write, and you read. An agent offers a line in its reply ("Add a
+reminder: …?"), writes it after your yes, and removes it once its subject is
+decided or done. They live in wherdr's data folder (`notes/`), so every device
+sees the same ones: one Markdown file per note (a title, a few lines, a scope,
+its created and updated dates), plus the longer files they link to, such as
+`notes/plans/x.md`. Every change is written to `notes/.log.jsonl` with who made it.
+
+| Command | Does |
+| --- | --- |
+| `wherdr alfred notes list [--scope all\|<group>]` | the notes (id, title, scope, dates) and the linked files |
+| `wherdr alfred notes show <id\|path>` | one note, or one linked file |
+| `wherdr alfred notes add "<title>" [--scope all\|<group>] < lines.md` | adds a note: at most 12 short lines, checkboxes (`- [ ]`) and links allowed; scope `all` (every tab, the default) or one tab group, by name |
+| `wherdr alfred notes edit <id> [--title "<title>"] [--scope all\|<group>] < lines.md` | changes a note; new lines on stdin replace its own, empty stdin keeps them |
+| `wherdr alfred notes remove <id>` | removes a note |
+| `wherdr alfred notes file put <folder/name.md> < file.md` | writes a linked file under a folder of the notes, for anything too long for a note |
+| `wherdr alfred notes file remove <folder/name.md>` | removes a linked file |
+
+A note links to another note (`[Plan](other-note.md)`), a linked file
+(`[Plan](plans/x.md)`) or a place in wherdr (`[WD-12](#/board?task=WD-12)`).
+A link that would leave the notes folder (`..`, an absolute path) is refused, and
+the answer lists the links that lead nowhere yet. Coordinators have the same
+commands as `wherdr pm notes …`, for the tab groups their project shows in only:
+`all` only when it shows in every group (or there is no group).
 
 ## Suggestions
 

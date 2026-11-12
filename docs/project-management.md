@@ -685,6 +685,12 @@ refused there); after a refusal, the in-app link in text, never a retry; and
 never "I merged it" before the card shows the outcome, since only your click
 acts.
 
+### Coordinators' notes
+
+A coordinator writes [notes](alfred.md#notes) with `wherdr pm notes list|show|add|edit|remove|file put|file remove`,
+the same commands as Alfred's, in the tab groups its project shows in only (`--scope <group>`;
+`all` only when the project shows in every group). Each change is logged with the coordinator's name.
+
 ## Board
 
 The header has **Decisions** (with a count when some wait), **Add task**, the
