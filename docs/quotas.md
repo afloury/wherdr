@@ -19,7 +19,10 @@ reading without an account key) keeps a block of its own, titled with the machin
   conversations created with a ChatGPT login by a recent Codex version. A reading without it
   joins another machine's reading only when both show the same 5-hour window and the same
   weekly window (resets within a minute, week already started), a sign of one account: the
-  machines then share one Codex row at the top, like Claude. Otherwise it stays under its own
+  machines then share one Codex row at the top, like Claude. A machine idle for hours shows a
+  5-hour window that has ended: it is then left out of the comparison, and the same weekly window
+  plus the account ID that machine last showed are enough. An account ID once read stays known
+  when a later read of the file fails. Otherwise it stays under its own
   machine and is never merged with another conversation or machine. A new conversation identifies an account switch even before it
   logs limits; until a reading for that account is available, no Codex gauge is shown. Failed reads do not
   reuse an older machine snapshot, and remembered weekly limits cannot cross account
