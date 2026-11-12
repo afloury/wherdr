@@ -13,9 +13,10 @@ const key = (value: string) => Array.from(new TextEncoder().encode(value), b => 
 // Placement of a terminal, in this order: its herdr.space / herdr.tab labels, the tab
 // of the machine's herdr-app document whose layout holds it, then its folder
 // (one workspace per folder, one tab per terminal) when nothing says otherwise.
-export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], docs: CoreDocs = {}): HerdrState {
+// `host`: the name of the machine wherdr runs on (its host name, or the one the user gave it).
+export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], docs: CoreDocs = {}, host = ''): HerdrState {
   const result: HerdrState = { ok: true, ready: true, workspaces: [], tabs: [], panes: [], machines: [
-    { key: '', label: 'Local', local: true, status: 'online', error: null },
+    { key: '', label: host, local: true, status: 'online', error: null },
     ...machines.map((m): MachineInfo => ({ key: key(m.name), label: m.name, local: false,
       status: m.state === 'connected' ? 'online' : m.state === 'connecting' ? 'connecting' : 'offline', error: m.why ?? null })),
   ] }
