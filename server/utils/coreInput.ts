@@ -140,17 +140,23 @@ const SUBMIT_LOOKS = 15
 // "[Image #N]"); Enter is never pressed on it. Stops at an empty field (the
 // message was taken). Returns the Enters pressed.
 async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) => Promise<string | null>, text: string): Promise<number> {
-  let enters = 0
-  for (let i = 0; i < SUBMIT_LOOKS && enters < 2; i++) {
+  const holds = async () => {
     await new Promise(res => setTimeout(res, deps.settleMs ?? 400))
     const now = await field(p).catch(() => null)
-    if (!now) break
-    if (fieldHolds(now, text, true)) {
-      await deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['enter'] }, 10000)
-      enters++
-    } else if (enters) break // changed after our Enter: someone else's now
+    return now ? fieldHolds(now, text, true) : null
   }
-  return enters
+  const enter = () => deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['enter'] }, 10000)
+  // Wait for it whole (null: the field emptied, the message was taken).
+  for (let i = 0; ; i++) {
+    const seen = await holds()
+    if (seen === null || (!seen && i + 1 >= SUBMIT_LOOKS)) return 0
+    if (seen) break
+  }
+  await enter()
+  // Its own look, whatever the wait took: still ours alone, one more Enter.
+  if (!await holds()) return 1
+  await enter()
+  return 2
 }
 
 // Raw route: text + Enter is a message, named keys go through terminal.keys.

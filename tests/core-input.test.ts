@@ -122,6 +122,13 @@ describe('core input routes', () => {
     expect(await coreSend(t.d, { pane_id: 't1', text: msg })).toEqual({ ok: true, started: null })
     // The first Enter after the placeholder; the message stayed: one automatic resubmit.
     expect(seen).toEqual(['[Image #3] what is wrong here?', '[Image #3] what is wrong here?'])
+    // The placeholder on the last look of the wait: the resubmit still gets its own look.
+    let late = 0
+    const l = deps(m => (m === 'terminal.send' ? { started: false } : {}))
+    l.d.settleMs = 1
+    l.d.field = async () => (late++ === 0 ? null : late <= 15 ? '/home/user/.cache/herdr-web/uploads/a.jpg what is wrong here?' : '[Image #3] what is wrong here?')
+    await coreSend(l.d, { pane_id: 't1', text: msg })
+    expect(l.calls.filter(c => c[0] === 'terminal.keys')).toHaveLength(2)
   })
 
   it('sends a multi-line "!" command as it is, in one terminal.send', async () => {
