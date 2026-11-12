@@ -12,12 +12,13 @@ import { MAIN } from '../../shared/pm/coordinator'
 import { inMergeQueue, mergeOrder, ordinal, queueOut } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
 import { onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
-import { LABEL, taskPlan, trustKeys, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, linkedPr, prLink, taskPlan, trustKeys, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP } from './coreCreate'
 import { HerdrError } from './herdr'
 import { CoreError } from './core'
 import { actionShell, takeUpdate } from './pmActions'
 import { prSeen, stepAction } from './pmBoard'
+import type { PmStore } from './pmStore'
 import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, runOn, startTask, type PmLaunchDeps, launched } from './pmLaunch'
 import { busyNext, busyQueue, coordinatorStartRefusal, AUTOPILOT_STARTED, UNCONFIRMED } from '../../shared/pm/autopilot'
@@ -393,12 +394,21 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       const seen = prNow(facts.pr, requiredChecks(plan))
       if (seen) prSeen.set(task.id, seen)
       else prSeen.delete(task.id)
+      facts.task = task = await keepPrBase(store, task, facts.pr)
       const st = run.terminal ? await deps.call<{ status?: string | { state?: string } }>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null) : null
       const s = typeof st?.status === 'string' ? st.status : st?.status?.state
       facts.agentBusy = s === 'working' || s === 'blocked'
       // Red, neither re-run nor sent back yet: its log says whether the code failed or the infrastructure.
       if (ci?.red && !facts.agentBusy && !task.mech?.[`rerun:${ci.head}`] && !task.mech?.[`red:${ci.head}`])
         facts.infra = infraLog((await sh(SCRIPT.failedLog, [run.worktree, ci.head]).catch(() => null))?.out ?? '')
+    } else if (prLink(task)) {
+      // A PR its worker opened (no PR step): read for its base only, the branch
+      // line's; the one linked, not another PR of the branch. Not found: left as it was.
+      const link = prLink(task), r = await sh(SCRIPT.prInfo, [run.worktree, run.branch]).catch(() => null)
+      let prs: PrInfo[] = []
+      try { if (r?.code === 0) prs = JSON.parse(r.out.split('\n').at(-1) || '[]') as PrInfo[] } catch { /* read again next tick */ }
+      const pr = linkedPr(prs, link)
+      if (pr) facts.task = task = await keepPrBase(store, task, pr)
     }
     // A stall: the coordinator's wake, one nudge, then the user's (pmStall.ts).
     facts.task = task = await noteStall(deps, task, plan, runs, run.worktree, sh, now).catch(() => task)
@@ -574,4 +584,13 @@ async function stepEvent(deps: PmLaunchDeps, id: string, plan: PlannedStep[], ev
   if (r.refused) return
   const log = r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])).join('; ')
   await (log ? deps.store.logTask({ ...task, step: r.state }, 'engine', log) : deps.store.saveTask({ ...task, step: r.state }))
+}
+
+// The PR's base and commit count kept on the task (the branch line), saved only
+// when they change; kept once the task is done, so it still says where it went.
+export async function keepPrBase(store: PmStore, task: Task, pr: PrInfo | undefined): Promise<Task> {
+  const want = pr ? { base: pr.baseRefName, ...(pr.commits ? { commits: pr.commits.length } : {}) } : undefined
+  if (JSON.stringify(want) === JSON.stringify(task.prBase)) return task
+  const { prBase: _, ...rest } = task
+  return store.saveTask(want ? { ...rest, prBase: want } : rest)
 }

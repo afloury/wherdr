@@ -64,7 +64,7 @@ export async function board(store: PmStore, known: MachineInfo[] = []): Promise<
     projects: projects.map((p) => {
       const t = templates.get(p.key), machines = machinesOf(p, known)
       const plans = t ? Object.keys(t.taskTypes).map(type => ({ id: type, steps: planSteps(t, { type }, p.base) })) : []
-      return { key: p.key, ...(p.label ? { label: p.label } : {}), ...(p.aliases ? { aliases: p.aliases } : {}), ...(p.color ? { color: p.color } : {}), name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → '), weight: weightText(weightOf(t, { type: x.id })) })), ...(machines ? { machines } : {}) }
+      return { key: p.key, ...(p.base ? { base: p.base } : {}), ...(p.label ? { label: p.label } : {}), ...(p.aliases ? { aliases: p.aliases } : {}), ...(p.color ? { color: p.color } : {}), name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → '), weight: weightText(weightOf(t, { type: x.id })) })), ...(machines ? { machines } : {}) }
     }),
     // Done ones last, newest done first; the others in board order.
     cards: await cardsOf(store, [...all.filter(t => !t.step?.done), ...all.filter(t => t.step?.done && !t.archived).sort((a, b) => doneAt(b) - doneAt(a))], known),
@@ -156,6 +156,12 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
   // An approved merge the engine carries out stays the user's: their guard applies.
   const approved = !!state.approved && waitsToMerge(step)
   const act = r.effects.find(e => e.kind === 'action')
+  // The base a merge went to, kept on the task: a done task is no longer read by the mechanic.
+  let mergedInto: string | undefined
+  const fresh = async () => {
+    const t = await store.task(task.id) ?? task
+    return mergedInto && t.prBase?.base !== mergedInto ? { ...t, prBase: { base: mergedInto } } : t
+  }
   if (act?.kind === 'action') {
     await store.saveTask({ ...task, step: state }) // checking, before the action runs
     const run = await workerRun(store, task.id)
@@ -172,12 +178,13 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const catchUp = result.catchUp && result.commit ? { catchUp: { base: result.catchUp, head: result.commit } } : {}
     const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.later ? { later: true } : {}), ...(result.detail ? { detail: result.detail } : {}), ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...(result.unapproved ? { unapproved: true as const } : {}), ...catchUp, evidence }, Date.now())
     state = back.state
+    mergedInto = result.ok ? result.base : undefined
     const log = back.effects.find(e => e.kind === 'log')
     const auto = result.ok && approved && by === 'engine' ? 'merged by itself, as the user approved' : undefined
     const said = [auto, result.note, result.alert].filter(Boolean).join('. ')
-    const saved = log?.kind === 'log' ? await store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', log.text)
-      : said ? await store.logTask({ ...(await store.task(task.id) ?? task), step: state }, 'engine', `${act.step}: ${said}`)
-        : await store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
+    const saved = log?.kind === 'log' ? await store.logTask({ ...(await fresh()), step: state }, 'engine', log.text)
+      : said ? await store.logTask({ ...(await fresh()), step: state }, 'engine', `${act.step}: ${said}`)
+        : await store.saveTask({ ...(await fresh()), step: state })
     // Merged (by the engine, or on the Git host and confirmed): the task's remote branch goes, when safe.
     const merged = result.ok && run && endsMerged(act.action.kind)
     const gone = merged && await dropMergedBranch(actionShell(deps, runOn(deps, run)), {
@@ -185,7 +192,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     }).catch((e: Error) => `kept the remote branch ${run.branch}: ${e.message}`)
     return gone ? store.logTask(saved, 'engine', gone) : saved
   }
-  return store.saveTask({ ...(await store.task(task.id) ?? task), step: state })
+  return store.saveTask({ ...(await fresh()), step: state })
 }
 
 const workerRun = async (store: PmStore, id: string) =>

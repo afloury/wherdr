@@ -94,7 +94,7 @@ echo "\${cur#* }"`,
   // else its latest merged one, marked stray too: the step ends merged, saying
   // the task's commit is not in it.
   prInfo: `${IN} h=$(git rev-parse HEAD) || exit 1; echo "$h"
-j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup,files,additions,deletions 2>&1) || { echo "$j"; exit 1; }
+j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup,files,additions,deletions,commits 2>&1) || { echo "$j"; exit 1; }
 j=$(echo "$j" | tail -1)
 if [ "$j" = "[]" ]; then
   m=$(gh pr list --head "$1" --state merged --json url,baseRefName,headRefOid -q '.[] | .headRefOid+" "+(. + {merged: true} | tojson)' 2>&1) || { echo "$m"; exit 1; }
@@ -231,7 +231,8 @@ ${DELETE_REF}`,
 export interface Check { name?: string, context?: string, status?: string, conclusion?: string, state?: string }
 // merged: no PR open, this one of the branch is merged already and holds the
 // task's commit; stray: merged, but at a head without the task's commit.
-export interface PrInfo { url: string, baseRefName: string, headRefOid: string, mergeStateStatus?: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean, files?: { path: string }[], additions?: number, deletions?: number }
+// commits: the open PR's, for their count.
+export interface PrInfo { url: string, baseRefName: string, headRefOid: string, mergeStateStatus?: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean, files?: { path: string }[], additions?: number, deletions?: number, commits?: unknown[] }
 
 export const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
 // May the open PR be merged now? Its head must be the task's commit, every
@@ -325,6 +326,7 @@ export function leaks(g: ResolvedGuards, remoteBranches: string[], allowed: stri
 // later: a pipeline still running, polled again. report: a watch's output, its
 // proof. detail: what a failed watch printed, for the log and the coordinator.
 // catchUp: the PR's base, when the merge is refused because the PR conflicts with or is behind it.
-export interface ActionResult { ok: boolean, later?: boolean, report?: string, detail?: string, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, unapproved?: true, link?: string, commit?: string, alert?: string, note?: string }
+// base: the branch a merge went to (the PR's base on its host).
+export interface ActionResult { ok: boolean, later?: boolean, report?: string, detail?: string, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, unapproved?: true, link?: string, commit?: string, alert?: string, note?: string, base?: string }
 export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number, by?: MergeBy, resumes?: number }
 export const receiptId = (task: string, step: string, attempt: number) => `${task}.${attempt}.${encodeURIComponent(step)}`

@@ -13,7 +13,7 @@
 // text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR among them), Plan (each step with its
 // screenshots), Comments (the worker's and the reviewer's reports, in order)
 // and History (the whole log as one timeline, the hand-offs as entries; TaskHistory).
-import { canStart, canStop, cardStatus, linkLabel, mergeWaits, statusText, type Card } from '#shared/pm/board'
+import { branchLine, canStart, canStop, cardStatus, linkLabel, mergeWaits, statusText, type Card } from '#shared/pm/board'
 import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
 import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
@@ -25,8 +25,9 @@ import type { Choice } from '#shared/pm/verdict'
 
 // stopping: opened from the card menu's Stop, the confirmation shown.
 // reporting: opened from its Report a problem, the form shown (TaskReport).
+// projectBase: the project's working branch, where a task goes by default.
 // checking: opened from the card menu's Check on GitHub, the check run at once.
-const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, reporting?: boolean, checking?: boolean, waitsFor?: string[] }>()
+const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, reporting?: boolean, checking?: boolean, waitsFor?: string[], projectBase?: string }>()
 const emit = defineEmits<{ closed: [], changed: [] }>()
 const open = ref(true)
 const busy = ref(false)
@@ -52,6 +53,9 @@ const switched = computed(() => reviewSwitch(props.card.log))
 const switchAt = computed(() => props.card.plan.findLastIndex((s, i) => s.holder === 'reviewer' && (done.value || i <= at.value)))
 // Where its PR and merge stand (the card's line), with the full time and the approval's date.
 const status = computed(() => { const s = cardStatus(props.card); return s && { ...s, text: statusText(s, fmtDateTime, true) } })
+
+// Which branch merges into which, once it has a branch.
+const branch = computed(() => branchLine(props.card, props.projectBase))
 
 // Time per step, the waits for the user apart, review rounds and CI fixes, in one line.
 const times = computed(() => (props.card.times ? timesText(props.card.times) : ''))
@@ -132,6 +136,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
       <div class="task-sheet-top">
         <p v-if="card.step" class="mono-label">{{ card.step }}</p>
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
+        <BranchLine v-if="branch" :line="branch" />
         <p v-if="times" class="task-times" data-testid="task-times">{{ times }}</p>
         <p v-if="recheck" class="task-times" data-testid="task-recheck">{{ recheck }}</p>
         <p v-if="card.archived" class="muted" data-testid="task-archived">{{ tl('Archived') }} {{ fmtWhen(new Date(card.archived).toISOString()) }}</p>

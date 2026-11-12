@@ -30,6 +30,7 @@ export interface Task {
   answered?: number // when a coordinator's tell answered its question; cleared once the agent's question is gone (no second wake: autopilot.ts)
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
   ci?: { head: string, red: boolean, running?: true } // its PR's CI at the task's commit, as the engine last read it
+  prBase?: { base: string, commits?: number } // its PR's base and commit count, as the engine last read them: kept once done
   queue?: number // its place in its project's merge queue (mergeQueue.ts), 1: merging now
   queueOut?: string // why it stepped out of the queue's line (a conflict, its checks, its agent's work)
   order?: number // its place on the board, set by the coordinator's `task order` (boardOrder.ts): lower first
@@ -82,6 +83,14 @@ export interface Task {
 
 // A task as the browser gets it: the agent's screenshot key stays on the server.
 export const publicTask = ({ shotToken: _, ...t }: Task): Task => t
+
+// A PR's address without what follows its number (/files, a slash, an anchor), to compare two.
+export const prUrl = (u: string) => /^(.*\/pull\/\d+)(?:[/?#].*)?$/.exec(u)?.[1]
+// Of a branch's PRs, the one the task links (another may be open on the same branch).
+export const linkedPr = <P extends { url: string }>(prs: P[], link: string | undefined) => (link ? prs.find(x => prUrl(x.url) === link) : undefined)
+// A task's PR, when a step or its worker linked one (a worker's report, the PR step's proof): the last linked.
+export const prLink = (t: Pick<Task, 'links' | 'step'>) =>
+  [...(t.links ?? []).map(l => l.url), ...Object.values(t.step?.proofs ?? {}).map(p => p?.link ?? '')].map(prUrl).filter(Boolean).at(-1)
 
 export interface TaskLogEntry { at: number, by: string, text: string }
 export type SpecNote = TaskLogEntry

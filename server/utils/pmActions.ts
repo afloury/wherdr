@@ -161,10 +161,10 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
         // a protected branch merged outside your gesture still raises the alert.
         if (pr?.merged) {
           const reached = mayMerge(job.guards, pr.baseRefName, job.by) ? [pr.baseRefName] : []
-          if (!pr.stray) return { ok: true, link: pr.url, commit: head.trim(), reached, note: resumed ? 'merged before the restart' : 'already merged on GitHub' }
+          if (!pr.stray) return { ok: true, link: pr.url, commit: head.trim(), base: pr.baseRefName, reached, note: resumed ? 'merged before the restart' : 'already merged on GitHub' }
           // Merged at a head without the task's commit: what GitHub merged is recorded, and what it left out is said.
           const h = head.trim().slice(0, 7), m = pr.headRefOid.slice(0, 7)
-          return { ok: true, link: pr.url, commit: pr.headRefOid, reached, note: `already merged on GitHub at ${m}, without the task's commit ${h}`,
+          return { ok: true, link: pr.url, commit: pr.headRefOid, base: pr.baseRefName, reached, note: `already merged on GitHub at ${m}, without the task's commit ${h}`,
             alert: `${job.task.id}'s commit ${h} was not merged: its PR was merged on GitHub at ${m} without it. Its later commits need a new branch` }
         }
         const refused = pr && guardAction(job.guards, a, { branch, by: job.by, base: pr.baseRefName })
@@ -219,7 +219,7 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
         if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
         if (await job.halted?.()) return { ok: false, error: 'merge: the task was stopped' }
         const m = await run(deps, SCRIPT.merge, [wt, pr!.url, head.trim(), a.method ?? ''])
-        if (m.code === 0) return { ok: true, link: pr!.url, commit: head.trim(), reached: [pr!.baseRefName] }
+        if (m.code === 0) return { ok: true, link: pr!.url, commit: head.trim(), base: pr!.baseRefName, reached: [pr!.baseRefName] }
         // GitHub's refusal ends with the commands to fix it: those are the agent's (the catch-up), not the error's.
         const stuck = CONFLICT.test(m.out) ? 'conflicts with' : /not up to date/i.test(m.out) ? 'is behind' : undefined
         return stuck ? { ok: false, error: `merge: the PR ${stuck} ${pr!.baseRefName}`, catchUp: pr!.baseRefName, commit: head.trim() } : fail(m)
@@ -274,7 +274,7 @@ async function bitbucketMerge(deps: ActionDeps, job: ActionJob, fail: (r: { code
       const done = prs.find(p => p.state === 'MERGED' && head.startsWith(p.source.commit.hash))
       if (!done) return { ok: false, error: 'merge: no open PR for this task' }
       const base = done.destination.branch.name
-      return { ok: true, link: done.links.html.href, commit: head, reached: mayMerge(job.guards, base, job.by) ? [base] : [], note: 'already merged on Bitbucket' }
+      return { ok: true, link: done.links.html.href, commit: head, base, reached: mayMerge(job.guards, base, job.by) ? [base] : [], note: 'already merged on Bitbucket' }
     }
     const base = pr.destination.branch.name, link = pr.links.html.href
     const refused = guardAction(job.guards, a, { branch, by: job.by, base })
@@ -299,7 +299,7 @@ async function bitbucketMerge(deps: ActionDeps, job: ActionJob, fail: (r: { code
     const body = JSON.stringify({ type: 'pullrequest', merge_strategy: BB_STRATEGY[a.method ?? 'merge'], close_source_branch: false })
     const m = await api<object>('POST', `/pullrequests/${pr.id}/merge`, body)
     if ('error' in m) return m.error!
-    return m.status === 200 ? { ok: true, link, commit: head, reached: [base] } : refusal(m)
+    return m.status === 200 ? { ok: true, link, commit: head, base, reached: [base] } : refusal(m)
   }
 }
 

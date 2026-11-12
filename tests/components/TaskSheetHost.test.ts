@@ -13,7 +13,9 @@ const card: Card = {
   id: 'CO-4', project: 'CO', title: 'Fix login redirect', description: '', column: 'To do', phase: 'todo', step: '', holder: 'none',
   tags: [], links: [], log: [], plan: [], state: initialState(),
 }
-registerEndpoint('/api/pm/board', (): Partial<Board> => ({ cards: [card], projects: [] }))
+// Started, with a branch and no step naming a target: it goes to the project's working branch.
+const branched: Card = { ...card, id: 'CO-5', title: 'Branched task', phase: 'working', branch: 'task/CO-5', state: { ...initialState(), started: true } }
+registerEndpoint('/api/pm/board', (): Partial<Board> => ({ cards: [card, branched], projects: [{ key: 'CO', base: 'v3', name: 'Company', columns: [], types: [] }] }))
 const sheet = () => document.querySelector('[data-testid="task-sheet"]')
 
 it('opens over the current page and closing returns to it', async () => {
@@ -49,6 +51,16 @@ it('opens an archived task from a link, with Unarchive', async () => {
   await expect.poll(sheet).not.toBeNull()
   expect(document.body.textContent).toContain('Old login fix')
   expect(document.querySelector('[data-testid="task-unarchive"]')).not.toBeNull()
+  closeTaskSheet()
+  await expect.poll(sheet).toBeNull()
+  w.unmount()
+})
+
+// A sheet opened off the board still knows the project's working branch.
+it('shows the branch line with the project\'s working branch', async () => {
+  const w = await mountSuspended(TaskSheetHost, { route: '/settings?task=CO-5' })
+  await expect.poll(() => document.querySelector('[data-testid="branch-base"]')?.textContent).toBe('v3')
+  expect(document.querySelector('[data-testid="branch-head"]')?.textContent).toBe('task/CO-5')
   closeTaskSheet()
   await expect.poll(sheet).toBeNull()
   w.unmount()

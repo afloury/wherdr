@@ -2,7 +2,7 @@
 // its current step; its live indicator is the herdr-core state of the agent
 // that holds that step (none for holder: none); anything waiting for the user
 // puts it in Your turn, whatever its step, with a badge saying what to do.
-import type { Holder } from './workflow'
+import { actionField, type Holder } from './workflow'
 import { stepLabels, waitsToMerge, type PlannedStep, type StepState } from './steps'
 import type { Run, SpecNote, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
@@ -47,6 +47,8 @@ export interface Card {
   removable?: true // never started (no agent, worktree or branch): the user may remove it
   after?: string[] // tasks of the same project it starts after
   prNow?: string // its PR as the engine last read it (prNow)
+  branch?: string // its working branch, once an agent worked on it
+  pr?: { base: string, commits?: number } // its PR's base and commit count, as the engine last read them
   held?: string // waits for memory on its machine
   sameFiles?: string // to do behind this started task, which touches its files (files.ts)
   machine?: string // the machine it went to, named, when its project allows several
@@ -66,7 +68,8 @@ export interface BoardMachine { key: string, label: string, online: boolean, unr
 // types: the project's task types, each with its steps in one line ("work → review → merge")
 // and the weight its tasks get when none is set ("heavy (screenshots)").
 // machines: only for a project that allows more than its own, home first.
-export interface BoardProject { key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string, weight?: string }[], machines?: BoardMachine[] }
+// base: the project's working branch, to tell a task that goes elsewhere.
+export interface BoardProject { base?: string, key: string, label?: string, aliases?: string[], color?: string, name: string, columns: string[], types: { id: string, plan: string, weight?: string }[], machines?: BoardMachine[] }
 // GET /api/pm/board
 // archived: each project's count of archived tasks, left out of cards (GET /api/pm/archived lists them).
 export interface Board { projects: BoardProject[], cards: Card[], archived?: Record<string, number> }
@@ -99,6 +102,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ? runs.filter(r => r.task === task.id && r.role === holder && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
     : undefined
   const stall = stallOf(task, plan, now)
+  const branch = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]?.branch
   // A done task (merged, archived) is never the user's turn.
   // In the merge queue, waiting its turn or out of line: a refused merge is the queue's, not the user's.
   const queue = task.queue && !s?.done ? task.queue : undefined
@@ -117,6 +121,8 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(step ? { step: step.id } : {}),
     holder,
     ...(run?.terminal ? { terminal: run.terminal } : {}),
+    ...(branch ? { branch } : {}),
+    ...(task.prBase ? { pr: task.prBase } : {}),
     ...(yourTurn ? { yourTurn } : {}),
     ...(stall ? { stall } : {}),
     ...(queue ? { queue } : {}),
@@ -315,6 +321,22 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   // The merge runs: it waits for the checks, then merges.
   if (s.acting && kind && MERGES.includes(kind)) return pr && pr !== 'ready to merge' && kind === 'github.merge' ? ofPr(pr) : { text: 'merging', tone: 'wait' }
   return pr ? ofPr(pr) : undefined
+}
+
+// Which branch a task's work goes into, for the branch line of its sheet and
+// card: its PR's base as the engine last read it, else the branch the next
+// step names (the PR's base, the branch it lands on), else the last one the
+// plan names, else the project's working branch. pending: its PR is still to open.
+export interface BranchLine { head: string, base: string, commits?: number, pending?: true }
+export function branchLine(c: Pick<Card, 'branch' | 'pr' | 'plan' | 'state'>, projectBase?: string): BranchLine | undefined {
+  if (!c.branch) return
+  if (c.pr) return { head: c.branch, base: c.pr.base, ...(c.pr.commits ? { commits: c.pr.commits } : {}) }
+  const target = (s: PlannedStep) => { const f = s.action && actionField(s.action.kind); return f ? s.action![f] : undefined }
+  const at = c.state?.started && !c.state.done ? c.state.at : c.plan.length
+  const step = c.plan.slice(at).find(target) ?? c.plan.slice(0, at).reverse().find(target)
+  const base = step ? target(step) : projectBase
+  if (!base) return
+  return { head: c.branch, base, ...(step?.action?.kind === 'github.pr' && c.plan.indexOf(step) >= at ? { pending: true as const } : {}) }
 }
 
 // An approved merge on its way: what it waits for, in a few words (its place

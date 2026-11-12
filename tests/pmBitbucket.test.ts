@@ -39,7 +39,7 @@ function fakeBitbucket(o: { prs?: object[], statuses?: object[][], merge?: [numb
 describe('bitbucket.merge', () => {
   it('waits for the builds, then merges with a merge commit', async () => {
     const f = fakeBitbucket({ statuses: [[{ key: 'ci', state: 'INPROGRESS' }], [{ key: 'ci', state: 'SUCCESSFUL' }]] })
-    expect(await f.go()).toEqual({ ok: true, link: 'https://bitbucket.example/pr/7', commit: HEAD })
+    expect(await f.go()).toEqual({ ok: true, link: 'https://bitbucket.example/pr/7', base: 'dev', commit: HEAD })
     expect(f.sleeps).toEqual([60_000])
     expect(f.calls).toContainEqual(['GET', '/pullrequests?state=OPEN&state=MERGED&sort=-updated_on&pagelen=50', 'q=source.branch.name="task/A-1"'])
     const merge = f.calls.find(c => c[0] === 'POST')!
