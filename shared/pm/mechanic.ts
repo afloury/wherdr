@@ -8,7 +8,7 @@
 // and carries the move out. A move is made once per key (task.mech).
 import { isTransient, prReady, type PrInfo } from './actions'
 import { isProtected, type ResolvedGuards } from './guards'
-import { mergeGoesOn } from './mergeQueue'
+import { NOT_PUSHED, mergeGoesOn } from './mergeQueue'
 import { DEFAULT_ROUNDS, waitsToMerge, type PlannedStep } from './steps'
 import type { Task } from './run'
 import { blockOf } from './selfFix'
@@ -131,9 +131,11 @@ export function nextMove(f: MechFacts): { move: Move, key: string } | undefined 
   }
   // The PR head is not the task's commit (a CI fix not pushed, a push from
   // elsewhere): the merge step pushes it and has it reviewed again, or says why not.
+  // Out of line for that only, it is still pushed: its own update, whatever its place.
   if (pr.headRefOid !== head) {
     if (f.agentBusy) return
-    if (engineMerges) return pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName })
+    const pushes = mergeGoesOn(step, s, guards, pr.baseRefName) && !(waits && s.catchUp) && (!f.queueOut || f.queueOut === NOT_PUSHED)
+    if (engineMerges || pushes) return pick(mergeKey, { kind: 'merge', url: pr.url, base: pr.baseRefName })
     // Not merging now (it waits for the user, or for its turn): a head GitHub's Update branch made is still fixed and pushed.
     return pick(`update:${pr.headRefOid}`, { kind: 'take-update' })
   }
