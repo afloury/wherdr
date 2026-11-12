@@ -374,12 +374,14 @@ export function codexSessionStart(head: string): number {
 // What a machine's earlier reads established, kept between refreshes:
 // the fingerprint of each conversation file (its first line never changes, so
 // a failed or cut head read keeps it), and the machine's last fingerprint seen
-// (`last`, replaced only by a newer session showing another one).
-export interface CodexMemo { files: Map<string, string>, last: string | null }
+// (`last`, from the newest identified session, with or without limits: a
+// switch is remembered before its first limits; `lastStamp` keeps an older
+// session from undoing it).
+export interface CodexMemo { files: Map<string, string>, last: string | null, lastStamp: number }
 const codexMemos = new Map<string, CodexMemo>()
 export function codexMemo(machine: string): CodexMemo {
   let m = codexMemos.get(machine)
-  if (!m) codexMemos.set(machine, m = { files: new Map(), last: null })
+  if (!m) codexMemos.set(machine, m = { files: new Map(), last: null, lastStamp: 0 })
   return m
 }
 
@@ -429,7 +431,11 @@ export async function readCodexMachine(fs: MachineFs, home: string, memo?: Codex
   const q = machineCodexQuota(readings)
   if (!memo) return { q, seen: true }
   for (const f of memo.files.keys()) if (!recent.some(r => r.f === f)) memo.files.delete(f)
-  if (q?.account) memo.last = q.account
+  const identified = readings.reduce<CodexSessionReading | null>((a, b) => (b.account && (!a || b.stamp > a.stamp) ? b : a), null)
+  if (identified && identified.stamp >= memo.lastStamp) {
+    memo.last = identified.account!
+    memo.lastStamp = identified.stamp
+  }
   return { q: q && memo.last ? { ...q, lastAccount: memo.last } : q, seen: true }
 }
 

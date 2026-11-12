@@ -482,6 +482,36 @@ describe('quotas Codex par compte', () => {
     } finally { fs.rmSync(home, { recursive: true, force: true }) }
   })
 
+  it('an account switch is remembered before its first limits: a later unidentified read never joins the old account', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-switch-memo-'))
+    const now = Date.now()
+    const dir = path.join(home, '.codex/sessions', ...((d: Date) => [String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')])(new Date(now)))
+    fs.mkdirSync(dir, { recursive: true })
+    const week = now + 3 * 86400000
+    const ts = (ms: number) => new Date(now + ms).toISOString()
+    const meta = (ms: number, id: string) => JSON.stringify({ timestamp: ts(ms), type: 'session_meta', payload: { creator_account_id: id } })
+    const limits = (ms: number) => JSON.stringify({ timestamp: ts(ms), payload: { rate_limits: {
+      primary: { used_percent: 5, window_minutes: 300, resets_at: Math.round((now + 4 * 3600000) / 1000) },
+      secondary: { used_percent: 31, window_minutes: 10080, resets_at: Math.round(week / 1000) },
+    } } })
+    const pad = JSON.stringify({ type: 'pad', text: 'x'.repeat(70 * 1024) })
+    const file = (n: string, ...lines: string[]) => fs.writeFileSync(path.join(dir, n), lines.join('\n') + '\n')
+    const memo = codexMemo(`test-${home}`)
+    const flaky = { ...localFs, read: (p: string, start: number, len: number) => (p.endsWith('rollout-c.jsonl') && start === 0 ? Promise.reject(new Error('ssh')) : localFs.read(p, start, len)) }
+    try {
+      file('rollout-a.jsonl', meta(-3000, 'acct-test-1'), limits(-3000))
+      expect((await readCodexMachine(flaky, home, memo)).q!.lastAccount).toBe(codexAccount(meta(0, 'acct-test-1')))
+      file('rollout-b.jsonl', meta(-2000, 'acct-test-2'))
+      expect((await readCodexMachine(flaky, home, memo)).q).toBeNull()
+      file('rollout-c.jsonl', meta(-1000, 'acct-test-2'), pad, limits(-1000))
+      const q = (await readCodexMachine(flaky, home, memo)).q!
+      expect([q.account, q.lastAccount]).toEqual([null, codexAccount(meta(0, 'acct-test-2'))])
+      const a = { ...win(now - 14 * 3600000, codexAccount(meta(0, 'acct-test-1')), 40, 30, now - 9 * 3600000, Math.round(week / 1000) * 1000) }
+      const out = mergeQuotas([r('host-a', 'Host A', a), r('host-b', 'Host B', q)])
+      expect(out.codexAccounts!.map(x => x.machines.map(m => m.key))).toEqual([['host-a'], ['host-b']])
+    } finally { fs.rmSync(home, { recursive: true, force: true }) }
+  })
+
   // Same account on three machines, two of them idle: their 5-hour window ended
   // hours ago; the third, unidentified this refresh, read the fresh one.
   it.each([
