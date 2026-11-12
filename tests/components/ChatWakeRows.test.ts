@@ -6,7 +6,8 @@ import type { ChatItem, Pane } from '#shared/types'
 
 const pane: Pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'claude', name: null, label: null, status: 'idle', title: null, cwd: '/home/user/demo', agentSession: null }
 let items: ChatItem[] = []
-registerEndpoint('/api/chat', () => ({ available: true, token: 'wakes', file: '/home/user/demo/transcript.jsonl', items }))
+let reads = 0
+registerEndpoint('/api/chat', () => (reads++, { available: true, token: `wakes${items.length}`, file: '/home/user/demo/transcript.jsonl', items }))
 
 const at = (h: number, m = 0) => `2026-01-01T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:00Z`
 const ACK = (id: string) => `When you have handled this, run: wherdr pm ack ${id}`
@@ -98,6 +99,36 @@ describe('wakes in a conversation', () => {
       expect(chat).toContain('The tool is installed.')
       expect(w.find('.msg-user').text()).toContain('Also look at WHR-7.')
       expect(chat).toContain('WHR-7 is moving again.')
+    } finally { w.unmount() }
+  })
+})
+
+describe('a wake row while the user sends', () => {
+  afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] } })
+
+  it('keeps its row, key and folded turn when the agent starts working and a message lands after it', async () => {
+    herdrState.value = { ok: true, workspaces: [], panes: [pane] }
+    items = wake('Incident: wake i1', 'Incident inc1 on host-a at 08:00: herdr-core or wherdr restarted.', 'Resumed everything.', 8)
+    const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] }, global: { stubs: { UTooltip: { template: '<slot />' } } } })
+    const row = () => {
+      const r = w.find('[data-testid="wake"]')
+      return { key: r.attributes('data-hit-key'), loud: r.classes().includes('loud'), head: r.find('.wake-head').text(), answer: r.find('.wake-answer').exists() ? r.find('.wake-answer').text() : null }
+    }
+    try {
+      await expect.poll(() => w.findAll('[data-testid="wake"]').length).toBe(1)
+      const before = row()
+      expect(before).toMatchObject({ loud: true, head: 'Incident inc1 on host-a at 08:00: herdr-core or wherdr restarted.', answer: 'Resumed everything.' })
+      // The user sends: the agent works before its transcript has the message.
+      const read = reads
+      await w.setProps({ pane: { ...pane, status: 'working' } })
+      await expect.poll(() => reads).toBe(read + 1)
+      await new Promise(r => setTimeout(r, 100))
+      expect(row()).toEqual(before)
+      // The message lands, then the agent rests again.
+      items = [...items, { role: 'user', text: 'Thanks, carry on.', ts: at(9) }]
+      await w.setProps({ pane: { ...pane, status: 'idle' } })
+      await expect.poll(() => w.find('.msg-user').exists()).toBe(true)
+      expect(row()).toEqual(before)
     } finally { w.unmount() }
   })
 })

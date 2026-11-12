@@ -759,6 +759,11 @@ const plainLine = (text: string) => text.replace(/[*_`#>]+/g, '').replace(/\s+/g
 // answer sits under it in a lighter style and the rest of the turn opens on
 // tap. An answer that asks the user stays a full reply. Consecutive routine
 // wakes (not an incident, nothing changed, nothing asked) fold into one row.
+// A wake whose turn was seen over stays so: while the agent starts on the
+// user's next message before the transcript has it, its turn has no end yet,
+// and the row would unfold for a read, then fold again (a flash).
+const wakesDone = new Set<string>()
+watch(() => props.pane.id, () => wakesDone.clear())
 function foldWakes(out: Block[]): Block[] {
   const res: Block[] = []
   let run: (Block & { k: 'wake' })[] = []
@@ -780,7 +785,8 @@ function foldWakes(out: Block[]): Block[] {
     while (j < out.length && !fromUser(out[j]!) && out[j]!.k !== 'day' && out[j - 1]!.k !== 'turn') j++
     const turn = out.slice(i + 1, j)
     const last = turn.findLast(x => x.k === 'assistant')
-    const done = j < out.length || turn.at(-1)?.k === 'turn'
+    const done = j < out.length || turn.at(-1)?.k === 'turn' || wakesDone.has(b.key)
+    if (done) wakesDone.add(b.key)
     const asked = !!last && asks(last)
     const fold = done && !!last && !asked
     const changed = turn.some(x => x.k === 'tools' && x.list.some(changes))
@@ -1187,7 +1193,8 @@ function queuedNow() {
   const replies = blocks.value.filter(b => b.k === 'assistant')
   // Agent idle, nothing holding it: Claude's own queue is empty by now.
   const idle = waitFor.value === 'sending'
-  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle, input: props.pane.draft?.text }).map((q) => {
+  // A wake waiting in Claude's queue shows as its row once taken, never first as a bubble.
+  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle, input: props.pane.draft?.text }).filter(q => !wakeKindOf(q.raw)).map((q) => {
     const { text, files } = userMessageParts(q.raw)
     const parsed = parseReply(text)
     return {
