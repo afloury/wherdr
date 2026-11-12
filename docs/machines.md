@@ -86,8 +86,9 @@ and the machine's memory settings (side by side on a computer, stacked on a phon
   went offline takes nothing. A new task asked for an offline machine starts on another machine its
   project allows when one fits, else waits with *Waits for … (offline)*. An automatic start
   (a chain, files freed, a held start) that finds its machine unreachable at the last moment goes
-  back to To do with *Waits for … (unreachable)*, naming the machine's offline incident when there
-  is one, and starts by itself once a machine that fits is back, like a start waiting for room.
+  back to To do with *Waits for … (unreachable)* and starts by itself once a machine that fits is
+  back, like a start waiting for room. When the engine already tracks an offline incident on that
+  machine, the task joins it instead and the incident's resume starts it once the machine is back.
   **Available** (Always,
   Weekdays, Every day, with **From** and **To**, in the wherdr server's time; *To* before *From*
   runs over midnight) keeps automatic starts off a machine outside its hours, and heavy work off it

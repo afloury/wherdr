@@ -22,7 +22,7 @@ import { fileConflict, filesSection, pastAgents } from '../../shared/pm/files'
 import { branchFor } from '../../shared/pm/branchName'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 import { LABEL, TMP_DIR, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type Run, type Task } from '../../shared/pm/run'
-import { isOpen, type Incident } from '../../shared/pm/incident'
+import { isOpen, type Incident, type Recovery } from '../../shared/pm/incident'
 import { recordGone, type CoreList } from './pmIncidents'
 import { interruptTask } from './pmRecovery'
 
@@ -142,16 +142,23 @@ export async function mergingOf(store: PmStore): Promise<(t: Task) => boolean> {
 
 const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind, held: undefined, sameFiles: undefined, machineWait: undefined })
 
-// The engine's first start of a task, its machine out of reach: to do again,
-// held like a start that waits for room (startHeld, startChained retry it once a
-// machine that fits is back), never a failure for the user. An offline incident
-// the engine already tracks on that machine is named: its end starts it.
-async function machineHold(deps: PmLaunchDeps, task: Task, machine: string): Promise<Task> {
+// Its machine out of reach: herdr-core's inventory, or an answer of herdr-core midway.
+const outOfReach = (e: unknown) => (e instanceof HerdrError && (e.code === 'unreachable' || e.code === 'offline')) || (e instanceof CoreError && (e as { kind?: string }).kind === 'unreachable')
+
+// The engine's first start of a task, its machine out of reach (found offline,
+// or gone midway): never a failure for the user. An open offline incident on
+// that machine takes it (in its tasks, the task recovering: resumeInterrupted
+// starts it once the machine is back); else it is to do again, held like a start
+// that waits for room (startHeld, startChained start it once a machine that fits is back).
+async function machineHold(deps: PmLaunchDeps, task: Task, machine: string, now = Date.now()): Promise<Task> {
   const label = deps.machines().find(m => m.key === machine)?.label ?? machine
   const tasks = await deps.store.tasks()
   const i = (await deps.store.incidents()).filter(x => x.machine === machine && x.cause === 'offline' && isOpen(x, tasks)).at(-1)
-  const held = `Waits for ${label} (unreachable${i ? `, incident ${i.id}` : ''})`
-  return deps.store.saveTask({ ...task, state: 'todo', waiting: undefined, waitKind: undefined, sameFiles: undefined, held, machineWait: machine })
+  const base = { ...task, waitKind: undefined, sameFiles: undefined, held: undefined, machineWait: undefined }
+  if (!i) return deps.store.saveTask({ ...base, state: 'todo', waiting: undefined, held: `Waits for ${label} (unreachable)`, machineWait: machine })
+  await deps.store.linkIncident(i.id, task.id)
+  const recovery: Recovery = { incident: i.id, cause: 'offline', machine, label, ...(task.run ? { run: task.run } : {}), at: now, n: 1, waits: true }
+  return deps.store.saveTask({ ...base, state: 'waiting', waiting: `Waits for ${label} (unreachable, incident ${i.id}): wherdr starts it once it is back`, recovery })
 }
 
 // Starts the worker of a task to do (or waiting, to try again). Any reason it
@@ -169,7 +176,18 @@ async function machineHold(deps: PmLaunchDeps, task: Task, machine: string): Pro
 // that first message; failing at once, a new conversation reads the instructions.
 type StartOpts = { handover?: string, revive?: true, on?: string, by?: string, anyway?: true, resume?: { session: string, text: string } }
 export async function startTask(deps: PmLaunchDeps, id: unknown, opts: StartOpts = {}): Promise<Task> {
-  return oneStart(String(id), 'worker', () => startOnce(deps, id, opts))
+  return oneStart(String(id), 'worker', async () => {
+    const before = await deps.store.task(id)
+    try { return await startOnce(deps, id, opts) } catch (e) {
+      // The engine's first start, its machine out of reach: the task as it was before, held for it.
+      if (!before || !outOfReach(e) || (opts.by ?? 'engine') !== 'engine' || opts.revive || before.step?.started || before.state === 'working') throw e
+      const p = (await deps.store.projects()).find(x => x.key === before.project)
+      const placed = p ? taskMachine(before, p, opts.on) : undefined
+      if (!placed || 'refused' in placed) throw e
+      const now = (await deps.store.task(id)) ?? before
+      return machineHold(deps, { ...now, step: before.step, run: before.run, state: before.state }, placed.machine)
+    }
+  })
 }
 
 async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on: asked, by = 'engine', anyway, resume }: StartOpts): Promise<Task> {
@@ -208,7 +226,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const { machine } = placed
   let on: string | undefined, label = ''
   try { ({ on, m: { label } } = machineOn(deps, machine)) } catch (e) {
-    if (by === 'engine' && !revive && !task.step?.started && e instanceof HerdrError && e.code === 'unreachable') return machineHold(deps, task, machine)
+    if (by === 'engine' && !revive && !asRead.step?.started && outOfReach(e)) throw e // startTask holds it
     return wait(store, task, (e as Error).message)
   }
   if (!(await kindsOf(deps, on)).includes(plan.program)) return wait(store, task, `${plan.program} is not installed on ${label}`)
@@ -271,6 +289,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
       // Unconfirmed: it may run anyway. The next reconciliation finds it by its labels.
       if (e instanceof CoreError && ['timeout', 'disconnected', 'protocol'].includes(e.kind)) return (await store.task(task.id))!
       await store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
+      if (by === 'engine' && !revive && !asRead.step?.started && outOfReach(e)) throw e // startTask holds it
       return wait(store, task, `herdr-core refused to start ${plan.program}: ${(e as Error).message}`)
     }
     run = { ...run, terminal: address, state: 'running', startedAt: Date.now() }

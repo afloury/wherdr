@@ -69,7 +69,8 @@ export async function startFileWaits(deps: PmLaunchDeps) {
     if (!own) continue
     projects.add(free.project)
     // Already starting from elsewhere (busy): that start goes on.
-    const r = await startTask(deps, free.id).catch((e: Error) => e instanceof HerdrError && e.code === 'busy' ? null : ({ ...free, state: 'waiting' as const, waiting: e.message }))
+    // Any other failure is saved: no longer behind the files, it would stay to do with nothing to start it.
+    const r = await startTask(deps, free.id).catch((e: Error) => e instanceof HerdrError && e.code === 'busy' ? null : store.saveTask({ ...free, state: 'waiting', waiting: e.message }))
     if (!r) continue
     await store.logTask((await store.task(free.id))!, 'engine', r.state === 'working' ? 'started: its files are free' : `could not start: ${r.waiting ?? r.held ?? ''}`)
     started.push(free.id)
