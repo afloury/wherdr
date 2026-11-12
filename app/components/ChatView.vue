@@ -483,7 +483,8 @@ const NOTICE: Record<string, [string, string]> = {
 
 // `in`: the folds (a wake, a run of routine wakes) that must be open for it to show.
 type Block = ({ k: 'day', key: string, label: string }
-  | { k: 'who', key: string }
+  // `own`: it opens a turn the agent took by itself (a background task finished…).
+  | { k: 'who', key: string, own?: boolean }
   | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null, wake: WakeKind | null, ms?: number }
   // `rid`: its code in the references to it (shared/reference.ts messageId).
   | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean, ms?: number }
@@ -500,7 +501,8 @@ type Block = ({ k: 'day', key: string, label: string }
   | { k: 'turn', key: string, text: string, copy: string | null, reply: string | null }
   // A wake: one compact row, the coordinator's answer under it (see foldWakes).
   | { k: 'wake', key: string, kind: WakeKind, head: string, text: string, time: string | null, at: string | null, answer: string | null, loud: boolean, ms?: number }
-  | { k: 'wakes', key: string, n: number, from: string | null, to: string | null }) & { in?: string[] }
+  // `last`: the first line of the last answer in the run.
+  | { k: 'wakes', key: string, n: number, from: string | null, to: string | null, last: string | null }) & { in?: string[] }
 
 // Images of a transcript item (a user message, or what a tool returned),
 // re-read on demand from its line (ref = its position in the file).
@@ -657,15 +659,24 @@ const blocks = computed<Block[]>(() => {
       needWho = true
       // The output of a "!" command also goes to the agent, which may reply to it.
       if (it.role !== 'cmd') turn = { key: keys[i]!, start: it.ts, end: null, tools: 0, replies: 0 }
-    } else if (turn && it.ts && it.role !== 'notice' && it.role !== 'job') {
-      // A note (background task finished afterwards…) does not extend the turn.
-      turn.end = it.ts
-      if (it.role === 'tool') turn.tools++
-      else if (it.role === 'assistant') turn.replies++
+    } else {
+      // A turn the agent took by itself starts here, with no message before it.
+      if (it.own) {
+        flush()
+        closeTurn()
+        needWho = true
+        turn = { key: keys[i]!, start: it.ts, end: null, tools: 0, replies: 0 }
+      }
+      if (turn && it.ts && it.role !== 'notice' && it.role !== 'job') {
+        // A note (background task finished afterwards…) does not extend the turn.
+        turn.end = it.ts
+        if (it.role === 'tool') turn.tools++
+        else if (it.role === 'assistant') turn.replies++
+      }
     }
     if ((it.role === 'tool' || it.role === 'assistant' || it.role === 'thinking') && needWho) {
       needWho = false
-      out.push({ k: 'who', key: `w:${keys[i]}` })
+      out.push({ k: 'who', key: `w:${keys[i]}`, ...(it.own ? { own: true } : {}) })
     }
     if (it.role === 'tool') {
       tools.push(it)
@@ -753,12 +764,17 @@ const asks = (b: Block & { k: 'assistant' }) => /\?\s*$/m.test(b.text) || replyT
 // A block the user started: it ends a wake's turn.
 const fromUser = (b: Block) => b.k === 'user' || b.k === 'shell' || b.k === 'ompRun' || (b.k === 'notice' && !!b.scheduled) || (b.k === 'system' && !!b.cmd)
 const plainLine = (text: string) => text.replace(/[*_`#>]+/g, '').replace(/\s+/g, ' ').trim()
+const firstLine = (text: string) => plainLine(text.split('\n').find(l => plainLine(l)) || '')
+// Ends a wake's turn: the user's input, or a turn the agent took by itself.
+const endsWakeTurn = (b: Block) => fromUser(b) || (b.k === 'who' && !!b.own)
 
 // A wake (shared/pm/wakes.ts) is not the user's: a compact row with its kind,
 // its first line and time; once its turn is over, the coordinator's last
 // answer sits under it in a lighter style and the rest of the turn opens on
 // tap. An answer that asks the user stays a full reply. Consecutive routine
-// wakes (not an incident, nothing changed, nothing asked) fold into one row.
+// wakes (not an incident, nothing changed, nothing asked) fold into one row,
+// with the first line of the last answer in it. A fold holds only wakes and
+// their own turns: a turn the agent took by itself stays outside.
 // A wake whose turn was seen over stays so: while the agent starts on the
 // user's next message before the transcript has it, its turn has no end yet,
 // and the row would unfold for a read, then fold again (a flash).
@@ -768,11 +784,12 @@ function foldWakes(out: Block[]): Block[] {
   const res: Block[] = []
   let run: (Block & { k: 'wake' })[] = []
   let runAt = 0
+  let runLast: string | null = null
   const endRun = () => {
     if (run.length > 1) {
       const key = `r:${run[0]!.key}`
       for (let j = runAt; j < res.length; j++) res[j]!.in = [key, ...(res[j]!.in || [])]
-      res.splice(runAt, 0, { k: 'wakes', key, n: run.length, from: run[0]!.time, to: run.at(-1)!.time })
+      res.splice(runAt, 0, { k: 'wakes', key, n: run.length, from: run[0]!.time, to: run.at(-1)!.time, last: runLast })
     }
     run = []
   }
@@ -780,9 +797,10 @@ function foldWakes(out: Block[]): Block[] {
     const b = out[i]!
     if (b.k !== 'user' || !b.wake) { endRun(); res.push(b); continue }
     // Its turn: up to its own end of turn, or to the first block that comes
-    // from the user (a message, a "!" or "/" command, a scheduled prompt).
+    // from the user (a message, a "!" or "/" command, a scheduled prompt), or
+    // to a turn the agent took by itself.
     let j = i + 1
-    while (j < out.length && !fromUser(out[j]!) && out[j]!.k !== 'day' && out[j - 1]!.k !== 'turn') j++
+    while (j < out.length && !endsWakeTurn(out[j]!) && out[j]!.k !== 'day' && out[j - 1]!.k !== 'turn') j++
     const turn = out.slice(i + 1, j)
     const last = turn.findLast(x => x.k === 'assistant')
     const done = j < out.length || turn.at(-1)?.k === 'turn' || wakesDone.has(b.key)
@@ -794,7 +812,10 @@ function foldWakes(out: Block[]): Block[] {
     if (!routine) endRun()
     else if (!run.length) runAt = res.length
     const w: Block & { k: 'wake' } = { k: 'wake', key: b.key, kind: b.wake, head: wakeLine(b.text), text: b.text, time: b.time, at: b.at, answer: fold && last ? plainLine(last.text) : null, loud: b.wake === 'incident' || asked, ...(b.ms ? { ms: b.ms } : {}) }
-    if (routine) run.push(w)
+    if (routine) {
+      run.push(w)
+      runLast = last ? firstLine(last.text) || null : null
+    }
     res.push(w)
     for (const x of turn) {
       if (fold) x.in = [w.key]
@@ -1572,6 +1593,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <button v-else-if="b.k === 'wakes'" type="button" class="wake-run" data-testid="wake-run" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
                 <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="wake-chev" />
                 <span class="wake-head">{{ tl(`${b.n} routine checks`) }}</span>
+                <span v-if="b.last" class="wake-last" :title="b.last">· last: “{{ b.last }}”</span>
                 <span v-if="b.from" class="wake-time">{{ b.from === b.to ? b.from : `${b.from}–${b.to}` }}</span>
               </button>
 
