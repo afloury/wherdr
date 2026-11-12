@@ -1,17 +1,15 @@
 <script setup lang="ts">
-// Set up project management, one step per screen: turn it on, a project, its
-// workflow copied from an example, its guards, its coordinator (and autopilot),
-// a first task. Each step does the thing here; it opens at the first step left
-// (setupResume) for `project`, or the project setupProject picks; with
+// Set up project management, one step per screen: turn it on, a project and
+// its coordinator's agent, then meet that coordinator, which sets up the
+// workflow with the user (no template here: the project sheet keeps that for
+// advanced users). Each step does the thing here; it opens at the first step
+// left (setupResume) for `project`, or the project setupProject picks; with
 // `adding` (Settings › Projects › Add project), at step 2 on a new project
 // (SetupProject). The first screen can hand the setup to Alfred instead.
 import type { PmOverview } from '#shared/pm/project'
 import type { RepoVisibility } from '#shared/pm/visibility'
-import type { Template } from '#shared/pm/workflow'
-import { STARTER_EXAMPLES } from '#shared/pm/examples'
-import { needsRemote, type FolderProbe } from '#shared/pm/newProject'
 import { isCoordinatorProgram } from '#shared/pm/coordinator'
-import { SETUP_STEPS, coordinatorStart, setupDone, setupProject, setupResume, workflowLine, type SetupStepId } from '#shared/pm/setup'
+import { SETUP_STEPS, coordinatorStart, setupDone, setupProject, setupResume, type SetupStepId } from '#shared/pm/setup'
 
 const open = defineModel<boolean>('open', { default: false })
 const props = defineProps<{ project?: string, adding?: boolean }>()
@@ -20,8 +18,8 @@ const emit = defineEmits<{ changed: [] }>()
 const data = ref<PmOverview | null>(null)
 const key = ref<string>()
 const fresh = ref(false) // a new project is being added: none picked by default
-const workflow = ref<Template | null>(null)
 const index = ref(0)
+const first = ref(0) // the step it opened on when adding: nothing before it to go back to
 const busy = ref(false)
 const error = ref('')
 
@@ -37,7 +35,6 @@ async function load() {
   data.value = o
   // The one picked here, else the one asked, else the first with a step left.
   key.value = [key.value, props.project].find(k => k && o.projects.some(x => x.key === k)) ?? (fresh.value ? undefined : setupProject(o, coordinators.value))
-  workflow.value = p.value?.from ? (await api<{ workflow: Template | null }>(`/api/pm/project?key=${encodeURIComponent(key.value!)}`)).workflow : null
 }
 async function run(fn: () => Promise<unknown>) {
   if (busy.value) return
@@ -53,10 +50,14 @@ watch(open, (o) => {
   key.value = undefined
   fresh.value = !!props.adding
   error.value = ''
-  load().then(() => { index.value = fresh.value ? Number(done.value.enable) : setupResume(done.value, !!coord.value?.terminal) }, (e) => { error.value = (e as Error).message })
+  load().then(() => {
+    index.value = fresh.value ? Number(done.value.enable) : setupResume(done.value)
+    first.value = fresh.value ? index.value : 0
+  }, (e) => { error.value = (e as Error).message })
 }, { immediate: true })
 
-// 2. A project: added here (SetupProject), then its repository's visibility, which the user may correct.
+// 2. A project: added here (SetupProject), then its repository's visibility,
+// which the user may correct, and its coordinator's agent and model.
 function addProject() { fresh.value = true; key.value = undefined }
 function added(k: string) { fresh.value = false; key.value = k; run(async () => {}) }
 const VISIBILITY = [{ label: 'Repository: not checked', value: 'unknown', disabled: true }, { label: 'Public repository', value: 'public' }, { label: 'Private repository', value: 'private' }]
@@ -65,40 +66,17 @@ const setVisibility = (value: string) => run(() => api('/api/pm/project-visibili
 const visibility = (v?: RepoVisibility) => v?.value ?? 'unknown'
 const projectItems = computed(() => (data.value?.projects ?? []).filter(x => x.git !== false).map(x => ({ label: x.name, value: x.key })))
 watch(key, (k, old) => { if (old && k) run(async () => {}) })
-
-// 3. Its workflow: a copy of an example.
-const example = ref(STARTER_EXAMPLES[0]!.id)
-const applyExample = () => run(() => api('/api/pm/project-apply', { key: key.value, template: `example:${example.value}` }))
-// A repository without origin (a git init folder): an example that pushes or
-// opens pull requests cannot finish a task there; vibe lands locally.
-const remote = ref<boolean>()
-watch(() => step.value === 'workflow' && p.value, async (x) => {
-  remote.value = undefined
-  if (!x) return
-  try { remote.value = (await api<FolderProbe>(`/api/pm/folder?machine=${encodeURIComponent(x.machine)}&path=${encodeURIComponent(x.path)}`)).remote }
-  catch {}
-})
-const needsOrigin = computed(() => remote.value === false && needsRemote(STARTER_EXAMPLES.find(e => e.id === example.value)!))
-
-// 5. Its coordinator, started here; its autopilot, optional, under it.
 const agents = computed(() => offerCoordinators(undefined, key.value))
 const agent = ref('')
+const model = ref('') // empty: the agent's default
 watch(agents, a => { if (!a.some(x => x === agent.value)) agent.value = a[0] ?? '' }, { immediate: true })
-const startCoordinator = () => run(async () => { if (isCoordinatorProgram(agent.value)) await launchCoordinator(key.value!, { program: agent.value }) })
-// It waits on a question (a login, a dialog): its conversation, to answer it.
-function openPane() {
-  if (!pane.value) return
-  open.value = false
-  navigateTo(panePath(pane.value.id))
-}
 
-// 6. A first task, of one of its types.
-const task = reactive({ title: '', type: '' })
-const types = computed(() => Object.keys(workflow.value?.taskTypes ?? {}))
-watch(types, t => { if (!t.includes(task.type)) task.type = t[0] ?? '' }, { immediate: true })
-const addTask = () => run(async () => {
-  await api('/api/pm/task', { project: key.value, title: task.title.trim(), type: task.type, description: '' })
-  task.title = ''
+// 3. Its coordinator: started with that agent, asked to set up how the user
+// works, then its conversation; while it runs, its conversation only.
+const meet = () => run(async () => {
+  const m = model.value.trim()
+  await meetCoordinator(key.value!, isCoordinatorProgram(agent.value) ? { program: agent.value, ...(m ? { model: m } : {}) } : undefined)
+  open.value = false
 })
 
 // Instead: Alfred's conversation, with the setup asked of it.
@@ -109,26 +87,20 @@ const toAlfred = () => run(async () => {
 
 const TITLE: Record<SetupStepId, string> = {
   enable: 'Turn on project management',
-  project: 'Add a project',
-  workflow: 'Choose its workflow',
-  guards: 'Check its guards',
-  coordinator: 'Start its coordinator',
-  task: 'Add a first task',
+  project: 'Your project',
+  coordinator: 'Meet your coordinator',
 }
 const BODY: Record<SetupStepId, string> = {
   enable: 'Tasks then follow the workflow of their project. Off, nothing is changed.',
   project: 'A git repository on one of your machines: each task gets its own worktree. Pushes and pull requests need a remote (origin). wherdr checks whether it is public.',
-  workflow: 'The steps a task goes through, and who does each one. The project gets its own copy, to change later in its Workflow tab.',
-  guards: 'The branches no agent merges into on its own, and who merges. The workflow’s defaults are shown; Next keeps them.',
-  coordinator: 'The agent you talk to about the project: it adds tasks and follows them on the board.',
-  task: 'It shows on the board, ready to start.',
+  coordinator: 'Your coordinator looks at the project, then asks you a few questions to set up how you work: the checks before a merge, the reviews, the pace. Change any of it later, any time, by talking to it or to Alfred.',
 }
 </script>
 
 <template>
   <AppSheet v-model:open="open" :title="tl('Set up projects')" wide hide-close>
     <div class="setup" data-testid="setup-wizard" :data-step="step ?? 'done'">
-      <div class="setup-progress" role="progressbar" :aria-valuenow="index" aria-valuemin="0" :aria-valuemax="SETUP_STEPS.length" :aria-label="tl('Setup progress')">
+      <div class="setup-progress" :style="{ '--steps': SETUP_STEPS.length }" role="progressbar" :aria-valuenow="index" aria-valuemin="0" :aria-valuemax="SETUP_STEPS.length" :aria-label="tl('Setup progress')">
         <i v-for="(s, i) in SETUP_STEPS" :key="s" :class="{ done: done[s], here: i === index }" />
       </div>
       <template v-if="step">
@@ -151,56 +123,23 @@ const BODY: Record<SetupStepId, string> = {
           <p class="setup-ok" data-testid="setup-ok">{{ p.name }} <span class="mono-label">{{ p.key }}</span></p>
           <USelect :model-value="visibility(p.visibility)" :items="visibilityItems" size="xl" class="w-full" :disabled="busy" :aria-label="tl('Repository')" data-testid="setup-visibility" @update:model-value="v => setVisibility(String(v))" />
           <small v-if="visibility(p.visibility) !== 'unknown'" class="muted" data-testid="setup-public-note">{{ tl('Public: its coordinator and tasks keep private paths, names and secrets out of it.') }}</small>
+          <template v-if="!coord?.terminal && agents.length">
+            <span class="field-label">{{ tl('Its coordinator') }}</span>
+            <AgentPicker v-model="agent" :programs="agents" />
+            <label class="field-label" for="setupModel">{{ tl('Model') }}</label>
+            <UInput id="setupModel" v-model="model" size="xl" class="w-full mono" autocapitalize="none" autocorrect="off" :spellcheck="false" maxlength="64" :placeholder="tl('default model')" data-testid="setup-model" />
+            <small class="muted">{{ tl('Empty: the agent’s default model, also changed later in its conversation.') }}</small>
+          </template>
           <UButton size="xl" color="neutral" variant="outline" icon="i-lucide-plus" data-testid="setup-another" @click="addProject">{{ tl('Add another project') }}</UButton>
         </template>
       </template>
 
-      <template v-else-if="step === 'workflow'">
-        <p v-if="p?.from" class="setup-ok" data-testid="setup-ok">{{ tl(`Copied from ${p.from.template}.`) }}</p>
-        <template v-else>
-          <div class="setup-choices" role="radiogroup" :aria-label="tl('Workflow')">
-            <button v-for="e in STARTER_EXAMPLES" :key="e.id" type="button" role="radio" :aria-checked="example === e.id" :class="{ on: example === e.id }" :data-example="e.id" @click="example = e.id">
-              <b>{{ e.id }}</b><small class="mono">{{ workflowLine(e) }}</small>
-            </button>
-          </div>
-          <p v-if="needsOrigin" class="setup-warn" data-testid="setup-no-remote">
-            {{ tl(`This repository has no remote (origin): ${example} pushes or opens pull requests, so its tasks cannot finish. Add one with`) }}
-            <code>git remote add origin &lt;url&gt;</code>{{ tl(', or use vibe, which merges into a local branch.') }}
-            <UButton size="md" color="neutral" variant="outline" data-testid="setup-use-vibe" @click="example = 'vibe'">{{ tl('Use vibe') }}</UButton>
-          </p>
-          <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-copy" :loading="busy" data-testid="setup-apply" @click="applyExample">{{ tl(`Use ${example}`) }}</UButton>
-        </template>
-      </template>
-
-      <ProjectGuards v-else-if="step === 'guards' && p && workflow" :project="p" :workflow="workflow" @changed="run(async () => {})" />
-
       <template v-else-if="step === 'coordinator'">
-        <template v-if="started === 'none'">
-          <AgentPicker v-if="agents.length" v-model="agent" :programs="agents" />
-          <p v-else class="muted" data-testid="setup-no-agent">{{ tl('No offered agent can coordinate: check Settings › Agents.') }}</p>
-          <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-play" :loading="busy" :disabled="!agent" data-testid="setup-start" @click="startCoordinator">{{ agent ? tl(`Start with ${kindLabel(agent)}`) : tl('Start') }}</UButton>
-        </template>
-        <p v-else-if="started === 'starting'" class="muted" data-testid="setup-starting">{{ tl('Its coordinator is starting…') }}</p>
-        <template v-else-if="started === 'asks'">
-          <p class="setup-ok" data-testid="setup-asks">{{ tl('Its coordinator asks a question before it starts: answer it in its conversation.') }}</p>
-          <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-message-circle" data-testid="setup-open" @click="openPane">{{ tl('Answer its question') }}</UButton>
-        </template>
-        <template v-else-if="coord">
-          <p class="setup-ok" data-testid="setup-ok">{{ tl('Its coordinator runs.') }}</p>
-          <details class="setup-autopilot">
-            <summary class="mono-label">{{ tl('Autopilot (optional)') }}</summary>
-            <CoordinatorAutopilot :c="coord" />
-          </details>
-        </template>
-      </template>
-
-      <template v-else-if="step === 'task'">
-        <p v-if="done.task" class="setup-ok" data-testid="setup-ok">{{ tl('Its first task is on the board.') }}</p>
-        <form v-else class="sheet-form" @submit.prevent="addTask">
-          <UInput v-model="task.title" size="xl" class="w-full" maxlength="200" :placeholder="tl('Title')" :aria-label="tl('Title')" data-testid="setup-task-title" />
-          <USelect v-if="types.length > 1" v-model="task.type" :items="types" size="xl" class="w-full" :aria-label="tl('Type')" />
-          <UButton type="submit" size="xl" color="primary" class="hw-cta" icon="i-lucide-plus" :loading="busy" :disabled="!task.title.trim() || !task.type" data-testid="setup-add-task">{{ tl('Add task') }}</UButton>
-        </form>
+        <p v-if="started === 'starting'" class="muted" data-testid="setup-starting">{{ tl('Your coordinator is starting…') }}</p>
+        <p v-else-if="started === 'asks'" class="setup-ok" data-testid="setup-asks">{{ tl('Your coordinator asks a question before it starts: answer it in its conversation.') }}</p>
+        <p v-else-if="started === 'runs'" class="setup-ok" data-testid="setup-ok">{{ tl('Your coordinator runs.') }}</p>
+        <p v-else-if="!agent" class="muted" data-testid="setup-no-agent">{{ tl('No offered agent can coordinate: check Settings › Agents.') }}</p>
+        <UButton size="xl" color="primary" class="hw-cta" :icon="started === 'none' ? 'i-lucide-play' : 'i-lucide-message-circle'" :loading="busy" :disabled="started === 'none' && !agent" data-testid="setup-meet" @click="meet">{{ started === 'none' ? tl(`Start with ${kindLabel(agent)}`) : started === 'asks' ? tl('Answer its question') : tl('Open its conversation') }}</UButton>
       </template>
 
       <template v-else-if="data">
@@ -211,9 +150,9 @@ const BODY: Record<SetupStepId, string> = {
     </div>
     <template #footer>
       <div class="setup-nav">
-        <UButton size="xl" color="neutral" variant="outline" icon="i-lucide-chevron-left" :disabled="index === 0" data-testid="setup-back" @click="index--">{{ tl('Back') }}</UButton>
-        <UButton v-if="step" size="xl" color="primary" :disabled="!done[step]" data-testid="setup-next" @click="index++">{{ tl(index === SETUP_STEPS.length - 1 ? 'Finish' : 'Next') }}</UButton>
-        <UButton v-else size="xl" color="primary" data-testid="setup-close" @click="open = false">{{ tl('Close') }}</UButton>
+        <UButton v-if="index > first" size="xl" color="neutral" variant="outline" icon="i-lucide-chevron-left" data-testid="setup-back" @click="index--">{{ tl('Back') }}</UButton>
+        <UButton v-if="step" size="xl" color="primary" class="setup-next" :disabled="!done[step]" data-testid="setup-next" @click="index++">{{ tl(index === SETUP_STEPS.length - 1 ? 'Finish' : 'Next') }}</UButton>
+        <UButton v-else size="xl" color="primary" class="setup-next" data-testid="setup-close" @click="open = false">{{ tl('Close') }}</UButton>
       </div>
     </template>
   </AppSheet>
@@ -223,21 +162,15 @@ const BODY: Record<SetupStepId, string> = {
 .setup { display: grid; gap: 12px; padding-bottom: 12px; }
 .setup h2 { margin: 0; font-size: 22px; }
 .setup p { margin: 0; }
-.setup-progress { display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px; }
+.setup-progress { display: grid; grid-template-columns: repeat(var(--steps), 1fr); gap: 4px; }
 .setup-progress i { height: 4px; background: var(--line); }
 .setup-progress i.done { background: var(--done); }
 .setup-progress i.here { box-shadow: inset 0 -2px 0 var(--accent); }
 .setup-ok { color: var(--text-2); }
-.setup-warn { display: grid; gap: 8px; justify-items: start; padding: 10px 12px; border-left: 2px solid var(--blocked); color: var(--text-2); }
-.setup-choices { display: grid; border: 1px solid var(--line); }
-.setup-choices button { display: grid; gap: 2px; min-height: 48px; padding: 10px 12px; text-align: left; color: var(--text-2); position: relative; }
-.setup-choices button + button { border-top: 1px solid var(--line); }
-.setup-choices button.on { background: var(--surface-2); color: var(--text); }
-.setup-choices button.on::before { content: ''; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 2px; background: var(--accent); }
-.setup-choices small { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
-.setup-autopilot summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; }
 .setup-nav { display: flex; justify-content: space-between; gap: 8px; }
 .setup-nav > * { min-height: 44px; }
+/* Alone (no Back on the first step): Next stays on the right. */
+.setup-nav > .setup-next { margin-left: auto; }
 /* Disabled: like a disabled main button, not a dimmed solid one that still looks active. */
 .setup-nav > button:disabled { background: var(--bg); color: var(--dim); box-shadow: inset 0 0 0 1px var(--line); opacity: 1; }
 .setup-secondary { justify-self: center; min-height: 44px; color: var(--text-2); }
