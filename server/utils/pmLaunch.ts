@@ -22,7 +22,7 @@ import { fileConflict, filesSection, pastAgents } from '../../shared/pm/files'
 import { branchFor } from '../../shared/pm/branchName'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 import { LABEL, TMP_DIR, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, taskBase, taskPlan, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type Run, type Task } from '../../shared/pm/run'
-import type { Incident } from '../../shared/pm/incident'
+import { isOpen, type Incident } from '../../shared/pm/incident'
 import { recordGone, type CoreList } from './pmIncidents'
 import { interruptTask } from './pmRecovery'
 
@@ -140,7 +140,19 @@ export async function mergingOf(store: PmStore): Promise<(t: Task) => boolean> {
   }
 }
 
-const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind, held: undefined, sameFiles: undefined })
+const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind, held: undefined, sameFiles: undefined, machineWait: undefined })
+
+// The engine's first start of a task, its machine out of reach: to do again,
+// held like a start that waits for room (startHeld, startChained retry it once a
+// machine that fits is back), never a failure for the user. An offline incident
+// the engine already tracks on that machine is named: its end starts it.
+async function machineHold(deps: PmLaunchDeps, task: Task, machine: string): Promise<Task> {
+  const label = deps.machines().find(m => m.key === machine)?.label ?? machine
+  const tasks = await deps.store.tasks()
+  const i = (await deps.store.incidents()).filter(x => x.machine === machine && x.cause === 'offline' && isOpen(x, tasks)).at(-1)
+  const held = `Waits for ${label} (unreachable${i ? `, incident ${i.id}` : ''})`
+  return deps.store.saveTask({ ...task, state: 'todo', waiting: undefined, waitKind: undefined, sameFiles: undefined, held, machineWait: machine })
+}
 
 // Starts the worker of a task to do (or waiting, to try again). Any reason it
 // cannot start puts the task in 'waiting' with that reason, after one attempt.
@@ -187,7 +199,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const held = s?.started && !s.done ? taskPlan(t, task, p)[s.at] : undefined
   if (held && held.holder !== 'worker' && !revive) {
     const { told: _told, ...step } = s!
-    const saved = await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, sameFiles: undefined, step })
+    const saved = await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, sameFiles: undefined, machineWait: undefined, step })
     return noteBack(store, saved, taskPlan(t, saved, p), by, `started again by the ${by}`)
   }
   // Only where a worker is launched: a running one would share its worktree.
@@ -195,7 +207,10 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   if (live) throw new HerdrError('busy', `This task's worker is still running (${live.program} ${live.model}): stop the task first`)
   const { machine } = placed
   let on: string | undefined, label = ''
-  try { ({ on, m: { label } } = machineOn(deps, machine)) } catch (e) { return wait(store, task, (e as Error).message) }
+  try { ({ on, m: { label } } = machineOn(deps, machine)) } catch (e) {
+    if (by === 'engine' && !revive && !task.step?.started && e instanceof HerdrError && e.code === 'unreachable') return machineHold(deps, task, machine)
+    return wait(store, task, (e as Error).message)
+  }
   if (!(await kindsOf(deps, on)).includes(plan.program)) return wait(store, task, `${plan.program} is not installed on ${label}`)
   const home = await homeOf(deps, on)
   if (!home) return wait(store, task, `${label}: home folder not found`)
@@ -244,7 +259,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now(), ...(taken ? { session: taken.session } : session()) }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
-    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, sameFiles: undefined, run: run.id, step, base, branch: paths.branch, branchStart: task.branchStart ?? paths.branch, ...(shotToken ? { shotToken } : {}) })
+    await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, sameFiles: undefined, machineWait: undefined, run: run.id, step, base, branch: paths.branch, branchStart: task.branchStart ?? paths.branch, ...(shotToken ? { shotToken } : {}) })
     let address: string
     try {
       address = (await deps.call<{ address: string }>('terminal.run', {
