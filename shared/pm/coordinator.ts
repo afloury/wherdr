@@ -31,9 +31,9 @@ import { MERGE_METHODS, contributorPrsLine, type MergeMethod } from './contribut
 
 // The agent of a coordinator: the project's default, and the one its kept
 // conversation ran with (changing it starts a new conversation, never a
-// resume of another program's session). A program only: it runs with its
-// harness's default model, changed inside the agent.
-export interface CoordinatorAgent { program: CoordinatorProgram }
+// resume of another program's session). model: passed to Claude or Codex at
+// its start; none, the harness's default (changed inside the agent).
+export interface CoordinatorAgent { program: CoordinatorProgram, model?: string }
 // The harnesses that can carry a coordinator or Alfred: each reads its role
 // from AGENTS.md in its folder, or from its own file that imports it
 // (ROLE_POINTERS). Others (no known instructions file) are not offered there.
@@ -449,9 +449,10 @@ export const specChangedText = (what: string) => `The task's spec changed: ${wha
 // works: the project's folder is the coordinator's to change (a folder without git).
 // resume: its last conversation again, the last one started in its own folder
 // (Claude and Codex only, see canResume), with the same options.
-export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false, resume = false): string[] {
-  if (program === 'claude') return ['claude', ...(resume ? ['--continue'] : []), ...(repo ? ['--add-dir', repo] : [])]
-  if (program === 'codex') return ['codex', ...CODEX_NO_UPDATE, '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true', ...(resume ? ['resume', '--last'] : [])]
+export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false, resume = false, model?: string): string[] {
+  const m = model ? ['--model', model] : []
+  if (program === 'claude') return ['claude', ...m, ...(resume ? ['--continue'] : []), ...(repo ? ['--add-dir', repo] : [])]
+  if (program === 'codex') return ['codex', ...CODEX_NO_UPDATE, ...m, '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true', ...(resume ? ['resume', '--last'] : [])]
   return [program]
 }
 export const canResume = (program: CoordinatorProgram) => program === 'claude' || program === 'codex'
