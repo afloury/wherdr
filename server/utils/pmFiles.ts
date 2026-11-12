@@ -1,8 +1,11 @@
 // What each started task touches (shared/pm/files.ts), read from its worktree:
 // the paths its worker declared in its files marker, and the files it changed
 // (committed or not, new ones included) since its fork from its base as of now:
-// origin's base, else the local one, else where its branch started. Never from
-// that start alone: once the base is merged in, the base's own changes would count.
+// origin's base, fetched now (origin's default branch when the task names none,
+// asked of origin when origin/HEAD is unset), else the local one when origin has
+// no such branch or there is no origin, else where its branch started. When
+// origin cannot be reached, nothing is read (exit 1): a stale origin/<base>, a
+// local base behind origin or that start would count origin's changes as the task's.
 // Then the to-do tasks that wait behind one of them start once it no longer touches
 // their files (it is done or only waits for its merge, or its files moved on).
 import { beyond, fileConflict, parseFiles } from '../../shared/pm/files'
@@ -15,7 +18,14 @@ const SEP = '--wherdr-files--'
 export const FILES_SCRIPT = `wt=$1 b=$2 base=$4
 cat "$3" 2>/dev/null; echo; echo "${SEP}"
 s=
-[ -n "$base" ] && { s=$(git -C "$wt" merge-base HEAD "origin/$base" 2>/dev/null) || s=$(git -C "$wt" merge-base HEAD "$base" 2>/dev/null); }
+if git -C "$wt" remote get-url origin >/dev/null 2>&1; then
+  [ -n "$base" ] || base=$(git -C "$wt" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+  [ -n "$base" ] || base=$(git -C "$wt" ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" && $3 == "HEAD" { sub("^refs/heads/", "", $2); print $2; exit }')
+  [ -n "$base" ] || exit 1
+  if git -C "$wt" fetch -q origin "$base" 2>/dev/null; then s=$(git -C "$wt" merge-base HEAD "origin/$base" 2>/dev/null)
+  else r=0; git -C "$wt" ls-remote -q --exit-code origin "refs/heads/$base" >/dev/null 2>&1 || r=$?; [ "$r" = 2 ] || exit 1; fi
+fi
+[ -n "$s" ] || [ -z "$base" ] || s=$(git -C "$wt" merge-base HEAD "$base" 2>/dev/null)
 [ -n "$s" ] || s=$(git -C "$wt" config "branch.$b.wherdrstart") || exit 0
 git -C "$wt" diff --name-only "$s" 2>/dev/null; git -C "$wt" ls-files --others --exclude-standard 2>/dev/null`
 
@@ -52,6 +62,16 @@ export async function syncFiles(deps: PmLaunchDeps, now = Date.now()) {
   }
 }
 
+// Why a task that waited behind `id` for its files waits no more.
+export function releaseReason(id: string, tasks: Task[], merging: (t: Task) => boolean): string {
+  const t = tasks.find(x => x.id === id)
+  if (!t) return `${id} is gone`
+  if (t.step?.done) return `${id} is done`
+  if (!t.step?.started) return `${id} is not started`
+  if (merging(t)) return `${id} is at merge`
+  return `${id} no longer changes these files`
+}
+
 // To-do tasks that wait behind another for their files: once it no longer
 // touches them, they wait no more. A chained or held task then starts by its
 // own rule (startChained, startHeld); any other starts now, one per project and tick.
@@ -60,12 +80,13 @@ export async function startFileWaits(deps: PmLaunchDeps) {
   const started: string[] = [], projects = new Set<string>()
   const merging = await mergingOf(store)
   for (const t of (await store.tasks()).filter(x => x.sameFiles && x.state === 'todo')) {
-    const c = fileConflict(t, await store.tasks(), merging)
+    const tasks = await store.tasks()
+    const c = fileConflict(t, tasks, merging)
     if (c?.task === t.sameFiles) continue
     if (c) { await store.logTask({ ...t, sameFiles: c.task }, 'engine', `waits for ${c.task}: same files (${c.files.join(', ')})`); continue }
     const own = !t.after && !t.held
     if (own && projects.has(t.project)) continue
-    const free = await store.logTask({ ...t, sameFiles: undefined }, 'engine', `no longer waits for ${t.sameFiles}: its files are free`)
+    const free = await store.logTask({ ...t, sameFiles: undefined }, 'engine', `no longer waits for ${t.sameFiles}: ${releaseReason(t.sameFiles!, tasks, merging)}`)
     if (!own) continue
     projects.add(free.project)
     // Already starting from elsewhere (busy): that start goes on.
