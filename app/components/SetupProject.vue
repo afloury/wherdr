@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // The setup window's step 2: a new project from a git folder of a machine (a
 // repository found there, or a path; a new or empty folder offers git init),
-// its name, key and color. Added without a workflow: step 3 copies one.
+// its name, key and color. Added without a workflow: its coordinator sets
+// one up with the user (step 3).
 // Whether its repository is public is checked at once by the server; the
 // wizard shows it after.
 import type { Project } from '#shared/pm/project'

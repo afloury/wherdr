@@ -224,6 +224,27 @@ function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, eff
   return step.ends === 'action' ? act(s, step, effects, now) : s
 }
 
+// A workflow change: the task's step is found again by its id in the new plan.
+// A step gone, the task enters the first step of the new plan it has not
+// passed yet, as if it reached it (its action runs, its holder is told).
+// undefined: nothing moves.
+export function replan(before: PlannedStep[], after: PlannedStep[], s: StepState, now: number): { state: StepState, from: string, to: string } | undefined {
+  const cur = s.started && !s.done ? before[s.at] : undefined
+  if (!cur) return
+  const kept = after.findIndex(p => p.id === cur.id)
+  if (kept >= 0) return kept === s.at ? undefined : { state: { ...s, at: kept }, from: cur.id, to: cur.id }
+  const passed = before.slice(0, s.at).map(p => p.id)
+  const i = after.findIndex(p => !passed.includes(p.id))
+  const state = enter(after, s, i < 0 ? after.length : i, now, [])
+  return { state, from: cur.id, to: after[state.at]!.id }
+}
+
+// A stopped task taken up again at an action step: its action runs again, a new attempt.
+export function actAgain(plan: PlannedStep[], s: StepState, now: number): StepState {
+  const step = s.started && !s.done && !s.acting ? plan[s.at] : undefined
+  return step?.ends === 'action' ? act(s, step, [], now) : s
+}
+
 // Back to the verdict step's sendBack step, with one message: what to fix.
 function sendBack(plan: PlannedStep[], state: StepState, step: PlannedStep, findings: Finding[], now: number, effects: Effect[]): StepState {
   const back = plan.findIndex(p => p.id === step.sendBack)

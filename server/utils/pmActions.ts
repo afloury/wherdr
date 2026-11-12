@@ -6,7 +6,7 @@ import { PATH_SETUP, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
 import type { PmStore } from './pmStore'
 import { mayMerge } from '../../shared/pm/guards'
-import { BB_STRATEGY, CODE, RETRY_MS, SCRIPT, bbReady, keepsBranch, commandState, guardAction, isTransient, leaks, prReady, receiptId, runsState, type ActionResult, type GhRun, type PrInfo } from '../../shared/pm/actions'
+import { BB_STRATEGY, CODE, RETRY_MS, SCRIPT, bbReady, keepsBranch, commandState, guardAction, isTransient, leaks, outputTail, prReady, readPrInfo, receiptId, runsState, type ActionResult, type GhRun, type PrInfo } from '../../shared/pm/actions'
 import type { ResolvedGuards } from '../../shared/pm/guards'
 import type { BbStatus } from '../../shared/pm/actions'
 import { isPrMerge, type MergeBy, type StepAction } from '../../shared/pm/workflow'
@@ -72,6 +72,13 @@ Promise<{ ok: true, head: string } | { ok: false, error: string, toAgent?: boole
 // GitHub's words for a PR in conflict with its base.
 const CONFLICT = /not mergeable|merge conflict|cannot be cleanly created/i
 const lastLine = (out: string) => out.trim().split('\n').pop()?.trim().slice(0, 300) || ''
+// Why a script failed: a refused push says it on its "! [rejected]" line
+// (git's hints and "failed to push" come after it); else the last line.
+export function whyFailed(out: string) {
+  const lines = out.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('hint:'))
+  const m = lines.map(l => /^! \[(?:remote )?rejected\]\s+\S+ -> (\S+) \((.+)\)$/.exec(l)).find(Boolean)
+  return (m ? `push to ${m[1]} refused: ${m[2]}` : lines.at(-1) ?? '').slice(0, 300)
+}
 const pause = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
 // After a push, how long to wait for GitHub to show the new PR head: about a minute.
 const LAG_MS = [2_000, 4_000, 8_000, 15_000, 15_000, 15_000]
@@ -128,7 +135,7 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
   const { action: a, worktree: wt, branch } = job
   const name = a.kind.split('.')[1]
   const fail = (r: { code: number | null, out: string }): ActionResult =>
-    ({ ok: false, error: `${name}: ${r.code === null ? 'timed out' : lastLine(r.out) || `exit code ${r.code}`}`, ...(r.code === CODE.SEND_BACK ? { toAgent: true } : {}) })
+    ({ ok: false, error: `${name}: ${r.code === null ? 'timed out' : whyFailed(r.out) || `exit code ${r.code}`}`, ...(r.code === CODE.SEND_BACK ? { toAgent: true } : {}) })
   const commit = async (script: string, args: string[]) => {
     const r = await run(deps, script, [wt, ...args])
     return r.code === 0 ? { ok: true, commit: lastLine(r.out) } : fail(r)
@@ -148,14 +155,17 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
     }
     case 'github.merge': {
       // lag: waits for GitHub to show a fresh push; ci: waits for its checks. Counted apart.
-      let pushed = false, synced = false, lag = 0, ci = 0
+      // unread: PR details that could not be read, tried again as a transient error.
+      let pushed = false, synced = false, lag = 0, ci = 0, unread = 0
       for (;;) {
         const r = await run(deps, SCRIPT.prInfo, [wt, branch])
         if (r.code !== 0) return fail(r)
-        const lines = r.out.split('\n'), head = lines[0] ?? ''
-        let pr: PrInfo | undefined
-        try { pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] }
-        catch { return { ok: false, error: 'merge: unreadable PR details' } }
+        const info = readPrInfo(r.out)
+        if (!info) {
+          if (unread < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[unread++]!); continue }
+          return { ok: false, error: `merge: unreadable PR details: ${outputTail(r.out) || 'no output'}` }
+        }
+        const head = info.head, pr: PrInfo | undefined = info.prs[0]
         // Merged on GitHub already (by hand, or a merge answered with an error): done.
         // Its base counts as reached only where this step could have merged:
         // a protected branch merged outside your gesture still raises the alert.

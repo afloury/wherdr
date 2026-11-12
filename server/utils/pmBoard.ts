@@ -180,11 +180,15 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.later ? { later: true } : {}), ...(result.detail ? { detail: result.detail } : {}), ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...(result.unapproved ? { unapproved: true as const } : {}), ...catchUp, evidence }, Date.now())
     state = back.state
     mergedInto = result.ok ? result.base : undefined
+    // Try again on a failed action: its result in the log, even when it fails the same way.
+    if (by === 'user' && cur.yourTurn?.reason === 'action') await store.logTask({ ...(await fresh()), step: state }, 'user', `${act.step}: tried again: ${result.ok ? 'done' : result.error ?? 'failed'}`)
     const log = back.effects.find(e => e.kind === 'log')
     const auto = result.ok && approved && by === 'engine' ? 'merged by itself, as the user approved' : undefined
-    const said = [auto, result.note, result.alert].filter(Boolean).join('. ')
+    // A failed action always says why in the log, not only on the card.
+    const failed = result.ok || result.later ? '' : result.error || `${act.action.kind} failed`
+    const said = [auto, failed, result.note, result.alert].filter(Boolean).join('. ')
     const saved = log?.kind === 'log' ? await store.logTask({ ...(await fresh()), step: state }, 'engine', log.text)
-      : said ? await store.logTask({ ...(await fresh()), step: state }, 'engine', `${act.step}: ${said}`)
+      : said ? await store.logTask({ ...(await fresh()), step: state }, 'engine', said.startsWith(`${act.step}: `) ? said : `${act.step}: ${said}`)
         : await store.saveTask({ ...(await fresh()), step: state })
     // Merged (by the engine, or on the Git host and confirmed): the task's remote branch goes, when safe.
     const merged = result.ok && run && endsMerged(act.action.kind)

@@ -3,6 +3,7 @@
 // Pure: the server runs the scripts on the project's machine (pmActions.ts).
 import { combineGuards, isProtected, mayMerge, type ResolvedGuards } from './guards'
 import { projectPlace } from './places'
+import { maskLeaks } from './visibility'
 import { actionField, isPrMerge, type MergeBy, type StepAction, type Template } from './workflow'
 
 // The guards of a task: the project's, hardened by its task type.
@@ -92,19 +93,24 @@ echo "\${cur#* }"`,
   // The commit, then the open PR as JSON on the last line. None open: the
   // merged PR of the branch whose head holds HEAD, marked merged (Shepherdr #706);
   // else its latest merged one, marked stray too: the step ends merged, saying
-  // the task's commit is not in it.
+  // the task's commit is not in it. printf, never echo: dash's echo turns the
+  // \n of a commit message into a line break, cutting the JSON. gh's stderr
+  // is kept for its errors, but only its JSON line is read (a warning may
+  // follow it); none: gh's output as it was, unreadable, tried again.
   prInfo: `${IN} h=$(git rev-parse HEAD) || exit 1; echo "$h"
-j=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup,files,additions,deletions,commits 2>&1) || { echo "$j"; exit 1; }
-j=$(echo "$j" | tail -1)
+o=$(gh pr list --head "$1" --state open --json url,baseRefName,headRefOid,mergeStateStatus,statusCheckRollup,files,additions,deletions,commits 2>&1) || { printf '%s\\n' "$o"; exit 1; }
+j=$(printf '%s\\n' "$o" | grep '^\\[' | tail -1)
+[ -n "$j" ] || { printf '%s\\n' "$o"; exit 0; }
 if [ "$j" = "[]" ]; then
-  m=$(gh pr list --head "$1" --state merged --json url,baseRefName,headRefOid -q '.[] | .headRefOid+" "+(. + {merged: true} | tojson)' 2>&1) || { echo "$m"; exit 1; }
+  m=$(gh pr list --head "$1" --state merged --json url,baseRefName,headRefOid -q '.[] | .headRefOid+" "+(. + {merged: true} | tojson)' 2>&1) || { printf '%s\\n' "$m"; exit 1; }
+  m=$(printf '%s\\n' "$m" | grep -E '^[0-9a-f]{40} ')
   while read -r p pj; do [ -n "$p" ] && ${HOLDS} && { j="[$pj]"; break; }; done <<EOF
 $m
 EOF
-  pj=$(echo "$m" | head -1)
-  if [ "$j" = "[]" ] && [ -n "$pj" ]; then j="[$(echo "\${pj#* }" | sed 's/}$/,"stray":true}/')]"; fi
+  pj=$(printf '%s\\n' "$m" | head -1)
+  if [ "$j" = "[]" ] && [ -n "$pj" ]; then j="[$(printf '%s\\n' "\${pj#* }" | sed 's/}$/,"stray":true}/')]"; fi
 fi
-echo "$j"`,
+printf '%s\\n' "$j"`,
   // The branch's latest PR closed without a merge (--state closed lists merged ones too): its link.
   prClosed: `${IN} gh pr list --head "$1" --state closed --json url,state -q '[.[] | select(.state == "CLOSED")][0].url // empty' 2>&1`,
   // The step's method ($3), else the first the repo allows: merge commit, squash, rebase.
@@ -234,7 +240,22 @@ export interface Check { name?: string, context?: string, status?: string, concl
 // commits: the open PR's, for their count.
 export interface PrInfo { url: string, baseRefName: string, headRefOid: string, mergeStateStatus?: string, statusCheckRollup?: Check[], merged?: boolean, stray?: boolean, files?: { path: string }[], additions?: number, deletions?: number, commits?: unknown[] }
 
-export const GREEN = ['SUCCESS', 'NEUTRAL', 'SKIPPED']
+// SCRIPT.prInfo's output: the commit on the first line, the PRs on the last
+// JSON line (a stderr line may come after it). Unreadable: undefined.
+export function readPrInfo(out: string): { head: string, prs: PrInfo[] } | undefined {
+  const lines = out.split('\n')
+  for (const l of lines.slice(1).reverse()) {
+    if (!l.trim().startsWith('[')) continue
+    try {
+      const prs = JSON.parse(l) as unknown
+      if (Array.isArray(prs)) return { head: lines[0]!.trim(), prs: prs as PrInfo[] }
+    } catch { /* an earlier line may be the JSON */ }
+  }
+}
+// An output's last lines for an error: what looks private masked, at most 300 characters.
+export const outputTail = (out: string) => maskLeaks(out.trim().split('\n').slice(-3).join(' | ')).slice(-300)
+
+export const GREEN =['SUCCESS', 'NEUTRAL', 'SKIPPED']
 // May the open PR be merged now? Its head must be the task's commit, every
 // check green and each required one there; a check still running, or a
 // required one not reported yet, means later.

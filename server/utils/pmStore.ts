@@ -18,7 +18,8 @@ import { defaultColor, keyClash, projectOf, renamed, showIds, shownKey, storedTa
 import type { RepoVisibility } from '../../shared/pm/visibility'
 import { WEIGHTS, defaultWorkflow, isWeight, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
-import { publicTask, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
+import { publicTask, taskPlan, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
+import { replan } from '../../shared/pm/steps'
 import { afterIds } from '../../shared/pm/advance'
 import { parseFiles } from '../../shared/pm/files'
 import type { Receipt } from '../../shared/pm/actions'
@@ -218,6 +219,19 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     if (i < 0) throw new HerdrError('not_found', 'Unknown project')
     return { list, i }
   }
+  // A workflow change moves each started task of the project by its step's id
+  // (replan), said in its log. Within the workflow's write.
+  async function replanTasks(key: string, before: Template, after: Template) {
+    const { list, i } = await findProject(key)
+    const p = list[i]!
+    for (const task of (await tasks()).filter(x => x.project === p.key && x.step)) {
+      const moved = replan(taskPlan(before, task, p), taskPlan(after, task, p), task.step!, Date.now())
+      if (!moved) continue
+      const text = moved.from === moved.to ? `workflow changed: still at ${moved.to}` : `workflow changed: ${moved.from} is gone, on to ${moved.to}`
+      const out = await marked({ ...task, step: moved.state, log: [...(task.log ?? []), { at: Date.now(), by: 'engine', text }].slice(-200) })
+      await writeJson(path.join(files.tasks, `${task.id}.json`), out)
+    }
+  }
   async function knownTemplate(id: string) {
     const t = isTemplateId(id) ? await readJson<Template>(path.join(files.templates, `${id}.json`)) : null
     if (!t) throw new HerdrError('not_found', 'Unknown template')
@@ -267,7 +281,10 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await findProject(key)
       const errors = validateTemplate(t)
       if (errors.length) throw badInput(errors)
-      const version = await saveVersioned(workflowFile(key), workflowLogFile(key), { ...(t as Template), id: key.toLowerCase() }, await readJson<Template>(workflowFile(key)), by, said)
+      const old = await readJson<Template>(workflowFile(key))
+      const version = await saveVersioned(workflowFile(key), workflowLogFile(key), { ...(t as Template), id: key.toLowerCase() }, old, by, said)
+      // Before the first one, the tasks followed the default workflow.
+      await replanTasks(key, old ?? defaultWorkflow(key), t as Template)
       return { id: key.toLowerCase(), version }
     }),
     runs,
@@ -334,6 +351,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const old = (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? []
       await writeJson(files.incidents, { v: 1, incidents: [...old, ...added].slice(-200) })
       return added
+    }),
+    // A task the incident also holds (its start found the machine out of reach): in its tasks, once.
+    linkIncident: (id: string, task: string) => write(async () => {
+      const old = (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? []
+      await writeJson(files.incidents, { v: 1, incidents: old.map(i => (i.id === id && !i.tasks.includes(task) ? { ...i, tasks: [...i.tasks, task] } : i)) })
     }),
     // Their Incident wake queued: never again.
     toldIncidents: (ids: string[], at: number) => write(async () => {

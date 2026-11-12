@@ -339,7 +339,7 @@ describe('choices of a wherdr block', () => {
   })
 
   it('leaves a block it does not understand as code', () => {
-    for (const block of ['choices "Only one"', 'choices "A" | "B" | "C" | "D" | "E"', 'choices "A" | "a"', 'choices A | B', 'choices "A" | "B"\nwhatever else']) {
+    for (const block of ['choices', 'pick "A" | "B"', 'choices "A" | "B" | "C" | "D" | "E"', 'choices "A" | "a"', 'choices A | B', 'choices "A" | "B"\nwhatever else']) {
       const html = md(`\`\`\`wherdr\n${block}\n\`\`\``)
       expect(html).toContain('code-head')
       expect(html).not.toContain('q-choice')
