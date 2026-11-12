@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { nextMove, redCiText, type MechFacts, type PrState } from '../shared/pm/mechanic'
 import { combineGuards } from '../shared/pm/guards'
-import { onEvent, type PlannedStep, type StepState } from '../shared/pm/steps'
-import { cardStatus, statusText } from '../shared/pm/board'
+import { caughtUpSettled, onEvent, SETTLE_MS, type PlannedStep, type StepState } from '../shared/pm/steps'
+import { boardLanes, cardOf, cardStatus, statusText, toHandle } from '../shared/pm/board'
 import { addShot } from '../shared/pm/shots'
 import type { Task } from '../shared/pm/run'
 
@@ -104,6 +104,38 @@ describe('mechanical moves', () => {
       expect(clean.catchUp).toBeUndefined()
       // Updated on GitHub while it waits: taken in and pushed, not left to the merge.
       expect(nextMove(at(waiting, { pr: pr({ headRefOid: 'gh00000' }) }))).toEqual({ key: 'update:gh00000', move: { kind: 'take-update' } })
+    })
+
+    it('leaves Your turn while its conflicting PR is updated, until GitHub reads it clean', () => {
+      const T = Date.now()
+      const card = (st: StepState, now: number, prNow = 'conflict with its base') => ({ ...cardOf(task({ step: st }), visual, [], now), prNow })
+      const off = (c: ReturnType<typeof card>) => {
+        expect(c.yourTurn).toBeUndefined()
+        expect(toHandle([c])).toEqual([])
+        expect(boardLanes([c], ['Merging'])[0]!.cards).toEqual([])
+      }
+      const line = (c: ReturnType<typeof card>) => statusText(cardStatus(c)!, String)
+      expect(card(waiting, T).yourTurn).toBe('Look, then merge')
+      const up = onEvent(visual, waiting, { kind: 'catch-up', base: 'v3', head: 'abc1234' }, T).state
+      off(card(up, T))
+      expect(line(card(up, T))).toBe('updating with v3')
+      // Its conflict handed to the worker: the worker's, said so; waiting for its worker, the user's.
+      const handed = { ...up, agent: { kind: 'catch-up', at: T } }
+      off(card(handed, T))
+      expect(line(card(handed, T))).toBe('the worker is solving a conflict with v3')
+      expect(cardStatus(card({ ...handed, agent: { ...handed.agent, waits: 'Waits for its machine (offline)' } }, T))?.tone).toBe('bad')
+      // Updated cleanly: still off while GitHub reads the old conflict, never the red line.
+      const clean = onEvent(visual, up, { kind: 'caught-up', head: 'fff0000' }, T).state
+      off(card(clean, T))
+      expect(line(card(clean, T))).toBe('updated with v3, GitHub is checking it')
+      // Read clean at the new commit (or past SETTLE_MS): the engine clears it and the user's turn is back.
+      expect(caughtUpSettled(clean.caughtUp!, pr({ headRefOid: 'fff0000', mergeStateStatus: 'DIRTY' }), T)).toBe(false)
+      expect(caughtUpSettled(clean.caughtUp!, pr({ headRefOid: 'fff0000' }), T)).toBe(true)
+      expect(caughtUpSettled(clean.caughtUp!, undefined, T + SETTLE_MS)).toBe(true)
+      const { caughtUp: _, ...settled } = clean
+      const back = card(settled, T, 'ready to merge')
+      expect(back.yourTurn).toBe('Look, then merge')
+      expect(boardLanes([back], ['Merging'])[0]!.cards).toEqual([back])
     })
 
     it('keeps the user\'s approval through a refused merge, then merges by itself once ready', () => {

@@ -3,7 +3,7 @@
 // that holds that step (none for holder: none); anything waiting for the user
 // puts it in Your turn, whatever its step, with a badge saying what to do.
 import { actionField, type Holder } from './workflow'
-import { stepLabels, waitsToMerge, type PlannedStep, type StepState } from './steps'
+import { caughtUpSettled, stepLabels, waitsToMerge, type PlannedStep, type StepState } from './steps'
 import type { Run, SpecNote, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
 import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
@@ -109,7 +109,9 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
   const queueOut = queue ? task.queueOut : undefined
   // A refused merge out of line is the user's: the engine does not try it again at that commit.
   const queued = (queue ?? 0) > 1 || (!!queueOut && !queueOut.startsWith(MERGE_REFUSED))
-  const yourTurn = s?.done ? undefined : (queued && s?.yourTurn?.reason === 'action' ? undefined : s?.yourTurn?.badge) || (task.state === 'waiting' && !recovering(task) ? task.waiting || 'Waiting' : undefined)
+  // Just updated with its base: the user's turn waits for GitHub's read of the new commit (prUpdating).
+  const settling = !!s?.caughtUp && !caughtUpSettled(s.caughtUp, undefined, now)
+  const yourTurn = s?.done ? undefined : ((queued && s?.yourTurn?.reason === 'action') || settling ? undefined : s?.yourTurn?.badge) || (task.state === 'waiting' && !recovering(task) ? task.waiting || 'Waiting' : undefined)
     || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
     // Work handed to an agent that cannot do it, no coordinator woken for it: the user's.
     || (s?.agent?.waits && s.agent.told === 'user' && !s.done ? s.agent.waits : undefined)
@@ -231,7 +233,7 @@ export const boardTags = (cards: Pick<Card, 'tags'>[]) => [...new Set(cards.flat
 // The columns shown: Your turn first, then the project's columns (or To do /
 // Working / Done for all projects). A card in Your turn is in no other column.
 export function boardLanes(cards: Card[], columns: string[] | null): { id: string, cards: Card[] }[] {
-  const mine = (c: Card) => !!turnText(c) || mergeWaits(c) !== undefined
+  const mine = (c: Card) => (!!turnText(c) || mergeWaits(c) !== undefined) && !prUpdating(c)
   const lane = (c: Card) => (columns ? c.column : c.phase)
   return [
     { id: 'your-turn', cards: cards.filter(mine) },
@@ -304,7 +306,8 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   if (s.agent?.waits) return { text: s.agent.waits, tone: 'bad' }
   // In the merge queue: its place in line, or why it stepped out.
   if (c.queueOut) return { text: `in merge queue, out of line: ${c.queueOut}`, tone: c.queueOut === 'checks failed' ? 'bad' : 'wait', ...(s.approved && !s.acting ? { approved: s.approved.at } : {}) }
-  if (s.agent) return { text: retriesAction(c.plan, s) ? 'the agent is fixing it' : 'the agent is updating the PR', tone: 'wait' }
+  const updating = prUpdating(c)
+  if (s.agent) return { text: retriesAction(c.plan, s) ? 'the agent is fixing it' : updating ?? 'the agent is updating the PR', tone: 'wait', ...(s.approved ? { approved: s.approved.at } : {}) }
   const kind = c.plan[s.at]?.action?.kind
   const failed = s.yourTurn?.reason === 'action' ? s.yourTurn.error ?? '' : undefined
   if (kind === 'pipeline.watch' && s.acting) return { text: 'watching the pipeline', tone: 'wait' }
@@ -317,6 +320,7 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   if (failed !== undefined) return pr?.startsWith('checks failed') ? ofPr(pr) : refused(failed, agentCatchingUp(c))
   // A merge waiting for the user, updated with its base; once approved, it merges by itself.
   if (s.catchUp) return { text: `updating with ${s.catchUp.base}`, tone: 'wait', ...approval }
+  if (updating) return { text: updating, tone: 'wait', ...approval }
   if (s.approved && !s.acting) return { text: pr && pr !== 'ready to merge' ? pr : '', tone: 'wait', ...approval }
   // The merge runs: it waits for the checks, then merges.
   if (s.acting && kind && MERGES.includes(kind)) return pr && pr !== 'ready to merge' && kind === 'github.merge' ? ofPr(pr) : { text: 'merging', tone: 'wait' }
@@ -355,6 +359,19 @@ export const mergeGoesNow = (c: Parameters<typeof mergeWaits>[0]) => mergeWaits(
 
 // How long an update with the base may run before its conflict counts as stuck.
 const CATCH_UP_STUCK_MS = 3 * 60_000
+
+// A merge waiting for the user whose PR the engine or its worker is bringing
+// up to date (an update with its base, a conflict or red checks handed to the
+// worker, GitHub's read of the updated PR): what goes on, in a few words. Not
+// the user's turn meanwhile: off Your turn and Tasks to handle. undefined once
+// it needs the user (its worker waits, a stuck update) or the PR is clean.
+export function prUpdating(c: Pick<Card, 'plan' | 'state' | 'stopped'>, now = Date.now()): string | undefined {
+  const s = c.state
+  if (!s?.started || s.done || s.acting || c.stopped || !waitsToMerge(c.plan[s.at])) return
+  if (s.agent) return s.agent.waits ? undefined : s.agent.kind === 'catch-up' ? `the worker is solving a conflict with ${s.catchUp?.base ?? 'its base'}` : 'the worker is fixing the PR'
+  if (s.catchUp) return now - s.catchUp.at < CATCH_UP_STUCK_MS ? `updating with ${s.catchUp.base}` : undefined
+  if (s.caughtUp && !caughtUpSettled(s.caughtUp, undefined, now)) return `updated with ${s.caughtUp.base}, GitHub is checking it`
+}
 
 // An approved merge that waits on something the engine cannot do by itself (a
 // conflict or red checks no agent is on, its worker ended, its machine down):
