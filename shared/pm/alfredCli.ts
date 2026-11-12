@@ -179,7 +179,7 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
     return clone ? { name: verb, apply, key: key(w3), action: w2, machine, clone } : usage(`${verb} add`)
   }
   if (verb === 'coordinator start') {
-    // A program only: it runs with its harness's default model.
+    // --program: a program only, run with its harness's default model; none: the project's default agent and model.
     const { program } = flags
     if (!key(w2) || w3) return usage(verb)
     if (program !== undefined && program !== 'claude' && program !== 'codex') return { error: '--program is claude or codex' }

@@ -70,7 +70,7 @@ const FIRST_PROJECT_SECTION = [
   '## The first project', '',
   'wherdr has no project yet. When the user wants one, ask which they prefer:',
   '- The setup window: open it with `wherdr alfred ui open --target projects.setup` (its "Set up a project" button, highlighted), and stay there for their questions.',
-  '- Here with you, one question at a time, each change shown first and made after their yes: turn project management on, the machine and folder of its repository (`wherdr alfred machines`, then `project add`), its workflow from a template (`wherdr alfred templates`, then `project template`), its guards (`project guards`), its coordinator (`coordinator start`), and a first task.', '',
+  '- Here with you, one question at a time, each change shown first and made after their yes: turn project management on, the machine and folder of its repository (`wherdr alfred machines`, then `project add`), then its coordinator (`coordinator start`). Tell them its coordinator then looks at the project and asks them a few questions to set up how they work (the checks before a merge, the reviews, the pace); no template to pick.', '',
 ]
 
 // wherdr's files in Alfred's home, path → text: rewritten at each start, so an
