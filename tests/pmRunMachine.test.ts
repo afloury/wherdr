@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { advanceTick } from '../server/utils/pmAdvance'
+import { actionsSettled } from '../server/utils/pmBoard'
 import { mechanicTick } from '../server/utils/pmMechanic'
 import { cleanTask } from '../server/utils/pmCleanup'
 import { startTask } from '../server/utils/pmLaunch'
@@ -96,7 +97,8 @@ it('reads the signal, runs the PR action and starts the reviewer on the run\'s m
   await store().saveRun(worker())
   await store().saveTask({ ...t, state: 'working', run: 'r1', step: { ...first, told: first.since } })
   terms['b/t1'] = { 'wherdr.report': 'done' }
-  await advanceTick(deps()) // the signal, then the PR
+  await advanceTick(deps()) // the signal, then the PR (started outside the tick)
+  await actionsSettled()
   await advanceTick(deps()) // the reviewer
   const task = (await store().task(t.id))!
   expect(task.step!.proofs.pr?.link).toBe('https://github.com/o/r/pull/9')

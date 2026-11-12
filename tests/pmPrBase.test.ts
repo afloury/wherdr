@@ -35,12 +35,13 @@ it('a PR its worker linked in a report is read too, by its address, not only one
 })
 
 it('keeps the PR\'s base on the task, saved only when it changes', async () => {
-  const saveTask = vi.fn(async (t: Task) => t)
-  const store = { saveTask } as unknown as PmStore
+  let disk = task
+  const updateTask = vi.fn(async (_id: string, change: (t: Task) => Task) => (disk = change(disk)))
+  const store = { updateTask } as unknown as PmStore
   const kept = await keepPrBase(store, task, pr('v3'))
   expect(kept.prBase).toEqual({ base: 'v3', commits: 2 })
   await keepPrBase(store, kept, pr('v3'))
-  expect(saveTask).toHaveBeenCalledTimes(1)
+  expect(updateTask).toHaveBeenCalledTimes(1)
   expect((await keepPrBase(store, kept, undefined)).prBase).toBeUndefined()
 })
 

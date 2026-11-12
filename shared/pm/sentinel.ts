@@ -29,7 +29,7 @@ export function statedReason(task: Task, plan: PlannedStep[]): string | undefine
   if (why) return why
   if ((task.queue ?? 1) > 1) return 'waits for its turn in the merge queue'
   if (task.ci?.running) return 'its checks run'
-  if (s?.watch) return 'its pipeline is watched'
+  if (s?.watch) return 'its action checks again shortly'
   if (s?.paused) return 'its clock is paused'
   const holder = s && plan[s.at]?.holder
   if (holder === 'worker' || holder === 'reviewer') return `its ${holder} holds the step`

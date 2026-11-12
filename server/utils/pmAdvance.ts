@@ -1,7 +1,7 @@
 // After an agent's turn, every minute before the mechanical moves: a run's
 // "done" label becomes the step engine's event; the worker or reviewer that
 // holds the current step gets its text once (the reviewer is started for its
-// first round); an engine action the task entered runs; a done task's agents
+// first round); an engine action the task entered starts (outside the tick); a done task's agents
 // stop. All of it is read again from the task's state, so a restart loses
 // nothing (shared/pm/advance.ts holds the rules).
 import { randomUUID } from 'node:crypto'
@@ -19,7 +19,7 @@ import { showIds } from '../../shared/pm/projectKey'
 import { PATH_SETUP, launchFailure } from './coreCreate'
 import { WRITE_SCRIPT, exec, oneStart, prepareTmp, runOn, type PmLaunchDeps } from './pmLaunch'
 import { HerdrError } from './herdr'
-import { stepAction } from './pmBoard'
+import { startAction } from './pmBoard'
 import { cleanTask } from './pmCleanup'
 import { readLeakCheck } from './pmVisibility'
 import { isPublic, leakText, scanDiff } from '../../shared/pm/visibility'
@@ -140,7 +140,7 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
     const retry = retriesAction(c.plan, c.task.step!)
     await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!) }, 'engine', `${work.kind}: the worker says it is done${retry ? `, ${step!.id} is tried again` : ''}`)
     // A failed action it fixed: tried again now; failing again, it is back in Your turn with the new error.
-    if (retry) await stepAction(deps, run.task, 'engine').catch(() => {})
+    if (retry) startAction(deps, run.task, () => {})
     return
   }
   if (!ev) return
@@ -203,7 +203,8 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   }
   // Stopped on a failure: it waits for the user, nothing is tried again alone.
   if (task.state === 'waiting' && !task.waitKind) return
-  if (runsNow(plan[s.at], s)) return void await stepAction(deps, id, 'engine')
+  // Started, never waited for: one slow action holds no other task (pmBoard.ts startAction).
+  if (runsNow(plan[s.at], s)) return void startAction(deps, id)
   const busy = (e: Error) => { if (!(e instanceof HerdrError && e.code === 'busy')) throw e }
   // The review agent hit its account limit during the review (it ended on it, or
   // sits idle on Codex's usage-limit message): with a fallback set, the fallback

@@ -364,5 +364,5 @@ export function leaks(g: ResolvedGuards, remoteBranches: string[], allowed: stri
 // catchUp: the PR's base, when the merge is refused because the PR conflicts with or is behind it.
 // base: the branch a merge went to (the PR's base on its host).
 export interface ActionResult { ok: boolean, later?: boolean, report?: string, detail?: string, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, unapproved?: true, link?: string, commit?: string, alert?: string, note?: string, base?: string }
-export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain', result?: ActionResult, at: number, by?: MergeBy, resumes?: number }
+export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain' | 'later', result?: ActionResult, at: number, by?: MergeBy, resumes?: number }
 export const receiptId = (task: string, step: string, attempt: number) => `${task}.${attempt}.${encodeURIComponent(step)}`

@@ -304,6 +304,17 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     // Where it is on this machine, for the coordinator to open.
     shotPath: (id: string, file: string) => path.join(files.shots, id, file),
     shot: (id: string, file: string) => (TASK_ID_RE.test(id) && SHOT_FILE_RE.test(file) ? fs.readFile(path.join(files.shots, id, file)).catch(() => null) : Promise.resolve(null)),
+    // A change made on the task as it is on disk, in one write (with a log line
+    // when given): a caller's older copy never undoes what another wrote since
+    // (an engine action that ended meanwhile). null: no such task.
+    updateTask: (id: string, change: (t: Task) => Task, log?: { by: string, text: string }) => write(async () => {
+      const task = TASK_ID_RE.test(id) ? await readJson<Task>(path.join(files.tasks, `${id}.json`)) : null
+      if (!task) return null
+      const next = change(task)
+      const out = await marked(log ? { ...next, log: [...(next.log ?? []), { at: Date.now(), by: log.by, text: showIds(await readProjects(), log.text) }].slice(-200) } : next)
+      await writeJson(path.join(files.tasks, `${id}.json`), out)
+      return out
+    }),
     // A line of the task's log, saved with the task.
     logTask: (t: Task, by: string, text: string) => write(async () => {
       const out = await marked({ ...t, log: [...(t.log ?? []), { at: Date.now(), by, text: showIds(await readProjects(), text) }].slice(-200) })
