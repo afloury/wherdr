@@ -961,7 +961,10 @@ of the entry. An agent that is not on screen here opens the sheet instead.
 
 On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
 *Start*, *Open the agent*) stay pinned at the bottom of the sheet while its
-content scrolls, so they are always in reach above the home bar.
+content scrolls, so they are always in reach: flush with the sheet's bottom
+edge, the home bar's room inside the bar, with nothing scrolling under them;
+the tab's last content still scrolls up above them. A row of buttons that
+wraps on a phone shares the width, so no button sits alone on its line.
 
 ### Report a problem
 
