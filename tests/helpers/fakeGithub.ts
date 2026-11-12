@@ -9,6 +9,11 @@ import http from 'node:http'
 import type { AddressInfo } from 'node:net'
 
 export const CHECK_MS = 2 * 60_000
+// Git as on a bare CI runner: no global config, a fixed identity.
+export const GIT_ENV: NodeJS.ProcessEnv = {
+  ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1',
+  GIT_AUTHOR_NAME: 'sim', GIT_AUTHOR_EMAIL: 'sim@example.com', GIT_COMMITTER_NAME: 'sim', GIT_COMMITTER_EMAIL: 'sim@example.com',
+}
 interface Pr { n: number, url: string, head: string, base: string, merged?: string }
 type Answer = { code: number, out: string } | null // null: never answers (a hung call)
 
@@ -55,7 +60,7 @@ export class FakeGithub {
   }
 
   git(...args: string[]) {
-    return execFileSync('git', ['-C', this.origin, ...args], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
+    return execFileSync('git', ['-C', this.origin, ...args], { env: GIT_ENV, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
   }
 
   private tip = (branch: string) => { try { return this.git('rev-parse', '-q', '--verify', `refs/heads/${branch}`) } catch { return '' } }

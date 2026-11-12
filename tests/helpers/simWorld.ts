@@ -6,7 +6,7 @@ import { execFileSync, spawn } from 'node:child_process'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
-import { FakeGithub, GH_SHIM } from './fakeGithub'
+import { FakeGithub, GH_SHIM, GIT_ENV } from './fakeGithub'
 import { LABEL } from '../../shared/pm/run'
 import { runFiles } from '../../shared/pm/advance'
 import type { PmStore } from '../../server/utils/pmStore'
@@ -18,10 +18,7 @@ interface Term { address: string, labels: Record<string, string>, cwd: string, i
 export async function makeWorld(hooks: ConstructorParameters<typeof FakeGithub>[1]) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-sim-'))
   const origin = path.join(home, 'origin.git'), repo = path.join(home, 'project'), bin = path.join(home, '.local/bin')
-  const env: NodeJS.ProcessEnv = {
-    ...process.env, HOME: home, NVM_DIR: path.join(home, 'nvm'), GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1',
-    GIT_AUTHOR_NAME: 'sim', GIT_AUTHOR_EMAIL: 'sim@example.com', GIT_COMMITTER_NAME: 'sim', GIT_COMMITTER_EMAIL: 'sim@example.com',
-  }
+  const env: NodeJS.ProcessEnv = { ...GIT_ENV, HOME: home, NVM_DIR: path.join(home, 'nvm') }
   const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim()
   await fs.mkdir(bin, { recursive: true })
   await fs.mkdir(path.join(repo, 'docs'), { recursive: true })
