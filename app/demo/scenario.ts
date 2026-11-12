@@ -70,6 +70,13 @@ export const taskAgents = (): Record<string, TaskAgent> => ({
   'ACME-API-13#worker': { task: 'ACME-API-13', shown: 'ACME-API-13', title: 'Fix the flaky CSV export test', role: 'fix' },
 })
 
+// The notes the agents wrote (GET /api/notes, NotesPanel.vue).
+export const notes = (now: number) => [
+  { id: 'this-week', title: 'This week', scope: 'all', body: '- [x] Rate limits merged [[API-12]]\n- [ ] Look at the flaky export fix [[API-13]]\n- [ ] Release notes for 1.4', created: '', updated: new Date(now - 600_000).toISOString() },
+  { id: 'billing-page', title: 'Billing page redesign', scope: 'all', body: '[[Waiting|clock|amber]] on the new prices from sales.\nThe [plan](plans/billing.md) has the open questions.', created: '', updated: new Date(now - 3600_000).toISOString() },
+  { id: 'reminders', title: 'Reminders', scope: 'all', body: '[[Friday|calendar|blue]] demo to the team, see [this week](this-week.md)\n[[Idea|lightbulb|violet]] cache the CSV export', created: '', updated: new Date(now - 7200_000).toISOString() },
+]
+
 // omp's tool approval dialog, as wherdr reads it from the screen.
 export function approval(command: string): NonNullable<Pane['prompt']> {
   return { question: 'Allow tool: bash', cursor: 0, options: [{ label: 'Approve', hint: null }, { label: 'Deny', hint: null }], detail: { tool: 'bash', command } }

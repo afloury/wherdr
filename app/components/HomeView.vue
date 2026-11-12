@@ -300,7 +300,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => titleRowObserver?.disconnect())
 // First to fold first.
-const headerFoldable = ['settings', 'board']
+const headerFoldable = ['settings', 'notes', 'board']
 const headerFolded = computed(() => {
   if (!titleRowWidth.value) return new Set<string>()
   const total = headerFoldable.length + 1 + (desk.value ? 1 : 0)
@@ -311,6 +311,7 @@ function headerMenuItems(): MenuItem[] {
   return [
     ...(quietCurrent.value ? [{ label: quietLabel.value, icon: 'i-lucide-bell-off', run: () => navigateTo(quietSettings) }] : []),
     ...(f.has('board') ? [{ label: tl('Board', 'Tableau'), icon: 'i-lucide-square-kanban', run: openBoard }] : []),
+    ...(f.has('notes') ? [{ label: tl('Notes'), icon: 'i-lucide-sticky-note', run: toggleNotes }] : []),
     ...(f.has('settings') ? [{ label: t('Settings'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings') }] : []),
   ]
 }
@@ -424,6 +425,9 @@ function resetListWidth() {
       <UTooltip :text="tl('Board', 'Tableau')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Board', 'Tableau')" @click="openBoard" />
       </UTooltip>
+      <UTooltip :text="tl('Notes')" :kbds="shortcutKbds('notes')" :content="{ side: 'right' }">
+        <UButton icon="i-lucide-sticky-note" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Notes')" :aria-pressed="notesOpen" @click="toggleNotes" />
+      </UTooltip>
       <UTooltip :text="t('Settings')" :kbds="shortcutKbds('settings')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Settings')" to="/settings" />
       </UTooltip>
@@ -452,6 +456,9 @@ function resetListWidth() {
           </UTooltip>
           <UTooltip v-if="!headerFolded.has('board')" :text="tl('Board', 'Tableau')" :disabled="!desk">
             <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Board', 'Tableau')" data-testid="home-board" @click="openBoard" />
+          </UTooltip>
+          <UTooltip v-if="!headerFolded.has('notes')" :text="tl('Notes')" :kbds="shortcutKbds('notes')" :disabled="!desk">
+            <UButton icon="i-lucide-sticky-note" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Notes')" :aria-pressed="notesOpen" data-testid="home-notes" @click="toggleNotes" />
           </UTooltip>
           <UTooltip v-if="!headerFolded.has('settings')" :text="t('Settings')" :kbds="shortcutKbds('settings')" :disabled="!desk">
             <UButton

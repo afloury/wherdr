@@ -73,7 +73,7 @@ it('shows the same reference component in Settings and the shortcut sheet', asyn
   const sheet = await mountSuspended(ShortcutsSheet, { global: { stubs: { AppSheet: { template: '<div><slot /></div>' } } } })
   try {
     expect(w.getComponent(ShortcutsReference).isVisible()).toBe(true)
-    expect(w.getComponent(ShortcutsReference).findAll('.shortcut-row')).toHaveLength(17)
+    expect(w.getComponent(ShortcutsReference).findAll('.shortcut-row')).toHaveLength(18)
     expect(sheet.findComponent(ShortcutsReference).exists()).toBe(true)
   } finally { w.unmount(); sheet.unmount() }
 })
