@@ -104,27 +104,33 @@ describe('runAction', () => {
   it('merges once checks are green, with the task\'s commit, and alerts on a protected branch', async () => {
     const info = (state: string, base = 'dev') => ({ code: 0, out: `abc\n${JSON.stringify([{ url: 'https://pr/1', baseRefName: base, headRefOid: 'abc', statusCheckRollup: [{ status: state, conclusion: 'SUCCESS' }] }])}` })
     const f = fakeDeps([info('QUEUED'), { code: 0, out: 'same' }, info('COMPLETED'), { code: 0, out: 'same' }, { code: 0, out: 'https://pr/1' }, { code: 0, out: 'origin/dev\norigin/main' }])
+    // Checks running: no sleep, later; the engine's next pass looks again, as new.
+    expect(await runAction(f.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toEqual({ ok: false, later: true, error: 'merge: checks still running' })
+    expect(f.receipts.get('A-1.1.merge')).toMatchObject({ state: 'later' })
     const r = await runAction(f.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))
     expect(r).toEqual({ ok: true, link: 'https://pr/1', base: 'dev', commit: 'abc', alert: 'A-1\'s commit abc is on main without a step of yours' })
-    expect(f.sleeps).toEqual([60_000])
+    expect(f.sleeps).toEqual([])
     expect(f.calls[4]).toEqual(['/w', 'https://pr/1', 'abc', '']) // no method: the first the repo allows
     const p = fakeDeps([info('COMPLETED', 'main')])
     expect(await runAction(p.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toMatchObject({ error: expect.stringMatching(/only you/) })
     expect(p.calls.length).toBe(1)
     // Stopped while its checks ran: never merged.
-    const h = fakeDeps([info('QUEUED'), { code: 0, out: 'same' }, info('COMPLETED'), { code: 0, out: 'same' }])
+    const h = fakeDeps([info('COMPLETED'), { code: 0, out: 'same' }])
     expect(await runAction(h.deps, job({ step: 'merge', action: { kind: 'github.merge' }, halted: async () => true }))).toEqual({ ok: false, error: 'merge: the task was stopped' })
-    expect(h.calls.length).toBe(4)
+    expect(h.calls.length).toBe(2)
     // Pushed, but the remote branch did not move: refused at once, no wait.
     const stale = { code: 0, out: `abc\n${JSON.stringify([{ url: 'https://pr/1', baseRefName: 'dev', headRefOid: 'old' }])}` }, behind = { code: 0, out: 'behind' }
     const n = fakeDeps([stale, behind, { code: 0, out: 'abc' }, stale, behind, { code: 0, out: 'old' }])
     expect(await runAction(n.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toEqual({ ok: false, error: 'merge: the push did not move origin/task/A-1 (at old, the task at abc): push the branch by hand, then try the step again' })
     expect(n.sleeps).toEqual([])
-    // GitHub's lag, then checks running at the new head: the lag waits take none of the CI waits.
+    // GitHub's lag, then checks running at the new head: each a later, never a sleep.
     const fresh = (state: string) => ({ code: 0, out: `abc\n${JSON.stringify([{ url: 'https://pr/1', baseRefName: 'dev', headRefOid: 'abc', statusCheckRollup: [{ status: state, conclusion: 'SUCCESS' }] }])}` }), same = { code: 0, out: 'same' }
-    const l = fakeDeps([stale, behind, { code: 0, out: 'abc' }, ...[1, 2, 3].flatMap(() => [stale, behind, { code: 0, out: 'abc' }]), fresh('IN_PROGRESS'), same, fresh('IN_PROGRESS'), same, fresh('COMPLETED'), same, { code: 0, out: 'https://pr/1' }])
-    expect(await runAction(l.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toMatchObject({ ok: true, commit: 'abc' })
-    expect(l.sleeps).toEqual([2_000, 4_000, 8_000, ...RETRY_MS.slice(0, 2)])
+    const l = fakeDeps([stale, behind, { code: 0, out: 'abc' }, stale, behind, { code: 0, out: 'abc' }, fresh('IN_PROGRESS'), same, fresh('COMPLETED'), same, { code: 0, out: 'https://pr/1' }])
+    const merge = () => runAction(l.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))
+    expect(await merge()).toEqual({ ok: false, later: true, error: 'merge: GitHub still shows the PR head at old, origin/task/A-1 is at abc' })
+    expect(await merge()).toMatchObject({ ok: false, later: true, error: 'merge: checks still running' })
+    expect(await merge()).toMatchObject({ ok: true, commit: 'abc' })
+    expect(l.sleeps).toEqual([])
     // GitHub's conflict ends with the commands to fix it: the error keeps none of them.
     const x = fakeDeps([info('COMPLETED'), { code: 0, out: 'same' }, { code: 1, out: 'X Pull request #505 is not mergeable: the merge commit cannot be cleanly created.\nRun the following to resolve the merge conflicts locally:\n  gh pr checkout 505 && git fetch origin dev && git merge origin/dev' }])
     expect(await runAction(x.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toMatchObject({ ok: false, error: 'merge: the PR conflicts with dev', catchUp: 'dev' })
@@ -557,17 +563,14 @@ esac
     expect(git(s.repo, '--git-dir', s.origin, 'rev-parse', 'task/A-1')).toBe(fix)
   })
 
-  it('waits for GitHub to show a fresh push, up to about a minute', async () => {
-    const s = setup('moved-lag')
-    s.lagging(3) // the read before the push, then two stale reads after it
+  it('waits for GitHub to show a fresh push as a later, which the next pass looks at again', async () => {
+    const s = setup('moved-lag'), old = s.head()
+    s.lagging(3) // the read before the push, the one after it, and the next pass's first
     git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'fix CI')
     const fix = s.head()
+    expect(await s.merge(1, fix)).toEqual({ ok: false, later: true, error: `merge: GitHub still shows the PR head at ${old.slice(0, 7)}, origin/task/A-1 is at ${fix.slice(0, 7)}` })
     expect(await s.merge(1, fix)).toEqual({ ok: true, link: 'https://pr/1', base: 'dev', commit: fix })
-    expect(s.f.sleeps).toEqual([2_000, 4_000])
-    s.lagging(99)
-    git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'again')
-    const again = s.head()
-    expect(await s.merge(2, again)).toEqual({ ok: false, error: `merge: GitHub still shows the PR head at ${fix.slice(0, 7)} a minute after origin/task/A-1 moved to ${again.slice(0, 7)}: try the step again in a few minutes` })
+    expect(s.f.sleeps).toEqual([])
   })
 
   // GitHub's Update branch runs no local merge driver: its union merge lists an

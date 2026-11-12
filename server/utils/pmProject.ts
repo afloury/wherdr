@@ -11,7 +11,7 @@ import { PREF_KEYS, type Guards, type Prefs, type Template, type WorktreeSetup }
 import { HerdrError } from './herdr'
 import { alfredTokenOk, scopeOf } from './pmCoordinator'
 import type { CoreAdminDeps } from './coreCreate'
-import { archiveDone, stepAction } from './pmBoard'
+import { archiveDone, startAction } from './pmBoard'
 import { lastReadiness } from './pmReady'
 import type { PmStore } from './pmStore'
 
@@ -105,7 +105,7 @@ export async function retryFreedMerges(deps: CoreAdminDeps & { store: PmStore },
     const into = freedMerge(task, taskPlan(before, task, p), taskPlan(after, task, p))
     if (!into) continue
     await deps.store.logTask(task, 'engine', `guards changed: the engine may now merge into ${into}, so it tries the step again`)
-    await stepAction(deps, task.id, 'engine').catch(() => {})
+    startAction(deps, task.id, () => {})
   }
 }
 

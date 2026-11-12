@@ -306,8 +306,11 @@ coordinator watch the deploy with a recheck becomes, in the JSON:
 
 or, outside GitHub, `"source": "command", "command": "./scripts/ci-status.sh develop"`.
 
-A merge that first pushes the task's last commits waits up to a minute for
-GitHub to show them on the PR.
+A merge waits, up to 15 minutes, for its checks to finish and, after it
+pushes the task's last commits, for GitHub to show them on the PR. The engine
+looks again every half minute or so, without holding up its other tasks: a
+merge never delays another task's start, in its project or another. Past the
+15 minutes, the step comes to you with what it still waited for.
 
 After a merge (`github.merge`, `bitbucket.merge`, or `git.verify-merged` once
 you merged on the Git host), wherdr deletes the task's remote branch, unless

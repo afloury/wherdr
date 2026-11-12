@@ -1,5 +1,7 @@
 // Runs one engine action in a task's worktree, on its project's machine:
-// guard first, receipt before, transient errors tried again (1, 2, 4, 8 min),
+// guard first, receipt before, transient errors tried again (1, 2, 4, 8 min;
+// it runs outside the engine's ticks, pmBoard.ts startAction), a merge's wait
+// for CI or GitHub's lag handed back as later (a later pass looks again),
 // then the alert when the task's commit sits on a protected branch that no
 // step of the user and no guarded action put it on.
 import { PATH_SETUP, type CoreAdminDeps } from './coreCreate'
@@ -77,8 +79,6 @@ export function whyFailed(out: string) {
   return (m ? `push to ${m[1]} refused: ${m[2]}` : lines.at(-1) ?? '').slice(0, 300)
 }
 const pause = (ms: number) => new Promise<void>(r => setTimeout(r, ms))
-// After a push, how long to wait for GitHub to show the new PR head: about a minute.
-const LAG_MS = [2_000, 4_000, 8_000, 15_000, 15_000, 15_000]
 
 export async function runAction(deps: ActionDeps, job: ActionJob): Promise<ActionResult> {
   const { store } = deps
@@ -86,8 +86,11 @@ export async function runAction(deps: ActionDeps, job: ActionJob): Promise<Actio
   const base = { id, task: job.task.id, step: job.step, action: job.action }
   // A watch only reads: no receipt, each poll is a new one.
   if (job.action.kind === 'pipeline.watch') return watch(deps, job)
-  const prev = await store.receipt(id)
-  if (prev?.state === 'done') return prev.result!
+  const last = await store.receipt(id)
+  if (last?.state === 'done') return last.result!
+  // A merge that waited for its checks or GitHub's lag: this pass looks again, as new.
+  const prev = last?.state === 'later' ? undefined : last
+  if (last?.by) job = { ...job, by: last.by }
   const merge = isPrMerge(job.action.kind)
   const resumes = prev ? (prev.resumes ?? 0) + 1 : 0
   if (prev && (!merge || prev.state !== 'pending' || resumes > MERGE_RESUMES)) {
@@ -95,8 +98,7 @@ export async function runAction(deps: ActionDeps, job: ActionJob): Promise<Actio
     const why = merge && resumes > MERGE_RESUMES ? `interrupted ${MERGE_RESUMES + 1} times` : 'interrupted before its result was known'
     return { ok: false, error: `${job.action.kind} was ${why}: check by hand, then try again` }
   }
-  // Resumed, it keeps who started it: your gesture still counts for the guards.
-  if (prev?.by) job = { ...job, by: prev.by }
+  // Resumed, it keeps who started it (above): your gesture still counts for the guards.
   const refused = guardAction(job.guards, job.action, { branch: job.branch, by: job.by, project: job.task.project })
   if (refused) return finish({ ok: false, error: refused })
   await store.saveReceipt({ ...base, by: job.by, state: 'pending', at: Date.now(), ...(resumes ? { resumes } : {}) })
@@ -110,7 +112,7 @@ export async function runAction(deps: ActionDeps, job: ActionJob): Promise<Actio
       const alert = await leakAlert(deps, job, result, reached ?? []).catch(() => undefined)
       if (alert) result = { ...result, alert: [result.alert, alert].filter(Boolean).join('. ') }
     }
-    await store.saveReceipt({ ...base, state: 'done', result, at: Date.now() })
+    await store.saveReceipt({ ...base, state: result.later ? 'later' : 'done', result, at: Date.now(), ...(result.later ? { by: job.by } : {}) })
     return result
   }
 }
@@ -152,10 +154,10 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
       return r.code === 0 ? { ok: true, link: lastLine(r.out) } : fail(r)
     }
     case 'github.merge': {
-      // lag: waits for GitHub to show a fresh push; ci: waits for its checks. Counted apart.
+      // Waits for GitHub to show a fresh push, or for the checks: later, a later pass looks again.
       // unread: PR details that could not be read, tried again as a transient error.
       // cut: merges that timed out, after which GitHub is asked again first.
-      let pushed = false, synced = false, lag = 0, ci = 0, unread = 0, cut = 0
+      let pushed = false, synced = false, unread = 0, cut = 0
       for (;;) {
         const r = await run(deps, SCRIPT.prInfo, [wt, branch])
         if (r.code !== 0) return fail(r)
@@ -204,8 +206,7 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
               if (rb.code !== 0) return fail(rb)
               const remote = lastLine(rb.out)
               if (remote !== h) return { ok: false, error: `merge: the push did not move origin/${branch} (at ${remote.slice(0, 7) || 'nothing'}, the task at ${h.slice(0, 7)}): push the branch by hand, then try the step again` }
-              if (lag < LAG_MS.length) { await (deps.sleep ?? pause)(LAG_MS[lag++]!); continue }
-              return { ok: false, error: `merge: GitHub still shows the PR head at ${pr.headRefOid.slice(0, 7)} a minute after origin/${branch} moved to ${h.slice(0, 7)}: try the step again in a few minutes` }
+              return { ok: false, later: true, error: `merge: GitHub still shows the PR head at ${pr.headRefOid.slice(0, 7)}, origin/${branch} is at ${h.slice(0, 7)}` }
             }
             const no = guardAction(job.guards, { kind: 'git.push' }, { branch, by: job.by })
             if (no) return { ok: false, error: no }
@@ -224,8 +225,7 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
         const stale = { DIRTY: 'conflicts with', BEHIND: 'is behind' }[pr?.mergeStateStatus ?? '']
         if (pr && stale) return { ok: false, error: `merge: the PR ${stale} ${pr.baseRefName}`, catchUp: pr.baseRefName, commit: head.trim() }
         const ready = prReady(pr, head.trim(), a.checks)
-        if (!ready.ok && ready.later && ci < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[ci++]!); continue }
-        if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
+        if (!ready.ok) return { ok: false, error: `merge: ${ready.why}`, ...(ready.later ? { later: true } : {}) }
         if (await job.halted?.()) return { ok: false, error: 'merge: the task was stopped' }
         const m = await run(deps, SCRIPT.merge, [wt, pr!.url, head.trim(), a.method ?? ''], undefined, true)
         // Timed out: it may have merged. The PR is read again before any new try.
@@ -273,7 +273,7 @@ async function bitbucketMerge(deps: ActionDeps, job: ActionJob, fail: (r: ShellR
   }
   const refusal = (r: { status: number, body: { error?: { message?: string } } }) => ({ ok: false, error: `merge: ${r.body.error?.message || `Bitbucket answered ${r.status}`}` })
   let pushed = false
-  for (let i = 0; ; i++) {
+  for (;;) {
     const h = await run(deps, SCRIPT.head, [wt])
     if (h.code !== 0) return fail(h)
     const head = lastLine(h.out)
@@ -304,8 +304,7 @@ async function bitbucketMerge(deps: ActionDeps, job: ActionJob, fail: (r: ShellR
     if ('error' in st) return st.error!
     if (st.status !== 200) return refusal(st)
     const ready = bbReady(st.body.values ?? [], a.checks)
-    if (!ready.ok && ready.later && i < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[i]!); continue }
-    if (!ready.ok) return { ok: false, error: `merge: ${ready.why}` }
+    if (!ready.ok) return { ok: false, error: `merge: ${ready.why}`, ...(ready.later ? { later: true } : {}) }
     if (await job.halted?.()) return { ok: false, error: 'merge: the task was stopped' }
     const body = JSON.stringify({ type: 'pullrequest', merge_strategy: BB_STRATEGY[a.method ?? 'merge'], close_source_branch: false })
     const m = await api<object>('POST', `/pullrequests/${pr.id}/merge`, body)

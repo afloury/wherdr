@@ -19,6 +19,8 @@ import type { CoreAdminDeps } from './coreCreate'
 import { runOn } from './pmLaunch'
 import { HerdrError } from './herdr'
 import { localMachineLabel } from './machines'
+import { Holds } from './pmHold'
+import { noteTaskError } from './pmSentinel'
 import type { PmStore } from './pmStore'
 import { archiveDays, archiveDue, archivedMatch, archivedText, doneAt } from '../../shared/pm/archive'
 
@@ -126,21 +128,44 @@ export const userStep = (deps: CoreAdminDeps & { store: PmStore }, id: unknown, 
 
 // by 'engine': a failed action tried again, or one entered and not run yet
 // (a merge the branch rule gives the engine); its guard is checked again.
-// Tasks whose engine action runs now: one at a time (the user's gesture, the engine's pass).
-const running = new Set<string>()
+// Tasks whose engine action runs now: one at a time (the user's gesture, the
+// engine's pass). Its hold is freed when it ends, or after 30 minutes, logged
+// (pmHold.ts): an action that never ends cannot hold its task forever.
+export const ACTION_LIMIT_MS = 30 * 60_000
+const running = new Holds('step action of', ACTION_LIMIT_MS)
 // A step action of this task runs now in this process (its `acting` is not stale).
 export const actionRunning = (id: string) => running.has(id)
-export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: unknown, by: MergeBy, userSaid = false): Promise<Task> {
+// held: the hold startAction took already.
+export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: unknown, by: MergeBy, userSaid = false, held?: () => void): Promise<Task> {
   const { store } = deps
-  const task = await store.task(id)
-  if (!task) throw new HerdrError('not_found', 'Unknown task')
-  if (task.stopped) throw new HerdrError('refused', 'The task is stopped: continue it first')
-  // A reported problem that blocks the merge: no step action, the engine's neither.
-  if (task.report?.block) { if (by === 'user') throw new HerdrError('refused', 'A problem you reported blocks the merge: withdraw it, or wait for the coordinator'); return task }
-  if (running.has(task.id)) throw new HerdrError('busy', 'Already checking')
-  running.add(task.id)
-  try { return await stepActionOf(deps, task, by, userSaid) } finally { running.delete(task.id) }
+  let release = held
+  try {
+    const task = await store.task(id)
+    if (!task) throw new HerdrError('not_found', 'Unknown task')
+    if (task.stopped) throw new HerdrError('refused', 'The task is stopped: continue it first')
+    // A reported problem that blocks the merge: no step action, the engine's neither.
+    if (task.report?.block) { if (by === 'user') throw new HerdrError('refused', 'A problem you reported blocks the merge: withdraw it, or wait for the coordinator'); return task }
+    release ??= running.take(task.id, by === 'user' ? 'the user\'s step action' : 'the engine\'s step action')
+    if (!release) throw new HerdrError('busy', 'Already checking')
+    return await stepActionOf(deps, task, by, userSaid)
+  } finally { release?.() }
 }
+
+// The engine's passes start a task's step action and go on, never waiting for
+// it: it saves and logs its result when it ends (stepActionOf), and the next
+// pass reads it. false: one runs already. failed: its error, after the pass
+// went on (logged on the task by default).
+const started = new Set<Promise<unknown>>()
+export function startAction(deps: CoreAdminDeps & { store: PmStore }, id: string, failed?: (e: Error) => unknown): boolean {
+  const release = running.take(id, 'the engine\'s step action')
+  if (!release) return false
+  const p = stepAction(deps, id, 'engine', false, release).catch((e: Error) => (failed ?? (x => noteTaskError(deps.store, id, x)))(e))
+  started.add(p)
+  void p.finally(() => started.delete(p))
+  return true
+}
+// The step actions started so far, settled (tests, and a shutdown that waits).
+export const actionsSettled = async () => { while (started.size) await Promise.allSettled([...started]) }
 
 async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task, by: MergeBy, userSaid: boolean): Promise<Task> {
   const { store } = deps
@@ -187,7 +212,8 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const log = back.effects.find(e => e.kind === 'log')
     const auto = result.ok && approved && by === 'engine' ? 'merged by itself, as the user approved' : undefined
     // A failed action always says why in the log, not only on the card.
-    const failed = result.ok || result.later ? '' : result.error || `${act.action.kind} failed`
+    // A merge's wait past its limit (later, no longer acting) says why too.
+    const failed = result.ok || (result.later && state.acting) ? '' : state.yourTurn?.error || result.error || `${act.action.kind} failed`
     const said = [auto, failed, result.note, result.alert].filter(Boolean).join('. ')
     const saved = log?.kind === 'log' ? await store.logTask({ ...(await fresh()), step: state }, 'engine', log.text)
       : said ? await store.logTask({ ...(await fresh()), step: state }, 'engine', said.startsWith(`${act.step}: `) ? said : `${act.step}: ${said}`)
@@ -222,7 +248,7 @@ export async function resumeMerges(deps: CoreAdminDeps & { store: PmStore }) {
     if (!task.step?.acting || task.step.done || task.stopped) continue
     const p = projects.find(x => x.key === task.project)
     const step = planOf(p ? await deps.store.workflow(p.key) : null, task, p)[task.step.at]
-    if (step?.action?.kind === 'github.merge') await stepAction(deps, task.id, 'engine').catch(() => {})
+    if (step?.action?.kind === 'github.merge') startAction(deps, task.id, () => {})
   }
 }
 
