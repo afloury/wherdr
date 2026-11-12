@@ -35,4 +35,16 @@ describe('choice buttons in the conversation', () => {
       expect(sent.split("\n")).toEqual([expect.stringMatching(/^↳ Quote (?:point|message) .* : And the next one, how\? —$/), "Rebase"])
     } finally { w.unmount() }
   })
+
+  // WHR-283: a single option is a one-click confirm.
+  it('draws a single option as one button that sends its text', async () => {
+    items.splice(0, items.length, { role: 'assistant', text: 'Shall I fix the test?\n\n```wherdr\nchoices "OK, fix the test"\n```', ts: '2026-01-01T09:00:00Z' })
+    herdrState.value = { ok: true, workspaces: [], panes: [pane] }
+    const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] }, global: { stubs: { UTooltip: { template: '<slot />' } } } })
+    try {
+      await expect.poll(() => w.findAll('.w-choices button').length).toBe(1)
+      await w.find('.w-choices button').trigger('click')
+      expect((w.emitted('choose')?.[0]?.[0] as string).split('\n').at(-1)).toBe('OK, fix the test')
+    } finally { w.unmount() }
+  })
 })

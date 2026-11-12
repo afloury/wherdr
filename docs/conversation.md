@@ -226,7 +226,8 @@ question column, known by its header (`Question`, `Decision`, `Choix`…), by ce
 with `?`, or by an advice column next to it (`Avis`, `Recommendation`, `Suggestion`…). Any other
 table is left as it is.
 
-**Choice buttons.** An agent can offer 2 to 4 answers as buttons with a `wherdr` code block, one
+**Choice buttons.** An agent can offer 1 to 4 answers as buttons (a single one is a one-click
+confirm, such as `choices "OK, fix the test"`) with a `wherdr` code block, one
 element per line:
 
 ````md
@@ -241,7 +242,7 @@ A tap sends that option at once as your reply, quoted to the last question writt
 block (to the whole message when there is none), the same as typing it. Only the choices of the
 agent's last message are live; once a sent message answers them, and in older messages, they are
 greyed, the answer given marked. A `wherdr` block with a line wherdr does not understand (a
-missing quote, one option or more than four) shows as ordinary code.
+missing quote, no option or more than four, an unknown kind) shows as ordinary code.
 
 Above the field, **N questions unanswered** counts the questions of the agent's last message
 (and the rows of its decision tables) that your draft does not answer yet; tap it to scroll to
