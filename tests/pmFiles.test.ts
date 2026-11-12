@@ -86,6 +86,15 @@ describe('declared files', () => {
       const read = (base: string) => parseFilesRead(execFileSync('sh', ['-c', FILES_SCRIPT, 'sh', dir, 'task/X-1', path.join(dir, 'none.txt'), base]).toString()).changed
       expect(read('')).toEqual(['mine'])
       expect(read('main')).toEqual(['mine'])
+      // No origin/HEAD (git init + remote add): origin is asked for its default branch.
+      git(dir, 'symbolic-ref', '--delete', 'refs/remotes/origin/HEAD')
+      expect(read('')).toEqual(['mine'])
+      // A base origin does not have: the local one.
+      git(dir, 'branch', 'local-base', 'task/X-1~1'); expect(read('local-base')).toEqual(['mine'])
+      // Origin out of reach: nothing is read, rather than from a stale origin/main.
+      fs.renameSync(origin, `${origin}.off`)
+      expect(() => read('main')).toThrow()
+      expect(() => read('')).toThrow()
     }
     finally { fs.rmSync(root, { recursive: true, force: true }) }
   })

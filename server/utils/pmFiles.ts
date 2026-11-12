@@ -1,10 +1,11 @@
 // What each started task touches (shared/pm/files.ts), read from its worktree:
 // the paths its worker declared in its files marker, and the files it changed
 // (committed or not, new ones included) since its fork from its base as of now:
-// origin's base, fetched now (origin's default branch when the task names none),
-// else the local one, else where its branch started. Never from a local base or
-// that start alone: a local base may be behind origin, and once origin's base is
-// merged in, its own changes would count.
+// origin's base, fetched now (origin's default branch when the task names none,
+// asked of origin when origin/HEAD is unset), else the local one when origin has
+// no such branch or there is no origin, else where its branch started. When
+// origin cannot be reached, nothing is read (exit 1): a stale origin/<base>, a
+// local base behind origin or that start would count origin's changes as the task's.
 // Then the to-do tasks that wait behind one of them start once it no longer touches
 // their files (it is done or only waits for its merge, or its files moved on).
 import { beyond, fileConflict, parseFiles } from '../../shared/pm/files'
@@ -16,10 +17,15 @@ import { exec, mergingOf, runOn, startTask, type PmLaunchDeps } from './pmLaunch
 const SEP = '--wherdr-files--'
 export const FILES_SCRIPT = `wt=$1 b=$2 base=$4
 cat "$3" 2>/dev/null; echo; echo "${SEP}"
-[ -n "$base" ] || base=$(git -C "$wt" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
 s=
-if [ -n "$base" ]; then git -C "$wt" fetch -q origin "$base" 2>/dev/null
-  s=$(git -C "$wt" merge-base HEAD "origin/$base" 2>/dev/null) || s=$(git -C "$wt" merge-base HEAD "$base" 2>/dev/null); fi
+if git -C "$wt" remote get-url origin >/dev/null 2>&1; then
+  [ -n "$base" ] || base=$(git -C "$wt" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+  [ -n "$base" ] || base=$(git -C "$wt" ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" && $3 == "HEAD" { sub("^refs/heads/", "", $2); print $2; exit }')
+  [ -n "$base" ] || exit 1
+  if git -C "$wt" fetch -q origin "$base" 2>/dev/null; then s=$(git -C "$wt" merge-base HEAD "origin/$base" 2>/dev/null)
+  else r=0; git -C "$wt" ls-remote -q --exit-code origin "refs/heads/$base" >/dev/null 2>&1 || r=$?; [ "$r" = 2 ] || exit 1; fi
+fi
+[ -n "$s" ] || [ -z "$base" ] || s=$(git -C "$wt" merge-base HEAD "$base" 2>/dev/null)
 [ -n "$s" ] || s=$(git -C "$wt" config "branch.$b.wherdrstart") || exit 0
 git -C "$wt" diff --name-only "$s" 2>/dev/null; git -C "$wt" ls-files --others --exclude-standard 2>/dev/null`
 
