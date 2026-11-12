@@ -364,10 +364,12 @@ const CATCH_UP_STUCK_MS = 3 * 60_000
 // up to date (an update with its base, a conflict or red checks handed to the
 // worker, GitHub's read of the updated PR): what goes on, in a few words. Not
 // the user's turn meanwhile: off Your turn and Tasks to handle. undefined once
-// it needs the user (its worker waits, a stuck update) or the PR is clean.
-export function prUpdating(c: Pick<Card, 'plan' | 'state' | 'stopped'>, now = Date.now()): string | undefined {
+// it needs the user (its worker asks a question or a permission, or waits; a
+// stuck update) or the PR is clean. The step's own badge is cleared or held
+// back meanwhile (cardOf), so any yourTurn left is a real wait for the user.
+export function prUpdating(c: Pick<Card, 'plan' | 'state' | 'stopped'> & Partial<Pick<Card, 'yourTurn' | 'asks'>>, now = Date.now()): string | undefined {
   const s = c.state
-  if (!s?.started || s.done || s.acting || c.stopped || !waitsToMerge(c.plan[s.at])) return
+  if (!s?.started || s.done || s.acting || c.stopped || c.yourTurn || c.asks || !waitsToMerge(c.plan[s.at])) return
   if (s.agent) return s.agent.waits ? undefined : s.agent.kind === 'catch-up' ? `the worker is solving a conflict with ${s.catchUp?.base ?? 'its base'}` : 'the worker is fixing the PR'
   if (s.catchUp) return now - s.catchUp.at < CATCH_UP_STUCK_MS ? `updating with ${s.catchUp.base}` : undefined
   if (s.caughtUp && !caughtUpSettled(s.caughtUp, undefined, now)) return `updated with ${s.caughtUp.base}, GitHub is checking it`

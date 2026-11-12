@@ -124,6 +124,10 @@ describe('mechanical moves', () => {
       off(card(handed, T))
       expect(line(card(handed, T))).toBe('the worker is solving a conflict with v3')
       expect(cardStatus(card({ ...handed, agent: { ...handed.agent, waits: 'Waits for its machine (offline)' } }, T))?.tone).toBe('bad')
+      // Its live worker asks the user a permission while it solves the conflict: Your turn.
+      const asking = { ...cardOf(task({ step: handed, state: 'waiting', waitKind: 'permission', waiting: 'Allow git merge?' }), visual, [], T), prNow: 'conflict with its base' }
+      expect(boardLanes([asking], null)[0]!.cards).toEqual([asking])
+      expect(toHandle([asking])).toHaveLength(1)
       // Updated cleanly: still off while GitHub reads the old conflict, never the red line.
       const clean = onEvent(visual, up, { kind: 'caught-up', head: 'fff0000' }, T).state
       off(card(clean, T))
