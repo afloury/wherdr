@@ -1,74 +1,109 @@
-# Machines and SSH
+# Machines
 
 [Documentation](README.md) · [Project](../README.md)
 
-- **Several machines**: agents of the SSH machines registered in Herdr (`herdr machine add`)
-  appear in their own section; everything works the same on a remote agent.
 ## Several machines (SSH)
 
-wherdr also shows the agents of the **SSH machines registered in Herdr** — the ones the Herdr
-terminal client shows in its sidebar. It opens one SSH master connection per machine, forwards
-the remote Herdr socket through it, and reads transcripts and files over the same connection.
+Other machines are **core machines**: herdr-core (hc) reaches them over SSH and runs their
+terminals there, as `hc machine add` does. wherdr shows what `machine.list` returns; it opens no
+SSH connection of its own.
 
-Requirements on the remote machine: the **same Herdr version** (`herdr --version`), its server
-running, and key-based SSH access from the server. Example, on the server:
+- **The host**, the machine wherdr runs on, shows by its host name (`HOST_LABEL` when set) with
+  a **HOST** badge, wherever a machine is named.
+- **On the home screen**, each machine is one of the machine tabs, online or offline, with its
+  count of rows ([Machines as tabs](home.md#machines-as-tabs)). When a machine goes offline, its
+  last terminals stay visible, marked offline, until core reaches it again. A project shows on
+  the tabs of its machines, or where its sheet's **Shown in** puts it
+  ([General](project-management.md#general)).
+- **New** starts a terminal or an agent on any online machine (`terminal.run` with `on`),
+  preselecting one of the current machine tab ([New agents and tabs](home.md#new-agents-and-tabs)). Home,
+  folders, Git detection and installed agents of that machine come from `machine.exec`; folders
+  must stay under the machine's home.
+- **Conversations, files and quotas** of a core machine are read through `machine.exec` on that
+  machine ([herdr-core](core.md#conversations), [Files](files.md), [quotas](quotas.md)).
 
-```sh
-ssh-keygen -t ed25519 -f ~/.ssh/wherdr_ed25519 -N ''
-cat >> ~/.ssh/config <<'CFG'
-Host laptop
-  HostName laptop
-  User alice
-  IdentityFile ~/.ssh/wherdr_ed25519
-  IdentitiesOnly yes
-CFG
-ssh-copy-id -i ~/.ssh/wherdr_ed25519 laptop
-ssh laptop true                            # accept the host key once
-herdr machine add laptop --label Laptop    # see `herdr machine --help`
-```
+## Before adding a machine
 
-wherdr picks it up within 30 seconds; `herdr machine rename|disable|remove` work the same way.
-Machines can also be renamed from the app (machine menu → Options).
-With Herdr 0.9.2 or later, **Options → Connection status** checks the saved profile
-with `herdr machine status --json`: reachable, authentication required, error or disabled.
-It also gives a `herdr machine reconnect <profile-id>` command to run interactively
-on the wherdr host. **Retry connection** restarts wherdr's own SSH connection;
-Herdr's approved SSH connection and wherdr's connection are separate, so key-based
-SSH access is still required for wherdr. Older Herdr keeps automatic retries and
-manual **Retry connection**, without the native diagnostic.
+On the machine to add:
 
-The terminal view uses `terminal.mouse` on Herdr 0.9.2+ (both CLI and server): clicks,
-touch taps, drags and movement are encoded by Herdr for the application's mouse mode.
-Use **Shift + drag** to select text, and Ctrl/⌘+click to open links. Older or unknown
-versions keep the existing terminal keyboard, selection and scrolling behavior.
+- herdr-core is installed and on the `PATH` of a non-interactive SSH shell
+  (`ssh laptop 'command -v hc'`). wherdr never installs it.
+- This host logs in with an SSH key, without a password prompt (`ssh laptop true` answers at once
+  and the host key is already accepted). wherdr never asks for a password.
 
-### Windows remote machines
+## Manage machines
 
-The wherdr host must support Unix sockets and OpenSSH multiplexing (for example,
-Linux/WSL or macOS). On the **remote Windows machine**, install Git Bash and set
-it as the OpenSSH server's default shell. In an elevated PowerShell:
+**Settings › Machines** shows the core's version and uptime and one card per machine, this
+machine first. Each card has the same columns: the name, its state (*Host*, *Connected*,
+*Connecting…* or *Offline*), then the keep awake, rename and forget buttons at the right edge (a
+button that does not apply leaves its place empty, so the buttons line up across cards). Under
+the name come the last error, the keep-awake line and the battery warning, then the memory line
+and the machine's memory settings (side by side on a computer, stacked on a phone):
 
-```powershell
-New-ItemProperty -Path 'HKLM:\SOFTWARE\OpenSSH' -Name DefaultShell -Value 'C:\Program Files\Git\bin\bash.exe' -PropertyType String -Force
-Restart-Service sshd
-```
+- **Add machine** (`machine.add`): an **SSH target** (`user@host`, a `~/.ssh/config` host, or
+  `user@host:port` when the core takes a port, as herdr-core 0.1.17 does; wherdr reads this from
+  the core's `rpc.discover`, and on an older core the form says so before sending) and an optional
+  **Name** (a-z, 0-9, `-`, `_`, `.`, 32 at most). wherdr never accepts a `via` command. Adding can
+  fail with: the name is taken, the machine is already added, it cannot be reached over SSH,
+  herdr-core is not installed there, or its herdr-core version is incompatible.
+- **Reconnect** an offline machine (`machine.connect`).
+- **Rename** (`machine.rename`): the new name follows the same rules. Only this core's name
+  changes; links that use the old name stop working.
+- **Forget** (`machine.rm`): this core drops the machine, but its terminals keep running there,
+  and the machine can be added again later.
+- **Keep awake** (the sun button on a machine's card, or **Keep awake** in its tab's menu on the
+  home screen): 1 hour, 4 hours, until this evening (8 pm, machine time), until turned off, or
+  extend by one hour. The card then says *Awake until 18:00* or *Awake until turned off*, and on a
+  laptop on battery it warns that closing the lid puts it to sleep (or that the lid is closed).
+  It runs on that machine through herdr-core (`machine.exec`): `caffeinate -i -s` on macOS,
+  `systemd-inhibit --what=idle:sleep` in a `systemd-run --user` unit on Linux. Only the inhibitor
+  wherdr started (same PID, command and start time) counts, and **Turn off** stops that one alone.
+  A sleeping machine cannot be woken remotely. While a machine is awake and online, placement
+  counts on it like any online machine.
+- **Memory**: each machine's free memory, swap (Linux) or memory pressure (macOS), cores and load (read on Linux and macOS; on macOS the
+  room is macOS's own available estimate: its memory free percentage, as `memory_pressure -Q` prints it,
+  times the RAM, which counts what macOS can reclaim or compress, not free and inactive pages alone;
+  the line says *pressure normal, ≈8.3 GB available of 18.0 GB*) and its agents at once (all projects), with two
+  settings, both **Auto** when left empty (the grey placeholder shows wherdr's pick):
+  **Agents at once, all projects** (Auto: one agent per 1.5 GB of RAM) and **Automatic
+  starts wait under (GB free)** (Auto: 15 % of the machine's RAM, at least 1 GB, at most 4 GB; on macOS 10 %, as its available figure
+  already leaves out what macOS keeps back;
+  0 turns this guard off). Emptying a field goes back to Auto; a saved value stays yours. Each start goes to a machine its project allows
+  where the task fits, by the project's **Placement** ([project sheet](project-management.md#general)):
+  by default heavy work to the strongest one, light and standard work to the project's
+  own machine when it fits; or *Balance the load*, or *Home first*. A task fits when the machine keeps its minimum free after the task's
+  estimate (light ≈ 0.7 GB, standard ≈ 1.8 GB, heavy ≈ 3.9 GB), counting the agents just started
+  (an idle machine, with no wherdr agent at work, always takes one task its RAM can hold, even
+  under its minimum free: the minimum only holds its second task and beyond, and its line says *go*),
+  its swap is under 90 % used (on macOS, where the swap grows on demand: its memory pressure is normal:
+  20 % or more of its memory free by `kern.memorystatus_level`, as `memory_pressure -Q` prints it;
+  under 20 % (warn) it takes light work only, under 10 % or at the kernel's critical level nothing; the line shows the pressure instead of the swap), its cores are not all taken, it runs fewer agents than its cap (yours,
+  else one per 1.5 GB of RAM), and for heavy work its load is under 0.8 per core. When no machine fits, automatic
+  starts (autopilot, chains, automations) wait, with each machine's reason on the card, and start
+  by themselves once one has room. Your own starts still go. A task that started stays on its machine.
+- **Online or offline, and available hours**: each machine, offline ones too, shows whether
+  herdr-core reaches it now. Placement asks herdr-core again at each start, so a machine that just
+  went offline takes nothing. A new task asked for an offline machine starts on another machine its
+  project allows when one fits, else waits with *Waits for … (offline)*. **Available** (Always,
+  Weekdays, Every day, with **From** and **To**, in the wherdr server's time; *To* before *From*
+  runs over midnight) keeps automatic starts off a machine outside its hours, and heavy work off it
+  in its last 2 hours, so a laptop that leaves at 19:00 is not handed a long build at 18:30. The
+  coordinator sees the same in `autopilot show` (`machines`).
+- **Paused in every project**: a machine that some project allows, switched off in each project
+  that allows it, says so on its card ([Pause a machine for a project](#pause-a-machine-for-a-project)).
 
-Reconnect SSH after changing the shell. Adjust the path if Git is installed
-elsewhere. wherdr's bootstrap and file commands require a POSIX shell; with
-cmd.exe or PowerShell as the default, they fail before Herdr is discovered.
-With `cmd.exe` as the default shell, the error comes back localized and can be
-unreadable (for example GBK-encoded Chinese). When the probe does not answer
-as a POSIX shell, wherdr shows “Remote SSH shell must support POSIX commands”
-and points to this section; the same hint covers other failures before the
-probe runs.
+## Pause a machine for a project
 
-Herdr must be available in this non-interactive shell (`ssh laptop 'command -v herdr'`) and its server must already be running. Windows remotes require Herdr
-0.9.3 or later with `remote-api-bridge` support.
+In the project sheet's General › Machines list ([project sheet](project-management.md#general)),
+each allowed machine has an on/off switch beside its ✕ (home has one once the project allows
+another machine). Off, the machine is *paused for this project*:
 
-Since 2.0.0 (#144), wherdr reaches a Windows machine through a relay instead of
-`ssh -L` to the socket path, so Herdr sockets under `C:\…` work. It selects a stdio relay for
-socket paths containing a drive letter or backslashes, rather than putting the
-Windows path into `ssh -L`. It uses Herdr's native `remote-api-bridge` for API
-requests and `remote-client-bridge` for notifications, over the same SSH master.
-No additional relay program or TCP listening port is needed. Linux and macOS
-POSIX socket paths continue to use `ssh -L`.
+- No new task of the project goes there: placement skips it, and so do the automatic starts
+  (Keep the board busy, chains, automations). A start asked for it (*Start on…*, the
+  coordinator's `task start <task> --on <machine>`) is refused with *This machine is paused for
+  this project*. With every machine of the project paused, its automatic starts wait.
+- Tasks already running there go on and finish there; a task that started there goes back there
+  (resume, retry, reviewer).
+- Its clone path, readiness and settings stay. On again, it takes work as before.
+- The coordinator's `autopilot show` lists it as *paused for this project*, and so does its card
+  in the project's Machines block (*Takes nothing now: paused for this project*).
