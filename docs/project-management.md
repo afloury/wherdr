@@ -987,10 +987,15 @@ While a merge waits for you, wherdr watches its PR. When the PR starts to
 conflict with its base, or falls behind it under a branch rule that wants it up
 to date, wherdr merges the base into the branch at once (or asks the task's
 agent to resolve the conflicts, starting it again if it was ended, however it
-ended; if it could not start, the update is tried again a few times). The card
-says *updating with* the base and leaves *Your turn* until the PR is clean
-again; an agent's conflict resolution gets a short re-review first. One update
-runs at a time per task.
+ended; if it could not start, the update is tried again a few times). While
+it runs, the task leaves *Your turn* and Tasks to handle, approved or not, and
+stays in its column with a neutral line instead of the red conflict: *updating
+with v3*, *the worker is solving a conflict with v3* (or *fixing the PR* for red
+checks), then *updated with v3, GitHub is checking it* until GitHub reads the
+new commit without a conflict (3 minutes at most). It comes back to *Your turn*
+once the PR is clean, or when the update needs you (its worker waits, the
+conflict is not solved in time). An agent's conflict resolution gets a short
+re-review first. One update runs at a time per task.
 
 When an approved merge waits on something wherdr cannot do by itself (a
 conflict or red checks no agent is on, its worker ended, its machine offline or

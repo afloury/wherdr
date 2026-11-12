@@ -58,12 +58,22 @@ export interface StepState {
   abandoned?: true
   approved?: Approval // the user clicked Merge: it stays, the engine merges once the PR is clean
   catchUp?: CatchUp // the PR conflicts with or is behind its base: being updated, one at a time
+  caughtUp?: CaughtUp // updated with its base: not the user's turn until GitHub reads the PR clean (caughtUpSettled)
 }
 
 // The user's Merge click, kept: who, when, at which reviewed commit.
 export interface Approval { by: 'user', at: number, commit?: string }
 // from: the task's commit when the catch-up started; base: the branch merged in.
 export interface CatchUp { base: string, from: string, at: number }
+// head: the commit pushed by a clean update with `base`, at `at`.
+export interface CaughtUp { base: string, head: string, at: number }
+
+// How long a PR just updated with its base may wait for GitHub's new read before it is the user's again.
+export const SETTLE_MS = 3 * 60_000
+// Its update settled: GitHub read the PR at the pushed commit with no conflict
+// and no update it requires (pr: the engine's read, none on the board), or SETTLE_MS passed.
+export const caughtUpSettled = (c: CaughtUp, pr: { headRefOid: string, mergeStateStatus?: string } | undefined, now: number) =>
+  now - c.at >= SETTLE_MS || (!!pr && pr.headRefOid === c.head && !['DIRTY', 'BEHIND', 'UNKNOWN'].includes(pr.mergeStateStatus ?? ''))
 
 // A merge step that waits for the user's click (a visual merge).
 export const waitsToMerge = (step: PlannedStep | undefined) => step?.ends === 'user' && step.action?.kind === 'github.merge'
@@ -212,7 +222,7 @@ function act(s: StepState, step: PlannedStep, effects: Effect[], now: number): S
 // Enters step i: a step with no end is passed through (the last one is done).
 function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, effects: Effect[]): StepState {
   const step = plan[i]
-  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, paused: undefined, recheckAt: undefined, rechecks: undefined, news: undefined, waitUser: undefined, acting: undefined, watch: undefined, yourTurn: undefined, agent: undefined, fix: undefined, rereview: undefined, catchUp: undefined }
+  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, paused: undefined, recheckAt: undefined, rechecks: undefined, news: undefined, waitUser: undefined, acting: undefined, watch: undefined, yourTurn: undefined, agent: undefined, fix: undefined, rereview: undefined, catchUp: undefined, caughtUp: undefined }
   if (!step) return effects.push({ kind: 'done' }), { ...s, done: true }
   if (!step.ends) return i === plan.length - 1 ? (effects.push({ kind: 'done' }), { ...s, done: true }) : enter(plan, s, i + 1, now, effects)
   if (step.timeout) s.deadline = now + durationMs(step.timeout)
@@ -348,6 +358,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       const retry = step.ends === 'action' && !state.acting && state.yourTurn?.reason === 'action'
       if (step.ends !== 'user' && !retry) return refuse(`Step "${step.id}" does not wait for you`)
       if (state.acting) return refuse('Already checking')
+      state = { ...state, caughtUp: undefined }
       // The click on Merge is an approval that stays, at the reviewed commit.
       if (waitsToMerge(step) && !state.approved && !ev.engine) state = { ...state, approved: { by: 'user', at: now, ...(reviewedCommit(plan, state) ? { commit: reviewedCommit(plan, state) } : {}) } }
       // Updating with its base already: it merges once that is done.
@@ -375,7 +386,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       }
       if (ev.catchUp && waitsToMerge(step)) {
         effects.push({ kind: 'log', text: `${step.id}: ${ev.error ?? 'refused'}: updating it with ${ev.catchUp.base}${state.approved ? ', then it merges by itself' : ''}` })
-        return { state: { ...state, proofs, acting: undefined, yourTurn: undefined, catchUp: { base: ev.catchUp.base, from: ev.catchUp.head, at: now } }, effects }
+        return { state: { ...state, proofs, acting: undefined, yourTurn: undefined, caughtUp: undefined, catchUp: { base: ev.catchUp.base, from: ev.catchUp.head, at: now } }, effects }
       }
       if (w) {
         // Failed: said once in the log and to the coordinator; back to the worker if the step says so.
@@ -415,7 +426,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
     case 'catch-up': {
       if (!waitsToMerge(step) || state.acting || state.catchUp) return refuse('No merge waits to be updated')
       effects.push({ kind: 'log', text: `${step.id}: the PR conflicts with or is behind ${ev.base}: updating it` })
-      return { state: { ...state, yourTurn: undefined, catchUp: { base: ev.base, from: ev.head, at: now } }, effects }
+      return { state: { ...state, yourTurn: undefined, caughtUp: undefined, catchUp: { base: ev.base, from: ev.head, at: now } }, effects }
     }
     case 'caught-up': {
       const c = state.catchUp
@@ -433,7 +444,8 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       const proofs = r && ev.head && state.proofs[r.id]?.commit === c.from ? { ...state.proofs, [r.id]: { ...state.proofs[r.id], commit: ev.head } } : state.proofs
       effects.push({ kind: 'log', text: `${step.id}: updated with ${c.base}${state.approved ? ', merges once ready' : ''}` })
       const yourTurn = state.approved ? undefined : { reason: 'user' as const, badge: stepLabels(step, proofLink(plan, state)).badge }
-      return { state: { ...done, proofs, yourTurn }, effects }
+      // Not the user's turn yet: GitHub still reads the old commit's conflict until it checks the new one.
+      return { state: { ...done, proofs, yourTurn, ...(ev.head ? { caughtUp: { base: c.base, head: ev.head, at: now } } : {}) }, effects }
     }
     case 'skip': return { state: enter(plan, { ...state, backFrom: undefined }, state.at + 1, now, effects), effects }
     case 'tick': {
