@@ -58,8 +58,9 @@ const appButton = (href: string, label: string) => `<a href="${escHtml(href)}" c
 // A `wherdr` fence: what an agent asks the conversation to draw instead of
 // code, one element per line (`kind arg…`). A block with a line not
 // understood stays an ordinary code block, never an error. Kinds:
-// - `choices "A" | "B" | "C"`: 2 to 4 buttons; a tap sends that text as the
-//   user's reply, quoted to the question before the block (ChatView.vue).
+// - `choices "A" | "B" | "C"`: 1 to 4 buttons (one alone is a one-click
+//   confirm); a tap sends that text as the user's reply, quoted to the
+//   question before the block (ChatView.vue).
 //   ```wherdr
 //   choices "Squash" | "Merge commit" | "Rebase"
 //   ```
@@ -68,7 +69,7 @@ const appButton = (href: string, label: string) => `<a href="${escHtml(href)}" c
 export interface WherdrChoices { kind: 'choices', options: string[] }
 export interface WherdrTask { kind: 'task', id: string }
 export type WherdrElement = WherdrChoices | WherdrTask
-export const CHOICES_MIN = 2
+export const CHOICES_MIN = 1
 export const CHOICES_MAX = 4
 const CHOICE_MAX_CHARS = 80
 const CHOICE = /^\s*"([^"]+)"\s*$/

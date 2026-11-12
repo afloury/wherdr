@@ -56,7 +56,8 @@ export const wakeHead = (w: Wake) =>
   `${WAKE_LABEL[w.kind ?? 'autopilot']}: ${w.about ? `${w.about}, ` : ''}wake ${w.id}${w.tries > 1 ? ` (again: no ack after ${WAKE.ACK_MS / 60_000} min)` : ''}`
 
 // A message's wake kind, read from its first line (the chat's label); null: not a wake.
-const HEAD_RE = new RegExp(`^(${Object.values(WAKE_LABEL).join('|')}): (?:.*, )?wake \\S+`)
+// Its queued or pasted form reads the same: a leading <pasted_content> wrapper or blank lines are skipped.
+const HEAD_RE = new RegExp(`^(?:\\s*<pasted_content[^>]*>)?\\s*(${Object.values(WAKE_LABEL).join('|')}): (?:.*, )?wake \\S+`)
 export const wakeKindOf = (text: string): WakeKind | null => {
   const m = HEAD_RE.exec(text)
   return m ? (Object.keys(WAKE_LABEL) as WakeKind[]).find(k => WAKE_LABEL[k] === m[1]) ?? null : null

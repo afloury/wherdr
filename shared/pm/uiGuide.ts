@@ -32,6 +32,7 @@ export function uiGuideRows(role: UiRole, o: { pm?: boolean, key?: string } = {}
   const task = `${o.key || 'ABC'}-12`
   const blocks: UiGuideRow[] = [
     { when: 'You need one choice among 2 to 4', use: { block: 'choices "Squash" | "Merge commit" | "Rebase"' }, not: 'a numbered list ("reply 1, 2 or 3")' },
+    { when: 'You need a yes to one proposal', use: { block: 'choices "OK, fix the test"' }, not: '"reply OK to go on"' },
     { when: 'You name a task whose state matters', use: { block: `task ${task}` }, not: 'its state copied in a sentence (a bare id in passing is fine)' },
   ]
   if (role === 'task') return blocks

@@ -58,11 +58,13 @@ export async function resumeInterrupted(deps: IncidentDeps, now = Date.now()) {
     const r = t.recovery!
     const worker = runs.filter(x => x.task === t.id && x.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
     const p = projects.find(x => x.key === t.project)
-    if (!worker || !p) continue
-    if (machines.has(worker.machine)) { busy.add(r.incident); continue }
+    // Never started (its first start found the machine out of reach): it starts there once it is back.
+    const machine = r.run ? worker?.machine : r.machine
+    if ((r.run && !worker) || machine === undefined || !p) continue
+    if (machines.has(machine)) { busy.add(r.incident); continue }
     let online = true
-    try { machineOn(deps, worker.machine) } catch { online = false }
-    const limited = online && r.cause === 'limit' && !!limitOf(accounts ??= await readAccounts(deps))(worker.program, worker.machine, now)
+    try { machineOn(deps, machine) } catch { online = false }
+    const limited = online && !!worker && r.cause === 'limit' && !!limitOf(accounts ??= await readAccounts(deps))(worker.program, machine, now)
     if (!causeGone(r, { online, limited })) continue
     const placed = await placeFor(deps, t, { waits: (await paceOf(store, p, t, now)).waits })
     if ('hold' in placed) { if (t.held !== placed.hold) await store.logTask({ ...t, held: placed.hold }, 'engine', `resumes once there is room: ${placed.hold}`); continue }
@@ -71,6 +73,15 @@ export async function resumeInterrupted(deps: IncidentDeps, now = Date.now()) {
     forgetMemory(placed.machine)
     // Not waiting any more: a failed start is the user's, never tried again in a loop.
     const fresh = await store.saveTask({ ...t, held: undefined, recovery: { ...r, waits: undefined, resumedAt: now } })
+    if (!r.run || !worker) {
+      const res = await startTask(deps, t.id, { on: placed.machine }).catch((e: Error) => (e instanceof HerdrError && e.code === 'busy' ? null : store.saveTask({ ...fresh, state: 'waiting', waiting: e.message })))
+      if (!res) continue
+      // Out of reach again: held by machineHold (its log says so).
+      if (res.state !== 'working' && (res.recovery?.waits || res.machineWait)) continue
+      await store.logTask((await store.task(t.id))!, 'engine', res.state === 'working' ? `started after incident ${r.incident}: ${r.label} is back` : `could not start after incident ${r.incident}: ${res.waiting ?? ''}`)
+      resumed.push(t.id)
+      continue
+    }
     const { plan } = await load(deps, t.id)
     const handover = handoverText({ ...fresh, stopped: { by: 'the engine', why: interruptedWhy(r), at: now } }, plan, worker.branch)
     const session = worker.program === 'claude' && worker.session ? { session: worker.session, text: resumeText(r, worker.instructions) } : undefined

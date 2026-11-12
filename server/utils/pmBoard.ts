@@ -180,6 +180,8 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.later ? { later: true } : {}), ...(result.detail ? { detail: result.detail } : {}), ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...(result.unapproved ? { unapproved: true as const } : {}), ...catchUp, evidence }, Date.now())
     state = back.state
     mergedInto = result.ok ? result.base : undefined
+    // Try again on a failed action: its result in the log, even when it fails the same way.
+    if (by === 'user' && cur.yourTurn?.reason === 'action') await store.logTask({ ...(await fresh()), step: state }, 'user', `${act.step}: tried again: ${result.ok ? 'done' : result.error ?? 'failed'}`)
     const log = back.effects.find(e => e.kind === 'log')
     const auto = result.ok && approved && by === 'engine' ? 'merged by itself, as the user approved' : undefined
     // A failed action always says why in the log, not only on the card.

@@ -4,7 +4,7 @@
 // noted on the task before it runs, so it is never made twice. A move that
 // tries to fix a block counts (shared/pm/selfFix.ts): past its tries, or with
 // nothing left to try, the coordinator is woken once, with what was tried.
-import { CODE, SCRIPT, guardAction, taskGuards, type PrInfo } from '../../shared/pm/actions'
+import { CODE, SCRIPT, guardAction, readPrInfo, taskGuards, type PrInfo } from '../../shared/pm/actions'
 import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, infraLog, nextMove, redCiText, type MechFacts, type Move } from '../../shared/pm/mechanic'
 import { FIX_MOVE, blockOf, escalation, fixOf, mayTry, noteFix } from '../../shared/pm/selfFix'
 import { addSkip, wakesFor } from '../../shared/pm/wakes'
@@ -124,7 +124,7 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
     forgetMemory(placed.machine)
     const r = await startTask(deps, next.id, { on: placed.machine }).catch((e: Error) => startedElsewhere(e) ? null : ({ ...next, state: 'waiting' as const, waiting: e.message }))
     if (!r) continue
-    if (!r.sameFiles) await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? ''}`)
+    if (!r.sameFiles) await store.logTask((await store.task(next.id))!, 'engine', r.state === 'working' ? `started: ${next.after} done` : `could not start after ${next.after}: ${r.waiting ?? r.held ?? ''}`)
     started.push(next.id)
   }
   return started
@@ -142,7 +142,8 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
     const p = projects.find(x => x.key === t.project)
     if (!p) continue
     const pace = pacedStart(t, 'wake') ? await paceOf(store, p, t, now) : undefined
-    const why = originOf(t) === 'automation' ? paceRefusal(pace?.verdict)
+    // An engine start its machine was out of reach for: already decided, it only waits for a machine.
+    const why = t.machineWait ? undefined : originOf(t) === 'automation' ? paceRefusal(pace?.verdict)
       : coordinatorStartRefusal((await store.coordinator(p.key))?.autopilot, t, (await store.tasks()).filter(x => x.project === p.key), runs, now, true, { pace: pace?.verdict, holds: await slotsOf(store, [p]) })
     if (why && /autopilot on/.test(why)) { await store.logTask({ ...t, held: undefined }, 'engine', `no longer held: ${why}`); continue }
     const placed = why ? { hold: `Waits: ${why}` } : await placeFor(deps, t, { waits: pace?.waits })
@@ -152,7 +153,7 @@ export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
     forgetMemory(placed.machine)
     const r = await startTask(deps, t.id, { on: placed.machine }).catch((e: Error) => startedElsewhere(e) ? null : ({ ...t, state: 'waiting' as const, waiting: e.message }))
     if (!r) continue
-    if (!r.sameFiles) await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? (t.autopilot && !(await launched(store, r)) ? UNCONFIRMED : AUTOPILOT_STARTED.room) : `could not start: ${r.waiting ?? ''}`)
+    if (!r.sameFiles) await store.logTask((await store.task(t.id))!, 'engine', r.state === 'working' ? (t.machineWait ? 'started: a machine is back' : t.autopilot && !(await launched(store, r)) ? UNCONFIRMED : AUTOPILOT_STARTED.room) : `could not start: ${r.waiting ?? r.held ?? ''}`)
     started.push(t.id)
   }
   return started
@@ -307,7 +308,7 @@ export async function startNext(deps: PmLaunchDeps, now = Date.now()) {
     if (!r || r.sameFiles) continue
     const label = deps.machines().find(m => m.key === placed.machine)?.label ?? placed.machine
     const t = (await store.task(first.id))!
-    await store.logTask(r.state === 'working' ? { ...t, autopilot: true } : t, 'engine', r.state === 'working' ? (await launched(store, r) ? `${AUTOPILOT_STARTED.busy}room on ${label}` : UNCONFIRMED) : `the autopilot could not start it: ${r.waiting ?? ''}`)
+    await store.logTask(r.state === 'working' ? { ...t, autopilot: true } : t, 'engine', r.state === 'working' ? (await launched(store, r) ? `${AUTOPILOT_STARTED.busy}room on ${label}` : UNCONFIRMED) : `the autopilot could not start it: ${r.waiting ?? r.held ?? ''}`)
     started.push(first.id)
   }
   return started
@@ -377,10 +378,10 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       facts.loggedIn = (await exec(deps, on, `${PATH_SETUP}\n${LOGIN_SCRIPT}`, [run.program]).catch(() => null))?.code === 0
     } else if (task.step && plan.slice(0, task.step.at).some(s => s.action?.kind === 'github.pr')) {
       const r = await sh(SCRIPT.prInfo, [run.worktree, run.branch])
-      if (r.code !== 0) continue
-      const lines = r.out.split('\n')
-      try { facts.pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] } catch { continue }
-      facts.head = lines[0]?.trim()
+      const info = r.code === 0 ? readPrInfo(r.out) : undefined
+      if (!info) continue
+      facts.pr = info.prs[0]
+      facts.head = info.head
       // The worker pushed the work the engine handed it: the step's Your turn, if any, comes back.
       const work = task.step?.agent
       if (work?.head && facts.pr && facts.pr.headRefOid !== work.head) {
@@ -405,9 +406,8 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
       // A PR its worker opened (no PR step): read for its base only, the branch
       // line's; the one linked, not another PR of the branch. Not found: left as it was.
       const link = prLink(task), r = await sh(SCRIPT.prInfo, [run.worktree, run.branch]).catch(() => null)
-      let prs: PrInfo[] = []
-      try { if (r?.code === 0) prs = JSON.parse(r.out.split('\n').at(-1) || '[]') as PrInfo[] } catch { /* read again next tick */ }
-      const pr = linkedPr(prs, link)
+      // Unreadable: read again next tick.
+      const pr = linkedPr(r?.code === 0 ? readPrInfo(r.out)?.prs ?? [] : [], link)
       if (pr) facts.task = task = await keepPrBase(store, task, pr)
     }
     // A stall: the coordinator's wake, one nudge, then the user's (pmStall.ts).

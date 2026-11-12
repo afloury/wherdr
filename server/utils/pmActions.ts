@@ -6,7 +6,7 @@ import { PATH_SETUP, type CoreAdminDeps } from './coreCreate'
 import { exec } from './pmLaunch'
 import type { PmStore } from './pmStore'
 import { mayMerge } from '../../shared/pm/guards'
-import { BB_STRATEGY, CODE, RETRY_MS, SCRIPT, bbReady, keepsBranch, commandState, guardAction, isTransient, leaks, prReady, receiptId, runsState, type ActionResult, type GhRun, type PrInfo } from '../../shared/pm/actions'
+import { BB_STRATEGY, CODE, RETRY_MS, SCRIPT, bbReady, keepsBranch, commandState, guardAction, isTransient, leaks, outputTail, prReady, readPrInfo, receiptId, runsState, type ActionResult, type GhRun, type PrInfo } from '../../shared/pm/actions'
 import type { ResolvedGuards } from '../../shared/pm/guards'
 import type { BbStatus } from '../../shared/pm/actions'
 import { isPrMerge, type MergeBy, type StepAction } from '../../shared/pm/workflow'
@@ -155,14 +155,17 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
     }
     case 'github.merge': {
       // lag: waits for GitHub to show a fresh push; ci: waits for its checks. Counted apart.
-      let pushed = false, synced = false, lag = 0, ci = 0
+      // unread: PR details that could not be read, tried again as a transient error.
+      let pushed = false, synced = false, lag = 0, ci = 0, unread = 0
       for (;;) {
         const r = await run(deps, SCRIPT.prInfo, [wt, branch])
         if (r.code !== 0) return fail(r)
-        const lines = r.out.split('\n'), head = lines[0] ?? ''
-        let pr: PrInfo | undefined
-        try { pr = (JSON.parse(lines.at(-1) || '[]') as PrInfo[])[0] }
-        catch { return { ok: false, error: 'merge: unreadable PR details' } }
+        const info = readPrInfo(r.out)
+        if (!info) {
+          if (unread < RETRY_MS.length) { await (deps.sleep ?? pause)(RETRY_MS[unread++]!); continue }
+          return { ok: false, error: `merge: unreadable PR details: ${outputTail(r.out) || 'no output'}` }
+        }
+        const head = info.head, pr: PrInfo | undefined = info.prs[0]
         // Merged on GitHub already (by hand, or a merge answered with an error): done.
         // Its base counts as reached only where this step could have merged:
         // a protected branch merged outside your gesture still raises the alert.

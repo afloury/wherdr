@@ -352,6 +352,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await writeJson(files.incidents, { v: 1, incidents: [...old, ...added].slice(-200) })
       return added
     }),
+    // A task the incident also holds (its start found the machine out of reach): in its tasks, once.
+    linkIncident: (id: string, task: string) => write(async () => {
+      const old = (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? []
+      await writeJson(files.incidents, { v: 1, incidents: old.map(i => (i.id === id && !i.tasks.includes(task) ? { ...i, tasks: [...i.tasks, task] } : i)) })
+    }),
     // Their Incident wake queued: never again.
     toldIncidents: (ids: string[], at: number) => write(async () => {
       const old = (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? []
