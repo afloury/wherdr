@@ -88,17 +88,20 @@ describe('engine liveness', () => {
     expect(woken[0]).toContain('WH-1')
   })
 
-  it('runs a stuck action again, and clears its running mark when that fails', async () => {
+  it('runs a stuck or stranded action again, and clears its running mark when that fails', async () => {
     const { store, deps, at } = await setup()
-    await at('WH-2', { state: 'waiting', waiting: 'asked' })
     const t = (await store.task('WH-1'))!
     await at('WH-1', { step: { ...t.step!, acting: true } })
-    const acted: string[] = []
-    const act = async (id: string) => { acted.push(id); throw new Error('refused') }
+    const acted: [string, boolean | undefined][] = []
+    const act = async (id: string) => { acted.push([id, (await store.task(id))!.step!.acting]); throw new Error('refused') }
     await sentinelTick(deps, Date.now() + SENTINEL_MS + 60_000, { act, wake: async () => [] })
-    expect(acted).toEqual(['WH-1'])
-    const after = (await store.task('WH-1'))!
-    expect(after.step!.acting).toBeUndefined()
-    expect(after.log!.at(-1)!.text).toContain('cleared its stale running mark (running it again failed: refused)')
+    // WH-1 marked running with none running; WH-2 at its action step with no mark and no move spent: both run again.
+    expect(acted).toEqual([['WH-1', true], ['WH-2', true]])
+    for (const id of ['WH-1', 'WH-2']) {
+      const after = (await store.task(id))!
+      expect(after.step!.acting).toBeUndefined()
+      expect(after.log!.at(-1)!.text).toContain('cleared its running mark (running its action again failed: refused)')
+    }
+    expect((await store.task('WH-2'))!.step!.tries?.merge).toBe(1)
   })
 })

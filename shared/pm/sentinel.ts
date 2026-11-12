@@ -6,7 +6,7 @@
 // runs the step again, looks again after 2N, 4N…, and wakes the coordinator
 // once per task and step. Pure.
 import type { Task } from './run'
-import type { PlannedStep } from './steps'
+import type { PlannedStep, StepState } from './steps'
 
 export const SENTINEL_MS = 20 * 60_000
 // Its own log lines start so; they are no progress.
@@ -70,4 +70,13 @@ export function seenBy(task: Task, plan: PlannedStep[]): string {
     task.log?.length ? `last: "${task.log.at(-1)!.text.slice(0, 160)}"` : '',
   ]
   return parts.filter(Boolean).join(', ')
+}
+
+// A step ending on its action, stranded with none running (moved there by a
+// workflow change, an action that never started): marked running for one
+// more attempt, so the engine's step action runs it again. Undefined: not such a step.
+export function strandedAction(s: StepState, plan: PlannedStep[]): StepState | undefined {
+  const step = plan[s.at]
+  if (!step?.action || step.ends !== 'action' || s.acting || s.yourTurn) return
+  return { ...s, acting: true, tries: { ...s.tries, [step.id]: (s.tries?.[step.id] ?? 0) + 1 } }
 }

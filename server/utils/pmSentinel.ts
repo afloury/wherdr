@@ -2,7 +2,7 @@
 // the others' pass and is logged on it once; a task the mechanic cannot follow
 // says why on its card; and at the end of each mechanic tick, the sentinel
 // re-enters every working task that has been quiet with no stated reason.
-import { READ_HOLD, SENTINEL_LOG, SENTINEL_MS, isReadHold, seenBy, sentinelDue, sentinelFired } from '../../shared/pm/sentinel'
+import { READ_HOLD, SENTINEL_LOG, SENTINEL_MS, isReadHold, seenBy, sentinelDue, sentinelFired, strandedAction } from '../../shared/pm/sentinel'
 import { taskPlan, type Task } from '../../shared/pm/run'
 import { showIds } from '../../shared/pm/projectKey'
 import { actionRunning, stepAction } from './pmBoard'
@@ -71,24 +71,26 @@ export async function sentinelTick(deps: PmLaunchDeps, now = Date.now(), opts: S
       fired.push(task.id)
       const state = sentinelFired(task.sentinel, key, now, ms), s = task.step!
       const sees = seenBy(task, plan)
+      // Runs the step's action again; refused, its running mark goes so the step can move.
+      const rerun = (done: string) => act(task.id).then(() => done, async (e: Error) => {
+        const fresh = (await store.task(task.id))!
+        await store.saveTask({ ...fresh, step: { ...fresh.step!, acting: undefined } })
+        return `cleared its running mark (running its action again failed: ${e.message})`
+      })
+      // A merge move spent at this head: given back once, the mechanic makes it again.
+      const spent = !s.acting && state.n === 1 ? Object.entries(task.mech ?? {}).filter(([k]) => k.startsWith('merge:')).sort((a, b) => b[1] - a[1])[0]?.[0] : undefined
+      const stranded = strandedAction(s, plan)
       let tried: string
-      if (s.acting) {
-        // Marked running, but nothing runs: run again; refused, the mark goes so the step can move.
-        tried = await act(task.id).then(() => 'ran its action again', async (e: Error) => {
-          const fresh = (await store.task(task.id))!
-          await store.saveTask({ ...fresh, step: { ...fresh.step!, acting: undefined } })
-          return `cleared its stale running mark (running it again failed: ${e.message})`
-        })
-      } else {
-        // A merge move spent at this head: given back once, the mechanic makes it again.
-        const spent = state.n === 1 ? Object.entries(task.mech ?? {}).filter(([k]) => k.startsWith('merge:')).sort((a, b) => b[1] - a[1])[0]?.[0] : undefined
-        if (spent) {
-          const fresh = (await store.task(task.id))!
-          const { [spent]: _, ...mech } = fresh.mech ?? {}
-          await store.saveTask({ ...fresh, mech })
-          tried = `gave back its spent move ${spent}: the merge is tried again`
-        } else tried = 'found nothing to run again'
-      }
+      if (s.acting) tried = await rerun('ran its stale running action again')
+      else if (spent) {
+        const fresh = (await store.task(task.id))!
+        const { [spent]: _, ...mech } = fresh.mech ?? {}
+        await store.saveTask({ ...fresh, mech })
+        tried = `gave back its spent move ${spent}: the merge is tried again`
+      } else if (stranded) {
+        await store.saveTask({ ...(await store.task(task.id))!, step: stranded })
+        tried = await rerun('ran its action again')
+      } else tried = 'found nothing to run again'
       const mins = Math.round(ms / 60_000), again = Math.round((state.next - now) / 60_000)
       const why = `${task.id} (${task.title}): ${SENTINEL_LOG} ${mins} min with no stated reason, ${sees}. The engine ${tried}.`
       const woken = state.woke ? [] : await wake((await store.task(task.id))!, showIds(projects, why))

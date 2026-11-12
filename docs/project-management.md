@@ -1093,9 +1093,9 @@ the mechanical blocks itself and wakes it only when that fails:
   task with no stated reason (Your turn, a wait, a hold, its place in the merge
   queue, running checks, an agent holding its step or working on what it was
   handed) that has had no History line, no engine move and no step change for
-  20 minutes is re-entered: an action marked running but not running is run
-  again (refused, the mark goes), a merge already tried at that commit is tried
-  again once. wherdr looks again after 40 minutes, then 80…, and wakes the
+  20 minutes is re-entered: its step's action, marked running but not running
+  or never started, is run again (refused, the mark goes); a merge already
+  tried at that commit is tried again once. wherdr looks again after 40 minutes, then 80…, and wakes the
   coordinator once per task and step, saying what it saw and tried;
 
 These blocks do not wake the coordinator. After 2 failed tries on the same
