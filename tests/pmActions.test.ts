@@ -72,6 +72,14 @@ const job = (over: Partial<ActionJob> = {}): ActionJob => ({
 })
 
 describe('runAction', () => {
+  it('tries unreadable PR details again, then says why with the output\'s tail, private parts masked', async () => {
+    const cut = { code: 0, out: 'abc123\n[{"url":"https://pr/1","body":"cut\nsh: 1: cd: /home/sam/project: warning' }
+    const f = fakeDeps(Array.from({ length: RETRY_MS.length + 1 }, () => cut))
+    const r = await runAction(f.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))
+    expect(f.sleeps).toEqual(RETRY_MS)
+    expect(r).toEqual({ ok: false, error: 'merge: unreadable PR details: abc123 | [{"url":"https://pr/1","body":"cut | sh: 1: cd: [home path]/project: warning' })
+  })
+
   it('refuses before running anything, and keeps the refusal as its receipt', async () => {
     const f = fakeDeps([])
     expect(await runAction(f.deps, job({ action: { kind: 'git.land', target: 'main' } }))).toEqual({ ok: false, error: 'main is protected: only you may merge into it' })
@@ -586,6 +594,26 @@ esac
     const s = setup('moved-foreign'), reviewed = s.head()
     s.elsewhere('foreign', 'task/A-1')
     expect(await s.merge(1, reviewed)).toEqual({ ok: false, error: expect.stringMatching(/^merge: the PR head [0-9a-f]{7} has commits the task's worktree never had/) })
+  })
+
+  // A large PR whose commit messages hold \n (dash's echo used to break the JSON), and gh warning on stderr after it.
+  it('reads a large PR with a stderr line after its JSON', async () => {
+    const s = setup('large-pr'), head = s.head(), bin = path.join(tmp, 'large-pr', 'bin')
+    const pr = {
+      url: 'https://pr/1', baseRefName: 'dev', headRefOid: 'HEAD_OID', statusCheckRollup: [{ name: 'ci', status: 'COMPLETED', conclusion: 'SUCCESS' }],
+      files: Array.from({ length: 300 }, (_, i) => ({ path: `src/file-${i}.ts`, additions: 3, deletions: 1 })), additions: 900, deletions: 300,
+      commits: Array.from({ length: 80 }, (_, i) => ({ oid: `${i}`.padStart(40, '0'), messageHeadline: `change ${i}`, messageBody: 'first line\nsecond line\\n literal' })),
+    }
+    fs.writeFileSync(path.join(bin, 'pr.json'), `${JSON.stringify([pr])}\n`)
+    fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
+case "$*" in
+  *"--state open"*) sed "s/HEAD_OID/$(git --git-dir "${s.origin}" rev-parse task/A-1)/" "${bin}/pr.json"; echo "warning: a newer gh is available" >&2;;
+  "pr merge"*) ;;
+  *) exit 1;;
+esac
+`, { mode: 0o755 })
+    expect((await s.sh(SCRIPT.prInfo, [s.repo, 'task/A-1'])).out.length).toBeGreaterThan(20_000)
+    expect(await s.merge(1, head)).toEqual({ ok: true, link: 'https://pr/1', base: 'dev', commit: head })
   })
 
   it('sends the task back to its review for the new commits only, then on to merge', () => {
