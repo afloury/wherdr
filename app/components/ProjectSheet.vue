@@ -45,7 +45,12 @@ async function load() {
   fill(p.value, r.workflow?.prefs ?? {})
   fillSetup(r.workflow?.worktree)
   loaded.value = true
+  saved.value = snapshot()
 }
+// Save is enabled only once a field differs from what was loaded or saved.
+const snapshot = () => JSON.stringify([form, setup])
+const saved = ref('')
+const dirty = computed(() => loaded.value && snapshot() !== saved.value)
 const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
 // The worktree setup: paths one per line (or comma separated). Folders to
 // share: empty is node_modules (no `share`), noShare is none (`share: []`).
@@ -70,6 +75,7 @@ const save = () => run('save', async () => {
   // project, and the shared lists that show its key and color are read again.
   await load()
   fill(r.project, workflow.value?.prefs ?? {})
+  saved.value = snapshot()
   loadCoordinators()
   loadTaskAgents()
   toast(tl('Saved'))
@@ -160,7 +166,7 @@ async function remove() {
       </div>
 
       <div class="project-panel" role="tabpanel" :aria-labelledby="`project-tab-${tab}`" data-testid="project-panel">
-        <form v-if="tab === 'general'" class="sheet-form" @submit.prevent="save">
+        <form v-if="tab === 'general'" class="sheet-form" :aria-busy="busy !== ''" data-testid="pm-general" @submit.prevent="save">
           <div class="pm-cols">
             <span class="pm-col">
               <label class="field-label" for="pmName">{{ t('Name') }}</label>
@@ -234,7 +240,14 @@ async function remove() {
           <small v-if="workflow" class="muted">{{ tl('Fallback: the reviewer started instead while the reviewer\'s account is out of quota. None: reviews wait for it.') }}</small>
           <template v-if="workflow">
             <span class="field-label pm-later">{{ tl('Worktree setup') }}</span>
-            <div class="pm-cols">
+            <!-- Help first, then a two-column grid (one column on the phone) with
+                 no hole: Share no folder takes a full row, Time limit the left cell. -->
+            <span class="pm-help muted" data-testid="pm-setup-help">
+              <small>{{ tl('Prepared before a task\'s first worker.') }}</small>
+              <small>{{ tl('Files to copy: ignored files taken from the project\'s clone (a tracked or missing one is skipped).') }}</small>
+              <small>{{ tl('Folders to share: taken from the clone while the lockfile is the same in both; otherwise the setup command runs, at most 10m. Empty: node_modules.') }}</small>
+            </span>
+            <div class="pm-setup">
               <span class="pm-col pm-agent">
                 <label class="field-label" for="pmCopy">{{ tl('Files to copy') }}</label>
                 <UTextarea id="pmCopy" v-model="setup.copy" :rows="2" autoresize size="lg" class="w-full mono" placeholder=".env" maxlength="4000" data-testid="pm-setup-copy" />
@@ -242,13 +255,11 @@ async function remove() {
               <span class="pm-col pm-agent">
                 <label class="field-label" for="pmShare">{{ tl('Folders to share') }}</label>
                 <UTextarea id="pmShare" v-model="setup.share" :rows="2" autoresize size="lg" class="w-full mono" placeholder="node_modules" maxlength="4000" :disabled="setup.noShare" data-testid="pm-setup-share" />
-                <label class="toggle-row">
-                  <span><b>{{ tl('Share no folder') }}</b><small>{{ tl('The setup command always runs') }}</small></span>
-                  <USwitch v-model="setup.noShare" color="success" size="xl" data-testid="pm-setup-no-share" />
-                </label>
               </span>
-            </div>
-            <div class="pm-cols">
+              <label class="toggle-row pm-wide">
+                <span><b>{{ tl('Share no folder') }}</b><small>{{ tl('The setup command always runs') }}</small></span>
+                <USwitch v-model="setup.noShare" color="success" size="xl" data-testid="pm-setup-no-share" />
+              </label>
               <span class="pm-col pm-agent">
                 <label class="field-label" for="pmCommand">{{ tl('Setup command') }}</label>
                 <UInput id="pmCommand" v-model="setup.command" size="lg" class="w-full mono" placeholder="npm ci --prefer-offline" maxlength="500" data-testid="pm-setup-command" />
@@ -256,14 +267,17 @@ async function remove() {
               <span class="pm-col pm-agent">
                 <label class="field-label" for="pmLock">{{ tl('Lockfile') }}</label>
                 <UInput id="pmLock" v-model="setup.lockfile" size="lg" class="w-full mono" placeholder="package-lock.json" maxlength="200" />
+              </span>
+              <span class="pm-col pm-agent">
                 <label class="field-label" for="pmTimeout">{{ tl('Time limit') }}</label>
                 <UInput id="pmTimeout" v-model="setup.timeout" size="lg" class="w-full mono" :placeholder="SETUP_TIMEOUT" maxlength="4" />
               </span>
             </div>
-            <small class="muted">{{ tl('Before a task\'s first worker. Files to copy: ignored files taken from the project\'s clone (a tracked or missing one is skipped). Folders to share: taken from the clone while the lockfile is the same in both; otherwise the setup command runs, at most 10m. Folders to share empty: node_modules; Share no folder: none.') }}</small>
           </template>
           <p v-else-if="loaded" class="muted settings-hint">{{ tl('No workflow chosen yet: tasks follow a minimal one (to do, work, done). Ask the project’s coordinator to propose one, or start from a template.') }}</p>
-          <UButton type="submit" size="xl" color="primary" variant="solid" class="hw-cta" :loading="busy === 'save'" :disabled="!loaded || busy !== ''" data-testid="pm-save">{{ tl('Save') }}</UButton>
+          <div class="pm-save">
+            <UButton type="submit" size="xl" color="primary" variant="solid" class="hw-cta" :loading="busy === 'save'" :disabled="!dirty || busy !== ''" data-testid="pm-save">{{ tl('Save') }}</UButton>
+          </div>
 
           <span class="field-label pm-later">{{ tl('Repository') }}</span>
           <span class="pm-vis">
@@ -330,7 +344,14 @@ async function remove() {
 .pm-color:focus-visible { outline: 1px solid var(--accent); outline-offset: -4px; }
 .pm-path { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; overflow-wrap: anywhere; }
 .pm-later { margin-top: 18px; }
-.sheet-form > .hw-cta { margin-top: 16px; }
+/* Save: its own row under the fields, never inline in a text. */
+.pm-save { display: flex; margin-top: 16px; }
+/* The worktree setup: short help lines, then two columns at most (one on the
+   phone, under 540 px) filled in order; a .pm-wide item takes a whole row. */
+.pm-help { display: grid; gap: 2px; margin-bottom: 10px; }
+.pm-setup { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, max(260px, calc(50% - 10px))), 1fr)); gap: 12px 20px; align-items: start; }
+.pm-wide { grid-column: 1 / -1; }
+.pm-setup .toggle-row { margin-top: 0; }
 /* Two fields side by side where there is room (name and key, worker and
    reviewer), one under the other on the phone. */
 .pm-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 0 20px; align-items: start; }

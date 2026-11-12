@@ -153,8 +153,10 @@ its folder, branches and task worktrees stay on the machine.
   optional model (empty: the agent's default), and the reviewer's optional
   **Fallback** (see [Reviewer fallback](#reviewer-fallback)).
 - **Worktree setup**: what wherdr prepares in a new task's worktree before its
-  worker first starts, so the worker does not rebuild it. Saved with *Save*, in
-  the workflow's `worktree` block (shown in Workflow › JSON):
+  worker first starts, so the worker does not rebuild it. Short help lines sit
+  above its fields, laid out in two columns on a computer and one on the phone.
+  Saved with *Save*, on its own row under the fields and enabled once a field of
+  the General tab changed, in the workflow's `worktree` block (shown in Workflow › JSON):
   - *Files to copy*: ignored files taken from the project's clone, such as `.env`
     or a local config, one path per line. Literal paths only; a file git tracks
     (it is already there) or the clone does not have is skipped, and the log says so.
