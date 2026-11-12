@@ -99,7 +99,8 @@ it('opens the project sheet on the URL\'s tab; Guards saves a branch added; Gene
     worktree: { copy: ['.env', 'config/local.json'], share: [], lockfile: '', command: '', timeout: '' }, // share none kept
   } }))
 
-  await vi.waitFor(() => expect(inSheet('pm-save')!.hasAttribute('disabled')).toBe(false))
+  await vi.waitFor(() => expect(inSheet('pm-general')!.getAttribute('aria-busy')).toBe('false'))
+  expect(inSheet('pm-save')!.hasAttribute('disabled')).toBe(true) // saved: nothing to save
   await pick(w, 'pm-visibility', 'private')
   await vi.waitFor(() => expect(w.find('[data-testid="pm-public"]').exists()).toBe(false))
   expect(calls[1]).toEqual({ url: '/api/pm/project-visibility', body: { key: 'WEB', value: 'private' } })
@@ -127,11 +128,27 @@ it('a coordinator\'s proposal: badge on the row and on Workflow, the URL opens i
   outdated = false
 })
 
+// WHR-284: the worktree setup's help sits above its fields, Save on its own row,
+// enabled only once something changed.
+it('the worktree setup: help above the fields, Save on its own row and enabled only after a change', async () => {
+  state = { ...state, enabled: true, projects: [web()] }
+  mounted = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=general' })
+  await vi.waitFor(() => expect(inSheet('pm-setup-copy')).toBeTruthy())
+  const help = inSheet('pm-setup-help')!
+  const save = inSheet('pm-save')!
+  expect(help.contains(save)).toBe(false)
+  expect(save.parentElement!.classList.contains('pm-save')).toBe(true)
+  expect(help.compareDocumentPosition(inSheet('pm-setup-copy')!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  expect(save.hasAttribute('disabled')).toBe(true)
+  inSheet('pm-setup-no-share')!.click()
+  await vi.waitFor(() => expect(save.hasAttribute('disabled')).toBe(false))
+})
+
 it('a saved key stays in the field and the badge, and the shared coordinators are read again', async () => {
   state = { ...state, enabled: true, projects: [web()] }
   const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=general' })
   mounted = w
-  await vi.waitFor(() => expect(inSheet('pm-save')!.hasAttribute('disabled')).toBe(false))
+  await vi.waitFor(() => expect(inSheet('pm-setup-copy')).toBeTruthy())
   const key = inSheet('pm-key')!.querySelector('input') ?? inSheet('pm-key') as HTMLInputElement
   ;(key as HTMLInputElement).value = 'site'
   key.dispatchEvent(new Event('input'))
@@ -139,7 +156,7 @@ it('a saved key stays in the field and the badge, and the shared coordinators ar
   const reads = coordinatorReads
   inSheet('pm-save')!.closest('form')!.dispatchEvent(new Event('submit'))
   await vi.waitFor(() => expect(calls.at(-1)?.body.newKey).toBe('SITE'))
-  await vi.waitFor(() => expect(inSheet('pm-save')!.hasAttribute('disabled')).toBe(false))
+  await vi.waitFor(() => expect(inSheet('pm-general')!.getAttribute('aria-busy')).toBe('false'))
   expect((key as HTMLInputElement).value).toBe('SITE')
   expect(document.body.querySelector('.pm-key-row .project-badge')?.textContent?.trim()).toBe('SITE')
   expect(coordinatorReads).toBeGreaterThan(reads)
