@@ -4,7 +4,7 @@
 // in the compact list on the left, the demo agent's line moves with its state
 // and opens on its question and answers while it waits. Its field never has
 // the focus: the user acts from the phone.
-import { AGENT, HERO, OPTIONS, PICKED, QUESTION, SHOP, agentState } from '~/utils/heroDemo'
+import { AGENT, HERO, OPTIONS, PICKED, QUESTION, agentState } from '~/utils/heroDemo'
 import type { DemoAgent } from '~/utils/demoScript'
 
 const root = ref<HTMLElement | null>(null)
@@ -20,7 +20,7 @@ const choices = OPTIONS.map(o => o.title)
 
 <template>
   <div ref="root" class="hero-desk" aria-hidden="true">
-    <DemoDesktop :width="1000" :agents="agents" :project="SHOP" :active="AGENT" :choices-for="AGENT" :choices="choices" :hit="step >= 10 ? PICKED : undefined" where="~/projects/acme-api">
+    <DemoDesktop :width="1000" :agents="agents" :active="AGENT" :choices-for="AGENT" :choices="choices" :hit="step >= 10 ? PICKED : undefined" where="~/projects/acme-api">
       <div class="body" :class="{ fade: step >= 11 }"><DemoHeroChat :step="step" :loop="loop" /></div>
       <template #bottom>
         <DemoTurnCard v-if="step >= 9 && step < 11" :question="QUESTION" :options="OPTIONS" :picked="step >= 10 ? PICKED : undefined" />
