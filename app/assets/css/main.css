@@ -2940,6 +2940,8 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .wake-run { flex-direction: row; font: 500 10.5px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
 .wake-head { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .wake-run .wake-head { font-size: inherit; }
+.wake-run:has(.wake-last) .wake-head { flex: none; }
+.wake-last { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12.5px/1.4 var(--sans); letter-spacing: 0; text-transform: none; }
 .wake-time { flex: none; font: 400 10.5px/1 var(--mono); color: var(--dim); letter-spacing: .04em; }
 .wake-chev { flex: none; width: 13px; height: 13px; }
 .wake-row:hover .wake-head, .wake-run:hover, .wake-row:focus-visible .wake-head, .wake-run:focus-visible { color: var(--text-2); outline: none; }
