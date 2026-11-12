@@ -23,7 +23,7 @@ const slots = (w: Awaited<ReturnType<typeof mount>>) => w.find('.machine-actions
 describe('machine card', () => {
   it('this machine: its badge, keep awake alone in the first action slot', async () => {
     const w = await mount({ machine: { key: 'machine-a', label: 'machine-a', local: true, status: 'online', error: null } })
-    expect(w.find('[data-testid="machine-state"]').text()).toBe('This machine')
+    expect(w.find('[data-testid="machine-state"]').text()).toBe('Host')
     expect(w.find('[data-testid="machine-awake-open"]').exists()).toBe(true)
     expect(w.find('[data-testid="machine-rename"]').exists()).toBe(false)
     expect(slots(w)).toBe(1)

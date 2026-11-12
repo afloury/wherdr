@@ -22,7 +22,7 @@ async function mount() {
 // This machine's key is '': it must not read as the card being renamed (renaming = '').
 it('shows this machine as a card, not in rename mode', async () => {
   const w = await mount()
-  expect(w.find('[data-testid="local-machine"] .machine-state').text()).toBe('This machine')
+  expect(w.find('[data-testid="local-machine"] .machine-state').text()).toBe('Host')
   expect(w.find('.rename-form').exists()).toBe(false)
 })
 const addButton = (w: Awaited<ReturnType<typeof mount>>) => w.findAll('button').find(b => b.text() === 'Add machine')!

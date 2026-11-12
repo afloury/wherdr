@@ -4,9 +4,10 @@ import { join } from 'node:path'
 import { startCore } from './core'
 import { wherdr } from '../../shared/pm/examples'
 
-// The project sheet (General) and the task sheet (To do with three screenshots),
+// The project sheet (General) and the task sheet (To do at its merge step, three screenshots),
 // on the phone and at 1440x900, with long texts: nothing wider than the sheet, no
-// sideways scroll, and one vertical scroll (the sheet's body). Only a browser lays
+// sideways scroll, one vertical scroll (the sheet's body) whose end reaches the
+// sheet's bottom edge. Only a browser lays
 // them out, so this cannot be a component test.
 const LONG = 'a-rather-long-name-without-any-space-to-check-that-it-wraps-or-shrinks'
 const SHOTS = ['0123456789a1.png', '0123456789a2.png', '0123456789a3.png']
@@ -29,6 +30,20 @@ const overflows = (page: Page) => page.evaluate(() => {
     if (el !== body && /auto|scroll/.test(cs.overflowY) && el.scrollHeight > el.clientHeight + 1) found.push(`inner scroll: ${name(el)}`)
   }
   return found
+})
+
+// Scrolled to its end, the sheet's body reaches the sheet's bottom edge (its gap
+// and the safe area are padding inside the scroll, not a band over the content),
+// and its last element shows in full above that edge.
+const bottom = (page: Page) => page.evaluate(() => {
+  const sheet = document.querySelector<HTMLElement>('.hw-sheet')!
+  const body = sheet.querySelector<HTMLElement>('[data-slot="body"]')!
+  body.scrollTop = body.scrollHeight
+  const edge = sheet.getBoundingClientRect().bottom - parseFloat(getComputedStyle(sheet).borderBottomWidth)
+  const shown = [...body.querySelectorAll('*')].filter(el => el.getBoundingClientRect().height > 0)
+  const last = Math.max(...shown.map(el => el.getBoundingClientRect().bottom))
+  // `|| 0`: a sub-pixel difference rounds to -0, which toEqual tells from 0.
+  return { band: Math.round(edge - body.getBoundingClientRect().bottom) || 0, clipped: last > body.getBoundingClientRect().bottom + 1 }
 })
 
 test('sheets: no sideways scroll, one scroll, long texts', async ({ page, browser }, info) => {
@@ -67,6 +82,7 @@ test('sheets: no sideways scroll, one scroll, long texts', async ({ page, browse
     await expect(p.getByTestId('pm-save')).toBeEnabled()
     expect(await overflows(p)).toEqual([])
     await wide(p, size)
+    expect(await bottom(p)).toEqual({ band: 0, clipped: false })
     await p.screenshot({ path: `.shots/project-sheet-${size}.png`, animations: 'disabled' })
 
     await p.goto(`${core.url}/#/board`)
@@ -76,6 +92,7 @@ test('sheets: no sideways scroll, one scroll, long texts', async ({ page, browse
     await expect.poll(() => p.getByTestId('todo-shots').locator('img').evaluateAll(l => l.every(i => (i as HTMLImageElement).complete))).toBe(true)
     expect(await overflows(p)).toEqual([])
     await wide(p, size)
+    expect(await bottom(p)).toEqual({ band: 0, clipped: false })
     await p.screenshot({ path: `.shots/task-sheet-${size}.png`, animations: 'disabled' })
   }
   try {

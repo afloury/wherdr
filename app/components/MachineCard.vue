@@ -29,7 +29,7 @@ const time = (r: MemoryRow, field: 'from' | 'to', e: Event) => saveHours(r, { [f
     </form>
     <template v-else>
       <b class="machine-name" :title="machine.label">{{ machine.label }}</b>
-      <span class="mono-label machine-state" :data-status="machine.local ? 'local' : machine.status" data-testid="machine-state">{{ machine.local ? t('This machine') : t(STATE[machine.status] || machine.status) }}</span>
+      <span class="mono-label machine-state" :data-status="machine.local ? 'local' : machine.status" data-testid="machine-state">{{ machine.local ? t('Host') : t(STATE[machine.status] || machine.status) }}</span>
       <span class="machine-actions">
         <UButton v-if="online" color="neutral" variant="ghost" size="sm" icon="i-lucide-sun" :aria-label="t('Keep awake')" data-testid="machine-awake-open" @click="openAwake(machine)" />
         <i v-else />

@@ -8,12 +8,15 @@ Other machines are **core machines**: herdr-core (hc) reaches them over SSH and 
 terminals there, as `hc machine add` does. wherdr shows what `machine.list` returns; it opens no
 SSH connection of its own.
 
+- **The host**, the machine wherdr runs on, shows by its host name (`HOST_LABEL` when set) with
+  a **HOST** badge, wherever a machine is named.
 - **On the home screen**, each machine is one of the machine tabs, online or offline, with its
   count of rows ([Machines as tabs](home.md#machines-as-tabs)). When a machine goes offline, its
   last terminals stay visible, marked offline, until core reaches it again. A project shows on
   the tabs of its machines, or where its sheet's **Shown in** puts it
   ([General](project-management.md#general)).
-- **New** starts a terminal or an agent on any online machine (`terminal.run` with `on`). Home,
+- **New** starts a terminal or an agent on any online machine (`terminal.run` with `on`),
+  preselecting one of the current machine tab ([New agents and tabs](home.md#new-agents-and-tabs)). Home,
   folders, Git detection and installed agents of that machine come from `machine.exec`; folders
   must stay under the machine's home.
 - **Conversations, files and quotas** of a core machine are read through `machine.exec` on that
@@ -31,7 +34,7 @@ On the machine to add:
 ## Manage machines
 
 **Settings › Machines** shows the core's version and uptime and one card per machine, this
-machine first. Each card has the same columns: the name, its state (*This machine*, *Connected*,
+machine first. Each card has the same columns: the name, its state (*Host*, *Connected*,
 *Connecting…* or *Offline*), then the keep awake, rename and forget buttons at the right edge (a
 button that does not apply leaves its place empty, so the buttons line up across cards). Under
 the name come the last error, the keep-awake line and the battery warning, then the memory line
