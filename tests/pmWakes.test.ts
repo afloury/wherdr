@@ -78,6 +78,11 @@ describe('wake queue', () => {
     expect(heads).toEqual(['Autopilot: wake w1', 'Step check: CO-2 (deploy), wake w2', 'Engine: wake w3', 'Health check: wake w4'])
     expect(heads.map(wakeKindOf)).toEqual(['autopilot', 'step', 'engine', 'health'])
     expect(wakeKindOf('Autopilot: please look')).toBeNull()
+    // Its queued form (Claude's paste wrapper, a leading line break) reads the same as the transcript's.
+    const text = wakeText({ ...q[0]!, kind: 'incident', about: 'inc1' })
+    expect(wakeKindOf(text)).toBe('incident')
+    expect(wakeKindOf(`<pasted_content id="1">\n${text}\n</pasted_content id="1">`)).toBe('incident')
+    expect(wakeKindOf(`\n ${text}`)).toBe('incident')
     // An old wake without a kind is the autopilot's; the ack line is the same for all.
     expect(wakeText({ ...q[0]!, kind: undefined })).toMatch(/^Autopilot: wake w1\n[\s\S]*run: wherdr pm ack w1$/)
     expect(wakeText(q[1]!)).toMatch(/run: wherdr pm ack w2$/)
