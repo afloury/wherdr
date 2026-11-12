@@ -95,6 +95,10 @@ inner scroll box. That scroll ends at the sheet's bottom edge: the gap under
 the last element and the phone's home bar room are padding inside it
 (`--sheet-end` on `.hw-sheet`, on the footer when the sheet has one), never a
 band under the scrolled content; a sheet's own content adds no bottom padding.
+A bar pinned at the bottom of the scroll (`position: sticky; bottom: 0`, a
+task's To do buttons on the phone, the folder picker's buttons) is the body's
+last element and carries that padding itself; the body then has none, so the
+bar sits on the sheet's edge and nothing scrolls under it.
 What could overflow shrinks, wraps or is ellipsized: grid
 and flex children get `min-width: 0` (`minmax(0, 1fr)` tracks), long names and
 paths wrap with `overflow-wrap: anywhere`, fields are `w-full` or

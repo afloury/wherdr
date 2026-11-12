@@ -46,6 +46,16 @@ const bottom = (page: Page) => page.evaluate(() => {
   return { band: Math.round(edge - body.getBoundingClientRect().bottom) || 0, clipped: last > body.getBoundingClientRect().bottom + 1 }
 })
 
+// On the phone To do's buttons are pinned (sticky): scrolled to the middle or the
+// end, the bar sits on the sheet's bottom edge, with no body padding under it
+// for content to scroll through.
+const pinned = (page: Page) => page.evaluate(() => {
+  const body = document.querySelector<HTMLElement>('.hw-sheet [data-slot="body"]')!
+  const bar = body.querySelector<HTMLElement>('.todo-actions')!
+  const gap = (top: number) => { body.scrollTop = top; return Math.round(body.getBoundingClientRect().bottom - bar.getBoundingClientRect().bottom) || 0 }
+  return { scrolls: body.scrollHeight > body.clientHeight, middle: gap((body.scrollHeight - body.clientHeight) / 2), end: gap(body.scrollHeight), padding: getComputedStyle(body).paddingBottom }
+})
+
 test('sheets: no sideways scroll, one scroll, long texts', async ({ page, browser }, info) => {
   // Three made-up screenshots: two of a computer, one of a phone.
   const shot = async (width: number, height: number, hue: number) => {
@@ -94,6 +104,7 @@ test('sheets: no sideways scroll, one scroll, long texts', async ({ page, browse
     await wide(p, size)
     expect(await bottom(p)).toEqual({ band: 0, clipped: false })
     await p.screenshot({ path: `.shots/task-sheet-${size}.png`, animations: 'disabled' })
+    if (size !== 'desktop') expect(await pinned(p)).toEqual({ scrolls: true, middle: 0, end: 0, padding: '0px' })
   }
   try {
     await mkdir('.shots', { recursive: true })

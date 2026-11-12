@@ -131,7 +131,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
 </template>
 
 <style scoped>
-.todo { display: flex; flex-direction: column; gap: 12px; }
+.todo { display: flex; flex-direction: column; gap: 12px; flex: 1 0 auto; }
 .todo p { margin: 0; }
 .todo-say { color: var(--text); font-weight: 600; overflow-wrap: anywhere; }
 .todo-actions { display: flex; flex-direction: column; gap: 10px; }
@@ -146,11 +146,14 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
 /* Large, yet leaving Merge in view. */
 .todo-shot img { display: block; height: auto; max-height: min(40vh, 420px); max-width: 100%; width: auto; }
 /* On the phone the step's buttons (Merge…) stay pinned at the bottom of the
-   sheet while its content scrolls: always in reach, never under the sheet's edge,
-   over the home bar's room at the end of the scroll (--sheet-safe, main.css). */
+   sheet while its content scrolls: always in reach, flush with the sheet's edge,
+   the home bar's room inside the bar (--sheet-safe). The sheet's body then adds
+   no padding below it (main.css), so nothing shows under it; the bar comes last
+   (order), under the step's status and Send back, and at the bottom of a short tab. */
 @media (max-width: 699px) {
   .todo-shot img { max-height: 26vh; }
-  .todo-actions:has(> .todo-buttons:not(:empty)) { position: sticky; bottom: 0; z-index: 1; padding: 10px 0 calc(10px + var(--sheet-safe, 0px)); background: var(--bg); border-top: 1px solid var(--line-soft); }
+  .todo-actions .task-sheet-actions > * { flex: 1 1 auto; justify-content: center; }
+  .todo-actions:has(> .todo-buttons:not(:empty)) { order: 1; margin-top: auto; position: sticky; bottom: 0; z-index: 1; padding: 10px 0 calc(10px + var(--sheet-safe, 0px)); background: var(--sheet-bg, var(--bg)); border-top: 1px solid var(--line-soft); }
 }
 /* On a computer the screenshots wrap as a grid. */
 @media (min-width: 700px) {
