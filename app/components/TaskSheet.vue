@@ -235,7 +235,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-status.ok { color: var(--done); }
 .task-check { display: grid; gap: 4px; }
 .task-times { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.task-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.task-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; flex: 1 0 auto; }
 .task-desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
 /* Headings shown small: a description is not a document. */
 .task-md { flex: none; overflow-wrap: anywhere; color: var(--text-2); }
@@ -245,6 +245,11 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-spec-note { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text-2); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .task-sheet-actions:empty { display: none; }
+/* On the phone a row's buttons share its width: a wrapped row is full too
+   (Stop under Try again and Report a problem spans the line, not one stray button). */
+@media (max-width: 699px) {
+  .task-sheet-actions > * { flex: 1 1 auto; justify-content: center; }
+}
 .task-report-open { display: grid; gap: 6px; justify-items: start; padding: 10px 12px; border: 1px solid var(--working); }
 .task-stop-confirm { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--danger); }
 .task-plan { list-style: none; margin: 0; padding: 0; }

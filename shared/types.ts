@@ -279,6 +279,9 @@ export interface ChatItem {
   job?: { id: string, tool: string, out: string }
   // omp tools: shown the way omp's terminal shows them (see server/utils/ompTools.ts).
   omp?: OmpToolView
+  // First item of a turn the agent took by itself, not after a message
+  // (Claude: a background task's notification).
+  own?: boolean
 }
 // An omp tool call: omp's own title ("Bash", "Grep"…), its target (command,
 // path with its line range, pattern, query), counts, wall time, and the end
