@@ -8,6 +8,7 @@ import type { UiTargetId } from '../uiTargets'
 import { MERGE_BY, type MergeBy, type Template } from './workflow'
 import { MEMORY_CAP, sameGuards, type Turn } from './coordinator'
 import { READY_SORTS } from '../spaces'
+import { NOTES_COMMANDS, NOTES_RULE, parseNotes, type NotesCommand } from '../notes'
 import { THEMES } from '../../app/utils/themes'
 import { FOCUS_BORDERS } from '../../app/utils/focusBorder'
 import { BACKDROPS } from '../../app/utils/backdrop'
@@ -42,6 +43,8 @@ export type AlfredCommand =
   // Show a place of wherdr beside Alfred's conversation (shared/uiOpen.ts).
   | { name: 'ui open', link: string }
   | { name: 'ui targets' }
+  // The notes whiteboard (shared/notes.ts): every scope.
+  | { name: 'notes', notes: NotesCommand }
   // Delegation: a message to the project's coordinator (started if needed).
   | { name: 'tell', key: string, text: string }
   // A proposal the user answers in wherdr (the workflow JSON comes as the call's input).
@@ -124,6 +127,11 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
     i++
   }
   const [w0 = '', w1 = '', w2, w3, ...rest] = words
+  if (w0 === 'notes') {
+    if (apply || propose || resume) return { error: 'notes commands take no --apply, --propose nor --resume' }
+    const notes = parseNotes(words.slice(1), flags)
+    return 'error' in notes ? notes : { name: 'notes', notes }
+  }
   const verb = `${w0} ${w1}`
   const extra = Object.keys(flags).find(f => !(FLAGS[verb] ?? []).includes(f))
   if (extra) return { error: `unknown option --${extra}` }
@@ -217,7 +225,8 @@ export function dryRun(argv: string[], plan: AlfredPlan) {
 }
 const quoteWord = (w: string) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`)
 
-export const alfredCommandList = () => ALFRED_COMMANDS.map(c => `- \`wherdr alfred ${c.usage}${CHANGES.some(v => c.usage.startsWith(v)) ? ' [--apply|--propose]' : ''}\`: ${c.does}`)
+export const alfredCommandList = () => [...ALFRED_COMMANDS.map(c => `- \`wherdr alfred ${c.usage}${CHANGES.some(v => c.usage.startsWith(v)) ? ' [--apply|--propose]' : ''}\`: ${c.does}`),
+  ...NOTES_COMMANDS.map(c => `- \`wherdr alfred ${c.usage}\`: ${c.does}`), `- ${NOTES_RULE}`]
 
 // Why Alfred may not propose `next` as project `key`'s workflow.
 export function workflowEditRefusal(old: Template | null, next: Template, turn: Turn, key: string): string | undefined {

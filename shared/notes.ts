@@ -1,0 +1,131 @@
+// Notes: a whiteboard agents write and the user reads (WHR-295). Pure: the
+// `notes …` words of `wherdr alfred` and `wherdr pm`, the note file's format,
+// the paths and links that stay inside the notes folder, and who writes which
+// scope. The server (server/utils/notesStore.ts) reads and writes the files.
+import { projectOnTab, projectTabMachines } from '../app/utils/projectTabs'
+import type { MachineGroup } from '../app/utils/machineBar'
+
+// all: every tab; else a tab group's id (*group:…), from the machineGroups setting.
+export type NoteScope = string
+export interface Note { id: string, title: string, scope: NoteScope, body: string, created: string, updated: string }
+
+export type NotesCommand =
+  | { verb: 'list', scope?: string }
+  | { verb: 'show', id: string } // a note's id, or a file's path
+  | { verb: 'add', title: string, scope?: string } // the lines come as the call's input
+  | { verb: 'edit', id: string, title?: string, scope?: string } // new lines on input; none: kept
+  | { verb: 'remove', id: string }
+  | { verb: 'file put' | 'file remove', path: string } // put: the file's text on input
+
+export const NOTES_COMMANDS: { usage: string, does: string }[] = [
+  { usage: 'notes list [--scope all|<group>]', does: 'the notes you may write (id, title, scope, dates) and the linked files' },
+  { usage: 'notes show <id|path>', does: 'one note, or one linked file' },
+  { usage: 'notes add "<title>" [--scope all|<group>] < lines.md', does: 'add a note: a title and a few short Markdown lines on stdin (checkboxes, links to another note `other-note.md`, a file `plans/x.md` or an in-app place `#/board?task=ID`); scope all (every tab) or one tab group, by name' },
+  { usage: 'notes edit <id> [--title "<title>"] [--scope all|<group>] < lines.md', does: 'change a note: new lines on stdin replace its own (empty stdin keeps them)' },
+  { usage: 'notes remove <id>', does: 'remove a note once its subject is decided or done' },
+  { usage: 'notes file put <folder/name.md> < file.md', does: 'write a Markdown file under a folder of the notes (plans/x.md), for content too long for a note: link it from a note' },
+  { usage: 'notes file remove <folder/name.md>', does: 'remove a linked file no note needs any more' },
+]
+export const NOTES_RULE = 'Notes are the user\'s whiteboard, read-only for them: offer a reminder line in your reply ("Add a reminder: …?"), write it after their yes, and remove it once its subject is decided or done. Keep a note to a few lines; move anything longer to a linked file. Every change is logged with who made it'
+
+export const MAX_LINES = 12
+export const MAX_BODY = 1500
+export const MAX_FILE = 200_000
+const ID_RE = /^[a-z0-9][a-z0-9-]{0,47}$/
+const SEGMENT_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/
+
+const usage = (verb: string) => ({ error: `usage: ${NOTES_COMMANDS.filter(c => c.usage.startsWith(`notes ${verb}`)).map(c => c.usage).join(' | ')}` })
+
+// words and flags after `notes` → a command, or the reason it is not one.
+export function parseNotes(words: string[], flags: Record<string, string>): NotesCommand | { error: string } {
+  const [w0 = '', w1, w2, ...rest] = words
+  const allowed = { list: ['scope'], add: ['scope'], edit: ['title', 'scope'] }[w0] ?? []
+  const extra = Object.keys(flags).find(f => !allowed.includes(f))
+  if (extra) return { error: `unknown option --${extra}` }
+  const { scope, title } = flags
+  if (w0 === 'list') return w1 ? usage(w0) : { verb: w0, ...(scope ? { scope } : {}) }
+  if (w0 === 'show' || w0 === 'remove') return w1 && !w2 ? { verb: w0, id: w1 } : usage(w0)
+  if (w0 === 'add') {
+    const t = cleanTitle(words.slice(1).join(' '))
+    return t ? { verb: w0, title: t, ...(scope ? { scope } : {}) } : usage(w0)
+  }
+  if (w0 === 'edit') {
+    if (!w1 || w2) return usage(w0)
+    if (title !== undefined && !cleanTitle(title)) return { error: '--title is one line of text' }
+    return { verb: w0, id: w1, ...(title !== undefined ? { title: cleanTitle(title) } : {}), ...(scope ? { scope } : {}) }
+  }
+  if (w0 === 'file' && (w1 === 'put' || w1 === 'remove')) {
+    if (!w2 || rest.length) return usage(`file ${w1}`)
+    return filePath(w2) ? { verb: `file ${w1}`, path: w2 } : { error: `${w2}: a file is <folder>/<name>.md inside the notes (letters, digits, . _ -), never .. nor an absolute path` }
+  }
+  return { error: `unknown command: notes ${words.join(' ')} (${NOTES_COMMANDS.map(c => c.usage.split(' ').slice(0, 2).join(' ')).filter((u, i, a) => a.indexOf(u) === i).join(', ')})` }
+}
+
+export const cleanTitle = (t: string) => t.replace(/\s+/g, ' ').trim().slice(0, 120)
+export const noteId = (id: string) => ID_RE.test(id)
+// A title's id: its words, lowercase, joined by dashes.
+export const slug = (title: string) => title.toLowerCase().normalize('NFKD').replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '') || 'note'
+
+// A linked file's path: <folder>/…/<name>.md, every part plain (no .., no
+// dot file), so it never leaves the notes folder nor clashes with a note.
+export function filePath(p: string): boolean {
+  const parts = p.split('/')
+  return parts.length >= 2 && parts.length <= 4 && parts.every(s => SEGMENT_RE.test(s) && !s.includes('..')) && p.endsWith('.md')
+}
+
+// A note's lines: short, the whiteboard has no room for more.
+export function noteBody(input: unknown): string | { error: string } {
+  const lines = String(input ?? '').split(/\r?\n/).map(l => l.trimEnd())
+  while (lines.length && !lines[lines.length - 1]) lines.pop()
+  while (lines.length && !lines[0]) lines.shift()
+  if (lines.length > MAX_LINES || lines.join('\n').length > MAX_BODY) return { error: `A note holds at most ${MAX_LINES} lines and ${MAX_BODY} characters: move the details to a linked file (notes file put plans/<name>.md) and keep one line that links to it` }
+  return lines.join('\n')
+}
+
+// The note-folder targets a body links to, as paths from the folder: a note
+// (<id>.md) or a file. Web and in-app (#/…) links are left out; a link that
+// would leave the folder is an error.
+export function noteLinks(body: string): string[] | { error: string } {
+  const out: string[] = []
+  for (const m of body.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)) {
+    const target = m[1]!.split('#')[0]!
+    if (/^[a-z][a-z0-9+.-]*:/i.test(m[1]!) || m[1]!.startsWith('#') || !target) continue
+    const note = /^([^/]+)\.md$/.exec(target)
+    if (!(note && noteId(note[1]!)) && !filePath(target)) return { error: `${m[1]}: a link inside the notes is <id>.md or <folder>/<name>.md, never .. nor an absolute path` }
+    out.push(target)
+  }
+  return out
+}
+
+// The note file: a small front matter (JSON values), then the lines.
+export function noteText(n: Note): string {
+  return ['---', ...(['title', 'scope', 'created', 'updated'] as const).map(k => `${k}: ${JSON.stringify(n[k])}`), '---', n.body, ''].join('\n')
+}
+export function readNote(id: string, text: string): Note | null {
+  const m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(text.replace(/\r\n/g, '\n'))
+  if (!m) return null
+  const f: Record<string, string> = {}
+  for (const line of m[1]!.split('\n')) {
+    const kv = /^(\w+):\s*(.*)$/.exec(line)
+    if (kv) try { const v = JSON.parse(kv[2]!); if (typeof v === 'string') f[kv[1]!] = v } catch { /* a broken line is skipped */ }
+  }
+  if (!f.title || !f.scope) return null
+  return { id, title: f.title, scope: f.scope, body: m[2]!.replace(/\n+$/, ''), created: f.created ?? '', updated: f.updated ?? f.created ?? '' }
+}
+
+// A scope as an agent names it (all, a group's name or id) → its stored value.
+export function resolveScope(raw: string, groups: readonly MachineGroup[]): NoteScope | { error: string } {
+  if (raw.toLowerCase() === 'all') return 'all'
+  const g = groups.find(x => x.id === raw) ?? groups.find(x => x.name.toLowerCase() === raw.trim().toLowerCase())
+  return g ? g.id : { error: `Unknown scope ${raw}: all, or a tab group (${groups.map(x => x.name).join(', ') || 'none yet'})` }
+}
+export const scopeName = (scope: NoteScope, groups: readonly MachineGroup[]) => (scope === 'all' ? 'all' : groups.find(g => g.id === scope)?.name ?? scope)
+
+// The scopes a project's coordinator writes: the tab groups its project shows
+// in, and all (every tab) only when it shows in every group. override: its
+// projectTabs entry. Alfred writes every scope.
+export function writableScopes(project: { machine: string, machines?: string[], paused?: string[] }, override: string | undefined, groups: readonly MachineGroup[]): NoteScope[] {
+  const tab = projectTabMachines({ machines: [project.machine, ...(project.machines ?? []).filter(m => m !== project.machine)], paused: project.paused }, override, groups)
+  const mine = groups.filter(g => projectOnTab(tab, g.machines)).map(g => g.id)
+  return mine.length === groups.length ? ['all', ...mine] : mine
+}
