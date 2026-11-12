@@ -49,6 +49,16 @@ describe('scheduled prompts', () => {
     expect(items.filter(i => i.role !== 'assistant')).toEqual([])
     expect(items.queue).toEqual([])
   })
+
+  it('a task notification between turns marks the turn Claude takes by itself', () => {
+    const items = parse([
+      user('hello', '2026-01-01T09:59:00.000Z'),
+      reply('hi', '2026-01-01T09:59:01.000Z'),
+      user('<task-notification>\n<summary>Background command finished</summary>\n</task-notification>', '2026-01-01T10:00:00.000Z'),
+      reply('The fix is live.', '2026-01-01T10:00:01.000Z'),
+    ])
+    expect(items.map(i => [i.role, i.text, !!i.own])).toEqual([['user', 'hello', false], ['assistant', 'hi', false], ['assistant', 'The fix is live.', true]])
+  })
 })
 
 describe('a message the user typed stays queued', () => {

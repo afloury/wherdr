@@ -103,6 +103,27 @@ describe('wakes in a conversation', () => {
   })
 })
 
+describe('a turn the coordinator takes by itself after routine wakes', () => {
+  afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] } })
+
+  it('stays outside the fold, and the fold shows its last answer', async () => {
+    herdrState.value = { ok: true, workspaces: [], panes: [pane] }
+    items = [
+      ...wake('Autopilot: wake a1', 'Scheduled wake', 'Nothing to do.', 8),
+      ...wake('Autopilot: wake a2', 'Scheduled wake', '**WHR-12 merged.**\nThe board is clear.', 9),
+      { role: 'assistant', text: 'The fix is live.', ts: at(10), own: true },
+    ]
+    const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] }, global: { stubs: { UTooltip: { template: '<slot />' } } } })
+    try {
+      await expect.poll(() => w.find('[data-testid="wake-run"]').exists()).toBe(true)
+      expect(w.find('[data-testid="wake-run"]').text()).toContain('2 routine checks')
+      expect(w.find('.wake-last').text()).toBe('· last: “WHR-12 merged.”')
+      expect(w.find('.chat').text()).toContain('The fix is live.')
+      expect(w.find('.chat').text()).not.toContain('Nothing to do.')
+    } finally { w.unmount() }
+  })
+})
+
 describe('a wake row while the user sends', () => {
   afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] } })
 

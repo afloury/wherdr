@@ -582,12 +582,14 @@ sends it. The conversation shows it apart from your messages, as a compact
 muted row across the column: the kind as a small coloured tag, its first
 reason (*Scheduled wake*, *WHR-9: stuck: …*) and its time; a tap opens the
 full text and the coordinator's whole turn. That turn ends at its own end,
-or at your next message or `!`/`/` command, which show as usual below it.
+at your next message or `!`/`/` command, or where the coordinator speaks on
+its own (a background task it ran finished), which all show as usual below it.
 Once that turn is over, the coordinator's last answer in it sits under the row, smaller and muted, two lines at
 most. Consecutive routine wakes (no incident, nothing changed: no file edit
 nor `wherdr pm` command beyond `ack`, `read`, `list`, `show`, `incidents`,
-`help`; an answer that asks nothing) fold into one row, *3 routine checks,
-08:00–11:00*, that opens on tap. An incident, or a wake whose answer asks you
+`help`; an answer that asks nothing) fold into one row, *3 routine checks ·
+last: "WHR-12 merged"*, 08:00–11:00, with the first line of the last answer in
+it, that opens on tap. The fold holds only the wakes and their own turns. An incident, or a wake whose answer asks you
 something, keeps its row (in its stronger colour); an answer that asks you
 stays a full reply, with its answer buttons:
 

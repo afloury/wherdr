@@ -331,8 +331,18 @@ export function claudeParser(home = '') {
     // A prompt Claude ran from its queue (promptSource "queued") is never put back into its field.
     lastSaid = item && item.role === 'user' && d.parentUuid && d.promptSource !== 'queued' ? { item, parent: d.parentUuid, uuid: d.uuid } : null
   }
+  // A background task's notification starts a turn Claude takes by itself: its
+  // first agent item is marked `own` (the notification itself never shows).
+  let ownAt = -1
+  const markOwn = () => {
+    if (ownAt < 0 || items.length <= ownAt) return
+    const it = items[ownAt]!
+    if (it.role === 'assistant' || it.role === 'tool' || it.role === 'thinking') it.own = true
+    ownAt = -1
+  }
   function feed(lines: Lines) {
     for (let li = 0; li < lines.length; li++) {
+      markOwn()
       const line = lines[li]
       const ref = lines.refs ? lines.refs[li] : undefined
       if (!line) continue
@@ -437,6 +447,8 @@ export function claudeParser(home = '') {
           else if (cmd) {
             const args = (content.match(/<command-args>([^<]*)<\/command-args>/) || [])[1] || ''
             pushCmd({ role: 'cmd', text: `${cmd[1]} ${args}`.trim(), ts })
+          } else if (/^\s*<task-notification>/.test(content)) {
+            ownAt = items.length
           } else if (special(content, ts)) {
             continue
           } else if (/^\[Request interrupted/.test(content)) {
@@ -503,6 +515,7 @@ export function claudeParser(home = '') {
         }
       }
     }
+    markOwn()
   }
   function result(): Parsed {
     const out: Parsed = items.map((orig) => {
