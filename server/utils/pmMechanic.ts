@@ -35,12 +35,13 @@ import { watchAgents } from './pmWatchdog'
 import { startFileWaits, syncFiles } from './pmFiles'
 import { agentBack, agentWaits, fixWatch, handToAgent, handedWatch, MACHINE_OFFLINE, MACHINE_PAUSED, retriesAction, roomWakeDue, type WorkerNow } from '../../shared/pm/release'
 import { isRoomHold } from '../../shared/pm/placement'
-import { isPaused } from '../../shared/pm/project'
+import { isPaused, type Project } from '../../shared/pm/project'
 import { noteBack, noteStall } from './pmStall'
 import { askedQuestion } from './pmRead'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 import { killTerminal } from './pmProcs'
 import { wakeCoordinators } from './pmWakes'
+import { noteCannotFollow, noteTaskError, sentinelTick } from './pmSentinel'
 
 export const LOGIN_SCRIPT = `export DISABLE_AUTOUPDATER=1; case $1 in claude) claude auth status;; codex) codex login status;; *) exit 2;; esac >/dev/null 2>&1`
 
@@ -354,93 +355,111 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now()) {
   const projects = await store.projects(), runs = await store.runs()
   const made: { task: string, move: Move['kind'] }[] = []
   const seen: Seen[] = []
-  for (let task of await store.tasks()) {
-    if (task.state === 'todo' || task.step?.done) {
-      prSeen.delete(task.id)
-      if (task.queue) { const { queue: _, queueOut: __, ...t } = task; await store.saveTask(t) }
-      continue
-    }
-    const p = projects.find(x => x.key === task.project)
-    const t = p ? await store.workflow(p.key) : null
-    if (!p || !t) continue
-    const run = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
-    if (!run) continue
-    const plan = taskPlan(t, task, p)
-    // Before the machine is reached: work handed to a worker on a machine gone offline says so.
-    task = await noteHandedWork(deps, task, plan, run, now)
-    let on: string | undefined
-    try { on = runOn(deps, run) } catch { continue }
-    const sh = actionShell(deps, on)
-    task = await noteIdle(deps, task, plan, runs, now)
-    task = await noteFixWork(deps, task, plan, run, now)
-    const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false, now }
-    if (task.state === 'waiting' && task.waitKind === 'auth') {
-      facts.loggedIn = (await exec(deps, on, `${PATH_SETUP}\n${LOGIN_SCRIPT}`, [run.program]).catch(() => null))?.code === 0
-    } else if (task.step && plan.slice(0, task.step.at).some(s => s.action?.kind === 'github.pr')) {
-      const r = await sh(SCRIPT.prInfo, [run.worktree, run.branch])
-      const info = r.code === 0 ? readPrInfo(r.out) : undefined
-      if (!info) continue
-      facts.pr = info.prs[0]
-      facts.head = info.head
-      // The worker pushed the work the engine handed it: the step's Your turn, if any, comes back.
-      const work = task.step?.agent
-      if (work?.head && facts.pr && facts.pr.headRefOid !== work.head) {
-        const retry = retriesAction(plan, task.step!)
-        facts.task = task = await store.logTask({ ...task, step: agentBack(task.step!) }, 'engine', `${work.kind}: the worker pushed it${retry ? `, ${plan[task.step!.at]!.id} is tried again` : ''}`)
-        if (retry) facts.task = task = await stepAction(deps, task.id, 'engine').catch(() => task)
-      }
-      // Kept for the board: a task is stalled only while its CI is still red (pm/blocked.ts).
-      const ci = ciOf(facts.pr, facts.head)
-      if (ci && (ci.head !== task.ci?.head || ci.red !== task.ci?.red || !!ci.running !== !!task.ci?.running)) facts.task = task = await store.saveTask({ ...task, ci })
-      const seen = prNow(facts.pr, requiredChecks(plan))
-      if (seen) prSeen.set(task.id, seen)
-      else prSeen.delete(task.id)
-      facts.task = task = await keepPrBase(store, task, facts.pr)
-      // Updated with its base and read clean by GitHub at that commit: the user's turn again.
-      if (task.step?.caughtUp && caughtUpSettled(task.step.caughtUp, facts.pr, now)) {
-        const { caughtUp: _, ...step } = task.step
-        facts.task = task = await store.saveTask({ ...task, step })
-      }
-      const st = run.terminal ? await deps.call<{ status?: string | { state?: string } }>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null) : null
-      const s = typeof st?.status === 'string' ? st.status : st?.status?.state
-      facts.agentBusy = s === 'working' || s === 'blocked'
-      // Red, neither re-run nor sent back yet: its log says whether the code failed or the infrastructure.
-      if (ci?.red && !facts.agentBusy && !task.mech?.[`rerun:${ci.head}`] && !task.mech?.[`red:${ci.head}`])
-        facts.infra = infraLog((await sh(SCRIPT.failedLog, [run.worktree, ci.head]).catch(() => null))?.out ?? '')
-    } else if (prLink(task)) {
-      // A PR its worker opened (no PR step): read for its base only, the branch
-      // line's; the one linked, not another PR of the branch. Not found: left as it was.
-      const link = prLink(task), r = await sh(SCRIPT.prInfo, [run.worktree, run.branch]).catch(() => null)
-      // Unreadable: read again next tick.
-      const pr = linkedPr(r?.code === 0 ? readPrInfo(r.out)?.prs ?? [] : [], link)
-      if (pr) facts.task = task = await keepPrBase(store, task, pr)
-    }
-    // A stall: the coordinator's wake, one nudge, then the user's (pmStall.ts).
-    facts.task = task = await noteStall(deps, task, plan, runs, run.worktree, sh, now).catch(() => task)
-    seen.push({ facts, run, sh })
+  for (const each of await store.tasks()) {
+    // One task's error is logged on it, once, and never stops the others' pass.
+    const one = await followTask(deps, each, projects, runs, now).catch(async (e) => { await noteTaskError(store, each.id, e) })
+    if (one) seen.push(one)
   }
   await queueTick(deps, seen)
   for (const { facts, run, sh } of seen) {
-    let task = facts.task
-    const block = blockOf(task)
-    if (block && !fixOf(task, block)) task = await store.saveTask({ ...task, selfFix: noteFix(task, block, now) })
-    const next = nextMove({ ...facts, task })
-    const fix = block && next && FIX_MOVE[block] === next.move.kind ? block : undefined
-    // No move, or past its tries: the coordinator's, once.
-    if (!next || (fix && !mayTry(task, fix))) { await escalate(deps, task, run, now); continue }
-    const tried = fix && { selfFix: noteFix(task, fix, now, TRY_TEXT[next.move.kind]) }
-    const noted = await store.saveTask({ ...task, mech: { ...task.mech, [next.key]: now }, ...tried })
-    const text = await perform(deps, noted, run, next.move, facts, sh).catch((e: Error) => `failed: ${e.message}`)
-    // Not delivered (the agent's terminal is gone): tried again on a later tick.
-    if (text === null) {
-      const { [next.key]: _, ...mech } = (await store.task(task.id))!.mech ?? {}
-      await store.saveTask({ ...(await store.task(task.id))!, mech })
-      continue
-    }
-    await store.logTask((await store.task(task.id))!, 'engine', `${next.move.kind}: ${text}`)
-    made.push({ task: task.id, move: next.move.kind })
+    const t = await moveTask(deps, facts, run, sh, now).catch(async (e) => { await noteTaskError(store, facts.task.id, e) })
+    if (t) made.push(t)
   }
+  // Last: every working task quiet with no stated reason is re-entered (pmSentinel.ts).
+  await sentinelTick(deps, now).catch(() => {})
   return made
+}
+
+// One task's facts for this tick; undefined: nothing to move (why, if any, on its card).
+async function followTask(deps: PmLaunchDeps, task: Task, projects: Project[], runs: Run[], now: number): Promise<Seen | undefined> {
+  const { store } = deps
+  if (task.state === 'todo' || task.step?.done) {
+    prSeen.delete(task.id)
+    if (task.queue) { const { queue: _, queueOut: __, ...t } = task; await store.saveTask(t) }
+    return
+  }
+  const p = projects.find(x => x.key === task.project)
+  const t = p ? await store.workflow(p.key) : null
+  if (!p || !t) { await noteCannotFollow(store, task, 'its project or workflow is missing'); return }
+  const run = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
+  if (!run) { await noteCannotFollow(store, task, 'it has no worker run'); return }
+  const plan = taskPlan(t, task, p)
+  // Before the machine is reached: work handed to a worker on a machine gone offline says so.
+  task = await noteHandedWork(deps, task, plan, run, now)
+  let on: string | undefined
+  try { on = runOn(deps, run) } catch (e) { await noteCannotFollow(store, task, `its machine: ${(e as Error).message}`); return }
+  const sh = actionShell(deps, on)
+  task = await noteIdle(deps, task, plan, runs, now)
+  task = await noteFixWork(deps, task, plan, run, now)
+  const facts: MechFacts = { task, plan, guards: taskGuards(t, task.type), branch: run.branch, agentBusy: false, now }
+  if (task.state === 'waiting' && task.waitKind === 'auth') {
+    facts.loggedIn = (await exec(deps, on, `${PATH_SETUP}\n${LOGIN_SCRIPT}`, [run.program]).catch(() => null))?.code === 0
+  } else if (task.step && plan.slice(0, task.step.at).some(s => s.action?.kind === 'github.pr')) {
+    const r = await sh(SCRIPT.prInfo, [run.worktree, run.branch])
+    const info = r.code === 0 ? readPrInfo(r.out) : undefined
+    if (!info) { await noteCannotFollow(store, task, `could not read the PR: ${lastLine(r.out) || (r.code === 0 ? 'unreadable answer' : `exit ${r.code}`)}`); return }
+    facts.pr = info.prs[0]
+    facts.head = info.head
+    // The worker pushed the work the engine handed it: the step's Your turn, if any, comes back.
+    const work = task.step?.agent
+    if (work?.head && facts.pr && facts.pr.headRefOid !== work.head) {
+      const retry = retriesAction(plan, task.step!)
+      facts.task = task = await store.logTask({ ...task, step: agentBack(task.step!) }, 'engine', `${work.kind}: the worker pushed it${retry ? `, ${plan[task.step!.at]!.id} is tried again` : ''}`)
+      if (retry) facts.task = task = await stepAction(deps, task.id, 'engine').catch(() => task)
+    }
+    // Kept for the board: a task is stalled only while its CI is still red (pm/blocked.ts).
+    const ci = ciOf(facts.pr, facts.head)
+    if (ci && (ci.head !== task.ci?.head || ci.red !== task.ci?.red || !!ci.running !== !!task.ci?.running)) facts.task = task = await store.saveTask({ ...task, ci })
+    const seen = prNow(facts.pr, requiredChecks(plan))
+    if (seen) prSeen.set(task.id, seen)
+    else prSeen.delete(task.id)
+    facts.task = task = await keepPrBase(store, task, facts.pr)
+    // Updated with its base and read clean by GitHub at that commit: the user's turn again.
+    if (task.step?.caughtUp && caughtUpSettled(task.step.caughtUp, facts.pr, now)) {
+      const { caughtUp: _, ...step } = task.step
+      facts.task = task = await store.saveTask({ ...task, step })
+    }
+    const st = run.terminal ? await deps.call<{ status?: string | { state?: string } }>('terminal.get', { terminal: run.terminal }, 3000).catch(() => null) : null
+    const s = typeof st?.status === 'string' ? st.status : st?.status?.state
+    facts.agentBusy = s === 'working' || s === 'blocked'
+    // Red, neither re-run nor sent back yet: its log says whether the code failed or the infrastructure.
+    if (ci?.red && !facts.agentBusy && !task.mech?.[`rerun:${ci.head}`] && !task.mech?.[`red:${ci.head}`])
+      facts.infra = infraLog((await sh(SCRIPT.failedLog, [run.worktree, ci.head]).catch(() => null))?.out ?? '')
+  } else if (prLink(task)) {
+    // A PR its worker opened (no PR step): read for its base only, the branch
+    // line's; the one linked, not another PR of the branch. Not found: left as it was.
+    const link = prLink(task), r = await sh(SCRIPT.prInfo, [run.worktree, run.branch]).catch(() => null)
+    // Unreadable: read again next tick.
+    const pr = linkedPr(r?.code === 0 ? readPrInfo(r.out)?.prs ?? [] : [], link)
+    if (pr) facts.task = task = await keepPrBase(store, task, pr)
+  }
+  // A stall: the coordinator's wake, one nudge, then the user's (pmStall.ts).
+  facts.task = task = await noteStall(deps, task, plan, runs, run.worktree, sh, now).catch(() => task)
+  facts.task = task = await noteCannotFollow(store, task)
+  return { facts, run, sh }
+}
+
+// At most one mechanical move for a followed task; returns it, if made.
+async function moveTask(deps: PmLaunchDeps, facts: MechFacts, run: Run, sh: Seen['sh'], now: number): Promise<{ task: string, move: Move['kind'] } | undefined> {
+  const { store } = deps
+  let task = facts.task
+  const block = blockOf(task)
+  if (block && !fixOf(task, block)) task = await store.saveTask({ ...task, selfFix: noteFix(task, block, now) })
+  const next = nextMove({ ...facts, task })
+  const fix = block && next && FIX_MOVE[block] === next.move.kind ? block : undefined
+  // No move, or past its tries: the coordinator's, once.
+  if (!next || (fix && !mayTry(task, fix))) { await escalate(deps, task, run, now); return }
+  const tried = fix && { selfFix: noteFix(task, fix, now, TRY_TEXT[next.move.kind]) }
+  const noted = await store.saveTask({ ...task, mech: { ...task.mech, [next.key]: now }, ...tried })
+  const text = await perform(deps, noted, run, next.move, facts, sh).catch((e: Error) => `failed: ${e.message}`)
+  // Not delivered (the agent's terminal is gone): tried again on a later tick.
+  if (text === null) {
+    const { [next.key]: _, ...mech } = (await store.task(task.id))!.mech ?? {}
+    await store.saveTask({ ...(await store.task(task.id))!, mech })
+    return
+  }
+  await store.logTask((await store.task(task.id))!, 'engine', `${next.move.kind}: ${text}`)
+  return { task: task.id, move: next.move.kind }
 }
 
 // What a try on a block is, in the coordinator's wake.

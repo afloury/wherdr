@@ -1086,6 +1086,17 @@ the mechanical blocks itself and wakes it only when that fails:
 - **an action interrupted** by a restart of wherdr: run again (a merge done
   meanwhile is recorded as merged);
 - **a stalled agent** (below): nudged, then restarted once.
+- **a task nobody moves**: one task's error never stops the engine's pass
+  for the others; it is written once to that task's **History**. A working task
+  wherdr cannot follow (no worker run, its PR unreadable) says why on its card
+  (*The engine cannot follow it: could not read the PR: …*). And a working
+  task with no stated reason (Your turn, a wait, a hold, its place in the merge
+  queue, running checks, an agent holding its step or working on what it was
+  handed) that has had no History line, no engine move and no step change for
+  20 minutes is re-entered: its step's action, marked running but not running
+  or never started, is run again (refused, the mark goes); a merge already
+  tried at that commit is tried again once. wherdr looks again after 40 minutes, then 80…, and wakes the
+  coordinator once per task and step, saying what it saw and tried;
 
 These blocks do not wake the coordinator. After 2 failed tries on the same
 step (or 15 minutes with nothing left to try), wherdr wakes it once (an

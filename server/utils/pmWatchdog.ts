@@ -6,6 +6,7 @@
 // woken once. The rules are in shared/pm/watchdog.ts.
 import { LABEL, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { MACHINE_OFFLINE, MACHINE_PAUSED } from '../../shared/pm/release'
+import { isReadHold } from '../../shared/pm/sentinel'
 import { AGENTLESS_WHY, agentNeeded, reviewRestartRefusal, reviewRestarted, watchAgent, watchFailed, type AgentWatch } from '../../shared/pm/watchdog'
 import { isPaused, type Project } from '../../shared/pm/project'
 import { showIds } from '../../shared/pm/projectKey'
@@ -63,7 +64,8 @@ export async function watchAgents(deps: PmLaunchDeps, wake: (task: Task, why: st
     if (!watch) {
       watches.delete(task.id)
       // Its agent is back (or not needed): the watchdog's status goes.
-      if (task.held && task.state === 'working' && !task.reviewWait) await store.saveTask({ ...task, held: undefined })
+      // A hold the mechanic set (it cannot follow the task) is the mechanic's to clear.
+      if (task.held && task.state === 'working' && !task.reviewWait && !isReadHold(task.held)) await store.saveTask({ ...task, held: undefined })
       continue
     }
     watches.set(task.id, watch)

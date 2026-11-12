@@ -30,6 +30,7 @@ import { readAccounts, recordGone, type CoreList } from './pmIncidents'
 import type { Incident } from '../../shared/pm/incident'
 import { interruptTask } from './pmRecovery'
 import { killTerminal } from './pmProcs'
+import { noteTaskError } from './pmSentinel'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file,
 // its branch, then its own commits (no merges) and files per line count since its fork from the base ($5).
@@ -118,7 +119,8 @@ export async function advanceTick(deps: PmLaunchDeps, now = Date.now()) {
     if (await signal(deps, run, now).then(() => true, () => false)) await clearSignal(deps, run.terminal!)
   }
   const limited = await readLimits(deps, alive, now).catch(() => new Set<string>())
-  for (const task of await store.tasks()) await advance(deps, task.id, alive, why, limited).catch(() => {})
+  // One task's error is logged on it, once, and never stops the others' pass.
+  for (const task of await store.tasks()) await advance(deps, task.id, alive, why, limited).catch(e => noteTaskError(store, task.id, e))
 }
 
 // A run said it is done: the engine's event for the current step.
