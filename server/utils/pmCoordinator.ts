@@ -827,10 +827,12 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   if (resume && !canResume(program)) throw new HerdrError('bad_input', 'Only a Claude or Codex conversation can be resumed: start a new one')
   const c = await prepareCoordinator(deps, key, program, urls, resume, a.model)
   // What the user applied on its cards while it did not run, said once (a resume too).
-  const prompt = [...c.prompt, ...first, ...cardNotesMessage(before)]
+  const notes = cardNotesMessage(before)
+  const prompt = [...c.prompt, ...first, ...notes]
   // A resumed Codex reads a word after `resume --last` as a session: its messages are typed.
   const asArg = promptAsArg(program) && !resume
-  const argv = [...c.argv, ...(asArg ? prompt : [])]
+  // Codex takes one [PROMPT] argument: its messages go as one.
+  const argv = [...c.argv, ...(asArg && prompt.length ? [prompt.join('\n\n')] : [])]
   const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
   const { address } = await deps.call<{ address: string }>('terminal.run', {
     cwd: c.folder, ...(c.on ? { on: c.on } : {}), no_parent: true, wait: false, env: c.env,
@@ -845,6 +847,8 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   // version: what this session knows (takeUpdateNotice tells it of an update).
   const { told: _told, cardNotes: _said, ...rec } = (await deps.store.coordinator(key))!
   await deps.store.saveCoordinator({ ...rec, terminal: address, ran: a, version: wherdrVersion(), ...(key === MAIN ? { agent: a } : {}) })
+  // Its turn follows the user's clicks (issueToken cleared it): it may propose the next card.
+  if (notes.length) await noteTurn(deps.store, key, 'user', notes[0])
   // This conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
   return { terminal: address, folder: c.folder }

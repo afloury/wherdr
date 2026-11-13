@@ -248,10 +248,16 @@ describe('the main coordinator (WHR-398)', () => {
     // No program given: the one picked last.
     await startCoordinator(d, MAIN, {}, { local: 'http://127.0.0.1:7690' })
     expect(runs[2]!.line).toMatch(/exec 'codex' '-c' 'check_for_update_on_startup=false' '-C'/)
+    // Card outcomes saved while it was stopped: one Codex prompt argument, its turn the user's.
+    await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, cardNotes: ['Applied: New project WEB'] })
+    await startCoordinator(d, MAIN, {}, { local: 'http://127.0.0.1:7690' })
+    expect(runs[3]!.line).toMatch(/as Jeeves\.\n\nFrom the card: since your last conversation, on your cards: Applied: New project WEB'$/)
+    expect(await store.coordinator(MAIN)).toMatchObject({ turn: { kind: 'user' } })
+    expect((await store.coordinator(MAIN))!.cardNotes).toBeUndefined()
     await expect(startCoordinator(d, MAIN, { program: 'cline' }, { local: 'http://127.0.0.1:7690' })).rejects.toThrow('program')
     const view = await coordinatorsView(store)
     expect(view.map(c => c.project)).toEqual([MAIN, 'CO', 'ST'])
-    expect(view[0]).toMatchObject({ main: true, terminal: 'host/t3' })
+    expect(view[0]).toMatchObject({ main: true, terminal: 'host/t4' })
     expect(view[0]!.machines).toBeUndefined()
     expect(view[1]!.machines).toEqual([''])
   })
