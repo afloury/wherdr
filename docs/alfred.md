@@ -93,8 +93,9 @@ A note links to another note (`[Plan](other-note.md)`), a linked file
 (`[Plan](plans/x.md)`) or a place in wherdr (`[WD-12](#/board?task=WD-12)`).
 A link that would leave the notes folder (`..`, an absolute path) is refused, and
 the answer lists the links that lead nowhere yet. Coordinators have the same
-commands as `wherdr pm notes …`, for the home tabs their project shows in only:
-`all` only when it shows in every tab (or there is none).
+commands as `wherdr pm notes …`, on every note whatever its scope; left out, `--scope`
+of `notes add` is the home tab their project shows in (`all` when it shows in every
+tab or there is none).
 
 ## Suggestions
 
