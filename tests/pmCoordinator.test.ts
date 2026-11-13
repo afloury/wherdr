@@ -19,6 +19,8 @@ import type { Finding } from '../shared/pm/verdict'
 import { defaultWorkflow, type Template } from '../shared/pm/workflow'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 import { runNow, wakeTick } from '../server/utils/pmWakes'
+import { askCoordinator } from '../server/utils/pmReport'
+import { cardOf, toHandle } from '../shared/pm/board'
 import { WAKE } from '../shared/pm/wakes'
 import { DEFAULT_AUTOPILOT } from '../shared/pm/autopilot'
 // @ts-expect-error plain JavaScript module
@@ -358,6 +360,31 @@ describe('step done', () => {
     await store.saveTask({ ...task, state: 'working', step: atDeploy })
     await cli(['step', 'done', task.id, '--link', 'https://ci.example.com/run/1'])
     expect((await store.task(task.id))!.step).toMatchObject({ done: true, proofs: { deploy: { link: 'https://ci.example.com/run/1' } } })
+  })
+})
+
+describe('Ask the coordinator', () => {
+  it('sends the user\'s message to the coordinator, starts its rechecks over and takes the task off Tasks to handle', async () => {
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9' })
+    const sent: unknown[] = []
+    const call = async (m: string, p: unknown) => { if (m === 'terminal.send') sent.push(p); return m === 'terminal.get' ? { state: 'idle' } : {} }
+    const d = { store, call, machines: () => [] } as unknown as Parameters<typeof askCoordinator>[0]
+    const urls = { local: 'http://localhost:3000' }
+    const task = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+    const over = { reason: 'timeout' as const, badge: 'Check deploy: over 90m' }
+    await store.saveTask({ ...task, state: 'working', step: state(5, { since: 1, rechecks: 4, yourTurn: over }) })
+    const plan = planSteps(company, { type: 'feature' })
+    expect(toHandle([cardOf((await store.task(task.id))!, plan, [])])).toHaveLength(1)
+    const saved = await askCoordinator(d, task.id, urls)
+    expect(sent).toEqual([{ terminal: 'host/t9', text: 'Check where CO-1 (Fix) stands at its deploy step and end the step or tell me what blocks it.' }])
+    expect((await store.coordinator('CO'))!.turn).toMatchObject({ kind: 'user' })
+    expect(saved.step).toMatchObject({ rechecks: 0, yourTurn: undefined, recheckAt: expect.any(Number), deadline: expect.any(Number) })
+    expect(saved.log!.map(e => e.text)).toEqual(['asked the coordinator to check the deploy step', 'back to work: the user asked the coordinator'])
+    expect(toHandle([cardOf(saved, plan, [])])).toEqual([])
+    // Asked: not again until a new time limit or wait; a step at work never.
+    await refused(askCoordinator(d, task.id, urls), 'does not wait for you')
+    await store.saveTask({ ...saved, step: state(1, { yourTurn: over }) })
+    await refused(askCoordinator(d, task.id, urls), 'does not wait for you')
   })
 })
 

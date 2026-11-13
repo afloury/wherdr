@@ -8,9 +8,10 @@
 // Accept is there as soon as the review passed, whatever the PR's state: while the engine
 // updates it, what goes on is said under it (prUpdating). Once accepted, it stays loading until
 // the merge ends, what it waits for said under it; while its checks are red, it is on hold
-// instead, with why (the worker fixes them, or waits to).
+// instead, with why (the worker fixes them, or waits to). A step the coordinator holds that
+// waits on the user says what waits, and Ask the coordinator sends it the user's message.
 import { adviceChoices } from '#shared/pm/decisions'
-import { canStart, mayAccept, mergeGoesNow, mergeStuck, mergeWaits, prLink, prUpdating, type Card } from '#shared/pm/board'
+import { canStart, coordinatorWait, mayAccept, mergeGoesNow, mergeStuck, mergeWaits, prLink, prUpdating, type Card } from '#shared/pm/board'
 import { stepLabels } from '#shared/pm/steps'
 import { RESUMES, stoppedText, type Resume } from '#shared/pm/stop'
 import { shotUrl } from '#shared/pm/shots'
@@ -22,7 +23,7 @@ import type { WaitKind } from '#shared/pm/run'
 import type { TodoKind } from '~/utils/taskTodo'
 
 const props = defineProps<{ card: Card, kind: TodoKind, pane?: Pane, busy: boolean, pressing: boolean, refused: string, waitsFor?: string[] }>()
-const emit = defineEmits<{ press: [], start: [], resume: [how: Resume], decide: [choice: Choice], back: [note: string], review: [], worker: [], comments: [] }>()
+const emit = defineEmits<{ press: [], start: [], resume: [how: Resume], decide: [choice: Choice], back: [note: string], review: [], worker: [], ask: [], comments: [] }>()
 
 // Where the engine's catch-up of a conflict stands: the agent on it, or done.
 const told = computed(() => agentCatchingUp(props.card))
@@ -58,6 +59,10 @@ const reviewSay = computed(() => (props.card.terminal
   ? tl(`The review has run over ${props.card.plan[props.card.state?.at ?? 0]?.timeout ?? 'its time limit'} without a verdict. Restart it to review the PR's latest commit from the start.`)
   : tl('The reviewer stopped without giving a verdict. Restart the review to review the PR\'s latest commit again.')))
 
+// A step the coordinator holds, waiting on the user: since when (to the minute), its last `step wait` reason, asked yet.
+const coord = computed(() => (props.kind === 'coordinator' ? coordinatorWait(props.card) : undefined))
+const coordFor = computed(() => (coord.value ? fmtDuration(Math.floor((Date.now() - coord.value.since) / 60_000) * 60) : ''))
+
 const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent asks a question', 'Son agent pose une question'], permission: ['Its agent asks for a permission', 'Son agent demande une autorisation'], auth: ['Its agent needs its login again', 'Son agent doit se reconnecter'] }
 </script>
 
@@ -91,6 +96,11 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       <p v-if="!pane" class="muted">{{ tl('Its agent is not on screen here: open it from its machine.') }}</p>
     </template>
 
+    <template v-else-if="kind === 'coordinator' && coord">
+      <p class="todo-say" data-testid="task-badge">{{ tl(`Waiting for the coordinator to check the ${coord.step}`) }}</p>
+      <p class="muted" data-testid="todo-coordinator-wait">{{ tl(`At this step for ${coordFor}`) }}<template v-if="coord.reason"> · {{ tl('Coordinator:') }} {{ coord.reason }}</template></p>
+    </template>
+
     <p v-else-if="kind === 'review'" class="todo-say" data-testid="task-badge">{{ reviewSay }}</p>
 
     <template v-else-if="!refused">
@@ -119,6 +129,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
         <UButton v-if="pr" color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" :to="pr.url" target="_blank" data-testid="todo-pr">{{ tl('Open the PR') }}</UButton>
         <UButton v-if="stuck" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="todo-worker-start" @click="emit('worker')">{{ tl('Start the worker') }}</UButton>
         <UButton v-if="kind === 'review'" color="primary" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="todo-review-restart" @click="emit('review')">{{ tl('Restart the review') }}</UButton>
+        <UButton v-if="coord" color="primary" size="xl" :icon="coord.asked ? 'i-lucide-check' : 'i-lucide-message-circle'" :loading="busy" :disabled="coord.asked !== undefined" data-testid="todo-ask-coordinator" @click="emit('ask')">{{ coord.asked ? tl('Asked') : tl('Ask the coordinator') }}</UButton>
         <UButton v-if="kind === 'blocked' && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="emit('start')">{{ tl('Start', 'Lancer') }}</UButton>
         <UButton v-if="pane && kind !== 'merge' && kind !== 'step'" :color="kind === 'ask' ? 'primary' : 'neutral'" :variant="kind === 'ask' ? 'solid' : 'outline'" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)" data-testid="todo-agent">
           {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}
@@ -129,6 +140,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
     <p v-else-if="stuck" class="error" role="alert" data-testid="step-user-stuck">{{ tl(stuck) }}</p>
     <p v-else-if="waits !== undefined" class="muted" role="status" data-testid="step-user-waits">{{ tl('Waiting:') }} {{ waits }}</p>
     <p v-else-if="updating" class="muted" role="status" data-testid="step-user-updating">{{ tl(`${updating[0]!.toUpperCase()}${updating.slice(1)}: accept now, it merges once the PR is ready.`) }}</p>
+    <p v-else-if="coord?.asked" class="muted" role="status" data-testid="todo-asked">{{ tl('Sent as your message. The coordinator checks it now; the task comes back here at its next time limit.') }}</p>
     <p v-else-if="refused" class="error" role="alert" :title="refused" data-testid="step-user-refused">{{ stepRefusalText(refused, told) }}</p>
 
     <form v-if="kind === 'merge'" class="todo-back" data-testid="todo-back" @submit.prevent="emit('back', note.trim())">
