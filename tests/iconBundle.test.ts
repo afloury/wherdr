@@ -14,7 +14,8 @@ describe('icon bundle', () => {
     for (const file of files)
       for (const m of readFileSync(file, 'utf8').matchAll(/\bi-lucide-([a-z0-9]+(?:-[a-z0-9]+)*)/g)) used.add(`lucide:${m[1]}`)
     expect(used.size).toBeGreaterThan(100)
-    expect(used).toContain('lucide:square-kanban')
+    // Named only in a .ts file (shared/attachments.ts), never in a template.
+    expect(used).toContain('lucide:file-json')
 
     const scanned = new Set<string>()
     await new IconUsageScanner({ globInclude: ICON_SCAN_GLOBS }).scanFiles(process.cwd(), scanned)
