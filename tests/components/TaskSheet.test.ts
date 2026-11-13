@@ -126,6 +126,27 @@ it('a stalled review says why in plain words and restarts the review', async () 
   w.unmount()
 })
 
+// A deploy the coordinator holds, past its time limit: what waits, and Ask the coordinator.
+let asked: unknown
+registerEndpoint('/api/pm/ask-coordinator', { method: 'POST', handler: async (e) => { asked = await readBody(e); return { task: {} } } })
+it('a coordinator-held step past its limit says what waits and asks the coordinator', async () => {
+  const deploy = planSteps(company, { type: 'feature' })
+  const over = { reason: 'timeout' as const, badge: 'Check deploy: over 90m' }
+  const c = waiting({ plan: deploy, holder: 'coordinator', step: 'deploy', yourTurn: over.badge, state: at(5, { since: Date.now() - 100 * 60_000, yourTurn: over }) })
+  const w = await mountSuspended(TaskSheet, { props: { card: c }, global: { stubs } })
+  expect(w.get('[data-testid="task-todo"]').attributes('data-todo')).toBe('coordinator')
+  expect(w.get('[data-testid="task-badge"]').text()).toBe('Waiting for the coordinator to check the deploy')
+  expect(w.get('[data-testid="todo-coordinator-wait"]').text()).toBe('At this step for 1 h 40 min')
+  expect(w.find('[data-testid="task-report-start"]').exists()).toBe(true)
+  await w.get('[data-testid="todo-ask-coordinator"]').trigger('click')
+  await vi.waitFor(() => expect(asked).toEqual({ id: 'WHR-1' }))
+  // The task read again: asked, off Your turn.
+  await w.setProps({ card: { ...c, yourTurn: undefined, state: at(5, { since: 1 }), log: [{ at: 2, by: 'user', text: 'asked the coordinator to check the deploy step' }] } })
+  expect(w.get('[data-testid="todo-ask-coordinator"]').text()).toBe('Asked')
+  expect(w.get('[data-testid="todo-ask-coordinator"]').attributes()).toHaveProperty('disabled')
+  w.unmount()
+})
+
 it('shows the spec changes under the description, newest last', async () => {
   const specNotes = [{ at: 1, by: 'coordinator CO', text: 'Keep the light theme.' }, { at: 2, by: 'coordinator CO', text: 'No toggle.' }]
   const w = await mountSuspended(TaskSheet, { props: { card: { ...card, yourTurn: undefined, description: 'A dark theme.', specNotes } }, global: { stubs } })

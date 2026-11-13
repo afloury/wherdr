@@ -615,7 +615,14 @@ stays a full reply, with its answer buttons:
   new, the coordinator postpones the next one with `wherdr pm step wait <task>
   --for 2h` or `--until-user` (no recheck until you write to it or act on the
   task), with a reason written to the task's log. The task sheet shows when the
-  next recheck is due. A pipeline that can be polled is better watched by the
+  next recheck is due. Past the step's time limit, or while it waits until you
+  write, the sheet's To do tab says what waits (*Waiting for the coordinator to
+  check the deploy*, how long the task has been at that step, and the
+  coordinator's last `step wait` reason) with **Ask the coordinator**: it sends
+  the coordinator your message *Check where CO-1 (Fix) stands at its deploy step
+  and end the step or tell me what blocks it* (starting it first if it does not
+  run), as if you typed it, so the rechecks start over. The button then says
+  *Asked*. A pipeline that can be polled is better watched by the
   engine (`pipeline.watch`, above), which costs no model turn;
 - **Engine**: wherdr gave up on a block after failed fixes
   ([What wherdr fixes on its own](#what-wherdr-fixes-on-its-own));
@@ -1188,7 +1195,12 @@ is back to work: the coordinator tells its agent something (`wherdr pm tell`),
 you or the coordinator start it again, or the step's agent, idle, is seen
 working again. The step's time limit and the stall's 30 minutes start again
 from then, so the task comes back if its agent stops again. The Log says
-*back to work* and who sent it back. What only you can do (a merge, an answer,
+*back to work* and who sent it back. On a step the coordinator holds (*Check
+deploy: over 90m*), the To do tab says *Waiting for the coordinator to check the
+deploy*, with how long and the coordinator's last `step wait` reason, and
+**Ask the coordinator** sends it your message (see *Step check* above): the
+task is back to work at once, *Asked* on the button, and comes back at its next
+time limit. *Report a problem* and *Stop* stay as they are. What only you can do (a merge, an answer,
 a permission, a decision) stays until you do it.
 
 A step's time limit counts only the time its agent could work. While the
