@@ -41,6 +41,7 @@ import { restartReview } from './pmWatchdog'
 import { handFix } from '../../shared/pm/release'
 import { DONE_CMD } from '../../shared/pm/advance'
 import { READ_LINES, lastWords } from './pmRead'
+import { READ_COMMANDS, reachRefusal } from '../../shared/pm/reach'
 import { resumeRefusal } from '../../shared/pm/stop'
 import { pacedStart, paceGauge, paceLine } from '../../shared/pm/pace'
 import { readQuotas } from './quotas'
@@ -159,14 +160,21 @@ const unb64 = (v: unknown) => (typeof v === 'string' ? Buffer.from(v, 'base64').
 // The output and a refusal name tasks by their shown key (CMP-9, not CP-9).
 type CliBody = { argv?: unknown, input?: unknown, argv64?: unknown, input64?: unknown }
 export async function runCommand(deps: Deps, token: unknown, body: CliBody) {
-  try { return showIds(await deps.store.projects(), await command(deps, token, body)) }
+  const visit: { on?: string, by?: string, what?: string } = {}
+  try {
+    const out = await command(deps, token, body, visit)
+    // A write on another project: its coordinator is told at its next wake (pmWakes.ts).
+    const other = visit.on ? await deps.store.coordinator(visit.on) : null
+    if (other) await deps.store.saveCoordinator({ ...other, visits: [...(other.visits ?? []), { at: Date.now(), by: visit.by!, what: visit.what! }].slice(-20) })
+    return showIds(await deps.store.projects(), out)
+  }
   catch (e) {
     if (e instanceof Error) e.message = showIds(await deps.store.projects().catch(() => []), e.message)
     throw e
   }
 }
 
-async function command(deps: Deps, token: unknown, body: CliBody) {
+async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: string, by?: string, what?: string } = {}) {
   const { store } = deps
   const scope = await scopeOf(store, token)
   if (!scope) throw new HerdrError('forbidden', 'Unknown coordinator token')
@@ -180,11 +188,19 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
   const projects = await store.projects()
   // A project named by any of its keys (WD, or WHR before its rename).
   const named = cmd.project ? projectOf(projects, cmd.project)?.key ?? cmd.project : undefined
-  if (!main && named && named !== scope) throw new HerdrError('refused', `Your token acts on project ${scope} only`)
-  // Another project's task reads as unknown to a project's token.
+  // Another project: only what the user's setting on this project allows (reach.ts).
+  const self = projects.find(x => x.key === scope)
+  const shown = (k: string) => shownKey(projects.find(x => x.key === k) ?? { key: k })
+  const reach = (k: string) => {
+    const why = main || k === scope ? undefined : reachRefusal(self, k, cmd.name, { self: shown(scope), other: shown(k) })
+    if (why) throw new HerdrError('refused', why)
+  }
+  if (named && projects.some(x => x.key === named)) reach(named)
+  else if (!main && named && named !== scope) throw new HerdrError('refused', `Your token acts on project ${scope} only`)
   const taskOf = async (id: string) => {
     const task = await store.task(id)
-    if (!task || (!main && task.project !== scope)) throw new HerdrError('not_found', 'Unknown task')
+    if (!task) throw new HerdrError('not_found', 'Unknown task')
+    reach(task.project)
     return task
   }
   // The command's project: its task's, the one named, or the token's.
@@ -196,12 +212,14 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
   // A turn the server saw start over an hour ago is not trusted any more.
   const turn: Turn = rec?.turn && Date.now() - rec.turn.at < TURN_MS ? rec.turn.kind : 'none'
   const by = coordinatorBy(scope)
+  if (!main && key && key !== scope && !READ_COMMANDS.includes(cmd.name)) Object.assign(visit, { on: key, by, what: [cmd.name, 'task' in cmd ? cmd.task : 'title' in cmd ? `"${cmd.title}"` : ''].join(' ').trim() })
   const needProject = () => { if (!p) throw new HerdrError('bad_input', `Name the project: --project <KEY> (${projects.map(shownKey).join(', ')})`); return p }
   const needPlan = () => { needProject(); if (!t) throw new HerdrError('not_found', 'The project has no template'); return t }
   // The tasks the limits count: the project's (every task for the main coordinator with no project named).
   const mineOf = async () => (await store.tasks()).filter(x => (main && !key) || x.project === key)
   // The autopilot that holds the command: the project's own, also for Alfred (which has none).
-  const pilotRec = main ? (key ? await store.coordinator(key) : null) : rec, pilot = pilotRec?.autopilot
+  // Another project's tasks: that project's autopilot and limits.
+  const pilotRec = main || key !== scope ? (key ? await store.coordinator(key) : null) : rec, pilot = pilotRec?.autopilot
 
   // Alfred has no autopilot: it starts or adds tasks in the user's turns only.
   if (main && turn !== 'user' && (cmd.name === 'task start' || cmd.name === 'task add')) throw new HerdrError('refused', `Alfred runs ${cmd.name} only on a request from the user, sent from wherdr: each project's coordinator runs its own autopilot`)
@@ -355,7 +373,7 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
       const { role, run, released, review } = tellTarget(await store.runs(), task.id, holder, cmd.to, !!cmd.fix, !task.cleanup?.done)
       // A failed step action handed over with a fix: the worker reports it done, then the engine tries it again.
       const fixesAction = !!(cmd.fix && t && handFix(planOf(t, task, p), task.step, cmd.fix, Date.now()))
-      const said = `From the ${main ? 'main' : 'project'} coordinator: ${cmd.text}${fixesAction ? `\n\nWhen done: ${DONE_CMD}` : ''}`
+      const said = `From the ${main ? 'main' : key === scope ? 'project' : `${shown(scope)} project`} coordinator: ${cmd.text}${fixesAction ? `\n\nWhen done: ${DONE_CMD}` : ''}`
       const wake = turn !== 'user', fix = cmd.fix && { autopilot: rec?.autopilot, main }
       // A wake's fix counts against the step's; the log keeps its kind and reason.
       const fixed = (x: Task) => (cmd.fix && wake ? { ...x, fixes: countFix(task) } : x)
@@ -668,7 +686,7 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   const home = await homeOf(deps, on)
   if (!home) throw new HerdrError('core', 'Home folder not found on the project\'s machine')
   const folder = `${home}/.wherdr/pm/coordinators/${key}`
-  for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES, m.local ? docsDir() : undefined)))
+  for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES, m.local ? docsDir() : undefined, k => { const x = projects.find(y => y.key === k); return x && shownKey(x) })))
     if ((await exec(deps, on, WRITE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not write ${file}`)
   for (const [file, text] of Object.entries(OWN_ROLE_FILES))
     if ((await exec(deps, on, CREATE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not create ${file}`)

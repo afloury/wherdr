@@ -92,7 +92,7 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
         <UIcon name="i-lucide-chevron-right" class="pm-chevron" />
       </button>
       <TemplateLibrary v-model:open="libraryOpen" :templates="data.templates" @changed="load" />
-      <ProjectSheet v-if="opened" :key="opened.key" :project="opened" :tab="tab" :templates="data.templates" :review="review" @tab="k => show(opened!.key, k)" @close="show()" @changed="load" />
+      <ProjectSheet v-if="opened" :key="opened.key" :project="opened" :tab="tab" :templates="data.templates" :projects="data.projects" :review="review" @tab="k => show(opened!.key, k)" @close="show()" @changed="load" />
     </template>
     <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
   </div>

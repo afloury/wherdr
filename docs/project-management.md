@@ -130,6 +130,8 @@ its folder, branches and task worktrees stay on the machine.
 - **Coordinator name**: what the project's coordinator is called after its key badge,
   in its sidebar row, its conversation header and what names it (notifications,
   decisions, proposals). Empty: the project's name, which follows a rename.
+- **Other projects this coordinator may act on**: one row per other project, Off
+  (the default), Read or Act. See [Coordinators on other projects](#coordinators-on-other-projects).
 - **Base branch**: the project's working branch. New tasks start their worktree
   from it, and a step that names no branch opens its PR to it or merges into it.
   Pick one of the repository's branches or type a name; unset, the repository's
@@ -703,6 +705,25 @@ the same commands as Alfred's. It lists, edits, moves (`edit --scope`) and remov
 `--scope` of `notes add` is the home tab its project shows in (`all` when it shows in every tab; when it shows in several
 but not all, it names one). Its help asks it to rewrite a note to keep it short rather than add another, and to change or
 remove another project's note only when it is outdated or you ask. Each change is logged with the coordinator's name.
+
+### Coordinators on other projects
+
+A project's coordinator works on its own project only, unless you let it work on
+others in its project's General tab (*Other projects this coordinator may act on*):
+
+- **Read**: `list`, `show`, `read`, `plan` and `incidents` on that project;
+- **Act**: also `task add|start|stop|edit|note|order|tag|link|check|remove`,
+  `tell` and `report back|close`, with the same rules as on its own project
+  (in a wake, the other project's autopilot and limits hold its starts and adds).
+
+A task's id names its project (`wherdr pm show DSH-4`); `list`, `plan`,
+`incidents` and `task add` take `--project <KEY>`. Guards, merges, approvals,
+settings, autopilot, workflow and automations of the other project always stay
+with its own coordinator and you. Without the setting, the refusal names it and
+links to the sheet. Each action goes to the task's or the project's log with the
+acting coordinator's name (`coordinator WHR`), and the other project's
+coordinator is told at its next wake. The coordinator's instructions list these
+projects and their level from its next start.
 
 ## Board
 

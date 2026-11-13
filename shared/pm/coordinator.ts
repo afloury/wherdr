@@ -2,6 +2,7 @@
 // rights checked on each, and the role files written in its own folder. Pure:
 // the server (server/utils/pmCoordinator.ts) reads and writes.
 import { isGitBranch, type Project } from './project'
+import { reachLines } from './reach'
 import { WEIGHTS, isDefaultWorkflow, isWeight, type Holder, type Template, type Weight } from './workflow'
 import { SPEC_RULE, type Run, type Task } from './run'
 import { wasReleased } from './release'
@@ -145,9 +146,9 @@ export type Command =
 
 // One table for the parser, the skill and the role file.
 export const COMMANDS: { usage: string, does: string }[] = [
-  { usage: 'list [--archived]', does: 'the project\'s tasks, their step and what waits for the user; archived tasks (done, off the board) only with --archived' },
+  { usage: 'list [--archived] [--project <KEY>]', does: 'the project\'s tasks, their step and what waits for the user; archived tasks (done, off the board) only with --archived' },
   { usage: 'show <task>', does: 'one task, its weight, the machine it runs on, its plan and its log' },
-  { usage: 'plan', does: 'the resolved plan of each task type' },
+  { usage: 'plan [--project <KEY>]', does: 'the resolved plan of each task type' },
   { usage: 'template show', does: 'the project\'s own workflow (JSON): a minimal default (version 0) until the user accepts one' },
   { usage: 'template edit < template.json', does: 'propose a new workflow for the project; only in a turn that comes from the user, guards unchanged (unless the project has no accepted workflow yet); the user accepts or refuses its diff in wherdr' },
   { usage: 'task tag <task> <text>', does: 'a short tag on the card (a ticket key, a client)' },
@@ -158,7 +159,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task decide <task> <choice> --reason "<one sentence>"', does: 'after N send-backs, pick one of the engine\'s options. Also pass when each remaining finding contradicts a spec change recorded on the task (task edit, task note, tell --spec), the reason citing it (its date YYYY-MM-DD or its words); never before a merge only the user may do nor on a critical finding with proof. Written to the task\'s log and shown in the user\'s Decisions: tell the user in your next message' },
   { usage: 'ack <wake> [<wake>…]', does: 'say you handled a wake (each wake ends with its id); unacked, it comes back once, then the user is told' },
   { usage: 'autopilot show', does: 'your autopilot\'s goal, hours, whether it looks for new work (and how many tasks those wakes may still add today), the scheduled wakes skipped today (nothing to do, or ahead of the pace), what is left of today\'s limits, the pacing of your worker\'s account (go, or what automatic work waits for), each machine the project allows (online or offline, its available hours, memory, cores and load, its agents at work by weight, the heaviest weight it takes now or why none) the weights (what each counts, the weight of each task type) and the last open incident (why agents were gone, see incidents)' },
-  { usage: 'incidents [--since 2h|3d|<ISO date>]', does: 'why agents were gone, as the engine diagnosed it from facts (machine offline or unreachable, herdr-core or wherdr restarted, agent killed or crashed, out of memory, account limit, or unknown): when, the machine, the cause, the facts it used, the tasks and agents hit, open until those tasks run again; newest first, the last 7 days by default. Tell the user this cause, never a guess' },
+  { usage: 'incidents [--since 2h|3d|<ISO date>] [--project <KEY>]', does: 'why agents were gone, as the engine diagnosed it from facts (machine offline or unreachable, herdr-core or wherdr restarted, agent killed or crashed, out of memory, account limit, or unknown): when, the machine, the cause, the facts it used, the tasks and agents hit, open until those tasks run again; newest first, the last 7 days by default. Tell the user this cause, never a guess' },
   { usage: 'automation list', does: 'the project\'s automations: on or off, schedule or event, last firing' },
   { usage: 'automation show <automation>', does: 'one automation, its prompt and its last firings' },
   { usage: 'automation propose [<automation>] [--remove] < automation.json', does: 'propose a new automation (no id), a change to one (its id) or its removal (--remove, no input); only in a turn that comes from the user. The JSON: {"name", "prompt" (the task\'s description), "type"? (a task type, else the first), "schedule" (every 2h, daily 09:00, mon,thu 09:00 or a cron) or "event" (added, approval, review-failed, failed, needs-you, merged) with "filter"? (a title glob: docs*)}. The user accepts or refuses it from a card in your reply and in the project\'s Automations tab; an accepted new one starts switched on, and the user alone switches one on or off' },
@@ -169,7 +170,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task order <task> [<task>…]', does: 'put these tasks first in their column (To do, Your turn…), in this order; the others keep their order after them. Keep the board busy starts to-do tasks in board order, and the merge queue takes approved merges in it. A done task is refused. In a turn of the user at any time, in a wake only with the autopilot on; written to the project\'s log' },
   { usage: 'task edit <task> [--title "<text>"] [--description "<text>"] --reason "<one sentence>"', does: 'change the task\'s title or description when the user changes direction; only in a turn that comes from the user. Written to the task\'s log with the reason and a short diff; its running agent is told at once, and the worker and the reviewer read the new spec from their next step or round' },
   { usage: 'task note <task> "<text>"', does: `add a dated spec change to the task, under its description; only in a turn that comes from the user. The worker\'s and the reviewer\'s instructions give every note, newest last, with the rule "${SPEC_RULE}"; its running agent is told at once` },
-  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy] [--files <path>,<path>] [--from-branch <branch>]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it). --files: the files or folders it will change, so that its start waits behind a started task that touches them. --from-branch: an existing branch its worker continues (a v2 task\'s), when the remote still has it at its start; else it starts from the base' },
+  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy] [--files <path>,<path>] [--from-branch <branch>] [--project <KEY>]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it). --files: the files or folders it will change, so that its start waits behind a started task that touches them. --from-branch: an existing branch its worker continues (a v2 task\'s), when the remote still has it at its start; else it starts from the base' },
   { usage: 'report back <task> "<what to fix>"', does: 'on a problem the user reported: send their step back to the worker with precise fixes, and close the report' },
   { usage: 'report close <task> "<what you did>"', does: 'close a problem the user reported once handled (you told the agent, added a follow-up task, or it is fine); the merge it blocked is free again' },
   { usage: 'tell <task> "<text>" [--to worker|reviewer] [--spec] [--fix base|ci|machine|stall --reason "<one sentence>"]', does: `a message to one of the task\'s agents: the one that holds its current step, else (a step held by nobody or by you: pr, merge, a user step) its worker; --to picks it. The answer says which agent got it. --spec also records it as a spec note (task note), so that the reviewer reviews against it; only in a turn that comes from the user. In a wake, only to answer its question, or with --fix to unblock a mechanical block (${FIX_KINDS.map(k => `${k}: ${FIX_TEXT[k]}`).join('; ')}): a worker that was let go or has ended starts again with your message, a reviewer not running at the review step starts the review again; with the autopilot on, a task of your project, at most ${FIXES_PER_STEP} times per task and step, written to its log with the reason; past that, tell the user. A permission request is always the user\'s` },
@@ -577,7 +578,8 @@ export const commandList = (t?: Template | null) => [...COMMANDS.filter(c => !c.
 // The files of the coordinator's folder wherdr rewrites, path → text (its own
 // files: OWN_ROLE_FILES). Nothing outside it.
 // docs: wherdr's docs folder, when the coordinator runs on wherdr's machine.
-export function roleFiles(p: Project, t: Template | null, examples: Template[], docs?: string): Record<string, string> {
+// shown: a project's shown key from its fixed one, for the other projects it may act on.
+export function roleFiles(p: Project, t: Template | null, examples: Template[], docs?: string, shown?: (key: string) => string | undefined): Record<string, string> {
   // A folder without git: no task worktree, the coordinator does the work there itself.
   const plain = p.git === false
   const plans = t ? Object.entries(t.taskTypes).flatMap(([type]) => [`### ${type}`, ...planSteps(t, { type }, p.base).map(stepLine), '']) : ['(no template yet)']
@@ -606,7 +608,8 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     ...firstTalk,
     '## Your memory', '',
     `\`memory.md\` in your folder is yours: wherdr creates it once and never rewrites it, so it outlives a restart and a change of program. Read it first, at each start, and follow it: the user's decisions and preferences there come before your defaults. Note there, as you go, each decision or preference the user gives you, one fact per line; nothing a command or the board already says. Keep it clean: merge duplicates, drop stale lines, stay under ${MEMORY_CAP} characters.`, '',
-    '## Commands (your token: this project only)', '', ...commandList(t), '',
+    ...reachLines(p.reach, shown ?? (k => k)),
+    `## Commands (your token: ${p.reach?.length ? 'this project, and the other projects above' : 'this project only'})`, '', ...commandList(t), '',
     'When the user changes direction mid-task, record it as a spec change (`task edit`, `task note`, or `tell --spec`), not only a `tell`: the reviewer reviews against the spec.',
     'Every change you make is written to the task\'s or the workflow\'s log with your name.',
     `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',
