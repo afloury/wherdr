@@ -45,7 +45,8 @@ export async function splitFeature(deps: Deps, ws: Project | undefined, feature:
   }
   const adopted: { key: string, repo: string }[] = []
   try {
-    for (const w of where) if ('repo' in w) adopted.push({ key: (await addAdopted(deps, ws, w, by)).adopted.key, repo: w.repo })
+    // Tracked once saved: a failure in the rest of its adoption (log, map) drops it too.
+    for (const w of where) if ('repo' in w) await addAdopted(deps, ws, w, by, key => adopted.push({ key, repo: w.repo }))
     const keyOf = (w: typeof where[number]) => ('key' in w ? w.key : adopted.find(a => a.repo === w.repo)!.key)
     const index = (repo: string) => plan.tasks.findIndex(t => t.repo === repo)
     const { feature: split, tasks } = await store.splitFeature(feature.id, plan.tasks.map((t, i) => ({

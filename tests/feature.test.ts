@@ -87,6 +87,10 @@ describe('feature split', () => {
     const failing = vi.spyOn(store, 'splitFeature').mockRejectedValueOnce(new Error('disk full'))
     await expect(split(plan([{ repo: 'ledger', title: 'Book', type: 'task' }]))).rejects.toThrow(/disk full/)
     failing.mockRestore()
+    // Its adoption failing once the member is saved (its log line): removed again too.
+    const noLog = vi.spyOn(store, 'logProject').mockRejectedValueOnce(new Error('log full'))
+    await expect(split(plan([{ repo: 'ledger', title: 'Book', type: 'task' }]))).rejects.toThrow(/log full/)
+    noLog.mockRestore()
     expect(await keys()).toEqual(['WS', 'PA', 'QA', 'OT'])
     expect((await store.tasks()).filter(t => t.feature)).toEqual([])
 
