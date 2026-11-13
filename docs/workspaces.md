@@ -78,3 +78,31 @@ A workspace's tasks are **features**, never ordinary tasks: wherdr refuses any
 other task type on a workspace and asks to add the task to one of its member
 projects instead. A feature has no agent; its sub-tasks are ordinary tasks of
 the members, one per repository.
+
+## The workspace map
+
+The workspace's coordinator keeps a **map** of the repositories: what each one
+does, what it talks to and what uses it, so it can pick the repositories of a
+feature. Nobody reads every repository up front: the map fills as tasks touch
+them. The first time a task touches a repository, the coordinator writes its
+line; it corrects a line that turns out wrong.
+
+- `wherdr pm map show`: the repositories mapped so far.
+- `wherdr pm map set <repo> --does "<one line>" [--talks a,b] [--used-by c]`:
+  a repository's line (`<repo>` is its path under the root, such as
+  `payroll-api`; `--does` is 160 characters at most). A set that leaves out
+  `--does`, `--talks` or `--used-by` keeps that part of the line; a line for a
+  member project names it.
+- `wherdr pm map remove <repo>`: takes a repository off the map.
+- `wherdr pm map list [--refresh]`: every git repository under the root, up to
+  three folders down, with an automatic one-line description (the
+  `description` of its `package.json`, `Cargo.toml` or `pyproject.toml`, else
+  its README's first sentence) and whether it is mapped. No model reads them:
+  the list is cached a day; `--refresh` looks again.
+
+To find the repositories of a feature, the coordinator reads the map and the
+list, then reads only the 2 or 3 likely repositories, or asks you.
+
+The map is kept in `maps/<WS>.json` in the projects data folder. After each
+change wherdr writes it as `map.md` in the coordinator's folder, which the
+coordinator reads at each start, like its memory.
