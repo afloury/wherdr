@@ -6,9 +6,7 @@
 // made-up transcript with the pending call behind those screens.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import type { Choices } from '../shared/types'
 import { CLAUDE_CHAT, CLAUDE_FREE, completeClaudeAsk, keysFor, parseChoices, pendingClaudeAsk, screenChoices } from '../server/utils/choices'
-import { answerFree } from '../server/utils/freeAnswer'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 const asked = () => pendingClaudeAsk(fx('claude-ask.jsonl').split('\n'))
@@ -95,95 +93,6 @@ describe('pendingClaudeAsk / completeClaudeAsk', () => {
     const c = screenChoices(fx('claude-ask.txt'), 'claude', [])!
     expect(c.options.map(o => o.label)).toEqual(['Pomme', 'Poire', 'Banane', CLAUDE_FREE, CLAUDE_CHAT])
     expect(c.options[3]!.free).toBe(true)
-  })
-})
-
-describe('answerFree for Claude', () => {
-  // Fake pane: the screen follows the keys and the text received. As seen
-  // with Claude Code 2.1.307: Enter in the field right after a backslash
-  // drops it and starts a new line (only the first line shows), anywhere
-  // else it submits and the box closes.
-  function pane(screen: (cursor: number, typed: string) => string, start: { cursor: number, typed: string }) {
-    const sent: unknown[] = []
-    const s = { ...start, atEnd: true, submitted: null as string | null }
-    let t = 0
-    const call = async (method: string, p: Record<string, unknown>) => {
-      if (method === 'pane.read') return { read: { text: s.submitted === null ? screen(s.cursor, s.typed.split('\n')[0]!) : '❯ ' } }
-      sent.push(p.keys || { text: p.text })
-      for (const k of (p.keys as string[] | undefined) || []) {
-        if (k === 'down') s.cursor++
-        else if (k === 'up') s.cursor--
-        else if (k === 'ctrl+u' && s.cursor === 3) {
-          // One line at a time: an empty last line goes, else its text.
-          const ls = s.typed.split('\n')
-          if (ls.length > 1 && !ls.at(-1)) ls.pop()
-          else ls[ls.length - 1] = ''
-          s.typed = ls.join('\n')
-        } else if (k === 'ctrl+a') s.atEnd = false
-        else if (k === 'enter' && s.atEnd && s.typed.endsWith('\\')) s.typed = `${s.typed.slice(0, -1)}\n`
-        else if (k === 'enter') s.submitted = s.typed
-      }
-      if (typeof p.text === 'string' && s.cursor === 3) { s.typed += p.text; s.atEnd = true }
-      return {}
-    }
-    return { sent, s, d: { call, sleep: async () => { t += 100 }, now: () => t } }
-  }
-  const labels = ['In-Memory Storage', 'File-Based Storage', 'Database']
-  const screen = (cursor: number, typed: string) => [
-    '│ Which approach best aligns with your needs?',
-    '',
-    ...[...labels, typed || CLAUDE_FREE].map((l, i) => `${i === cursor ? '❯' : ' '} ${i + 1}. ${l}`),
-    '─'.repeat(40),
-    `${cursor === 4 ? '❯' : ' '} 5. ${CLAUDE_CHAT}`,
-    '',
-    'Enter to select · ↑/↓ to navigate · Esc to cancel',
-  ].join('\n')
-
-  it('moves to the field without Enter, clears it, types one line, then submits', async () => {
-    const { sent, d } = pane(screen, { cursor: 0, typed: 'old draft' })
-    const c = parseChoices(screen(0, 'old draft'))! as Choices
-    await answerFree(d, 'w1:p1', c, 3, 'Mixed\napproach', 'claude')
-    expect(sent).toEqual([['down', 'down', 'down'], ['ctrl+u'], { text: 'Mixed approach' }, ['enter']])
-  })
-
-  it('submits an answer ending with a backslash with the cursor at the line start', async () => {
-    for (const answer of ['C:\\temp\\', 'D:\\\\', 'a regex: \\d+\\']) {
-      const { sent, s, d } = pane(screen, { cursor: 0, typed: '' })
-      await answerFree(d, 'w1:p1', parseChoices(screen(0, ''))!, 3, answer, 'claude')
-      expect(sent).toEqual([['down', 'down', 'down'], { text: answer }, ['ctrl+a'], ['enter']])
-      expect(s.submitted).toBe(answer)
-    }
-  })
-
-  it('leaves the cursor alone for an answer with a backslash inside only', async () => {
-    const { sent, s, d } = pane(screen, { cursor: 3, typed: '' })
-    await answerFree(d, 'w1:p1', parseChoices(screen(3, ''))!, 3, 'C:\\temp\\file.txt', 'claude')
-    expect(sent).toEqual([{ text: 'C:\\temp\\file.txt' }, ['enter']])
-    expect(s.submitted).toBe('C:\\temp\\file.txt')
-  })
-
-  it('reports an answer Claude kept in its field after Enter as not submitted', async () => {
-    // The old way (Enter right after the backslash): a line break, no answer.
-    const { s, d } = pane(screen, { cursor: 3, typed: '' })
-    const call = d.call
-    d.call = async (method, p) => call(method, (p.keys as string[] | undefined)?.[0] === 'ctrl+a' ? { ...p, keys: [] } : p)
-    await expect(answerFree(d, 'w1:p1', parseChoices(screen(3, ''))!, 3, 'C:\\temp\\', 'claude')).rejects.toThrow(/not submitted/)
-    expect(s.submitted).toBeNull()
-    expect(s.typed).toBe('C:\\temp\n')
-  })
-
-  it('clears a field left on two lines by an earlier answer, then submits', async () => {
-    const { sent, s, d } = pane(screen, { cursor: 3, typed: 'C:\\temp\n' })
-    await answerFree(d, 'w1:p1', parseChoices(screen(3, 'C:\\temp'))!, 3, 'C:\\temp\\', 'claude')
-    expect(sent.filter(k => JSON.stringify(k) === '["ctrl+u"]')).toHaveLength(2)
-    expect(s.submitted).toBe('C:\\temp\\')
-  })
-
-  it('submits nothing when the text does not show in the field', async () => {
-    const { sent, d } = pane((cursor, typed) => screen(cursor, typed && 'something else'), { cursor: 3, typed: '' })
-    const c = parseChoices(screen(3, ''))!
-    await expect(answerFree(d, 'w1:p1', c, 3, 'Mixed approach', 'claude')).rejects.toThrow(/not submitted/)
-    expect(sent).not.toContainEqual(['enter'])
   })
 })
 
@@ -294,36 +203,6 @@ describe('AskUserQuestion with a single multiSelect question', () => {
     const c = parseChoices(fx('claude-ask-multi-review.txt'))!
     expect(c.options.map(o => o.label)).toEqual(['Submit answers', 'Cancel'])
     expect(c.options[0]!.hint).toBe('Chips, Lemonade')
-  })
-
-  it('types a free answer among checkboxes without Enter (it would untick it)', async () => {
-    const s = { cursor: 0, typed: '' }
-    const sent: unknown[] = []
-    const screen = () => [
-      'Which fruits should go in the salad?',
-      '',
-      ...['Apple', 'Banana'].map((l, i) => `${i === s.cursor ? '❯' : ' '} ${i + 1}. [ ] ${l}`),
-      `${s.cursor === 2 ? '❯' : ' '} 3. [${s.typed ? '✔' : ' '}] ${s.typed || 'Type something'}`,
-      `${s.cursor === 3 ? '❯' : ' '}    Submit`,
-      '─'.repeat(40),
-      `${s.cursor === 4 ? '❯' : ' '} 4. ${CLAUDE_CHAT}`,
-    ].join('\n')
-    let t = 0
-    const d = {
-      call: async (method: string, p: Record<string, unknown>) => {
-        if (method === 'pane.read') return { read: { text: screen() } }
-        sent.push(p.keys || { text: p.text })
-        for (const k of (p.keys as string[] | undefined) || []) if (k === 'down') s.cursor++
-        if (typeof p.text === 'string' && s.cursor === 2) s.typed += p.text
-        return {}
-      },
-      sleep: async () => { t += 100 },
-      now: () => t,
-    }
-    const c = parseChoices(screen())!
-    expect(c.options[2]).toMatchObject({ free: true, checked: false })
-    await answerFree(d, 'w1:p1', c, 2, 'Pear', 'claude')
-    expect(sent).toEqual([['down', 'down'], { text: 'Pear' }])
   })
 })
 

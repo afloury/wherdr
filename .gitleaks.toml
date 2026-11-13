@@ -1,11 +1,12 @@
 [extend]
 useDefault = true
 
-# Synthetic ElevenLabs credentials in the unchanged upstream test fixtures.
-# Keep the exception limited to these files and literal dummy values.
+# Synthetic ElevenLabs credentials in the upstream engine test fixtures. engine/ is
+# gone from v3, but these files stay in git history, which `--range` scans still read.
+# Keep the exception limited to these historical files and literal dummy values.
 [[allowlists]]
 description = "Upstream voice tests use deterministic dummy API keys"
 condition = "AND"
-paths = ['''(^|/)(engine/)?tests/voice(_key)?\.rs$''']
+paths = ['''^engine/tests/voice(_key)?\.rs$''']
 regexTarget = "line"
 regexes = ['''sk_test_0123456789abcdef''', '''sk_tokens_0123456789abcd''']
