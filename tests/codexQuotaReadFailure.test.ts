@@ -5,7 +5,8 @@ import { expect, it, vi } from 'vitest'
 import { localFs } from '../server/utils/fsx'
 
 const state = vi.hoisted(() => ({ machines: [] as unknown[] }))
-vi.mock('../server/utils/machines', () => ({ allMachines: () => state.machines }))
+vi.mock('../server/utils/coreQuotaMachines', () => ({ coreQuotaMachines: async () => state.machines }))
+vi.mock('../server/utils/coreAdminDeps', () => ({ coreAdminDeps: () => ({}) }))
 import { forgetQuotas, readQuotas } from '../server/utils/quotas'
 
 it('discards the previous Codex account when a machine read fails after a login change', async () => {
