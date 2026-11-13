@@ -15,7 +15,7 @@ const set = (key: string, v: string) => { const { [key]: _, ...rest } = model.va
   <ul class="reach-list" data-testid="pm-reach">
     <li v-for="x in projects" :key="x.key" class="reach-row">
       <span class="reach-name"><ProjectBadge :text="shownKey(x)" :color="x.color" /><span class="truncate">{{ x.name }}</span></span>
-      <USelect :model-value="model[x.key] || NONE" :items="items" size="lg" class="reach-level" :aria-label="`${tl('Level on')} ${x.name}`" :data-testid="`pm-reach-${x.key}`" @update:model-value="(v: string) => set(x.key, v)" />
+      <USelect :model-value="model[x.key] || NONE" :items="items" size="lg" class="w-28 shrink-0" :aria-label="`${tl('Level on')} ${x.name}`" :data-testid="`pm-reach-${x.key}`" @update:model-value="(v: string) => set(x.key, v)" />
     </li>
   </ul>
 </template>
@@ -24,5 +24,4 @@ const set = (key: string, v: string) => { const { [key]: _, ...rest } = model.va
 .reach-list { display: grid; margin: 0; padding: 0; list-style: none; border-top: 1px solid var(--line-soft); }
 .reach-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 6px 0; border-bottom: 1px solid var(--line-soft); }
 .reach-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.reach-level { width: 110px; flex: none; }
 </style>
