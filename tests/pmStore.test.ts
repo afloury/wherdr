@@ -165,7 +165,7 @@ describe('template library', () => {
     await store.addProject({ key: 'ws', name: 'Work', machine: '', path: '~/work', kind: 'workspace', group: 'g1', shared: { base: 'develop', machines: ['big'], clones: { big: '/srv/work' } } }, okFolder)
     await store.addProject({ key: 'pay', machine: '', path: '~/work/payroll-api', workspace: 'ws', base: 'main', color: 'red' }, okFolder)
     const raw = JSON.parse(await fs.readFile(path.join(dir, 'projects.json'), 'utf8')).projects
-    expect(Object.keys(raw[1]).sort()).toEqual(['addedAt', 'key', 'machine', 'name', 'path', 'workspace'])
+    expect(Object.keys(raw[1]).sort()).toEqual(['addedAt', 'color', 'key', 'machine', 'name', 'path', 'workspace'])
     expect(raw[0]).toMatchObject({ kind: 'workspace', git: false, group: 'g1' })
     expect(await store.project('PAY')).toMatchObject({ base: 'develop', clones: { big: '/srv/work/payroll-api' } })
     expect(await store.coordinator('PAY')).toBeNull()

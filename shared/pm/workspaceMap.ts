@@ -31,7 +31,7 @@ export const MAP_COMMANDS = [
   { usage: 'map remove <repo>', does: 'take a repository off the workspace\'s map' },
 ]
 
-const isRepo = (r: unknown): r is string => {
+export const isRepo = (r: unknown): r is string => {
   const parts = typeof r === 'string' ? r.split('/') : []
   return parts.length >= 1 && parts.length <= 4 && parts.every(s => SEGMENT_RE.test(s) && s !== '.' && s !== '..')
 }

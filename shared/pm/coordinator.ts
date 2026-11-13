@@ -31,6 +31,7 @@ import { parseFiles } from './files'
 import { NOTES_COMMANDS, NOTES_RULE, parseNotes, type NotesCommand } from '../notes'
 import { MERGE_METHODS, contributorPrsLine, type MergeMethod } from './contributorPr'
 import { MAP_COMMANDS, parseMap, type MapCommand } from './workspaceMap'
+import { REPO_COMMANDS, parseRepo, type RepoCommand } from './workspaceAdopt'
 
 // The agent of a coordinator: the project's default, and the one its kept
 // conversation ran with (changing it starts a new conversation, never a
@@ -145,6 +146,7 @@ export type Command =
   // A file of its folder or a task's screenshots beside it (shared/uiShow.ts).
   | UiShowCommand
   | MapCommand // a workspace's map (shared/pm/workspaceMap.ts)
+  | RepoCommand // a workspace adopting a repository (shared/pm/workspaceAdopt.ts)
 
 // One table for the parser, the skill and the role file.
 export const COMMANDS: { usage: string, does: string }[] = [
@@ -183,6 +185,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'ui show file <path> | shots <task>', does: 'show a file of your folder (a path relative to it), or a task\'s screenshots (before and after side by side, toggled on a phone), beside your conversation (a card on a phone); only in a turn that comes from the user. It only shows: for the user\'s approval, add ui action step <task>; end your reply with the block the answer gives' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
   ...MAP_COMMANDS,
+  ...REPO_COMMANDS,
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
 // Listed only where the project's guard allows it.
@@ -209,7 +212,7 @@ export function tellTarget(runs: Run[], task: string, holder: Holder | undefined
 const TASK_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 // The main coordinator names the project with --project <KEY>; a task names its own.
-const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'incidents', 'automation list', 'automation show', 'automation propose', 'task add', 'map show', 'map list', 'map set', 'map remove']
+const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'incidents', 'automation list', 'automation show', 'automation propose', 'task add', 'map show', 'map list', 'map set', 'map remove', 'repo adopt']
 const URL_RE = /^https?:\/\/\S{1,2000}$/
 
 // argv after `wherdr pm` → a command, or the reason it is not one.
@@ -254,6 +257,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'step wait': ['for', 'until-user', 'reason'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files', 'from-branch'], 'task start': ['on'], 'list': ['archived'], 'automation propose': ['remove'], 'incidents': ['since'], 'ui open': ['target'], 'map set': ['does', 'talks', 'used-by'], 'map list': ['refresh'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' || w0 === 'list' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'map') return parseMap(words.slice(1), flags)
+  if (w0 === 'repo') return parseRepo(words.slice(1))
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (w0 === 'incidents') {
     if (w1) return { error: `unexpected argument: ${w1}` }

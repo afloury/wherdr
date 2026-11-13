@@ -48,13 +48,45 @@ A workspace holds the settings its members take:
 - the worktree setup;
 - *Archive done tasks after* and *Delete the task's branch after its merge*.
 
-A member stores only its key, name, machine, folder, workspace and repository
-visibility. Each setting comes from the workspace unless the member **overrides**
+A member stores only its key, name, color, machine, folder, workspace and
+repository visibility. Each setting comes from the workspace unless the member **overrides**
 it: a field the member sets itself is its own from then on (the list is kept
 in its `overrides`). Clearing the member's base branch or branch name template
 gives the workspace's back. Everything that reads a project's settings, the
 engine and the coordinator's commands included, reads them with the overrides
 applied.
+
+## Adopting a repository
+
+The workspace's coordinator makes a repository a member when a task first
+needs it, with no question to you:
+
+- `wherdr pm repo adopt <repo>`: `<repo>` is its path under the root (such as
+  `payroll-api` or `apps/web-app`), or its full path inside the root.
+
+The new member gets a key and a name proposed from its folder (as the New sheet
+does: `payroll-api` → `PA`) and the next free color, takes every shared setting
+and the workspace's workflow, and its repository's visibility (public or
+private) is checked at once. Its line on the [map](#the-workspace-map), when it
+has one, names it. Each adoption is written to the workspace's log and listed
+in the coordinator's next health check (*Repositories adopted since the last
+check*).
+
+wherdr refuses:
+
+- a path outside the workspace's root, a symbolic link that leads out of it
+  included (a link inside the root counts as the folder it leads to);
+- a folder that is already a project, of this workspace, another one or none,
+  or another project's clone on that machine;
+- a folder that does not exist (nothing is cloned for you) or is not a git
+  repository;
+- a repository without an `origin` when the workflow its tasks would run
+  pushes or opens pull requests.
+
+A member runs only on the machines that have its clone at
+`<root on that machine>/<repo path>`: before a task's first start on another
+machine, its readiness check looks for that clone, and a machine without it is
+left out of placement (*not ready*) until you clone it there.
 
 ## Shared workflow
 
