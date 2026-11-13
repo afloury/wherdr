@@ -41,7 +41,7 @@ it('says who proposed it and the request behind it: in full when unfolded, with 
   const c: CoordinatorView = { ...pending, label: 'WD', color: 'teal', proposal: { ...pending.proposal!, by: 'CO', said, saidAt: Date.UTC(2026, 0, 2, 9, 30) } }
   w = await mountSuspended(ProposalCard, { props: { c, canGoto: true } })
   expect(w.find('[data-testid="proposal-headline"]').text()).toBe('task: merge: you → automatic')
-  expect(w.find('[data-testid="proposal-by"]').text()).toBe('Proposed by WD coordinator')
+  expect(w.find('[data-testid="proposal-by"]').text()).toBe('Proposed by WDCompany')
   expect(w.find('[data-testid="proposal-key"]').attributes('style')).toContain('--project-teal')
   const text = w.find('[data-testid="proposal-said"]')
   expect(text.text()).toBe(said.trim())

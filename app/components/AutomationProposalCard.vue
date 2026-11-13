@@ -12,7 +12,7 @@ const busy = ref<'' | 'accept' | 'refuse'>('')
 const error = ref('')
 const a = computed(() => props.p.automation)
 const title = computed(() => ({ add: tl('New automation'), change: tl('Automation change'), remove: tl('Automation removal') })[props.p.action])
-const by = computed(() => (props.p.by === 'main' ? alfred.value?.name || 'Alfred' : tl(`${props.p.by} coordinator`)))
+const by = computed(() => (props.p.by === 'main' ? alfred.value?.name || 'Alfred' : `${props.p.by} ${coordinatorNameOf(props.p.by) || tl('coordinator')}`))
 const outcome = computed(() => props.p.outcome && `${({ accepted: tl('Accepted'), refused: tl('Refused'), replaced: tl('Replaced') })[props.p.outcome]} · ${fmtDateTime(props.p.answeredAt ?? props.p.at)}`)
 
 async function send(accept: boolean) {

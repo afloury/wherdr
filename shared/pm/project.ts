@@ -14,6 +14,7 @@ export interface Project {
   aliases?: string[] // the keys shown before: they still resolve
   color?: ProjectColor // its badge's color, from the palette
   name: string
+  coordinatorName?: string // its coordinator's name; missing: the project's name (projectCoordinatorName)
   machine: string // herdr-core machine key, '' = the wherdr host
   path: string // its clone on the home machine
   // The machines its tasks may run on; missing: only its own (the home machine,
@@ -57,7 +58,10 @@ export const isGitBranch = (b: string) => b !== '' && b !== '@' && !/[\x00-\x20\
 export const isTemplateId = (id: unknown): id is string => typeof id === 'string' && ID_RE.test(id)
 
 const KEY_HINT = '2 to 10 letters or digits, starting with a letter'
-export interface ProjectUpdate { name?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, paused?: string[], placement?: Strategy, branchName?: string, archiveAfter?: number, deleteBranch?: boolean }
+export interface ProjectUpdate { name?: string, coordinatorName?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, paused?: string[], placement?: Strategy, branchName?: string, archiveAfter?: number, deleteBranch?: boolean }
+
+// A project's coordinator is named after the project unless the user named it.
+export const projectCoordinatorName = (p: { name: string, coordinatorName?: string }) => p.coordinatorName || p.name
 
 // The machines a project's tasks may run on, its home machine first.
 export const allowedMachines = (p: Pick<Project, 'machine' | 'machines'>) => [p.machine, ...(p.machines ?? []).filter(m => m !== p.machine)]
@@ -114,7 +118,7 @@ export function machinesOf(p: Pick<Project, 'machine' | 'machines' | 'clones' | 
   return { errors, machines: machines.length > 1 ? machines : undefined, clones: machines.length > 1 ? clones : undefined, paused: paused.length ? paused : undefined }
 }
 
-// The fields the user changes on a project (General tab): name, base ('' clears it), key, color,
+// The fields the user changes on a project (General tab): name, its coordinator's name ('' clears it), base ('' clears it), key, color,
 // the allowed machines and their clones (checked against the project by machinesOf), the placement strategy.
 export function cleanProjectUpdate(raw: unknown): { update?: ProjectUpdate, errors: WorkflowError[] } {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
@@ -133,6 +137,12 @@ export function cleanProjectUpdate(raw: unknown): { update?: ProjectUpdate, erro
     const name = typeof o.name === 'string' ? o.name.trim() : ''
     if (!name || name.length > 80) errors.push({ path: 'name', message: '1 to 80 characters' })
     else update.name = name
+  }
+  // '' goes back to the project's name.
+  if (o.coordinatorName !== undefined) {
+    const name = typeof o.coordinatorName === 'string' ? o.coordinatorName.trim() : null
+    if (name === null || name.length > 80) errors.push({ path: 'coordinatorName', message: 'up to 80 characters' })
+    else update.coordinatorName = name
   }
   if (o.base !== undefined) {
     const base = typeof o.base === 'string' ? o.base.trim() : null

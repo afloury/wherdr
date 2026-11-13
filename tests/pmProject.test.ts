@@ -10,7 +10,7 @@ import { guardsAuthor, saveProjectGuards, saveProjectWorkflow, templateFromProje
 import { common, company, vibe } from '../shared/pm/examples'
 import { templateDiff } from '../shared/pm/coordinator'
 import { startOverFrom } from '../shared/pm/workflow'
-import { machineNamed, machinesOf, pausedEverywhere, taskMachine } from '../shared/pm/project'
+import { machineNamed, machinesOf, pausedEverywhere, projectCoordinatorName, taskMachine } from '../shared/pm/project'
 
 let dir = '', store: ReturnType<typeof createPmStore>
 const guards = { protected: ['main', 'release'], merge: { protected: 'user' as const, others: 'user' as const } }
@@ -96,6 +96,15 @@ describe('project settings', () => {
     expect((await store.workflow('CO'))!.worktree).toBeUndefined()
     expect((await updateProject(store, 'CO', { base: '' })).project).not.toHaveProperty('base')
     await expect(updateProject(store, 'CO', { base: 'a..b' })).rejects.toThrow('base: invalid branch name')
+  })
+
+  it('names its coordinator after the project unless the user named it; a rename follows only then', async () => {
+    const name = async (update: Record<string, unknown>) => projectCoordinatorName((await updateProject(store, 'CO', update)).project)
+    expect(await name({ name: 'Acme' })).toBe('Acme')
+    expect(await name({ name: 'Acme site' })).toBe('Acme site')
+    expect(await name({ coordinatorName: ' Pilot ' })).toBe('Pilot')
+    expect(await name({ name: 'Acme shop' })).toBe('Pilot')
+    expect(await name({ coordinatorName: '' })).toBe('Acme shop')
   })
 
   it('allows other machines, each with its clone; back to home only drops both fields', async () => {
