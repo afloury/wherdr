@@ -8,6 +8,7 @@
 // date). Pure: server/utils/pmMechanic.ts keeps each task's place (task.queue)
 // and why it stepped out (task.queueOut), and carries out the moves.
 import { prReady } from './actions'
+import { mergeAfterIds } from './advance'
 import { mayMerge, type ResolvedGuards } from './guards'
 import type { MechFacts } from './mechanic'
 import { waitsToMerge, type PlannedStep, type StepState } from './steps'
@@ -28,8 +29,9 @@ export function inMergeQueue(task: Task, plan: PlannedStep[], guards: ResolvedGu
 
 // Why a queued PR is out of line, or undefined when it may merge now: GitHub
 // reports no conflict, no required update and no other block, its head is the
-// task's commit, its checks are green and no merge was refused at that commit.
-export function queueOut(f: Pick<MechFacts, 'task' | 'plan' | 'pr' | 'head' | 'agentBusy'>): string | undefined {
+// task's commit, its checks are green, no merge was refused at that commit and
+// the tasks it merges after (mergeAfter) are done; tasks: every task, for those.
+export function queueOut(f: Pick<MechFacts, 'task' | 'plan' | 'pr' | 'head' | 'agentBusy'>, tasks: Task[] = []): string | undefined {
   const { task, plan, pr, head } = f
   const s = task.step!
   if (s.agent) return s.agent.kind === 'catch-up' ? 'its agent resolves a conflict with the base' : 'its agent fixes the PR'
@@ -43,8 +45,29 @@ export function queueOut(f: Pick<MechFacts, 'task' | 'plan' | 'pr' | 'head' | 'a
     return `${MERGE_REFUSED}${s.yourTurn.error ?? s.yourTurn.badge}`
   const ready = prReady(pr, head, plan[s.at]?.action?.checks)
   if (!ready.ok) return ready.later ? 'waiting for its checks' : 'checks failed'
+  // Ready, but its upstream tasks are not done: out of line, the others merge meanwhile.
+  const waits = mergeWaits(task, tasks)
+  if (waits.length) return `waits for ${waits.join(', ')} to be done`
   // Green, yet GitHub refuses it (a required review, a required check the step does not list).
   return pr.mergeStateStatus === 'BLOCKED' ? 'blocked by the branch rules' : undefined
+}
+
+// The tasks it merges after (mergeAfter) not done yet: done is the whole
+// workflow finished (merged, its deploy watched when the workflow has one).
+// One stopped or abandoned is still waited for; a removed one no longer.
+export const mergeWaits = (task: Pick<Task, 'mergeAfter'>, tasks: Task[]) =>
+  mergeAfterIds(task).filter((id) => { const t = tasks.find(x => x.id === id); return !!t && !(t.step?.done && !t.step.abandoned) })
+
+// A task it merges after that was stopped or abandoned: its coordinator is
+// woken once for it (key: kept in task.mech), and it keeps waiting, no cascade stop.
+export function mergeAfterWake(task: Task, tasks: Task[]): { key: string, why: string } | undefined {
+  for (const id of mergeWaits(task, tasks)) {
+    const up = tasks.find(t => t.id === id)!
+    const what = up.step?.abandoned ? 'abandoned' : up.stopped ? 'stopped' : undefined
+    const key = what && `merge-after:${id}:${up.step?.abandoned ? 'abandoned' : up.stopped!.at}`
+    if (key && !task.mech?.[key]) return { key, why: `${task.id} (${task.title}) merges after ${id}, which was ${what}: its PR keeps waiting. Start ${id} again, or drop the wait: \`wherdr pm task edit ${task.id} --merge-after "" --reason "<why>"\`.` }
+  }
+  return undefined
 }
 
 // Out of line until its commits are on the PR: the merge step pushes them (mechanic.ts).

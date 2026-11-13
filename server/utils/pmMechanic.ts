@@ -9,7 +9,7 @@ import { CATCH_UP_TRIES, catchUpGaveUp, ciOf, infraLog, nextMove, redCiText, typ
 import { FIX_MOVE, blockOf, escalation, fixOf, mayTry, noteFix } from '../../shared/pm/selfFix'
 import { addSkip, wakesFor } from '../../shared/pm/wakes'
 import { MAIN } from '../../shared/pm/coordinator'
-import { inMergeQueue, mergeOrder, ordinal, queueOut } from '../../shared/pm/mergeQueue'
+import { inMergeQueue, mergeAfterWake, mergeOrder, ordinal, queueOut } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
 import { caughtUpSettled, onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
 import { LABEL, linkedPr, prLink, taskPlan, trustKeys, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
@@ -606,11 +606,19 @@ interface Seen { facts: MechFacts, run: Run, sh: ReturnType<typeof actionShell> 
 
 // Each project's merge queue (shared/pm/mergeQueue.ts): every task's place,
 // and why it stepped out of line, kept on it; logged as it enters or comes first.
-async function queueTick(deps: PmLaunchDeps, seen: Seen[]) {
+// One that merges after a stopped or abandoned task wakes its coordinator once.
+async function queueTick(deps: PmLaunchDeps, seen: Seen[], now = Date.now()) {
   const queued = seen.filter(x => inMergeQueue(x.facts.task, x.facts.plan, x.facts.guards, x.facts.pr))
+  const all = queued.some(x => x.facts.task.mergeAfter) ? await deps.store.tasks() : []
   for (const project of new Set(seen.map(x => x.facts.task.project))) {
     const mine = queued.filter(x => x.facts.task.project === project)
-    for (const x of mine) x.facts.queueOut = queueOut(x.facts)
+    for (const x of mine) {
+      x.facts.queueOut = queueOut(x.facts, all)
+      const wake = mergeAfterWake(x.facts.task, all)
+      if (!wake) continue
+      await wakeCoordinators(deps, x.facts.task, wake.why, now)
+      x.facts.task = (await deps.store.updateTask(x.facts.task.id, t => ({ ...t, mech: { ...t.mech, [wake.key]: now } }), { by: 'engine', text: wake.why })) ?? x.facts.task
+    }
     const order = mergeOrder(mine.map(({ facts: { task, pr, queueOut: out } }) => ({
       id: task.id, files: (pr!.files ?? []).map(f => f.path), size: (pr!.additions ?? 0) + (pr!.deletions ?? 0), out, order: task.order,
     })))

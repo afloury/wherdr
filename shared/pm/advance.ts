@@ -105,6 +105,8 @@ export const runsNow = (step: PlannedStep | undefined, s: StepState | undefined,
 
 // The tasks a task waits for: `after: A-1,A-2`.
 export const afterIds = (t: Pick<Task, 'after'>) => (t.after ?? '').split(',').map(s => s.trim()).filter(Boolean)
+// The tasks a task merges after: `mergeAfter: A-1,A-2` (mergeQueue.ts).
+export const mergeAfterIds = (t: Pick<Task, 'mergeAfter'>) => afterIds({ after: t.mergeAfter })
 
 // What every chain wait says: the engine knows which waits are its own.
 export const CHAIN_WAIT = 'which this task starts after'

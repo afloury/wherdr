@@ -57,6 +57,7 @@ export interface Task {
   specPass?: { at: number, step: string, reason: string } // the coordinator's last pass on a spec change, shown in Decisions for a day
   marks?: Mark[] // when its step or turn changed, added by the store (times.ts)
   after?: string // tasks of the same project or workspace, comma-separated: this one starts once they are done
+  mergeAfter?: string // tasks of the same project or workspace, comma-separated: its PR merges once they are done (mergeQueue.ts)
   kind?: 'feature' // a workspace's task: it runs no agent (feature.ts)
   feature?: string // the feature this sub-task of a member belongs to (its <WS-n>)
   plan?: { order: string } // a feature's split: the coordinator's one-line reason for its order

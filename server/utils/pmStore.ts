@@ -253,6 +253,9 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     const after = afterIds({ after: str('after') }).map(a => storedTaskId(list, a) ?? a).join(',')
     const outside = afterRefusal(p.key, afterIds({ after }), known, list)
     if (outside) throw badInput([{ path: 'after', message: outside }])
+    const mergeAfter = afterIds({ after: str('mergeAfter') }).map(a => storedTaskId(list, a) ?? a).join(',')
+    const late = afterRefusal(p.key, afterIds({ after: mergeAfter }), known, list)
+    if (late) throw badInput([{ path: 'mergeAfter', message: late }])
     // A member's sub-task names a feature of its workspace.
     const feature = str('feature') && (storedTaskId(list, str('feature')) ?? str('feature'))
     if (feature && !known.some(t => t.id === feature && t.kind === 'feature' && !t.closed && t.project === p.workspace)) throw badInput([{ path: 'feature', message: 'an open feature of the project\'s workspace' }])
@@ -261,7 +264,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     if (o.weight !== undefined && o.weight !== '' && !isWeight(o.weight)) throw badInput([{ path: 'weight', message: `one of ${WEIGHTS.join(', ')}` }])
     const weight = isWeight(o.weight) ? o.weight : undefined
     const origin = (['coordinator', 'automation', 'mission'] as const).find(x => x === o.origin) ?? 'user'
-    return { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(isWorkspace(p) ? { kind: 'feature' as const } : {}), ...(feature ? { feature } : {}), ...(after ? { after } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}), ...(fromBranch ? { fromBranch } : {}) }
+    return { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(isWorkspace(p) ? { kind: 'feature' as const } : {}), ...(feature ? { feature } : {}), ...(after ? { after } : {}), ...(mergeAfter ? { mergeAfter } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}), ...(fromBranch ? { fromBranch } : {}) }
   }
 
   async function replanTasks(key: string, before: Template, after: Template) {
@@ -465,23 +468,28 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     receipt: (id: string) => readJson<Receipt>(path.join(files.receipts, `${id}.json`)),
     saveReceipt: (r: Receipt) => write(() => writeJson(path.join(files.receipts, `${r.id}.json`), r)),
 
-    // { project, title, description?, type, after?, feature?, auto?, origin?, addedBy? }: a new task, to do (origin: 'user' when unset).
+    // { project, title, description?, type, after?, mergeAfter?, feature?, auto?, origin?, addedBy? }: a new task, to do (origin: 'user' when unset).
     addTask: (raw: unknown) => write(async () => {
       const task = await newTask(raw)
       await writeJson(path.join(files.tasks, `${task.id}.json`), task)
       return task
     }),
     // A feature's sub-tasks (feature.ts), all added or none: each raw is
-    // addTask's, afterIndex naming earlier ones of the same split; the
-    // feature keeps the plan's order.
-    splitFeature: (id: string, raws: (Record<string, unknown> & { afterIndex: number[] })[], order: string, by: string) => write(async () => {
+    // addTask's, afterIndex naming earlier ones of the same split,
+    // mergeAfterIndex any other one; the feature keeps the plan's order.
+    splitFeature: (id: string, raws: (Record<string, unknown> & { afterIndex: number[], mergeAfterIndex?: number[] })[], order: string, by: string) => write(async () => {
       const all = await tasks(), feature = all.find(t => t.id === id)
       if (feature?.kind !== 'feature' || feature.closed) throw new HerdrError('refused', `${id} is not an open feature`)
       if (subTasks(feature, all).length) throw new HerdrError('refused', `${id} is already split: add a sub-task with task add --feature ${id}`)
       const added: Task[] = [], at = Date.now()
-      for (const { afterIndex, ...raw } of raws) {
+      for (const { afterIndex, mergeAfterIndex: _, ...raw } of raws) {
         const t = await newTask({ ...raw, feature: id, after: [raw.after, ...afterIndex.map(i => added[i]!.id)].filter(Boolean).join(',') }, added)
         added.push({ ...t, log: [{ at, by, text: `added the task, a sub-task of ${id}${t.after ? `, after ${t.after}` : ''}` }] })
+      }
+      // Merges may follow any sub-task of the split (parsePlan refused a cycle).
+      for (const [i, t] of added.entries()) {
+        const mergeAfter = [t.mergeAfter, ...(raws[i]!.mergeAfterIndex ?? []).map(j => added[j]!.id)].filter(Boolean).join(',')
+        if (mergeAfter) added[i] = { ...t, mergeAfter, log: [...t.log!, { at, by, text: `merges after ${mergeAfter}` }] }
       }
       for (const t of added) await writeJson(path.join(files.tasks, `${t.id}.json`), t)
       const split = { ...feature, plan: { order }, log: [...(feature.log ?? []), { at, by, text: `split into ${added.map(t => t.id).join(', ')}: ${order}` }].slice(-200) }

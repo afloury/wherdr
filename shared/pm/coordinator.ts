@@ -127,7 +127,7 @@ export type Command =
   | { name: 'ack', wakes: string[] } | { name: 'automation show', id: string }
   | { name: 'automation propose', id?: string, remove?: true } // a new or changed one comes as the call's input (JSON)
   | { name: 'tell', task: string, text: string, to?: AgentRole, fix?: FixKind, reason?: string, spec?: true }
-  | { name: 'task edit', task: string, title?: string, description?: string, after?: string, reason: string }
+  | { name: 'task edit', task: string, title?: string, description?: string, after?: string, mergeAfter?: string, reason: string }
   | { name: 'task note', task: string, text: string }
   | { name: 'read', task: string, to?: AgentRole, lines?: number }
   | { name: 'task start', task: string, on?: string }
@@ -135,7 +135,7 @@ export type Command =
   | { name: 'task stop', task: string, reason: string }
   | { name: 'task remove', task: string, reason: string }
   | { name: 'task order', task: string, tasks: string[] } // task: the first, for its project
-  | { name: 'task add', title: string, type: string, after?: string, description?: string, weight?: Weight, files?: string[], fromBranch?: string, feature?: string }
+  | { name: 'task add', title: string, type: string, after?: string, mergeAfter?: string, description?: string, weight?: Weight, files?: string[], fromBranch?: string, feature?: string }
   | { name: 'pr merge', pr: number, userSaid: string, method?: MergeMethod }
   | { name: 'report back' | 'report close', task: string, text: string }
   // Show a place beside the coordinator's conversation (shared/uiOpen.ts).
@@ -174,9 +174,9 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
   { usage: 'task order <task> [<task>…]', does: 'put these tasks first in their column (To do, Your turn…), in this order; the others keep their order after them. Keep the board busy starts to-do tasks in board order, and the merge queue takes approved merges in it. A done task is refused. In a turn of the user at any time, in a wake only with the autopilot on; written to the project\'s log' },
-  { usage: 'task edit <task> [--title "<text>"] [--description "<text>"] [--after <task>,<task>] --reason "<one sentence>"', does: 'change the task\'s title or description when the user changes direction; only in a turn that comes from the user. Written to the task\'s log with the reason and a short diff; its running agent is told at once, and the worker and the reviewer read the new spec from their next step or round. --after alone changes the tasks it starts after ("" for none), for a task not started yet: tasks of its project or workspace, never a cycle; in a wake only with the autopilot on' },
+  { usage: 'task edit <task> [--title "<text>"] [--description "<text>"] [--after <task>,<task>] [--merge-after <task>,<task>] --reason "<one sentence>"', does: 'change the task\'s title or description when the user changes direction; only in a turn that comes from the user. Written to the task\'s log with the reason and a short diff; its running agent is told at once, and the worker and the reviewer read the new spec from their next step or round. --after alone changes the tasks it starts after ("" for none), for a task not started yet: tasks of its project or workspace, never a cycle; in a wake only with the autopilot on. --merge-after alone changes the tasks its PR merges after ("" for none), for a task not done yet, under the same rules' },
   { usage: 'task note <task> "<text>"', does: `add a dated spec change to the task, under its description; only in a turn that comes from the user. The worker\'s and the reviewer\'s instructions give every note, newest last, with the rule "${SPEC_RULE}"; its running agent is told at once` },
-  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy] [--files <path>,<path>] [--from-branch <branch>] [--feature <feature>] [--project <KEY>]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it). --files: the files or folders it will change, so that its start waits behind a started task that touches them. --from-branch: an existing branch its worker continues (a v2 task\'s), when the remote still has it at its start; else it starts from the base. --feature: a sub-task of one of the workspace\'s features (--after may then name tasks of its other projects)' },
+  { usage: 'task add "<title>" --type <type> [--after <task>,<task>] [--merge-after <task>,<task>] [--description "<text>"] [--weight light|standard|heavy] [--files <path>,<path>] [--from-branch <branch>] [--feature <feature>] [--project <KEY>]', does: 'add a task to do; in a turn of the user at any time, in a wake only with the autopilot on; with --after, the engine starts it once those tasks are done. --weight says what it needs of a machine (light: docs, a study; standard: tests and typecheck; heavy: a build, e2e, screenshots); left out, it comes from its task type and steps (show gives it). --files: the files or folders it will change, so that its start waits behind a started task that touches them. --from-branch: an existing branch its worker continues (a v2 task\'s), when the remote still has it at its start; else it starts from the base. --feature: a sub-task of one of the workspace\'s features (--after may then name tasks of its other projects). --merge-after: its PR merges only once those tasks are done (their whole workflow); it waits out of line in the merge queue meanwhile' },
   { usage: 'report back <task> "<what to fix>"', does: 'on a problem the user reported: send their step back to the worker with precise fixes, and close the report' },
   { usage: 'report close <task> "<what you did>"', does: 'close a problem the user reported once handled (you told the agent, added a follow-up task, or it is fine); the merge it blocked is free again' },
   { usage: 'tell <task> "<text>" [--to worker|reviewer] [--spec] [--fix base|ci|machine|stall --reason "<one sentence>"]', does: `a message to one of the task\'s agents: the one that holds its current step, else (a step held by nobody or by you: pr, merge, a user step) its worker; --to picks it. The answer says which agent got it. --spec also records it as a spec note (task note), so that the reviewer reviews against it; only in a turn that comes from the user. In a wake, only to answer its question, or with --fix to unblock a mechanical block (${FIX_KINDS.map(k => `${k}: ${FIX_TEXT[k]}`).join('; ')}): a worker that was let go or has ended starts again with your message, a reviewer not running at the review step starts the review again; with the autopilot on, a task of your project, at most ${FIXES_PER_STEP} times per task and step, written to its log with the reason; past that, tell the user. A permission request is always the user\'s` },
@@ -257,7 +257,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'after', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'step wait': ['for', 'until-user', 'reason'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files', 'from-branch', 'feature'], 'feature add': ['description'], 'feature close': ['reason'], 'task start': ['on'], 'list': ['archived'], 'automation propose': ['remove'], 'incidents': ['since'], 'ui open': ['target'], 'map set': ['does', 'talks', 'used-by'], 'map list': ['refresh'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' || w0 === 'list' ? w0 : verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'after', 'merge-after', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'step wait': ['for', 'until-user', 'reason'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'merge-after', 'description', 'weight', 'files', 'from-branch', 'feature'], 'feature add': ['description'], 'feature close': ['reason'], 'task start': ['on'], 'list': ['archived'], 'automation propose': ['remove'], 'incidents': ['since'], 'ui open': ['target'], 'map set': ['does', 'talks', 'used-by'], 'map list': ['refresh'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' || w0 === 'list' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'map') return parseMap(words.slice(1), flags)
   if (w0 === 'repo') return parseRepo(words.slice(1))
@@ -303,6 +303,8 @@ function parseWords(argv: unknown): Command | { error: string } {
     const title = words.slice(2).join(' ').trim(), type = (flags.type ?? '').trim(), after = flags.after?.trim()
     if (!title || title.length > 200 || !type) return usage(verb)
     if (after !== undefined && !after.split(',').every(a => TASK_RE.test(a.trim()))) return { error: '--after is a list of tasks: A-1,A-2' }
+    const mergeAfter = flags['merge-after']?.trim()
+    if (mergeAfter !== undefined && !mergeAfter.split(',').every(a => TASK_RE.test(a.trim()))) return { error: '--merge-after is a list of tasks: A-1,A-2' }
     const description = flags.description?.trim()
     if (description && description.length > 20000) return { error: '--description is 20000 characters at most' }
     const weight = flags.weight?.trim()
@@ -312,7 +314,7 @@ function parseWords(argv: unknown): Command | { error: string } {
     if (fromBranch !== undefined && !isGitBranch(fromBranch)) return { error: '--from-branch is a branch name' }
     const feature = flags.feature?.trim()
     if (feature !== undefined && !TASK_RE.test(feature)) return { error: '--feature is a feature: WS-1' }
-    return { name: verb, title, type, ...(feature ? { feature } : {}), ...(after ? { after } : {}), ...(description ? { description } : {}), ...(weight ? { weight } : {}), ...(files.length ? { files } : {}), ...(fromBranch ? { fromBranch } : {}) }
+    return { name: verb, title, type, ...(feature ? { feature } : {}), ...(after ? { after } : {}), ...(mergeAfter ? { mergeAfter } : {}), ...(description ? { description } : {}), ...(weight ? { weight } : {}), ...(files.length ? { files } : {}), ...(fromBranch ? { fromBranch } : {}) }
   }
   if (verb === 'pr merge') {
     const said = flags['user-said']?.trim(), method = flags.method as MergeMethod | undefined
@@ -331,13 +333,14 @@ function parseWords(argv: unknown): Command | { error: string } {
     return tasks.length && tasks.length <= 100 && tasks.every(x => TASK_RE.test(x)) ? { name: verb, task: tasks[0]!, tasks } : usage(verb)
   }
   if (verb === 'task edit') {
-    const title = flags.title?.trim(), description = flags.description?.trim(), reason = (flags.reason ?? '').trim(), after = flags.after?.trim()
-    if (!TASK_RE.test(task) || w3 || !reason || (title === undefined && description === undefined && after === undefined)) return usage(verb)
+    const title = flags.title?.trim(), description = flags.description?.trim(), reason = (flags.reason ?? '').trim(), after = flags.after?.trim(), mergeAfter = flags['merge-after']?.trim()
+    if (!TASK_RE.test(task) || w3 || !reason || (title === undefined && description === undefined && after === undefined && mergeAfter === undefined)) return usage(verb)
     if (after && !after.split(',').every(a => TASK_RE.test(a.trim()))) return { error: '--after is a list of tasks: A-1,A-2 ("" for none)' }
+    if (mergeAfter && !mergeAfter.split(',').every(a => TASK_RE.test(a.trim()))) return { error: '--merge-after is a list of tasks: A-1,A-2 ("" for none)' }
     if (title !== undefined && (!title || title.length > 200)) return { error: '--title is 1 to 200 characters' }
     if (description !== undefined && description.length > 20000) return { error: '--description is 20000 characters at most' }
     if (reason.length > 300 || reason.includes('\n')) return { error: '--reason is one sentence (300 characters at most)' }
-    return { name: verb, task, ...(title !== undefined ? { title } : {}), ...(description !== undefined ? { description } : {}), ...(after !== undefined ? { after } : {}), reason }
+    return { name: verb, task, ...(title !== undefined ? { title } : {}), ...(description !== undefined ? { description } : {}), ...(after !== undefined ? { after } : {}), ...(mergeAfter !== undefined ? { mergeAfter } : {}), reason }
   }
   if (verb === 'task note') {
     const text = words.slice(3).join(' ').trim()

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { inMergeQueue, mergeOrder, ordinal, queueOut } from '../shared/pm/mergeQueue'
+import { inMergeQueue, mergeAfterWake, mergeOrder, ordinal, queueOut } from '../shared/pm/mergeQueue'
 import { idleSince } from '../shared/pm/release'
 import { catchUpGaveUp, nextMove, type MechFacts, type PrState } from '../shared/pm/mechanic'
 import { combineGuards } from '../shared/pm/guards'
@@ -92,6 +92,25 @@ describe('merge queue', () => {
     const spent = { 'catch-up:abc1234': 0, 'catch-up:abc1234:2': 0, 'catch-up:abc1234:3': 0 }
     expect(catchUpGaveUp(task({ mech: spent }), 'abc1234')).toBe(true)
     expect(at(spent, { pr: pr({ mergeStateStatus: 'UNKNOWN' }) })?.move.kind).toBe('merge')
+  })
+
+  it('a PR merging after other tasks waits out of line until they are done; a stopped one wakes the coordinator once', () => {
+    const waiting = task({ mergeAfter: 'LED-4' })
+    const led = (more: Partial<Task> = {}) => task({ id: 'LED-4', project: 'LED', ...more })
+    const out = (up: Task) => queueOut(facts({ task: waiting }), [up])
+    // Merged but its deploy still watched: not done yet. Others in its queue merge meanwhile.
+    expect(out(led({ step: step({ at: 3 }) }))).toBe('waits for LED-4 to be done')
+    expect(mergeOrder([{ id: 'CO-1', files: ['x.ts'], size: 1, out: out(led()) }, { id: 'CO-2', files: ['y.ts'], size: 9 }])).toEqual(['CO-2', 'CO-1'])
+    expect(nextMove(facts({ task: waiting, queue: 2, queueOut: out(led()) }))).toBeUndefined()
+    // Its whole workflow done (merged, deploy watched): it goes.
+    expect(out(led({ step: step({ done: true }) }))).toBeUndefined()
+    // Stopped or abandoned: it keeps waiting; its coordinator is woken once per stop.
+    const stopped = led({ stopped: { by: 'user', why: 'wrong approach', at: 5 } })
+    expect(out(led({ step: step({ done: true, abandoned: true }) }))).toBe('waits for LED-4 to be done')
+    expect(mergeAfterWake(waiting, [led()])).toBeUndefined()
+    const wake = mergeAfterWake(waiting, [stopped])!
+    expect(wake.key).toBe('merge-after:LED-4:5')
+    expect(mergeAfterWake(task({ mergeAfter: 'LED-4', mech: { [wake.key]: 6 } }), [stopped])).toBeUndefined()
   })
 
   it('shows its place on the card, and a refused merge waiting its turn is not the user\'s', () => {
