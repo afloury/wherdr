@@ -27,6 +27,7 @@ Changing (show, then do):
 | --- | --- |
 | `wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]` | adds a project: a git folder inside the home folder of a machine, not already a project (on this machine, checked before the yes too) |
 | `wherdr alfred project template <KEY> <id\|none>` | gives the project a template (a saved one or `example:<id>`), or none |
+| `wherdr alfred v2 import [--only <KEY,KEY>] [--start no]` | brings every v2 project not made yet over in one change: each added on this machine with its v2 folder, then its coordinator started (no workflow needed); with `--propose`, one card with a checkbox per project and one for *Start their coordinators*; the outcome lists each project ([set up your v2 projects](migrate-from-v2.md#set-up-your-v2-projects-with-alfred)) |
 | `wherdr alfred project memory <KEY> < note.md` | adds the lines it is given (at most 30) to the end of the project coordinator's `memory.md`, created when missing: a v2 handover note and goal, for instance ([set up your v2 projects](migrate-from-v2.md#set-up-your-v2-projects-with-alfred)) |
 | `wherdr alfred project guards <KEY> [--protect <branch,branch\|none>] [--merge-protected user\|engine] [--merge-others user\|engine] [--contributor-prs off\|others\|all]` | the project's [guards](project-management.md#guards): protected branches, who merges into them and into the others (`user`: you, `engine`: wherdr), and whether its coordinator may merge an outside contributor's PR after your yes; without an option, only shown |
 | `wherdr alfred project machine add <KEY> <machine> --clone <folder>` | lets the project's tasks run on another machine (its key or label), in its clone of the repository there; once applied, the machine's [readiness check](project-management.md#board) runs and its result is in the answer |
@@ -40,7 +41,9 @@ only after your yes in the chat. With `--propose` instead (only in a turn that f
 message), nothing changes yet: Alfred's reply carries a [card you apply](conversation.md#project-changes-alfred-proposes)
 with the change's lines, *Show me*, *Cancel* and *Apply*. Your click is [told to Alfred](conversation.md#what-a-card-tells-its-agent)
 (*Applied: …*), so it goes on to the next step (the next v2 project) without you typing "ok, next". When the answer names a `remote` machine (a project on another
-machine, its coordinator), Alfred makes the change only when you asked for it. No `wherdr alfred`
+machine, its coordinator), Alfred makes the change only when you asked for it. A
+coordinator needs no workflow to start: a project without one has the minimal default, and its
+coordinator's first conversation proposes one. No `wherdr alfred`
 command deletes anything but its own [notes](#notes) (removing a project's machine leaves its clone and tasks there): removing a project, a template or a setting stays yours, in Settings.
 The one removal a coordinator has is `wherdr pm task remove`, for a task never started.
 

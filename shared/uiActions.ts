@@ -23,10 +23,21 @@ export interface SettingChange { key: SyncedSetting, before?: string, after: str
 // …` or `coordinator start … --propose`): the command the click runs, the
 // lines its dry run showed (the click runs it only while they still hold), the
 // project, and the part of its sheet "Show me" highlights.
-export interface ProjectChange { argv: string[], lines: string[], project: string, said?: string, target?: UiTargetId }
+// picks (several projects in one card, `v2 import`): the key each line adds,
+// null when it cannot be added (the line says why); each a checkbox, on by
+// default. start: the "Start their coordinators" checkbox's default.
+export interface ProjectChange { argv: string[], lines: string[], project: string, said?: string, target?: UiTargetId, picks?: (string | null)[], start?: boolean }
+// The user's checkboxes at the click: the keys to add and whether to start their coordinators.
+export interface CardChoice { picks: string[], start: boolean }
+export function cardChoice(body: { picks?: unknown, start?: unknown }): CardChoice | undefined {
+  if (!Array.isArray(body.picks)) return undefined
+  return { picks: body.picks.filter((k): k is string => typeof k === 'string' && /^[A-Z][A-Z0-9]{1,9}$/.test(k)), start: body.start !== false }
+}
+// With the user's choice, the command the click runs.
+export const choiceArgv = (argv: string[], c?: CardChoice) => (c ? [...argv, '--only', c.picks.join(','), '--start', c.start ? 'yes' : 'no'] : argv)
 export interface UiCard {
   id: string, by: string, at: number, kind: UiAction | 'setting' | 'change', task: string, shown: string
-  label: string, stamp: string, state: UiCardState, outcome?: { text: string, at: number }
+  label: string, stamp: string, state: UiCardState, outcome?: { text: string, at: number, lines?: string[] } // lines: per project (v2 import)
   setting?: SettingChange // kind 'setting' only (task and shown are '')
   change?: ProjectChange // kind 'change' only (task and shown are '')
   refused?: string // the click's answer only, never stored: why the step's action was refused
@@ -81,11 +92,11 @@ export const CARD_NOTE = 'From the card: '
 export const cardNote = (outcome: string) => `${CARD_NOTE}${outcome}`
 export const cardNoteOf = (text: string) => (text.startsWith(CARD_NOTE) ? text.slice(CARD_NOTE.length) : null)
 // Applied / Cancelled / Not applied, with the card's one-line summary.
-export function cardOutcome(card: Pick<UiCard, 'kind' | 'label' | 'setting' | 'state'>, refused?: string) {
+export function cardOutcome(card: Pick<UiCard, 'kind' | 'label' | 'setting' | 'state' | 'outcome'>, refused?: string) {
   const what = card.setting ? `${card.label} (${card.setting.before ?? 'default'} → ${card.setting.after})` : card.label
   if (refused) return `Not applied: ${what}: ${refused}`
   if (card.state === 'stale') return `Not applied: ${what}: this changed since, nothing was applied`
-  return `${card.state === 'dismissed' ? 'Cancelled' : 'Applied'}: ${what}`
+  return `${card.state === 'dismissed' ? 'Cancelled' : 'Applied'}: ${what}${card.outcome?.lines?.length ? `: ${card.outcome.lines.join('; ')}` : ''}`
 }
 
 // A setting card holds while the setting still has the value it was proposed
@@ -99,6 +110,7 @@ export const CHANGE_PLACES: Record<string, { label: (key: string) => string, tar
   'project guards': { label: k => `Project ${k} › Guards`, target: 'project.guards' },
   'project machine': { label: k => `Project ${k} › Machines` },
   'coordinator start': { label: k => `Project ${k} › Coordinator`, target: 'project.autopilot' },
+  'v2 import': { label: () => 'Projects from wherdr v2' },
 }
 export const changeStamp = (lines: string[]) => `change:${lines.join('\n')}`
 

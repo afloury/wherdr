@@ -6,7 +6,10 @@
 // After: the outcome line; changed since: nothing runs, the task opens instead.
 // A proposed setting change (kind 'setting'): before → after and the user's
 // message behind it, Show me (highlights the setting), Cancel and Apply. A
-// proposed project change (kind 'change'): the lines of its dry run instead.
+// proposed project change (kind 'change'): the lines of its dry run instead;
+// several projects (`v2 import`, change.picks): a checkbox per project (on by
+// default, none for one that cannot be added) and one to start their
+// coordinators; the outcome then lists each project.
 import type { UiCard } from '#shared/uiActions'
 import { appRoute } from '#shared/appLinks'
 import { uiTargetLink } from '#shared/uiTargets'
@@ -23,6 +26,10 @@ function showMe() {
   router.push(appRoute(target ? uiTargetLink(target, card.value?.change?.project) : '#/settings'))
 }
 const error = ref('')
+// The checkboxes of a several-projects card: the keys to add, and whether to start their coordinators.
+const picked = ref<string[]>([])
+const start = ref(true)
+watch(() => card.value?.change?.picks, (p) => { picked.value = (p ?? []).filter((k): k is string => !!k); start.value = card.value?.change?.start !== false }, { immediate: true })
 
 async function load() {
   try { card.value = (await api<{ card: UiCard }>(`/api/ui/card?id=${encodeURIComponent(props.id)}`)).card }
@@ -39,7 +46,8 @@ async function act(cancel = false) {
   busy.value = cancel ? 'cancel' : 'run'
   error.value = ''
   try {
-    card.value = (await api<{ card: UiCard }>('/api/ui/act', { id: c.id, ...(cancel ? { cancel } : {}) })).card
+    const choice = c.change?.picks && !cancel ? { picks: picked.value, start: start.value } : {}
+    card.value = (await api<{ card: UiCard }>('/api/ui/act', { id: c.id, ...(cancel ? { cancel } : {}), ...choice })).card
     if (!c.setting && !c.change) taskChanged()
   }
   catch (e) { error.value = (e as Error).message; load() }
@@ -55,18 +63,27 @@ async function act(cancel = false) {
     <template v-else-if="proposal">
       <span class="action-task">{{ card.label }}</span>
       <p v-if="card.setting" class="action-change" data-testid="setting-change"><span>{{ value(card.setting.before) }}</span><UIcon name="i-lucide-arrow-right" /><b>{{ value(card.setting.after) }}</b></p>
+      <div v-else-if="card.change!.picks && card.state === 'open'" class="action-picks" data-testid="change-picks">
+        <label v-for="(l, i) in card.change!.lines" :key="i" class="action-pick" :class="{ off: !card.change!.picks[i] }">
+          <input v-if="card.change!.picks[i]" v-model="picked" type="checkbox" :value="card.change!.picks[i]">
+          <UIcon v-else name="i-lucide-circle-slash" />
+          <span>{{ l }}</span>
+        </label>
+        <label class="action-pick action-start"><input v-model="start" type="checkbox" data-testid="change-start"><span>{{ t('Start their coordinators') }}</span></label>
+      </div>
       <ul v-else class="action-lines" data-testid="change-lines"><li v-for="(l, i) in card.change!.lines" :key="i">{{ l }}</li></ul>
       <p v-if="proposal.said" class="action-line">{{ t('After your message:') }} “{{ proposal.said }}”</p>
       <div v-if="card.state === 'open'" class="action-row">
         <UButton v-if="card.setting || proposal.target" color="neutral" variant="ghost" size="lg" icon="i-lucide-locate-fixed" data-testid="setting-show" @click="showMe">{{ t('Show me') }}</UButton>
         <span class="action-gap" />
         <UButton color="neutral" variant="outline" size="lg" :loading="busy === 'cancel'" :disabled="busy !== ''" data-testid="setting-cancel" @click="act(true)">{{ t('Cancel') }}</UButton>
-        <UButton color="primary" size="lg" :loading="busy === 'run'" :disabled="busy !== ''" data-testid="setting-apply" @click="act()">{{ t('Apply') }}</UButton>
+        <UButton color="primary" size="lg" :loading="busy === 'run'" :disabled="busy !== '' || (!!card.change?.picks && !picked.length)" data-testid="setting-apply" @click="act()">{{ t('Apply') }}</UButton>
       </div>
       <p v-else-if="card.state === 'stale'" class="action-line" data-testid="action-stale">{{ card.setting ? t('This setting changed since: nothing was applied') : t('This changed since: nothing was applied') }}</p>
       <p v-else class="action-outcome" :class="{ no: card.state === 'dismissed' }" :title="fmtDateTime(card.outcome?.at ?? card.at)" data-testid="action-outcome">
         <UIcon :name="card.state === 'done' ? 'i-lucide-check' : 'i-lucide-x'" />{{ card.outcome?.text }} · {{ fmtTime(card.outcome?.at ?? card.at) }}
       </p>
+      <ul v-if="card.outcome?.lines" class="action-lines" data-testid="change-outcome"><li v-for="(l, i) in card.outcome.lines" :key="i">{{ l }}</li></ul>
       <p v-if="error" class="form-error" role="alert">{{ error }}</p>
     </template>
     <template v-else-if="card.state === 'open'">
@@ -97,6 +114,11 @@ async function act(cancel = false) {
 .action-change > span { color: var(--text-2); }
 .action-lines { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; font: 13px/1.4 var(--font-mono); overflow-wrap: anywhere; }
 .action-gap { flex: 1 1 0; }
+.action-picks { display: grid; min-width: 0; font: 13px/1.4 var(--font-mono); }
+.action-pick { display: flex; align-items: center; gap: 10px; min-height: 44px; min-width: 0; overflow-wrap: anywhere; cursor: pointer; }
+.action-pick > input, .action-pick > .iconify { width: 21px; height: 21px; flex: none; accent-color: var(--accent); }
+.action-pick.off { color: var(--muted); cursor: default; }
+.action-start { border-top: 1px solid var(--line); font-family: var(--font-sans); }
 .action-outcome.no { color: var(--muted); }
 .action-outcome { display: flex; align-items: center; gap: 6px; margin: 0; font: 12px/1.4 var(--font-mono); color: var(--green); overflow-wrap: anywhere; }
 @media (max-width: 599px) { .action-row > :deep(button) { flex: 1 1 auto; } .action-gap { display: none; } }

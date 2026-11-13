@@ -21,28 +21,28 @@ function setup(running: boolean) {
     await addChangeCard(store as never, { turn: 'user', by: 'Alfred', change, label: 'Project WEB › Guards' })
     return rec.cards![0]!.id
   }
-  return { rec, sent, card, deps: (applyChange: (a: string[], l: string[]) => Promise<boolean>) => ({ store, call, applyChange }) as never }
+  return { rec, sent, card, deps: (applyChange: (a: string[], l: string[]) => Promise<string[] | null>) => ({ store, call, applyChange }) as never }
 }
 
 describe('a card\'s outcome told to its agent', () => {
   it('Apply sends one message, and its turn follows the user', async () => {
     const { rec, sent, card, deps } = setup(true)
     const id = await card()
-    await actOnCard(deps(async () => true), id, undefined)
-    await actOnCard(deps(async () => true), id, undefined) // a second click changes nothing
+    await actOnCard(deps(async () => []), id, undefined)
+    await actOnCard(deps(async () => []), id, undefined) // a second click changes nothing
     expect(sent).toEqual(['From the card: Applied: Project WEB › Guards'])
     expect(rec.turn?.kind).toBe('user')
   })
 
   it('Cancel sends one message', async () => {
     const { sent, card, deps } = setup(true)
-    await actOnCard(deps(async () => true), await card(), undefined, true)
+    await actOnCard(deps(async () => []), await card(), undefined, true)
     expect(sent).toEqual(['From the card: Cancelled: Project WEB › Guards'])
   })
 
   it('a failed or stale apply says it was not applied, and why', async () => {
     const { sent, card, deps } = setup(true)
-    await actOnCard(deps(async () => false), await card(), undefined)
+    await actOnCard(deps(async () => null), await card(), undefined)
     await expect(actOnCard(deps(async () => { throw new (await import('../server/utils/herdr')).HerdrError('refused', 'Not a git repository') }), await card(), undefined)).rejects.toThrow(/git/)
     expect(sent).toEqual([
       'From the card: Not applied: Project WEB › Guards: this changed since, nothing was applied',
@@ -52,7 +52,7 @@ describe('a card\'s outcome told to its agent', () => {
 
   it('sends nothing while the agent does not run: its next start says it', async () => {
     const { rec, sent, card, deps } = setup(false)
-    await actOnCard(deps(async () => true), await card(), undefined)
+    await actOnCard(deps(async () => []), await card(), undefined)
     expect(sent).toEqual([])
     expect(cardNotesMessage(rec)).toEqual(['From the card: since your last conversation, on your cards: Applied: Project WEB › Guards'])
   })

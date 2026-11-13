@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto'
 import type { Turn } from '../../shared/pm/coordinator'
 import { shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, type Task } from '../../shared/pm/run'
-import { actionBlock, actionLabel, actionRefusal, actionStamp, cardNow, cardOutcome, changeStamp, keepCards, outcomeText, settingStamp, type ProjectChange, type SettingChange, type UiAction, type UiCard } from '../../shared/uiActions'
+import { actionBlock, actionLabel, actionRefusal, actionStamp, cardNow, cardOutcome, changeStamp, keepCards, outcomeText, settingStamp, type CardChoice, type ProjectChange, type SettingChange, type UiAction, type UiCard } from '../../shared/uiActions'
 import { MAIN } from '../../shared/pm/coordinator'
 import { tellCardOutcome } from './cardOutcome'
 import { HerdrError } from './herdr'
@@ -93,18 +93,19 @@ export async function readCard(store: PmStore, id: unknown, settingsFile?: strin
 // Not open (done, stale): nothing runs, the card says why.
 // cancel: the user's Cancel, the card runs nothing more.
 // applyChange: makes a project change while its dry run still shows `lines`
-// (false: it no longer does), server/utils/alfredCli.ts.
-export type ApplyChange = (argv: string[], lines: string[]) => Promise<boolean>
+// (null: it no longer does; else the outcome's lines, one per project of a
+// `v2 import`), server/utils/alfredCli.ts. choice: the card's checkboxes.
+export type ApplyChange = (argv: string[], lines: string[], choice?: CardChoice) => Promise<string[] | null>
 type ActDeps = PmLaunchDeps & { settingsFile?: string, applyChange?: ApplyChange }
 // Its outcome is told to the agent whose reply holds the card (cardOutcome.ts):
 // a click on a card no longer open changes nothing and tells nothing.
-export async function actOnCard(deps: ActDeps, id: unknown, authorization: unknown, cancel = false): Promise<UiCard> {
+export async function actOnCard(deps: ActDeps, id: unknown, authorization: unknown, cancel = false, choice?: CardChoice): Promise<UiCard> {
   if (authorization) throw new HerdrError('forbidden', 'Only the user\'s click in wherdr runs an action, never a token')
   const before = await find(deps.store, id)
   const tell = (text: string) => tellCardOutcome(deps, before!.rec.project, text).catch(() => {})
   let card: UiCard
   // A check that fails at the click (a folder no longer a repository): not applied, and why.
-  try { card = await act(deps, id, cancel) }
+  try { card = await act(deps, id, cancel, choice) }
   catch (e) {
     if (before?.card.state === 'open' && !cancel && e instanceof HerdrError) await tell(cardOutcome(before.card, e.message))
     throw e
@@ -114,7 +115,7 @@ export async function actOnCard(deps: ActDeps, id: unknown, authorization: unkno
   return card
 }
 
-async function act(deps: ActDeps, id: unknown, cancel: boolean): Promise<UiCard> {
+async function act(deps: ActDeps, id: unknown, cancel: boolean, choice?: CardChoice): Promise<UiCard> {
   const card = await readCard(deps.store, id, deps.settingsFile)
   if (!card) throw new HerdrError('not_found', 'Unknown action')
   // Stale at the click (changed since, too old): kept so, and said once to the agent.
@@ -128,8 +129,8 @@ async function act(deps: ActDeps, id: unknown, cancel: boolean): Promise<UiCard>
   const c = card.change
   if (c) {
     if (!deps.applyChange) throw new HerdrError('unavailable', 'Project changes are not applied here')
-    const made = await deps.applyChange(c.argv, c.lines)
-    return save(deps.store, made ? { ...card, state: 'done', outcome: { text: 'Applied by you', at: Date.now() } } : { ...card, state: 'stale' })
+    const made = await deps.applyChange(c.argv, c.lines, c.picks ? choice ?? { picks: c.picks.filter(k => k !== null), start: c.start !== false } : undefined)
+    return save(deps.store, made ? { ...card, state: 'done', outcome: { text: 'Applied by you', at: Date.now(), ...(made.length ? { lines: made } : {}) } } : { ...card, state: 'stale' })
   }
   if (card.kind === 'open') return card
   const task = card.kind === 'resume' ? await resumeTask(deps, card.task, 'continue', { who: 'user' }, 'user') : await userStep(deps, card.task)

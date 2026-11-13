@@ -93,15 +93,24 @@ It skips what is already imported. `detect` instead of `import` only prints what
 
 The import brings none of your v2 projects: you choose which ones come over, and how. In its first
 message, [Alfred](home.md#alfred) sees that this machine has a herdr-projects board with projects and offers
-to set them up with you, one project at a time. It reads the board then (`wherdr alfred v2`, read
+to bring them all over in one go. It reads the board then (`wherdr alfred v2`, read
 only): each project's suggested key, folder (and whether it is on this machine), `workspace.from`
 as the base branch, its open tasks with their stage, branch and PR (done and archived ones are left out), and the board settings
-to redo in its template (reviewer, merge, worker…). Alfred asks you to switch Projects on first when they are off.
+to redo in its workflow (reviewer, merge, worker…). Alfred asks you to switch Projects on first when they are off.
 
-- which projects to bring over (none or some is fine);
-- the machine its repository is on, and its folder there when that is not the machine v2 ran on;
-- its template, starting from a saved template or an example, with the v2 settings to redo in mind;
-- whether to start its coordinator;
+Its reply carries **one card for all the projects** (`wherdr alfred v2 import --propose`): one line
+each, with its key, name, machine and folder, and a checkbox, on by default; a project whose folder
+cannot be added (not found, not a git repository) says why and has none. Below them, **Start their
+coordinators**, on by default. *Apply* adds every checked project on this machine, with its v2 base
+branch, then starts their coordinators; one that fails does not stop the others, and the card then
+lists each project: added, coordinator started, or the error.
+
+No workflow is needed first: each project starts with the minimal default workflow, and its new
+coordinator's first message looks at the repository and asks you how you work, then proposes a
+workflow you accept or refuse (its v2 settings to redo in mind). Then, per project, by its
+coordinator or by Alfred (for all projects at once, if you like):
+
+- its folder on another machine, when the repository is not on the machine v2 ran on (`project add` there);
 - what its v2 coordinator knew. v2 coordinators keep no memory file, so when the project's v2
   coordinator exists, Alfred offers once a handover: a prompt to paste to it in v2 ("Write a handover
   note, at most 25 lines: decisions and preferences, conventions, open work and where it stands, what
@@ -118,7 +127,7 @@ to redo in its template (reviewer, merge, worker…). Alfred asks you to switch 
   instructions say so. When the remote cannot be reached, the task waits and starts again later;
 - its guards and the other machines its tasks may run on, when its v2 settings call for them.
 
-Alfred shows each change before making it, and makes it only after your yes. You can also ask it
+Alfred shows each other change before making it, and makes it only after your yes. You can also ask it
 later; `wherdr alfred v2` lists the v2 projects, as the board has them now, and the v3 project made from each. A user who
 does not come from v2 sees none of this.
 
