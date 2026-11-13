@@ -1,11 +1,12 @@
 // Notes on the server (DATA_DIR/notes): one <id>.md per note, the files they
 // link to in folders (plans/x.md), and .log.jsonl, every change with who made
-// it. `wherdr alfred notes …` and `wherdr pm notes …` run here: Alfred writes
-// every scope, a coordinator only those its project shows in (shared/notes.ts).
+// it. `wherdr alfred notes …` and `wherdr pm notes …` run here: Alfred and
+// every coordinator read and write every scope; a coordinator's default scope
+// is the home tab its project shows in (shared/notes.ts).
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { MAX_FILE, filePath, noteBody, noteId, noteLinks, noteTabs, noteText, readNote, resolveScope, scopeMachine, scopeName, slug, writableScopes, type Note, type NoteScope, type NotesCommand } from '../../shared/notes'
+import { MAX_FILE, filePath, noteBody, noteId, noteLinks, noteTabs, noteText, projectScopes, readNote, resolveScope, scopeName, slug, type Note, type NoteScope, type NotesCommand } from '../../shared/notes'
 import { groupedBarItems, readBarList, readMachineGroups } from '../../app/utils/machineBar'
 import { readProjectTabs } from '../../shared/settings'
 import type { Project } from '../../shared/pm/project'
@@ -22,8 +23,6 @@ function serial<T>(dir: string, run: () => Promise<T>): Promise<T> {
   queues.set(dir, next.catch(() => {}))
   return next
 }
-
-type Check = (note: Note) => void | Promise<void>
 
 export function notesStore(folder = path.join(DATA_DIR, 'notes')) {
   const dir = path.resolve(folder)
@@ -77,32 +76,26 @@ export function notesStore(folder = path.join(DATA_DIR, 'notes')) {
         return note
       }
     }),
-    // check: the writer's right, run in the queue, right before the change.
-    edit: (id: string, change: Partial<Pick<Note, 'title' | 'scope' | 'body'>>, by: string, check?: Check) => serial(dir, async (): Promise<Note> => {
+    edit: (id: string, change: Partial<Pick<Note, 'title' | 'scope' | 'body'>>, by: string) => serial(dir, async (): Promise<Note> => {
       const old = await store.get(id)
       if (!old) throw new HerdrError('not_found', `No note ${id}`)
-      await check?.(old)
       const note = { ...old, ...change, updated: new Date().toISOString() }
       await write(`${id}.md`, noteText(note))
       await log(by, 'edit', id)
       return note
     }),
-    remove: (id: string, by: string, check?: Check) => serial(dir, async () => {
-      const old = await store.get(id)
-      if (!old) throw new HerdrError('not_found', `No note ${id}`)
-      await check?.(old)
+    remove: (id: string, by: string) => serial(dir, async () => {
+      if (!(await store.get(id))) throw new HerdrError('not_found', `No note ${id}`)
       await fs.rm(at(`${id}.md`))
       await log(by, 'remove', id)
     }),
-    putFile: (rel: string, text: string, by: string, check?: () => Promise<void>) => serial(dir, async () => {
+    putFile: (rel: string, text: string, by: string) => serial(dir, async () => {
       if (!filePath(rel)) throw new HerdrError('bad_input', `${rel}: not a notes file path`)
-      await check?.()
       await write(rel, text)
       await log(by, 'file put', rel)
     }),
-    removeFile: (rel: string, by: string, check?: () => Promise<void>) => serial(dir, async () => {
+    removeFile: (rel: string, by: string) => serial(dir, async () => {
       if (!filePath(rel) || !(await exists(rel))) throw new HerdrError('not_found', `No file ${rel}`)
-      await check?.()
       await fs.rm(at(rel))
       await log(by, 'file remove', rel)
     }),
@@ -111,7 +104,8 @@ export function notesStore(folder = path.join(DATA_DIR, 'notes')) {
 }
 export type NotesStore = ReturnType<typeof notesStore>
 
-// Who runs the command: Alfred (every scope), or a project's coordinator.
+// Who runs the command: Alfred, or a project's coordinator (its project sets
+// the default scope of notes add).
 export interface NotesWriter { by: string, project?: Pick<Project, 'key' | 'machine' | 'machines' | 'paused'> }
 
 // machines: Herdr's machines, for the machines shown as their own home tab
@@ -124,21 +118,17 @@ export async function runNotes(store: NotesStore, cmd: NotesCommand, input: unkn
   const hidden = readBarList(s.machineBarHidden)
   const tabs = noteTabs(groupedBarItems(readBarList(s.machineBarOrder), bases, groups).filter(id => !hidden.includes(id)), groups, label)
   const name = (scope: string) => scopeName(scope, tabs, label)
-  const mine = who.project ? writableScopes(who.project, readProjectTabs(s.projectTabs)[who.project.key], groups, tabs) : ['all', ...tabs.map(t => t.scope)]
-  // The notes already written stay writable whatever the bar shows: Alfred
-  // any scope; a coordinator its tabs' and those of the machines of its groups
-  // (a machine tab taken off the bar, or a machine that joined a group).
-  const may = (scope: string) => !who.project || mine.includes(scope)
-    || groups.some(g => mine.includes(g.id) && g.machines.includes(scopeMachine(scope) ?? '\0'))
   const scopeOf = (raw: string) => {
     const r = resolveScope(raw, tabs)
     if (typeof r !== 'string') throw new HerdrError('bad_input', r.error)
-    if (!mine.includes(r)) throw new HerdrError('refused', `Your project shows in ${mine.map(name).join(', ') || 'no home tab'} only: you write notes there`)
     return r
   }
-  // A coordinator's default: its only scope, else it names one.
+  // The default: all for Alfred; for a coordinator, the home tab its project
+  // shows in (all when it shows in every tab or none); several: it names one.
   const defaultScope = () => {
-    if (!who.project || mine.length === 1) return mine[0] ?? scopeOf('all')
+    if (!who.project) return 'all'
+    const mine = projectScopes(who.project, readProjectTabs(s.projectTabs)[who.project.key], groups, tabs)
+    if (mine.length <= 1 || mine[0] === 'all') return mine[0] ?? 'all'
     throw new HerdrError('bad_input', `Name the scope: --scope ${mine.map(name).join('|')}`)
   }
   const shown = (n: Note) => ({ ...n, scope: name(n.scope) })
@@ -150,26 +140,17 @@ export async function runNotes(store: NotesStore, cmd: NotesCommand, input: unkn
     const missing = (await Promise.all(links.map(async l => (await store.readFile(l)) === null && !(await store.get(l.slice(0, -3))) ? l : ''))).filter(Boolean)
     return { body, missing }
   }
-  const mayWrite = (n: Note) => { if (!may(n.scope)) throw new HerdrError('not_found', `No note ${n.id} you may write (see notes list)`) }
-  const writable = async (id: string) => {
+  const existing = async (id: string) => {
     const n = await store.get(id)
-    if (!n) throw new HerdrError('not_found', `No note ${id} you may write (see notes list)`)
-    mayWrite(n)
+    if (!n) throw new HerdrError('not_found', `No note ${id} (see notes list)`)
     return n
-  }
-  // A linked file belongs to the notes that link to it: a coordinator changes
-  // it only when none of them is outside its scopes.
-  const fileWritable = (rel: string) => async () => {
-    if (!who.project) return
-    const theirs = (await store.list()).filter(n => !may(n.scope) && [noteLinks(n.body)].flat().includes(rel))
-    if (theirs.length) throw new HerdrError('refused', `${rel} is linked from notes outside your scopes (${theirs.map(n => n.id).join(', ')}): you may not change it`)
   }
   const warn = (missing: string[]) => (missing.length ? { missing, note: 'These links lead nowhere yet: write them with notes file put' } : {})
 
   switch (cmd.verb) {
     case 'list': {
       const only = cmd.scope ? scopeOf(cmd.scope) : undefined
-      return { notes: (await store.list()).filter(n => (only ? n.scope === only : may(n.scope))).map(({ body: _, ...n }) => ({ ...n, scope: name(n.scope) })), files: await store.files() }
+      return { notes: (await store.list()).filter(n => !only || n.scope === only).map(({ body: _, ...n }) => ({ ...n, scope: name(n.scope) })), files: await store.files() }
     }
     case 'show': {
       if (cmd.id.includes('/')) {
@@ -177,7 +158,7 @@ export async function runNotes(store: NotesStore, cmd: NotesCommand, input: unkn
         if (text === null) throw new HerdrError('not_found', `No file ${cmd.id}`)
         return { path: cmd.id, text }
       }
-      return { note: shown(await writable(cmd.id)) }
+      return { note: shown(await existing(cmd.id)) }
     }
     case 'add': {
       const scope = cmd.scope ? scopeOf(cmd.scope) : defaultScope()
@@ -185,20 +166,20 @@ export async function runNotes(store: NotesStore, cmd: NotesCommand, input: unkn
       return { added: shown(await store.add({ title: cmd.title, scope, body }, who.by)), ...warn(missing) }
     }
     case 'edit': {
-      await writable(cmd.id)
+      await existing(cmd.id)
       const given = String(input ?? '').trim() ? await lines() : undefined
       const change = { ...(cmd.title ? { title: cmd.title } : {}), ...(cmd.scope ? { scope: scopeOf(cmd.scope) } : {}), ...(given ? { body: given.body } : {}) }
       if (!Object.keys(change).length) throw new HerdrError('bad_input', 'Nothing to change: give --title, --scope or new lines on stdin')
-      return { edited: shown(await store.edit(cmd.id, change, who.by, mayWrite)), ...warn(given?.missing ?? []) }
+      return { edited: shown(await store.edit(cmd.id, change, who.by)), ...warn(given?.missing ?? []) }
     }
-    case 'remove': await store.remove(cmd.id, who.by, mayWrite); return { removed: cmd.id }
+    case 'remove': await store.remove(cmd.id, who.by); return { removed: cmd.id }
     case 'file put': {
       const text = String(input ?? '')
       if (!text.trim()) throw new HerdrError('bad_input', 'No text: give the file on stdin')
       if (text.length > MAX_FILE) throw new HerdrError('bad_input', `Over ${MAX_FILE} characters`)
-      await store.putFile(cmd.path, text, who.by, fileWritable(cmd.path))
+      await store.putFile(cmd.path, text, who.by)
       return { put: cmd.path, link: `[label](${cmd.path})` }
     }
-    case 'file remove': await store.removeFile(cmd.path, who.by, fileWritable(cmd.path)); return { removed: cmd.path }
+    case 'file remove': await store.removeFile(cmd.path, who.by); return { removed: cmd.path }
   }
 }

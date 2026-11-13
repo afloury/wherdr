@@ -1,7 +1,7 @@
 // Notes: a whiteboard agents write and the user reads (WHR-295). Pure: the
 // `notes …` words of `wherdr alfred` and `wherdr pm`, the note file's format,
-// the paths and links that stay inside the notes folder, and who writes which
-// scope. The server (server/utils/notesStore.ts) reads and writes the files.
+// the paths and links that stay inside the notes folder, and a coordinator's
+// default scope. The server (server/utils/notesStore.ts) reads and writes the files.
 import { projectOnTab, projectTabMachines } from '../app/utils/projectTabs'
 import { BAR_ALL, type MachineGroup } from '../app/utils/machineBar'
 import { PROJECT_COLORS, isProjectColor } from './pm/projectKey'
@@ -35,10 +35,10 @@ export type NotesCommand =
   | { verb: 'file put' | 'file remove', path: string } // put: the file's text on input
 
 export const NOTES_COMMANDS: { usage: string, does: string }[] = [
-  { usage: 'notes list [--scope all|<tab>]', does: 'the notes you may write (id, title, scope, dates) and the linked files' },
+  { usage: 'notes list [--scope all|<tab>]', does: 'every note (id, title, scope, dates), or one scope\'s, and the linked files' },
   { usage: 'notes show <id|path>', does: 'one note, or one linked file' },
-  { usage: 'notes add "<title>" [--scope all|<tab>] < lines.md', does: 'add a note: a title and a few short Markdown lines on stdin (checkboxes, links to another note `other-note.md`, a file `plans/x.md` or an in-app place `#/board?task=ID`); scope all (every tab) or one home tab (a tab group or a machine shown as its own tab), by name' },
-  { usage: 'notes edit <id> [--title "<title>"] [--scope all|<tab>] < lines.md', does: 'change a note: new lines on stdin replace its own (empty stdin keeps them)' },
+  { usage: 'notes add "<title>" [--scope all|<tab>] < lines.md', does: 'add a note: a title and a few short Markdown lines on stdin (checkboxes, links to another note `other-note.md`, a file `plans/x.md` or an in-app place `#/board?task=ID`); scope all (every tab) or one home tab (a tab group or a machine shown as its own tab), by name; left out, the tab your project shows in' },
+  { usage: 'notes edit <id> [--title "<title>"] [--scope all|<tab>] < lines.md', does: 'change a note: new lines on stdin replace its own (empty stdin keeps them); --scope moves it. Rewrite a note to keep it short rather than add another' },
   { usage: 'notes remove <id>', does: 'remove a note once its subject is decided or done' },
   { usage: 'notes file put <folder/name.md> < file.md', does: 'write a Markdown file under a folder of the notes (plans/x.md), for content too long for a note: link it from a note' },
   { usage: 'notes file remove <folder/name.md>', does: 'remove a linked file no note needs any more' },
@@ -54,7 +54,7 @@ export const NOTE_ICONS: Record<string, string> = {
 }
 export type NoteBadge = { kind: 'project', key: string, task?: string } | { kind: 'custom', label: string, icon?: string, colour?: string, link?: string }
 const NOTE_BADGE_HELP = `Badges in a line: [[KEY]] or [[KEY-12]] shows a project's key badge (a task id opens its sheet); [[label|icon|colour|link]] a badge of your own, icon one of ${Object.keys(NOTE_ICONS).join(', ')}, colour one of ${PROJECT_COLORS.join(', ')}, link optional (another note, a file, #/…); leave a field empty to skip it ([[Waiting||amber]])`
-export const NOTES_RULE = `Notes are the user's whiteboard, read-only for them: offer a reminder line in your reply ("Add a reminder: …?"), write it after their yes, and remove it once its subject is decided or done. Keep a note to a few lines; move anything longer to a linked file. Every change is logged with who made it. ${NOTE_BADGE_HELP}`
+export const NOTES_RULE = `Notes are the user's whiteboard, read-only for them: offer a reminder line in your reply ("Add a reminder: …?"), write it after their yes, and remove it once its subject is decided or done. Keep a note to a few lines; move anything longer to a linked file. Every change is logged with who made it. Change or remove another project's note only when it is outdated or the user asks. ${NOTE_BADGE_HELP}`
 
 // A badge's inside ([[…]]) → the badge, or null (left as text).
 export function noteBadge(inner: string): NoteBadge | null {
@@ -187,10 +187,9 @@ export function resolveScope(raw: string, tabs: readonly NoteTab[]): NoteScope |
 export const scopeName = (scope: NoteScope, tabs: readonly NoteTab[], label: (key: string) => string = k => k) =>
   (scope === 'all' ? 'all' : tabs.find(t => t.scope === scope)?.name ?? (scopeMachine(scope) !== null ? label(scopeMachine(scope)!) : scope))
 
-// The scopes a project's coordinator writes: the home tabs its project shows
-// in, and all (every tab) only when it shows in every one. override: its
-// projectTabs entry. Alfred writes every scope.
-export function writableScopes(project: { machine: string, machines?: string[], paused?: string[] }, override: string | undefined, groups: readonly MachineGroup[], tabs: readonly NoteTab[]): NoteScope[] {
+// The home tabs a project shows in, all (every tab) first when it shows in
+// every one: its coordinator's default scope. override: its projectTabs entry.
+export function projectScopes(project: { machine: string, machines?: string[], paused?: string[] }, override: string | undefined, groups: readonly MachineGroup[], tabs: readonly NoteTab[]): NoteScope[] {
   const tab = projectTabMachines({ machines: [project.machine, ...(project.machines ?? []).filter(m => m !== project.machine)], paused: project.paused }, override, groups)
   const mine = tabs.filter(t => projectOnTab(tab, t.machines)).map(t => t.scope)
   return mine.length === tabs.length ? ['all', ...mine] : mine

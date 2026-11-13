@@ -67,7 +67,9 @@ reminder: …?"), writes it after your yes, and removes it once its subject is
 decided or done. They live in wherdr's data folder (`notes/`), so every device
 sees the same ones: one Markdown file per note (a title, a few lines, a scope,
 its created and updated dates), plus the longer files they link to, such as
-`notes/plans/x.md`. Every change is written to `notes/.log.jsonl` with who made it.
+`notes/plans/x.md`. Alfred and every coordinator may list, edit, move and remove any note;
+a coordinator adds to its project's home tab unless it names another scope. Every change is
+written to `notes/.log.jsonl` with who made it.
 
 | Command | Does |
 | --- | --- |
