@@ -45,6 +45,8 @@ it('counts what waits on Home and reviews it one by one: Approve, Reject, the ot
     card('HO-3', 'home', { yourTurn: 'Merge refused: conflict', state: { at: 2, started: true, proofs: {}, rounds: {}, yourTurn: { reason: 'action', badge: 'Merge refused: conflict' } } })]
   const w = await mountSuspended(ReviewCard)
   await expect.poll(() => w.find('[data-testid="review-count"]').exists() && w.find('[data-testid="review-count"]').text()).toBe('3')
+  // The card names them: each id as its project's key badge.
+  expect(w.findAll('[data-testid="review-ids"] [data-testid="project-badge"]').map(b => b.text())).toEqual(['HO-1', 'HO-2', 'HO-3'])
   await w.find('[data-testid="review-open"]').trigger('click')
   await expect.poll(shown).toBe('HO-1')
   // A task to approve: TL;DR, its screenshots, its PR and the verdict in one line.

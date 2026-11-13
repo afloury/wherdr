@@ -218,12 +218,9 @@ const openArchived = (c: Card) => { keepArchivedCard(c); show(c.id) }
   .board-add-label { display: none; }
   .board-top h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .board-top [data-testid="board-decisions"] { margin-right: auto; }
-  /* A picked project shows its key badge alone, without the chevron, at its full width; a crowded
-     header (Autopilot too) wraps to a second row instead of running off the screen. */
+  /* A picked project (its badge, then its name, cut with an ellipsis) and Autopilot crowd the
+     header: it wraps to a second row instead of running off the screen. */
   .board-top:has(.project-select-value) { flex-wrap: wrap; row-gap: 4px; padding-bottom: 4px; }
-  .board-top :deep(.board-select:has(.project-select-value)) { flex: none; padding-inline: 6px; }
-  .board-top :deep(.board-select:has(.project-select-value) [data-slot="trailing"]) { display: none; }
-  .board-top :deep(.project-select-value .truncate) { display: none; }
 }
 .board-top :deep(.board-select) { min-width: 0; flex: 0 1 auto; }
 .board-note { padding: 12px 16px; }
