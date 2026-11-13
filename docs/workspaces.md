@@ -36,6 +36,20 @@ gives the workspace's back. Everything that reads a project's settings, the
 engine and the coordinator's commands included, reads them with the overrides
 applied.
 
+## Shared workflow
+
+A workspace has its own workflow, proposed and accepted like a project's
+(`template show` and `template edit` on the workspace work on it). A member
+without a workflow of its own runs the workspace's; a member may have its own
+instead (a repository with a different review, for instance): the first
+workflow accepted for the member becomes its own, and its tasks move to it.
+
+The workspace's [guards](project-management.md#guards) apply to every member,
+its own workflow included: they sit between your settings and the project's,
+and the strictest wins, so a member can add protected branches or keep a merge
+for you, never loosen the workspace's. For a member, `template show` lists them
+apart (`workspaceGuards`) and says when it runs the workspace's workflow.
+
 ## Features
 
 A workspace's tasks are **features**, never ordinary tasks: wherdr refuses any

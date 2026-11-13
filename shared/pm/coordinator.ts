@@ -547,7 +547,7 @@ export function templateDiff(old: Template | null, next: Template): string {
   // One key order (the version is the store's): a key that only moved is no change.
   const ORDER = ['id', 'guards', 'instructions', 'prefs', 'steps', 'taskTypes']
   const lines = (t: Template | null) => {
-    const e = Object.entries(t ?? {}).filter(([k]) => k !== 'version').sort(([x], [y]) => (ORDER.indexOf(x) + 1 || 99) - (ORDER.indexOf(y) + 1 || 99))
+    const e = Object.entries(t ?? {}).filter(([k]) => k !== 'version' && k !== 'workspaceGuards').sort(([x], [y]) => (ORDER.indexOf(x) + 1 || 99) - (ORDER.indexOf(y) + 1 || 99))
     return JSON.stringify(Object.fromEntries(e), null, 2).split('\n')
   }
   return lineDiff(lines(old), lines(next)).join('\n')

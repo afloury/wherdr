@@ -113,6 +113,6 @@ export async function retryFreedMerges(deps: CoreAdminDeps & { store: PmStore },
 // `id` (a taken id is refused). The project is untouched.
 export async function templateFromProject(store: PmStore, key: unknown, id: unknown) {
   const { t } = await workflowOf(store, key)
-  const { version: _version, ...copy } = t
+  const { version: _version, workspaceGuards: _ws, ...copy } = t
   return { template: await store.saveTemplate({ ...copy, id }) }
 }
