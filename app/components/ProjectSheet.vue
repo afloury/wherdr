@@ -32,6 +32,7 @@ const open = ref(true)
 const p = computed(() => props.project)
 
 const workflow = ref<Template | null>(null)
+const inherited = ref('') // a member's workspace, when it runs that workspace's workflow
 const log = ref<LogEntry[]>([])
 const ready = ref<Record<string, string>>({}) // each other machine's last readiness check
 const loaded = ref(false)
@@ -40,8 +41,9 @@ const busy = ref('')
 const form = reactive({ name: '', coordinatorName: '', key: '', color: '', base: '', branchName: '', archiveAfter: '', deleteBranch: true, agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '', reach: {} as Record<string, string> })
 const others = computed(() => (props.projects ?? []).filter(x => x.key !== p.value.key))
 async function load() {
-  const r = await api<{ workflow: Template | null, log: LogEntry[], ready?: Record<string, string> }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
+  const r = await api<{ workflow: Template | null, inherited?: string, log: LogEntry[], ready?: Record<string, string> }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
   workflow.value = r.workflow
+  inherited.value = r.inherited ?? ''
   log.value = r.log
   ready.value = r.ready ?? {}
   fill(p.value, r.workflow?.prefs ?? {})
@@ -322,6 +324,7 @@ async function remove() {
           <span class="mono-label">{{ tl('Review') }}</span>
           <UIcon name="i-lucide-chevron-right" />
         </button>
+        <p v-if="(tab === 'workflow' || tab === 'guards') && loaded && inherited" class="muted settings-hint" data-testid="pm-inherited">{{ tl(`Runs the workflow of workspace ${inherited}, whose guards apply too. A change saved here gives this project its own.`) }}</p>
         <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" data-ui-target="project.workflow" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
         <template v-else-if="tab === 'guards' && loaded">
           <ProjectGuards v-if="workflow" data-ui-target="project.guards" :project="p" :workflow="workflow" @changed="workflowChanged" />

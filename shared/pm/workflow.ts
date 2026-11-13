@@ -124,6 +124,9 @@ export interface Template {
   worktree?: WorktreeSetup
   steps?: Record<string, Step> // shared steps, reused by id
   taskTypes: Record<string, TaskType>
+  // A member project's: its workspace's guards, which its own only harden. Set
+  // by the store when it serves the workflow, never saved (ownWorkflow drops it).
+  workspaceGuards?: Guards
 }
 
 // A project's workflow until the user accepts one (a template copy or the

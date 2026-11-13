@@ -34,7 +34,7 @@ import { readQueue, sinceYesterday, type Wake, type WakeSkip } from '../../share
 import type { HealthSent } from '../../shared/pm/health'
 import type { Automation, AutomationProposal, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
-import { cleanWorkspaceFields, effectiveProjects, memberOverrides, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
+import { cleanWorkspaceFields, effectiveProjects, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
 import { DATA_DIR } from './env'
 
 // A project coordinator: the sha256 of its token, its terminal (herdr-core
@@ -292,25 +292,33 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     templateLog: async (id: string) => (isTemplateId(id) ? readLog(path.join(files.templateLog, `${id}.json`)) : []),
     // The project's own workflow (a Template), what its tasks follow: the
     // minimal default until the user accepts one. saved: the accepted one only (null: none yet).
-    // A member's has its workspace's agents and worktree setup unless it overrides them.
+    // A member without its own runs its workspace's (effectiveWorkflow).
     workflow: async (key: string) => {
       if (!KEY_RE.test(key)) return null
-      const t = await readJson<Template>(workflowFile(key)) ?? defaultWorkflow(key), list = await projects()
-      const p = list.find(x => x.key === key)
-      return p?.workspace ? effectiveWorkflow(t, p, workspaceOf(p, list)) : t
+      const list = await projects(), p = list.find(x => x.key === key), ws = p && workspaceOf(p, list)
+      return effectiveWorkflow(key, await readJson<Template>(workflowFile(key)), p, ws, ws ? await readJson<Template>(workflowFile(ws.key)) : null)
     },
     savedWorkflow: (key: string) => (KEY_RE.test(key) ? readJson<Template>(workflowFile(key)) : Promise.resolve(null)),
     workflowLog: (key: string) => (KEY_RE.test(key) ? readLog(workflowLogFile(key)) : Promise.resolve([])),
     // by, said: as saveTemplate. Its id is always the project's (lowercased key).
-    saveWorkflow: (key: string, t: unknown, { by = 'user', said = '' } = {}) => write(async () => {
+    // A member's first one becomes its own: its tasks followed its workspace's.
+    saveWorkflow: (key: string, raw: unknown, { by = 'user', said = '' } = {}) => write(async () => {
       const { list, i } = await findProject(key)
+      const t = raw && typeof raw === 'object' && !Array.isArray(raw) ? ownWorkflow(raw as Template) : raw
       const errors = validateTemplate(t)
       if (errors.length) throw badInput(errors)
-      const old = await readJson<Template>(workflowFile(key))
+      const old = await readJson<Template>(workflowFile(key)), ws = workspaceOf(list[i]!, list)
+      const shared = ws ? await readJson<Template>(workflowFile(ws.key)) : null
       const version = await saveVersioned(workflowFile(key), workflowLogFile(key), { ...(t as Template), id: key.toLowerCase() }, old, by, said)
-      await keepOverrides(i, p => workflowOverrides(p, workspaceOf(p, list), t as Template), list)
-      // Before the first one, the tasks followed the default workflow.
-      await replanTasks(key, old ?? defaultWorkflow(key), t as Template)
+      await keepOverrides(i, p => workflowOverrides(p, ws, t as Template), list)
+      // Before the first one, the tasks followed the workspace's or the default workflow.
+      await replanTasks(key, old ?? (shared && { ...shared, id: key.toLowerCase() }) ?? defaultWorkflow(key), t as Template)
+      // A workspace's: the tasks of its members without their own follow it too.
+      if (isWorkspace(list[i])) {
+        for (const m of list.filter(x => x.workspace === key)) {
+          if (!await readJson(workflowFile(m.key))) await replanTasks(m.key, { ...(old ?? defaultWorkflow(m.key)), id: m.key.toLowerCase() }, { ...(t as Template), id: m.key.toLowerCase() })
+        }
+      }
       return { id: key.toLowerCase(), version }
     }),
     runs,

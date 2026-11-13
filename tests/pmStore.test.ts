@@ -180,6 +180,11 @@ describe('template library', () => {
     expect((await store.project('PAY'))?.base).toBe('main')
     await store.setBase('PAY', '')
     expect((await store.project('PAY'))?.base).toBe('develop')
+    // Without its own file, the member runs the workspace's; a served copy saves without the workspace's guards.
+    await store.saveWorkflow('WS', { ...defaultWorkflow('WS'), guards: { protected: ['main'] } })
+    expect(await store.workflow('PAY')).toMatchObject({ id: 'pay', workspaceGuards: { protected: ['main'] } })
+    await store.saveWorkflow('PAY', { ...defaultWorkflow('PAY'), prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] }, workspaceGuards: { protected: ['x'] } })
+    expect(await store.savedWorkflow('PAY')).not.toHaveProperty('workspaceGuards')
     await store.saveWorkflow('PAY', { ...defaultWorkflow('PAY'), prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] } })
     expect(await store.workflow('PAY')).toMatchObject({ prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] } })
   })

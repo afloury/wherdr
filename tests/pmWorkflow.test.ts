@@ -144,4 +144,18 @@ describe('combineGuards', () => {
     expect(g.merge.others).toEqual({ value: 'user', source: 'user' })
     expect(g.protected.map(p => p.value)).toEqual(['main', 'dev'])
   })
+
+  it('combines user → workspace → project → task type → task, each later level only stricter', () => {
+    const g = combineGuards([
+      { source: 'task', guards: { protected: ['hotfix'] } },
+      { source: 'project', guards: { protected: ['dev'], merge: { protected: 'engine', others: 'engine' } } },
+      { source: 'workspace', guards: { protected: ['main'], merge: { others: 'user' } } },
+      { source: 'user', guards: { merge: { protected: 'user' } } },
+      { source: 'task-type', guards: { protected: ['main'] } },
+    ])
+    expect(g.protected.map(p => `${p.value}:${p.source}`)).toEqual(['main:workspace', 'dev:project', 'hotfix:task'])
+    expect(g.merge).toEqual({ protected: { value: 'user', source: 'user' }, others: { value: 'user', source: 'workspace' } })
+    // Without the user's, the workspace's choice replaces the default; the project still only hardens it.
+    expect(combineGuards([{ source: 'workspace', guards: { merge: { protected: 'engine' } } }, { source: 'project', guards: { merge: { protected: 'user' } } }]).merge.protected).toEqual({ value: 'user', source: 'project' })
+  })
 })
