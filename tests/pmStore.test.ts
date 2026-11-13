@@ -176,6 +176,12 @@ describe('template library', () => {
     expect(await store.project('PAY')).toMatchObject({ base: 'main', overrides: ['base'] })
     await store.updateProject('PAY', { base: '' })
     expect((await store.project('PAY'))?.base).toBe('develop')
+    await store.setBase('PAY', 'main')
+    expect((await store.project('PAY'))?.base).toBe('main')
+    await store.setBase('PAY', '')
+    expect((await store.project('PAY'))?.base).toBe('develop')
+    await store.saveWorkflow('PAY', { ...defaultWorkflow('PAY'), prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] } })
+    expect(await store.workflow('PAY')).toMatchObject({ prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] } })
   })
 })
 

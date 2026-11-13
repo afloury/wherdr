@@ -56,9 +56,9 @@ export function repoPath(member: Pick<Project, 'machine' | 'path'>, ws: Project)
 function sharedMachines(member: Project, ws: Project): Pick<Project, 'machines' | 'clones' | 'paused'> {
   const repo = repoPath(member, ws)
   const others = [ws.machine, ...(ws.shared?.machines ?? [])].filter((m, i, all) => m !== member.machine && all.indexOf(m) === i && rootOn(ws, m))
-  if (!others.length) return {}
-  const paused = (ws.shared?.paused ?? []).filter(m => others.includes(m))
-  return { machines: [member.machine, ...others], clones: Object.fromEntries(others.map(m => [m, `${trim(rootOn(ws, m)!)}/${repo}`])), ...(paused.length ? { paused } : {}) }
+  // A machine the workspace paused stays paused for the member, its home included.
+  const paused = (ws.shared?.paused ?? []).filter(m => m === member.machine || others.includes(m))
+  return { ...(others.length ? { machines: [member.machine, ...others], clones: Object.fromEntries(others.map(m => [m, `${trim(rootOn(ws, m)!)}/${repo}`])) } : {}), ...(paused.length ? { paused } : {}) }
 }
 
 // The settings in force for a project: a member's override wins, else the
@@ -94,6 +94,20 @@ export function memberOverrides(member: Project, update: ProjectUpdate): Pick<Pr
   if (update.machines || update.clones || update.paused) set('machines', true)
   for (const f of ['placement', 'archiveAfter', 'deleteBranch'] as const) if (update[f] !== undefined) set(f, true)
   for (const f of ['base', 'branchName'] as const) if (update[f] !== undefined) set(f, update[f] !== '')
+  return own.size ? { overrides: SHARED_FIELDS.filter(f => own.has(f)) } : {}
+}
+
+// A member's overrides once its workflow is saved: its agents or worktree
+// setup become its own when they differ from the workspace's, and go back to
+// the workspace's when they are the same or left out.
+export function workflowOverrides(member: Project, ws: Project | undefined, t: Pick<Template, 'prefs' | 'worktree'>): Pick<Project, 'overrides'> {
+  if (!member.workspace) return {}
+  const own = new Set(member.overrides ?? [])
+  for (const f of ['prefs', 'worktree'] as const) {
+    const differs = t[f] !== undefined && JSON.stringify(t[f]) !== JSON.stringify(ws?.shared?.[f])
+    if (differs) own.add(f)
+    else own.delete(f)
+  }
   return own.size ? { overrides: SHARED_FIELDS.filter(f => own.has(f)) } : {}
 }
 

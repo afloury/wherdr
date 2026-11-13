@@ -34,7 +34,7 @@ import { readQueue, sinceYesterday, type Wake, type WakeSkip } from '../../share
 import type { HealthSent } from '../../shared/pm/health'
 import type { Automation, AutomationProposal, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
-import { cleanWorkspaceFields, effectiveProjects, memberOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
+import { cleanWorkspaceFields, effectiveProjects, memberOverrides, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
 import { DATA_DIR } from './env'
 
 // A project coordinator: the sha256 of its token, its terminal (herdr-core
@@ -240,6 +240,15 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await writeJson(path.join(files.tasks, `${task.id}.json`), out)
     }
   }
+  // A member's overrides recomputed from its stored form (no change: nothing written).
+  async function keepOverrides(i: number, of: (p: Project) => Pick<Project, 'overrides'>, list: Project[]) {
+    if (!list[i]!.workspace) return
+    const { overrides: old, ...rest } = list[i]!
+    const next = of(list[i]!)
+    if (JSON.stringify(next.overrides) === JSON.stringify(old)) return
+    list[i] = { ...rest, ...next }
+    await saveProjects(list)
+  }
   async function knownTemplate(id: string) {
     const t = isTemplateId(id) ? await readJson<Template>(path.join(files.templates, `${id}.json`)) : null
     if (!t) throw new HerdrError('not_found', 'Unknown template')
@@ -293,11 +302,12 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     workflowLog: (key: string) => (KEY_RE.test(key) ? readLog(workflowLogFile(key)) : Promise.resolve([])),
     // by, said: as saveTemplate. Its id is always the project's (lowercased key).
     saveWorkflow: (key: string, t: unknown, { by = 'user', said = '' } = {}) => write(async () => {
-      await findProject(key)
+      const { list, i } = await findProject(key)
       const errors = validateTemplate(t)
       if (errors.length) throw badInput(errors)
       const old = await readJson<Template>(workflowFile(key))
       const version = await saveVersioned(workflowFile(key), workflowLogFile(key), { ...(t as Template), id: key.toLowerCase() }, old, by, said)
+      await keepOverrides(i, p => workflowOverrides(p, workspaceOf(p, list), t as Template), list)
       // Before the first one, the tasks followed the default workflow.
       await replanTasks(key, old ?? defaultWorkflow(key), t as Template)
       return { id: key.toLowerCase(), version }
@@ -515,8 +525,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const b = typeof base === 'string' ? base.trim() : ''
       if (b && !isBranch(b)) throw badInput([{ path: 'base', message: 'invalid branch name' }])
       const { list, i } = await findProject(key)
-      const { base: _old, ...rest } = list[i]!
-      list[i] = b ? { ...rest, base: b } : rest
+      const { base: _old, overrides: _o, ...rest } = list[i]!
+      list[i] = { ...rest, ...(b ? { base: b } : {}), ...memberOverrides(list[i]!, { base: b }) }
       await saveProjects(list)
       return list[i]!
     }),

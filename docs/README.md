@@ -16,6 +16,7 @@ or [Development and tests](development.md) for repository changes.
 - [Release notes 3.0.0](release-notes-3.0.0.md) — What v3 brings to a v2 user, what changed, what is gone, how to move.
 - [Migrate from v2](migrate-from-v2.md) — Install v3 next to a running v2, import machines and settings, set up v2 projects with Alfred, auto-deploy from a build machine, fall back, uninstall.
 - [Project management](project-management.md) — Getting started, project settings (workflow, guards, automations), autopilot, the board, the task sheet and reporting a problem on a task.
+- [Workspaces](workspaces.md) — A project that runs several linked repositories: member projects, shared settings and overrides, features.
 - [Home and agent list](home.md) — Machine tabs, spaces and tabs, states, new agents and search.
 - [Alfred's command](alfred.md) — `wherdr alfred`: what Alfred reads and changes, shown before it is done.
 - [Conversation and replies](conversation.md) — Read transcripts, answer questions, attach files and quote replies.

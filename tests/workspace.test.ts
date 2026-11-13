@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Project } from '../shared/pm/project'
-import { cleanWorkspaceFields, effectiveProject, effectiveWorkflow, memberOverrides, workspaceErrors, workspaceTaskError } from '../shared/pm/workspace'
+import { cleanWorkspaceFields, effectiveProject, effectiveWorkflow, memberOverrides, workflowOverrides, workspaceErrors, workspaceTaskError } from '../shared/pm/workspace'
 import { defaultWorkflow } from '../shared/pm/workflow'
 
 const ws: Project = {
@@ -34,6 +34,12 @@ describe('workspaces', () => {
     expect(cleared.overrides).toEqual(['machines', 'placement', 'prefs'])
     expect(effectiveProject(cleared, ws).base).toBe('develop')
     expect(memberOverrides(member, { archiveAfter: 0 })).toEqual({ overrides: ['archiveAfter'] })
+  })
+
+  it('keeps the workspace\'s pause on a member\'s home machine, and a workflow differing from the shared one is an override', () => {
+    expect(effectiveProject({ ...member, machine: 'big', path: '/srv/work/payroll-api' }, ws)).toMatchObject({ machines: ['big', 'home'], paused: ['big'] })
+    expect(workflowOverrides(member, ws, { prefs: { agent: 'claude' }, worktree: ws.shared!.worktree })).toEqual({ overrides: ['prefs'] })
+    expect(workflowOverrides({ ...member, overrides: ['prefs', 'worktree'] }, ws, { prefs: ws.shared!.prefs })).toEqual({})
   })
 
   it('a workspace refuses a normal task, a project takes it', () => {
