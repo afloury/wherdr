@@ -861,7 +861,11 @@ open a PR to v3* before its PR, with a button to copy the branch name), the
 task's PR as a badge on that line (*PR #646 ↗*, opens it in a new tab; on a phone
 it wraps under the branches; once that line scrolls away, the badge shows in the
 sheet's header by the id, so the PR stays one tap away; nothing before a PR), and its buttons (*Start*,
-*Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
+*Report a problem*, *Open the agent*, *Stop*, *Delete…*). *Open the agent* is there whatever the
+step: it opens the conversation of the agent holding the step if it runs, else the worker's (*Open
+the reviewer* when only the reviewer runs), so you can ask it something; with both the worker and
+the reviewer running, a small menu offers *Worker* and *Reviewer*. Once its agent ended, the button
+stays disabled with *Agent is terminated* (a tooltip on a computer, a short line under it on a tap). Step times start
 with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags and the other links, the PR apart),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
 and screenshots: a report in Markdown, folded with *Show more*, shown once when
@@ -948,16 +952,17 @@ An agent's question shows its [summary](#tldr), the options of the agent's
 agent as if you had typed it in its conversation, and the next task slides in.
 Under them, *Full question*, folded: the agent's whole last message, drawn as in
 its conversation (Markdown, its `wherdr` blocks), scrolling inside the window
-when it is long (open when there is no summary). *Open the agent* and *Open the
-task* stay. A question answered anywhere (here, in the agent's conversation, a
+when it is long (open when there is no summary). *Open the task* stays. A question answered anywhere (here, in the agent's conversation, a
 coordinator's `tell`) leaves *Tasks to review* and *Tasks to handle* at once,
 without waiting for the engine's next pass, and an open window moves on to the
 next task (or *All done*).
 
 Anything else that waits (a failure, a decision, another
 step of yours such as *Create these tasks*) shows the answers of its To do tab
-(its choices, *Try again* for a failed action, *Open the agent*), and *Open the
-task*. *3 of 12* with previous and next: a task you pass over stays in the list.
+(its choices, *Try again* for a failed action), and *Open the task*. Every
+task, whatever its step, also has *Open the agent*, as on the [task
+sheet](#task-sheet): its agent's conversation, *Worker* or *Reviewer* when both
+run, disabled with *Agent is terminated* once it ended. *3 of 12* with previous and next: a task you pass over stays in the list.
 On a computer, → next, ← previous, A approve, R reject. Approve and Send back
 say so on their button (*Approved*, *Sent back*) for a moment, then the next
 task slides in (the arrows slide too, without it; a fade if your system reduces

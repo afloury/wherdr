@@ -11,7 +11,8 @@
 // useTaskActions), Try again for a failed action, and Open the task. An agent's
 // question (ReviewQuestion) is answered here: its choices or another answer go
 // to the agent (POST /api/pm/answer), it leaves the list like an approved one;
-// Open the agent and Open the task stay. Answered elsewhere (a coordinator's
+// Open the task stays. Open the agent (AgentButton) is on every task, whatever
+// its step, disabled once its agent ended. Answered elsewhere (a coordinator's
 // tell, the agent's conversation): read again as the agent works (watchTaskAgents). "3 of 12"
 // with previous and next (a task passed over stays in the list); on a computer
 // → next, ← previous, A approve, R reject. After the last one: All done.
@@ -129,14 +130,12 @@ async function reply(text: string) {
   answered.value = undefined
 }
 
-// Where the user answers anything else: the asking agent's conversation when it is on screen here, else the task's sheet.
-function answer(where: 'agent' | 'sheet' = 'agent') {
+// Where the user answers anything else: the task's sheet.
+function answer() {
   const c = card.value
   if (!c) return
-  const p = where === 'agent' && row.value?.terminal ? pane.value : undefined
   open.value = false
-  if (p) navigateTo(panePath(p.id))
-  else openTaskSheet(c.id)
+  openTaskSheet(c.id)
 }
 
 function onKey(e: KeyboardEvent) {
@@ -166,7 +165,7 @@ function onKey(e: KeyboardEvent) {
         </header>
         <div class="review-scroll">
         <template v-if="approves">
-          <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="answer('sheet')">
+          <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="answer()">
             <TaskShots v-if="shots.length && shotStep" :task="card.id" :shots="shots" :mode="shotMode(shotStep)" />
           </TaskTldr>
           <p class="review-meta">
@@ -176,7 +175,7 @@ function onKey(e: KeyboardEvent) {
         </template>
         <ReviewQuestion v-else-if="asked" :card="card" :busy="answering" :sent="answered" @send="reply" />
         <TaskTodo v-else-if="kind" :card="card" :kind="kind" :pane="pane" :busy="busy" :pressing="pressing" :refused="refused"
-          @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" @review="restartReview" @worker="startWorker" @comments="answer('sheet')" />
+          @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" @review="restartReview" @worker="startWorker" @comments="answer()" />
         <ReviewReject v-if="approves && rejecting" :card="card" :busy="busy" @send="reject" @cancel="rejecting = false" />
         <p v-if="error" class="error" role="alert" data-testid="review-error">{{ error }}</p>
         <p v-if="approves && refused" class="error" role="alert" data-testid="review-refused">{{ stepRefusalText(refused) }}</p>
@@ -202,9 +201,9 @@ function onKey(e: KeyboardEvent) {
           </template>
           <template v-else>
             <UButton v-if="kind === 'refused'" color="primary" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="review-retry" @click="press">{{ tl('Try again') }}</UButton>
-            <UButton v-if="asked && pane" color="neutral" variant="outline" size="xl" icon="i-lucide-terminal" data-testid="review-agent" @click="answer('agent')">{{ tl('Open the agent') }}</UButton>
-            <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" data-testid="review-answer" @click="answer('sheet')">{{ tl('Open the task') }}</UButton>
+            <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" data-testid="review-answer" @click="answer()">{{ tl('Open the task') }}</UButton>
           </template>
+          <AgentButton :card="card" @opened="open = false" />
         </div>
         <nav class="review-nav" :aria-label="tl('Progress')">
           <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :disabled="index === 0 || !!done" :aria-label="tl('Previous')" data-testid="review-prev" @click="go(-1)" />
@@ -244,7 +243,7 @@ function onKey(e: KeyboardEvent) {
 .review-done .review-restart { margin-top: 4px; }
 .review-done-icon { width: 32px; height: 32px; color: var(--done); }
 .review-foot { display: grid; gap: 8px; padding: 12px 16px 0; border-top: 1px solid var(--line-soft); }
-.review-choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.review-choices { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
 .review-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 @media (max-width: 699px) {
   .review-choices > * { flex: 1 1 auto; justify-content: center; }

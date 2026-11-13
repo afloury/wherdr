@@ -131,9 +131,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
         <UButton v-if="kind === 'review'" color="primary" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="todo-review-restart" @click="emit('review')">{{ tl('Restart the review') }}</UButton>
         <UButton v-if="coord" color="primary" size="xl" :icon="coord.asked ? 'i-lucide-check' : 'i-lucide-message-circle'" :loading="busy" :disabled="coord.asked !== undefined" data-testid="todo-ask-coordinator" @click="emit('ask')">{{ coord.asked ? tl('Asked') : tl('Ask the coordinator') }}</UButton>
         <UButton v-if="kind === 'blocked' && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="emit('start')">{{ tl('Start', 'Lancer') }}</UButton>
-        <UButton v-if="pane && kind !== 'merge' && kind !== 'step'" :color="kind === 'ask' ? 'primary' : 'neutral'" :variant="kind === 'ask' ? 'solid' : 'outline'" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)" data-testid="todo-agent">
-          {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}
-        </UButton>
+        <!-- Open the agent: next to the task's other buttons (AgentButton), not here. -->
       </div>
     </div>
     <p v-if="pressing" class="muted" role="status" data-testid="step-user-busy">{{ tl('Running this step… A merge waits for the PR\'s checks, which can take a few minutes.', 'Étape en cours… Une fusion attend les vérifications de la PR, ce qui peut prendre quelques minutes.') }}</p>
