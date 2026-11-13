@@ -847,9 +847,12 @@ stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), which branch merges into
 which once it has one (*task/WHR-12 → develop · 3 commits*, or *task/WHR-12 will
-open a PR to v3* before its PR, with a button to copy the branch name), and its buttons (*Start*,
+open a PR to v3* before its PR, with a button to copy the branch name), the
+task's PR as a badge on that line (*PR #646 ↗*, opens it in a new tab; on a phone
+it wraps under the branches; once that line scrolls away, the badge shows in the
+sheet's header by the id, so the PR stays one tap away; nothing before a PR), and its buttons (*Start*,
 *Open the agent* or *Open the reviewer*, *Stop*, *Delete…*). Step times start
-with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags, links and the PR),
+with this version: an older task shows only its total. Below, tabs: **Description** (the text rendered as Markdown, as in the chat but with no raw HTML; tags and the other links, the PR apart),
 **Plan** (each step with its column, holder, send-backs, instructions, proofs
 and screenshots: a report in Markdown, folded with *Show more*, shown once when
 another proof repeats it; a commit as a short sha linked to the commit on the

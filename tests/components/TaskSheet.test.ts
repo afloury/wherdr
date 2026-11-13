@@ -297,3 +297,25 @@ it('To do shows the TL;DR, the screenshots under it, then a link to Comments (th
   expect(held.find('[data-testid="todo-worker-note"]').exists()).toBe(true)
   held.unmount()
 })
+
+it('shows the PR as a badge on the branch line, in the header once that line scrolls away, not again under the description', async () => {
+  let seen: (e: { isIntersecting: boolean }[]) => void = () => {}
+  vi.stubGlobal('IntersectionObserver', class { constructor(cb: typeof seen) { seen = cb } observe() {} disconnect() {} })
+  const url = 'https://github.com/example/task/pull/646'
+  const c: Card = { ...card, yourTurn: undefined, userLabel: undefined, branch: 'feature/x', pr: { base: 'develop' }, description: 'Do it', tags: ['ui'],
+    links: [{ label: 'Jira', url: 'https://jira.example.com/browse/X-1' }, { label: 'PR', url }] }
+  const withLead = { AppSheet: { template: '<section><header><slot name="lead" /></header><slot /></section>' } }
+  const w = await mountSuspended(TaskSheet, { props: { card: c }, global: { stubs: withLead } })
+  const badge = w.get('[data-testid="task-branch-row"] [data-testid="task-pr"]')
+  expect([badge.attributes('href'), badge.attributes('target'), badge.text()]).toEqual([url, '_blank', 'PR #646'])
+  expect(w.find('header [data-testid="task-pr-head"]').exists()).toBe(false)
+  seen([{ isIntersecting: false }])
+  await nextTick()
+  expect(w.get('header [data-testid="task-pr-head"]').attributes('href')).toBe(url)
+  expect(w.get('[data-testid="task-links"]').findAll('a').map(a => a.text())).toEqual(['Jira'])
+  w.unmount()
+  const none = await mountSuspended(TaskSheet, { props: { card: { ...c, links: [] } }, global: { stubs: withLead } })
+  expect(none.find('[data-testid="task-pr"]').exists()).toBe(false)
+  none.unmount()
+  vi.unstubAllGlobals()
+})
