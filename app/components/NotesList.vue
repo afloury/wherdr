@@ -59,6 +59,14 @@ async function back() {
   await nextTick()
   if (cameFrom) list.value?.querySelector(`#${cameFrom}`)?.scrollIntoView({ block: 'nearest' })
 }
+// Each read of the notes (every few seconds while open) reads the open file
+// again, so an agent's change shows without going back.
+watch(noteFiles, async () => {
+  const path = file.value?.path
+  if (!path) return
+  const text = await loadNoteFile(path)
+  if (file.value?.path === path && file.value.text !== text) file.value = { path, text }
+})
 async function openFile(path: string) {
   const text = await loadNoteFile(path)
   file.value = { path, text }

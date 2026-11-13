@@ -73,6 +73,9 @@ it('opens a linked file in place, follows its links, mutes the missing and the e
   expect(w.find('.note-file-body').text()).toMatch(/^The plan/) // refused: stays
 
   expect(link('../home.md').classes()).not.toContain('note-link-missing')
+  FILES['plans/x.md'] = '# The plan, edited\n\nSee [steps](steps.md).' // an agent's change, read at the next poll
+  noteFiles.value = Object.keys(FILES)
+  await vi.waitFor(() => expect(w.find('.note-file-body').text()).toMatch(/^The plan, edited/))
   await link('steps.md').trigger('click')
   await vi.waitFor(() => expect(w.find('.note-file-body').text()).toMatch(/^Steps/))
   await w.find('[data-testid=note-file-back]').trigger('click')
