@@ -173,3 +173,21 @@ export function writableScopes(project: { machine: string, machines?: string[], 
   const mine = groups.filter(g => projectOnTab(tab, g.machines)).map(g => g.id)
   return mine.length === groups.length ? ['all', ...mine] : mine
 }
+
+// A link in a note (from: '') or in a linked file (from: its path) → what it
+// leads to inside the notes folder: a note, a file, or `out` when it would
+// leave the folder or is not a notes path. Web and in-app links → null.
+export type NoteTarget = { kind: 'note', id: string } | { kind: 'file', path: string } | { kind: 'out' }
+export function noteTarget(href: string, from = ''): NoteTarget | null {
+  const target = href.split('#')[0]!
+  if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('//') || href.startsWith('#') || !target) return null
+  if (target.startsWith('/')) return { kind: 'out' }
+  const parts = from.split('/').slice(0, -1)
+  for (const s of target.split('/')) {
+    if (s === '..') { if (!parts.pop()) return { kind: 'out' } }
+    else if (s && s !== '.') parts.push(s)
+  }
+  const rel = parts.join('/'), note = /^([^/]+)\.md$/.exec(rel)
+  if (note && noteId(note[1]!)) return { kind: 'note', id: note[1]! }
+  return filePath(rel) ? { kind: 'file', path: rel } : { kind: 'out' }
+}
