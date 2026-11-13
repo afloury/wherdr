@@ -902,6 +902,13 @@ whose last report is more than a day old keeps its TL;DR as it is, unless it
 was written with an older prompt and the task is still open: it is written
 again once in the new style.
 
+An agent's question gets its own summary in [Tasks to review](#tasks-to-review):
+two or three plain lines on what the agent asks, why it cannot go on and what
+each option means for you, from the agent's last message (masked the same way).
+The same model and pace rule; a question goes before the task TL;DRs, and it is
+written once per question, again only when the question changes. While the pace
+holds it, the full question shows alone.
+
 **Check on GitHub** shows on a task with a PR at its merge step, or archived:
 wherdr reads the PR now, for a merge stuck after a guard refusal, a PR merged
 by hand on GitHub, or GitHub slow to see a push. Merged: the merge step ends as
@@ -936,7 +943,18 @@ side by side), its PR and the review's verdict in one line, then:
   with your note, and each picked screenshot as a download with the task's key.
   It leaves the list too.
 
-Anything else that waits (an agent's question, a failure, a decision, another
+An agent's question shows its [summary](#tldr), the options of the agent's
+`choices` line as buttons and *Another answer* with *Send*: either goes to the
+agent as if you had typed it in its conversation, and the next task slides in.
+Under them, *Full question*, folded: the agent's whole last message, drawn as in
+its conversation (Markdown, its `wherdr` blocks), scrolling inside the window
+when it is long (open when there is no summary). *Open the agent* and *Open the
+task* stay. A question answered anywhere (here, in the agent's conversation, a
+coordinator's `tell`) leaves *Tasks to review* and *Tasks to handle* at once,
+without waiting for the engine's next pass, and an open window moves on to the
+next task (or *All done*).
+
+Anything else that waits (a failure, a decision, another
 step of yours such as *Create these tasks*) shows the answers of its To do tab
 (its choices, *Try again* for a failed action, *Open the agent*), and *Open the
 task*. *3 of 12* with previous and next: a task you pass over stays in the list.
@@ -944,7 +962,8 @@ On a computer, → next, ← previous, A approve, R reject. Approve and Send bac
 say so on their button (*Approved*, *Sent back*) for a moment, then the next
 task slides in (the arrows slide too, without it; a fade if your system reduces
 motion); a failed action keeps the task with its error. After the last one:
-*All done*. On a computer it is a large window (960 px wide, up to 90 % of the
+*All done*: its check, the tasks passed over and *Back to the first*, grouped in
+the middle (on a computer the window shrinks to them). On a computer it is a large window (960 px wide, up to 90 % of the
 screen's height, screenshots two per row): only the task's content scrolls, the
 filter, its title and the buttons stay. The filter at the top picks *Follow group tab* (the projects of the
 home tab), *All*, a group or a project (its key badge, then its name); it follows you across devices like the

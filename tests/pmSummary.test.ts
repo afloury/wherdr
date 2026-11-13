@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { summaryTick } from '../server/utils/pmSummary'
-import { TLDR_PROMPT } from '../shared/pm/summary'
+import { QUESTION_PROMPT, questionKey, TLDR_PROMPT } from '../shared/pm/summary'
 import { company } from '../shared/pm/examples'
 import { initialState } from '../shared/pm/steps'
 import type { Task } from '../shared/pm/run'
@@ -129,5 +129,23 @@ describe('summaryTick (the TL;DR)', () => {
     expect(n).toBe(1)
     expect((await store.task('CO-6'))!.tldr?.text).toBe('new 1')
     expect((await store.task('CO-7'))!.tldr?.text).toBe('old style')
+  })
+
+  it('summarizes an agent\'s question first, once per question, its paths masked; held by the pace', async () => {
+    const question = `I need the test server.\n\nLogs in ${HOME}/x.log.\n\n\`\`\`wherdr\nchoices "Go on" | "Stop here"\n\`\`\``
+    const asking: Task = { ...task('CO-8'), state: 'waiting', waitKind: 'question', question }
+    const store = fakeStore([task('CO-9'), asking])
+    const prompts: string[] = []
+    const summarize = async (p: string) => { prompts.push(p); return 'It asks whether to wait for the server.' }
+    await summaryTick({ store, summarize, pace: held }, 5000)
+    expect(prompts).toEqual([]) // held: the whole question shows alone
+    await summaryTick({ store, summarize, pace: go }, 5000)
+    expect(prompts[0]).toContain(QUESTION_PROMPT)
+    expect(prompts[0]).toContain('choices "Go on" | "Stop here"')
+    expect(prompts[0]).not.toContain(HOME)
+    expect((await store.task('CO-8'))!.questionTldr).toEqual({ key: questionKey(question), text: 'It asks whether to wait for the server.', at: 5000 })
+    await summaryTick({ store, summarize, pace: go }, 6000) // the same question: the TL;DR's turn
+    expect(prompts[1]).toContain(TLDR_PROMPT)
+    expect(questionKey(question)).not.toBe(questionKey(`${question}?`))
   })
 })

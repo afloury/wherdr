@@ -96,6 +96,15 @@ export function parseWherdrBlock(text: string): WherdrElement[] | null {
   }
   return out.length ? out : null
 }
+// The options of a message's last `choices` line (Tasks to review's buttons).
+export function messageChoices(text: string): string[] {
+  const blocks = [...String(text || '').matchAll(/^```wherdr[ \t]*\n([\s\S]*?)^```[ \t]*$/gm)]
+  for (const b of blocks.reverse()) {
+    const c = parseWherdrBlock(b[1]!)?.findLast(e => e.kind === 'choices')
+    if (c?.kind === 'choices') return c.options
+  }
+  return []
+}
 // Its HTML. Each option rides in a data attribute, read back by ChatView.vue.
 // Tasks side by side share one grid: each a placeholder that ChatMarkdown.vue
 // fills live; until then a link to the task's sheet.

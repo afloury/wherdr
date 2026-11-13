@@ -17,6 +17,7 @@ watch(id, (v) => {
   timer = setInterval(() => { if (!document.hidden) load() }, 10_000)
 }, { immediate: true })
 watch(taskSheetTick, () => { if (id.value) load() })
+watchTaskAgents()
 onBeforeUnmount(() => clearInterval(timer))
 
 // By any key its project had (a link may name a former key).

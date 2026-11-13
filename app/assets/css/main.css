@@ -2911,6 +2911,8 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .hw-sheet .review-sheet .review-item { min-height: 0; }
   .hw-sheet .review-sheet .review-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 16px; }
   .hw-sheet .review-sheet .shots-grid { grid-template-columns: 1fr 1fr; }
+  /* All done alone: the window shrinks to it. */
+  .hw-sheet:has(.review-done):not(:has(.review-item)) { height: auto; }
   /* A project's sheet: as wide, its height from its tab (ProjectSheet.vue). */
   .hw-sheet:has(.project-sheet) { width: min(920px, 92vw); }
   /* New › Project: room for folder paths and the repository list (NewProjectForm.vue). */
