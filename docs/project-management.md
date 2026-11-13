@@ -695,8 +695,10 @@ acts.
 ### Coordinators' notes
 
 A coordinator writes [notes](alfred.md#notes) with `wherdr pm notes list|show|add|edit|remove|file put|file remove`,
-the same commands as Alfred's, in the home tabs its project shows in only (`--scope <tab>`, a group or a machine shown as
-its own tab, by name; `all` only when the project shows in every tab). Each change is logged with the coordinator's name.
+the same commands as Alfred's. It lists, edits, moves (`edit --scope`) and removes any note, whatever its scope. Left out,
+`--scope` of `notes add` is the home tab its project shows in (`all` when it shows in every tab; when it shows in several
+but not all, it names one). Its help asks it to rewrite a note to keep it short rather than add another, and to change or
+remove another project's note only when it is outdated or you ask. Each change is logged with the coordinator's name.
 
 ## Board
 

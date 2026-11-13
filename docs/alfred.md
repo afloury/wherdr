@@ -67,7 +67,9 @@ reminder: …?"), writes it after your yes, and removes it once its subject is
 decided or done. They live in wherdr's data folder (`notes/`), so every device
 sees the same ones: one Markdown file per note (a title, a few lines, a scope,
 its created and updated dates), plus the longer files they link to, such as
-`notes/plans/x.md`. Every change is written to `notes/.log.jsonl` with who made it.
+`notes/plans/x.md`. Alfred and every coordinator may list, edit, move and remove any note;
+a coordinator adds to its project's home tab unless it names another scope. Every change is
+written to `notes/.log.jsonl` with who made it.
 
 | Command | Does |
 | --- | --- |
@@ -91,8 +93,9 @@ A note links to another note (`[Plan](other-note.md)`), a linked file
 (`[Plan](plans/x.md)`) or a place in wherdr (`[WD-12](#/board?task=WD-12)`).
 A link that would leave the notes folder (`..`, an absolute path) is refused, and
 the answer lists the links that lead nowhere yet. Coordinators have the same
-commands as `wherdr pm notes …`, for the home tabs their project shows in only:
-`all` only when it shows in every tab (or there is none).
+commands as `wherdr pm notes …`, on every note whatever its scope; left out, `--scope`
+of `notes add` is the home tab their project shows in (`all` when it shows in every
+tab or there is none).
 
 ## Suggestions
 

@@ -136,7 +136,7 @@ export type Command =
   // Show a place beside the coordinator's conversation (shared/uiOpen.ts).
   | { name: 'ui open', link: string }
   | { name: 'ui targets' }
-  | { name: 'notes', notes: NotesCommand } // the notes whiteboard (shared/notes.ts): the scopes the project shows in
+  | { name: 'notes', notes: NotesCommand } // the notes whiteboard (shared/notes.ts): every scope
   // A button in the reply that only the user's click runs (shared/uiActions.ts).
   | { name: 'ui action', action: UiAction, task: string }
   // A file of its folder or a task's screenshots beside it (shared/uiShow.ts).

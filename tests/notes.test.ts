@@ -1,10 +1,10 @@
 // WHR-295: the notes whiteboard: its store (add, edit, remove, scope, links
-// inside the notes folder, no path out of it) and who writes which scope.
+// inside the notes folder, no path out of it) and a coordinator's default scope.
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { machineScope, noteLinks, noteTabs, notesShown, parseNotes, resolveScope, writableScopes, NOTES_FOLLOW, type Note } from '../shared/notes'
+import { machineScope, noteLinks, noteTabs, notesShown, parseNotes, resolveScope, projectScopes, NOTES_FOLLOW, type Note } from '../shared/notes'
 import { parseAlfredCommand } from '../shared/pm/alfredCli'
 import { parseCommand } from '../shared/pm/coordinator'
 import { notesStore, runNotes } from '../server/utils/notesStore'
@@ -56,18 +56,20 @@ describe('notes store', () => {
 })
 
 describe('notes scope rules', () => {
-  it('lets a coordinator write the tab groups its project shows in, and all only when it shows in every one', async () => {
-    expect(writableScopes(project, undefined, groups, tabs)).toEqual(['*group:home'])
-    expect(writableScopes(project, '*', groups, tabs)).toEqual(['all', '*group:work', '*group:home'])
-    expect(writableScopes(project, '*group:work', groups, tabs)).toEqual(['*group:work'])
-    expect(writableScopes(project, undefined, [], [])).toEqual(['all'])
+  it('lets a coordinator list, edit, move and remove any note, adding to its project\'s tab by default', async () => {
+    expect(projectScopes(project, undefined, groups, tabs)).toEqual(['*group:home'])
+    expect(projectScopes(project, '*', groups, tabs)).toEqual(['all', '*group:work', '*group:home'])
+    expect(projectScopes(project, '*group:work', groups, tabs)).toEqual(['*group:work'])
+    expect(projectScopes(project, undefined, [], [])).toEqual(['all'])
     const wd = { by: 'coordinator WD', project }
     expect((await run(['add', 'Mine'], 'x', wd)).added.scope).toBe('Home')
-    await expect(run(['add', 'Theirs', '--scope', 'Work'], 'x', wd)).rejects.toThrow(/Home only/)
-    await expect(run(['add', 'Everyone', '--scope', 'all'], 'x', wd)).rejects.toThrow(/Home only/)
     await run(['add', 'Alfred\'s', '--scope', 'work'], 'x')
-    expect((await run(['list'], undefined, wd)).notes.map((n: { id: string }) => n.id)).toEqual(['mine'])
-    await expect(run(['remove', 'alfred-s'], undefined, wd)).rejects.toThrow(/No note alfred-s you may write/)
+    expect((await run(['list'], undefined, wd)).notes.map((n: { id: string }) => n.id).sort()).toEqual(['alfred-s', 'mine'])
+    expect((await run(['edit', 'alfred-s', '--title', 'Moved', '--scope', 'all'], 'y', wd)).edited).toMatchObject({ title: 'Moved', scope: 'all', body: 'y' })
+    expect((await run(['add', 'Theirs', '--scope', 'Work'], 'x', wd)).added.scope).toBe('Work')
+    expect(await run(['remove', 'alfred-s'], undefined, wd)).toEqual({ removed: 'alfred-s' })
+    const log = (await fs.readFile(path.join(dir, 'notes/.log.jsonl'), 'utf8')).trim().split('\n').map(l => JSON.parse(l))
+    expect(log.map(l => `${l.by} ${l.action} ${l.what}`)).toEqual(['coordinator WD add mine', 'Alfred add alfred-s', 'coordinator WD edit alfred-s', 'coordinator WD add theirs', 'coordinator WD remove alfred-s'])
   })
 
   it('takes a machine shown as its own tab as a scope, and shows its notes on that tab and on its group', async () => {
@@ -75,7 +77,7 @@ describe('notes scope rules', () => {
     expect(all.map(t => t.name)).toEqual(['Work', 'Laptop'])
     expect(resolveScope('laptop', all)).toBe(machineScope('laptop'))
     expect(resolveScope('Nope', all)).toEqual({ error: 'Unknown scope Nope: all, or a home tab (Work, Laptop)' })
-    expect(writableScopes({ machine: 'laptop' }, undefined, groups, all)).toEqual([machineScope('laptop')])
+    expect(projectScopes({ machine: 'laptop' }, undefined, groups, all)).toEqual([machineScope('laptop')])
     const n = (id: string, scope: string): Note => ({ id, title: id, scope, body: '', created: '', updated: '' })
     const list = [n('every', 'all'), n('lap', machineScope('laptop')), n('work', '*group:work'), n('home', '*group:home')]
     const ids = (filter: string, followed: string | null, g = groups) => notesShown(list, filter, followed, g).map(x => x.id)
@@ -116,17 +118,12 @@ describe('notes under load and linked files', () => {
     expect((await store.list()).map(n => n.body).sort()).toEqual(['body 1', 'body 2', 'body 3'])
   })
 
-  it('lets a coordinator change a linked file only when no note outside its scopes links to it', async () => {
+  it('lets a coordinator change a linked file another project\'s note links to', async () => {
     const wd = { by: 'coordinator WD', project }
     await run(['add', 'Work plan', '--scope', 'work'], '[Plan](plans/work.md)')
     await run(['file', 'put', 'plans/work.md'], '# Work\n')
-    await expect(run(['file', 'put', 'plans/work.md'], '# Gone\n', wd)).rejects.toThrow(/outside your scopes \(work-plan\)/)
-    await expect(run(['file', 'remove', 'plans/work.md'], undefined, wd)).rejects.toThrow(/outside your scopes/)
-    expect((await run(['show', 'plans/work.md'])).text).toBe('# Work\n')
-    expect(await run(['file', 'put', 'plans/home.md'], '# Home\n', wd)).toMatchObject({ put: 'plans/home.md' })
-    // A badge's link protects its file the same way.
-    await run(['add', 'Work badge', '--scope', 'work'], '[[Plan|file|amber|plans/badge.md]]')
-    await run(['file', 'put', 'plans/badge.md'], '# Badge\n')
-    await expect(run(['file', 'remove', 'plans/badge.md'], undefined, wd)).rejects.toThrow(/outside your scopes \(work-badge\)/)
+    await run(['file', 'put', 'plans/work.md'], '# New\n', wd)
+    expect((await run(['show', 'plans/work.md'])).text).toBe('# New\n')
+    expect(await run(['file', 'remove', 'plans/work.md'], undefined, wd)).toEqual({ removed: 'plans/work.md' })
   })
 })
