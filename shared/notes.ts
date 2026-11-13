@@ -10,7 +10,7 @@ import { PROJECT_COLORS, isProjectColor } from './pm/projectKey'
 // machineGroups setting), or a machine shown as its own tab (machine:<base key>).
 export type NoteScope = string
 export const machineScope = (key: string): NoteScope => `machine:${key}`
-const scopeMachine = (scope: NoteScope) => (scope.startsWith('machine:') ? scope.slice(8) : null)
+export const scopeMachine = (scope: NoteScope) => (scope.startsWith('machine:') ? scope.slice(8) : null)
 // A home tab a note may be scoped to: its scope, its name and its machines.
 export interface NoteTab { scope: NoteScope, name: string, machines: string[] }
 // The home tabs, in the bar's order (bar: its item ids), All left out. label:

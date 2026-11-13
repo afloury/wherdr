@@ -90,6 +90,16 @@ describe('notes scope rules', () => {
     if ('error' in cmd || cmd.name !== 'notes') throw new Error('not a notes command')
     const machines = ['', 'mac', 'pi', 'laptop'].map(key => ({ key, label: key === 'laptop' ? 'Laptop' : key, local: !key, status: 'online' as const, error: null }))
     expect(await runNotes(notesStore(path.join(dir, 'notes')), cmd.notes, 'x', { by: 'Alfred' }, settingsFile, machines)).toMatchObject({ added: { scope: 'Laptop' } })
+    // the laptop joins Work and its tab is taken off the bar: its note stays readable and writable
+    await fs.writeFile(settingsFile, JSON.stringify({ v: 1, settings: { machineGroups: JSON.stringify([{ ...groups[0]!, machines: ['mac', 'laptop'] }, groups[1]!]), machineBarHidden: JSON.stringify(['laptop']) } }))
+    const again = async (argv: string[], who: Parameters<typeof runNotes>[3]) => {
+      const c = parseAlfredCommand(['notes', ...argv])
+      if ('error' in c || c.name !== 'notes') throw new Error('not a notes command')
+      return runNotes(notesStore(path.join(dir, 'notes')), c.notes, '', who, settingsFile, machines) as Promise<Record<string, any>>
+    }
+    expect((await again(['list'], { by: 'Alfred' })).notes).toMatchObject([{ id: 'charge-it', scope: 'Laptop' }])
+    expect((await again(['list'], { by: 'coordinator L', project: { key: 'L', machine: 'mac' } })).notes.map((x: { id: string }) => x.id)).toEqual(['charge-it'])
+    expect(await again(['remove', 'charge-it'], { by: 'Alfred' })).toEqual({ removed: 'charge-it' })
   })
 
   it('parses the same notes words under wherdr pm', () => {

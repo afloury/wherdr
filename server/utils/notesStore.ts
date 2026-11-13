@@ -5,7 +5,7 @@
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { MAX_FILE, filePath, noteBody, noteId, noteLinks, noteTabs, noteText, readNote, resolveScope, scopeName, slug, writableScopes, type Note, type NoteScope, type NotesCommand } from '../../shared/notes'
+import { MAX_FILE, filePath, noteBody, noteId, noteLinks, noteTabs, noteText, readNote, resolveScope, scopeMachine, scopeName, slug, writableScopes, type Note, type NoteScope, type NotesCommand } from '../../shared/notes'
 import { groupedBarItems, readBarList, readMachineGroups } from '../../app/utils/machineBar'
 import { readProjectTabs } from '../../shared/settings'
 import type { Project } from '../../shared/pm/project'
@@ -125,6 +125,11 @@ export async function runNotes(store: NotesStore, cmd: NotesCommand, input: unkn
   const tabs = noteTabs(groupedBarItems(readBarList(s.machineBarOrder), bases, groups).filter(id => !hidden.includes(id)), groups, label)
   const name = (scope: string) => scopeName(scope, tabs, label)
   const mine = who.project ? writableScopes(who.project, readProjectTabs(s.projectTabs)[who.project.key], groups, tabs) : ['all', ...tabs.map(t => t.scope)]
+  // The notes already written stay writable whatever the bar shows: Alfred
+  // any scope; a coordinator its tabs' and those of the machines of its groups
+  // (a machine tab taken off the bar, or a machine that joined a group).
+  const may = (scope: string) => !who.project || mine.includes(scope)
+    || groups.some(g => mine.includes(g.id) && g.machines.includes(scopeMachine(scope) ?? '\0'))
   const scopeOf = (raw: string) => {
     const r = resolveScope(raw, tabs)
     if (typeof r !== 'string') throw new HerdrError('bad_input', r.error)
@@ -145,7 +150,7 @@ export async function runNotes(store: NotesStore, cmd: NotesCommand, input: unkn
     const missing = (await Promise.all(links.map(async l => (await store.readFile(l)) === null && !(await store.get(l.slice(0, -3))) ? l : ''))).filter(Boolean)
     return { body, missing }
   }
-  const mayWrite = (n: Note) => { if (!mine.includes(n.scope)) throw new HerdrError('not_found', `No note ${n.id} you may write (see notes list)`) }
+  const mayWrite = (n: Note) => { if (!may(n.scope)) throw new HerdrError('not_found', `No note ${n.id} you may write (see notes list)`) }
   const writable = async (id: string) => {
     const n = await store.get(id)
     if (!n) throw new HerdrError('not_found', `No note ${id} you may write (see notes list)`)
@@ -156,7 +161,7 @@ export async function runNotes(store: NotesStore, cmd: NotesCommand, input: unkn
   // it only when none of them is outside its scopes.
   const fileWritable = (rel: string) => async () => {
     if (!who.project) return
-    const theirs = (await store.list()).filter(n => !mine.includes(n.scope) && [noteLinks(n.body)].flat().includes(rel))
+    const theirs = (await store.list()).filter(n => !may(n.scope) && [noteLinks(n.body)].flat().includes(rel))
     if (theirs.length) throw new HerdrError('refused', `${rel} is linked from notes outside your scopes (${theirs.map(n => n.id).join(', ')}): you may not change it`)
   }
   const warn = (missing: string[]) => (missing.length ? { missing, note: 'These links lead nowhere yet: write them with notes file put' } : {})
@@ -164,7 +169,7 @@ export async function runNotes(store: NotesStore, cmd: NotesCommand, input: unkn
   switch (cmd.verb) {
     case 'list': {
       const only = cmd.scope ? scopeOf(cmd.scope) : undefined
-      return { notes: (await store.list()).filter(n => (only ? n.scope === only : mine.includes(n.scope))).map(({ body: _, ...n }) => ({ ...n, scope: name(n.scope) })), files: await store.files() }
+      return { notes: (await store.list()).filter(n => (only ? n.scope === only : may(n.scope))).map(({ body: _, ...n }) => ({ ...n, scope: name(n.scope) })), files: await store.files() }
     }
     case 'show': {
       if (cmd.id.includes('/')) {
