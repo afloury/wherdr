@@ -173,7 +173,11 @@ group tab**); the menu at the top shows **All** or one group instead, and the ch
 you across devices. A note scoped All shows in every group. Each note shows its title, its
 scope and its lines: checkboxes you cannot tick, project key badges (a task id opens its
 sheet), the agents' own badges, and links. A link to a place in wherdr opens it in place, a
-link to another note scrolls to it; a link to a file does nothing yet. An agent's change shows
+link to another note scrolls to it. A link to a Markdown file the agents wrote under the
+notes folder (`plans/x.md`, see [notes file put](alfred.md#notes)) opens it rendered in the
+same panel or sheet, with a back arrow to the notes; a long file scrolls there. Links in the
+file work the same way, relative to it (`steps.md`, `../other-note.md`), never outside the
+notes folder. A link that leads nowhere, or outside the folder, is muted; its tooltip says why. An agent's change shows
 within a few seconds, without a reload.
 
 ### Also

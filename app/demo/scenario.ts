@@ -74,8 +74,34 @@ export const taskAgents = (): Record<string, TaskAgent> => ({
 export const notes = (now: number) => [
   { id: 'this-week', title: 'This week', scope: 'all', body: '- [x] Rate limits merged [[API-12]]\n- [ ] Look at the flaky export fix [[API-13]]\n- [ ] Release notes for 1.4', created: '', updated: new Date(now - 600_000).toISOString() },
   { id: 'billing-page', title: 'Billing page redesign', scope: 'all', body: '[[Waiting|clock|amber]] on the new prices from sales.\nThe [plan](plans/billing.md) has the open questions.', created: '', updated: new Date(now - 3600_000).toISOString() },
-  { id: 'reminders', title: 'Reminders', scope: 'all', body: '[[Friday|calendar|blue]] demo to the team, see [this week](this-week.md)\n[[Idea|lightbulb|violet]] cache the CSV export', created: '', updated: new Date(now - 7200_000).toISOString() },
+  { id: 'reminders', title: 'Reminders', scope: 'all', body: '[[Friday|calendar|blue]] demo to the team, see [this week](this-week.md)\n[[Idea|lightbulb|violet]] cache the CSV export, [sketch](plans/csv-cache.md)', created: '', updated: new Date(now - 7200_000).toISOString() },
 ]
+
+// The files the notes link to (GET /api/notes/file).
+export const noteFiles: Record<string, string> = {
+  'plans/billing.md': `# Billing page redesign
+
+The pricing page moves to three plans and yearly billing. Sales confirms the prices by Friday.
+
+## Open questions
+
+- [x] Keep the free plan? Yes, with one project.
+- [ ] Show prices with or without tax by default?
+- [ ] Discount for yearly billing: 15 % or two months free?
+- [ ] Where does the plan comparison table go on a phone?
+
+## Steps
+
+1. Price table component, with the plans from the API.
+2. Checkout: the yearly switch, then the summary.
+3. Emails: receipt and renewal reminder, see [the email notes](emails.md).
+
+## Out of scope
+
+Invoices in other currencies wait for the next quarter. The current team list stays as it is: see [this week](../this-week.md).
+`,
+  'plans/emails.md': '# Billing emails\n\n- Receipt right after payment.\n- Renewal reminder 7 days before.\n\nBack to [the plan](billing.md).\n',
+}
 
 // omp's tool approval dialog, as wherdr reads it from the screen.
 export function approval(command: string): NonNullable<Pane['prompt']> {

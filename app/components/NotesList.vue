@@ -2,9 +2,11 @@
 // The notes (shared/notes.ts) under their filter, for NotesPanel.vue: each
 // note's title and its few Markdown lines, read-only checkboxes and badges
 // (NoteBadge.vue). Links: an in-app place opens in place (`leave` first),
-// another note scrolls to it, a linked file does nothing yet.
+// another note scrolls to it, a linked file (plans/x.md) opens rendered in
+// its place with a back arrow. A link that leads nowhere, or out of the
+// notes folder, is muted and does nothing.
 import { h, render } from 'vue'
-import { NOTES_FOLLOW, noteBadges, notesShown, scopeName, type Note } from '#shared/notes'
+import { NOTES_FOLLOW, noteBadges, noteTarget, notesShown, scopeName, type Note } from '#shared/notes'
 import { appRoute, isAppLink } from '#shared/appLinks'
 import NoteBadge from './NoteBadge.vue'
 
@@ -46,11 +48,56 @@ function mountBadges() {
     }
   }
 }
-watch(rendered, mountBadges, { flush: 'post' })
-onMounted(mountBadges)
+
+// The linked file open, its Markdown (null: missing), in place of the list.
+const file = ref<{ path: string, text: string | null } | null>(null)
+const fileHtml = computed(() => (file.value?.text == null ? '' : md(file.value.text, { doc: true })))
+const view = ref<HTMLElement | null>(null)
+let cameFrom = '' // the note whose link opened the file: back scrolls to it
+async function back() {
+  file.value = null
+  await nextTick()
+  if (cameFrom) list.value?.querySelector(`#${cameFrom}`)?.scrollIntoView({ block: 'nearest' })
+}
+// Each read of the notes (every few seconds while open) reads the open file
+// again, so an agent's change shows without going back.
+watch(noteFiles, async () => {
+  const path = file.value?.path
+  if (!path) return
+  const text = await loadNoteFile(path)
+  if (file.value?.path === path && file.value.text !== text) file.value = { path, text }
+})
+async function openFile(path: string) {
+  const text = await loadNoteFile(path)
+  file.value = { path, text }
+  await nextTick()
+  view.value?.scrollIntoView({ block: 'start' })
+}
+// Why a link from here (the list: '', or a file's path) leads nowhere, or ''.
+const from = () => file.value?.path ?? ''
+function missing(href: string, here = from()): string {
+  const to = noteTarget(href, here)
+  if (!to) return ''
+  if (to.kind === 'out') return tl('Outside the notes folder')
+  if (to.kind === 'note') return notes.value && !notes.value.some(n => n.id === to.id) ? tl('This note is missing') : ''
+  return noteFiles.value && !noteFiles.value.includes(to.path) ? tl('This file is missing') : ''
+}
+function markLinks() {
+  const links = [...list.value?.querySelectorAll('a[href]') ?? []].map(a => [a, ''] as [Element, string])
+  for (const a of view.value?.querySelectorAll('.note-file-body a[href]') ?? []) links.push([a, from()])
+  for (const [a, here] of links) {
+    const why = missing(a.getAttribute('href') ?? '', here)
+    a.classList.toggle('note-link-missing', Boolean(why))
+    if (why) a.setAttribute('title', why)
+    else a.removeAttribute('title')
+  }
+}
+function refresh() { mountBadges(); markLinks() }
+watch([rendered, file, notes, noteFiles], refresh, { flush: 'post' })
+onMounted(refresh)
 onBeforeUnmount(() => { for (const s of slots) render(null, s) })
 
-function onClick(e: MouseEvent) {
+async function onClick(e: MouseEvent) {
   const a = (e.target as HTMLElement).closest('a')
   const href = a?.getAttribute('href') ?? ''
   if (!a || /^[a-z][a-z0-9+.-]*:/i.test(href)) return // a web address: its new tab
@@ -60,21 +107,40 @@ function onClick(e: MouseEvent) {
     router.push(appRoute(href))
     return
   }
-  const note = /^([a-z0-9][a-z0-9-]*)\.md(?:#.*)?$/.exec(href)
-  if (note) list.value?.querySelector(`#note-${note[1]}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+  const to = noteTarget(href, from())
+  if (!to || missing(href)) return
+  if (to.kind === 'file') {
+    if (!file.value) cameFrom = a.closest('.note')?.id ?? ''
+    return openFile(to.path)
+  }
+  if (to.kind !== 'note') return
+  file.value = null
+  await nextTick()
+  list.value?.querySelector(`#note-${to.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
 }
 </script>
 
 <template>
-  <div class="notes-wrap">
-    <USelect v-model="filter" :items="items" size="lg" class="notes-filter" :aria-label="tl('Notes shown')" data-testid="notes-filter" />
-    <div ref="list" class="notes-list" @click="onClick">
-      <article v-for="r in rendered" :id="`note-${r.note.id}`" :key="r.note.id" class="note" data-testid="note">
-        <h3><span>{{ r.note.title }}</span><small class="mono-label">{{ scopeOf(r.note) }}</small></h3>
-        <!-- eslint-disable-next-line vue/no-v-html -- sanitized by md() (utils/markdown.ts) -->
-        <div class="note-body md" v-html="r.html" />
-      </article>
-      <p v-if="notes && !shown.length" class="muted notes-empty">{{ tl('No notes here. Agents write them: ask Alfred to add a reminder.') }}</p>
+  <div ref="view" class="notes-wrap" @click="onClick">
+    <article v-if="file" class="note-file" data-testid="note-file">
+      <header class="note-file-top">
+        <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Back to notes')" :title="tl('Back to notes')" data-testid="note-file-back" @click="back" />
+        <span class="mono-label">{{ file.path }}</span>
+      </header>
+      <!-- eslint-disable-next-line vue/no-v-html -- sanitized by md() (utils/markdown.ts) -->
+      <div v-if="file.text != null" class="note-file-body md md-body" v-html="fileHtml" />
+      <p v-else class="muted">{{ tl('This file is missing.') }}</p>
+    </article>
+    <div v-show="!file" class="notes-index">
+      <USelect v-model="filter" :items="items" size="lg" class="notes-filter" :aria-label="tl('Notes shown')" data-testid="notes-filter" />
+      <div ref="list" class="notes-list">
+        <article v-for="r in rendered" :id="`note-${r.note.id}`" :key="r.note.id" class="note" data-testid="note">
+          <h3><span>{{ r.note.title }}</span><small class="mono-label">{{ scopeOf(r.note) }}</small></h3>
+          <!-- eslint-disable-next-line vue/no-v-html -- sanitized by md() (utils/markdown.ts) -->
+          <div class="note-body md" v-html="r.html" />
+        </article>
+        <p v-if="notes && !shown.length" class="muted notes-empty">{{ tl('No notes here. Agents write them: ask Alfred to add a reminder.') }}</p>
+      </div>
     </div>
   </div>
 </template>
