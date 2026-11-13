@@ -37,7 +37,7 @@
 // is the relay case above).
 import net from 'node:net'
 import { execFileSync } from 'node:child_process'
-import { tailnetFacts, tailnetPeers, tailscaleBin } from '../../bin/lib/tailnet.mjs'
+import { tailnetFacts, tailnetPeers, tailscaleBins } from '../../bin/lib/tailnet.mjs'
 
 export type NetZone = 'local' | 'tailnet' | 'trusted' | 'open'
 // peer: another network; forwarded: a proxy names a client from one;
@@ -382,12 +382,15 @@ export type ListenVerdict = { ok: true, warn?: string } | { ok: false, message: 
 
 // Tailscale's own addresses, read once at startup when HOST is in a tailnet
 // range, with the CLI (null without one: such a HOST is then refused).
-export function tailscaleSelfSync(bin = tailscaleBin()): { running: boolean, selfIps: string[] } | null {
-  if (!bin) return null
-  try {
-    const p = tailnetPeers(execFileSync(bin, ['status', '--json'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }))
-    return { running: p.running, selfIps: p.selfIps }
-  } catch { return null }
+export function tailscaleSelfSync(bins = tailscaleBins()): { running: boolean, selfIps: string[] } | null {
+  // The first CLI whose answer can be read (on macOS the app's binary may not, issue #724).
+  for (const bin of bins) {
+    try {
+      const p = tailnetPeers(execFileSync(bin, ['status', '--json'], { encoding: 'utf8', timeout: 5000, stdio: ['ignore', 'pipe', 'ignore'] }))
+      if (p.readable) return { running: p.running, selfIps: p.selfIps }
+    } catch {}
+  }
+  return null
 }
 
 // The address wherdr listens on (HOST), checked before it starts listening.
