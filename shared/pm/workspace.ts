@@ -5,7 +5,7 @@
 // which takes the workspace's `shared` settings unless it lists the field in
 // `overrides`. effectiveProject is the one place that resolves them.
 import type { WorkflowError } from './workflow'
-import { checkPrefs, checkSetup, type Prefs, type Template, type WorktreeSetup } from './workflow'
+import { checkPrefs, checkSetup, defaultWorkflow, type Prefs, type Template, type WorktreeSetup } from './workflow'
 import type { Strategy } from './placement'
 import { KEY_RE, cleanProjectUpdate, type Project, type ProjectUpdate } from './project'
 
@@ -77,12 +77,27 @@ export function effectiveProject(member: Project, ws: Project | undefined): Proj
 
 export const effectiveProjects = (list: Project[]) => list.map(p => effectiveProject(p, workspaceOf(p, list)))
 
-// A member's workflow with the workspace's agents and worktree setup, unless it overrides them.
-export function effectiveWorkflow(t: Template, member: Project | undefined, ws: Project | undefined): Template {
-  if (!member?.workspace || !ws || !isWorkspace(ws)) return t
+// The workflow a member runs: its own file (`saved`) when it has one, else
+// its workspace's (`shared`, workflows/<WS>.json), else the default; with the
+// workspace's agents and worktree setup unless it overrides them, and the
+// workspace's guards, which its own only harden. Any other project: its own.
+export function effectiveWorkflow(key: string, saved: Template | null, member: Project | undefined, ws: Project | undefined, shared: Template | null = null): Template {
+  const id = key.toLowerCase()
+  if (!member?.workspace || !ws || !isWorkspace(ws)) return saved ?? defaultWorkflow(key)
+  const t = saved ?? (shared ? { ...ownWorkflow(shared), id } : defaultWorkflow(key))
   const own = new Set(member.overrides ?? [])
-  const { prefs, worktree, ...rest } = t
-  return { ...rest, ...defined({ prefs: own.has('prefs') ? prefs : ws.shared?.prefs ?? prefs, worktree: own.has('worktree') ? worktree : ws.shared?.worktree }) }
+  const { prefs, worktree, workspaceGuards: _, ...rest } = t
+  return {
+    ...rest,
+    ...defined({ prefs: own.has('prefs') ? prefs : ws.shared?.prefs ?? prefs, worktree: own.has('worktree') ? worktree : ws.shared?.worktree }),
+    ...(shared?.guards ? { workspaceGuards: shared.guards } : {}),
+  }
+}
+
+// A workflow as it is saved or shown for editing: without its workspace's guards.
+export function ownWorkflow(t: Template): Template {
+  const { workspaceGuards: _, ...own } = t
+  return own
 }
 
 // A member's overrides once an update applies: each shared field it sets

@@ -6,9 +6,10 @@ import { projectPlace } from './places'
 import { maskLeaks } from './visibility'
 import { actionField, isPrMerge, type MergeBy, type StepAction, type Template } from './workflow'
 
-// The guards of a task: the project's, hardened by its task type.
+// The guards of a task: its workspace's (a member project's), the project's,
+// hardened by its task type.
 export const taskGuards = (t: Template, type: string) =>
-  combineGuards([{ source: 'project', guards: t.guards }, { source: 'task-type', guards: t.taskTypes[type]?.guards }])
+  combineGuards([{ source: 'workspace', guards: t.workspaceGuards }, { source: 'project', guards: t.guards }, { source: 'task-type', guards: t.taskTypes[type]?.guards }])
 
 // Why the action may not run, or undefined. `by`: 'user' when the user's
 // gesture started it, else 'engine'. `base`: the PR's base, for a PR merge.

@@ -6,7 +6,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { ALFRED_TOKEN_FILE, issueAlfredToken, issueToken } from '../server/utils/pmCoordinator'
-import { guardsAuthor, saveProjectGuards, saveProjectWorkflow, templateFromProject, updateProject } from '../server/utils/pmProject'
+import { guardsAuthor, projectView, saveProjectGuards, saveProjectWorkflow, templateFromProject, updateProject } from '../server/utils/pmProject'
 import { common, company, vibe } from '../shared/pm/examples'
 import { templateDiff } from '../shared/pm/coordinator'
 import { startOverFrom } from '../shared/pm/workflow'
@@ -135,5 +135,20 @@ describe('project settings', () => {
     expect(diff).toContain('-   "instructions": "Base branch is develop.",')
     expect(diff.every(l => /^[-+] /.test(l))).toBe(true)
     expect(diff.some(l => l.includes('"prefs"'))).toBe(false) // same prefs, another key order
+  })
+})
+
+describe('a member project\'s sheet', () => {
+  it('shows the workspace\'s workflow it runs, until it has its own', async () => {
+    const ok = async (_m: string, f: string) => ({ path: f, git: !f.endsWith('work') })
+    await store.addProject({ key: 'WS', name: 'Work', machine: '', path: '~/work', kind: 'workspace' }, ok)
+    await store.addProject({ key: 'PAY', machine: '', path: '~/work/payroll-api', workspace: 'WS' }, ok)
+    expect(await projectView(store, 'PAY')).toMatchObject({ workflow: null })
+    await store.saveWorkflow('WS', { ...company, id: 'ws' })
+    const v = await projectView(store, 'PAY')
+    expect(v).toMatchObject({ inherited: 'WS', workflow: { id: 'pay', guards: company.guards } })
+    expect(v.workflow).not.toHaveProperty('workspaceGuards')
+    await saveProjectGuards(store, 'PAY', guards, 'user')
+    expect(await projectView(store, 'PAY')).not.toHaveProperty('inherited')
   })
 })

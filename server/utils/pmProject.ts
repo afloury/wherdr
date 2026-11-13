@@ -7,7 +7,8 @@ import { projectPlace } from '../../shared/pm/places'
 import { freedMerge } from '../../shared/pm/guardEffects'
 import { allowedMachines, cleanProjectUpdate, type Project } from '../../shared/pm/project'
 import { taskPlan } from '../../shared/pm/run'
-import { PREF_KEYS, type Guards, type Prefs, type Template, type WorktreeSetup } from '../../shared/pm/workflow'
+import { ownWorkflow } from '../../shared/pm/workspace'
+import { PREF_KEYS, isDefaultWorkflow, type Guards, type Prefs, type Template, type WorktreeSetup } from '../../shared/pm/workflow'
 import { HerdrError } from './herdr'
 import { alfredTokenOk, scopeOf } from './pmCoordinator'
 import type { CoreAdminDeps } from './coreCreate'
@@ -37,15 +38,20 @@ async function workflowOf(store: PmStore, key: unknown) {
   return { p, t }
 }
 
-// GET /api/pm/project?key=: one load for the project sheet.
+// GET /api/pm/project?key=: one load for the project sheet. A member without
+// its own workflow gets its workspace's, the one its tasks follow, with
+// `inherited` naming the workspace (its first saved change becomes its own).
 export async function projectView(store: PmStore, key: string) {
   const p = await store.project(key)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   const proposal = (await store.coordinator(p.key))?.proposal
   // ready: each other allowed machine's last readiness check ('' ready, its failures otherwise; none never checked).
   const ready = Object.fromEntries(allowedMachines(p).slice(1).flatMap(m => { const r = lastReadiness(p.key, m); return r === undefined ? [] : [[m, r]] }))
+  const saved = await store.savedWorkflow(p.key)
+  const shared = !saved && p.workspace ? await store.workflow(p.key) : null
+  const inherited = shared && !isDefaultWorkflow(shared) ? ownWorkflow(shared) : null
   return {
-    project: p, workflow: await store.savedWorkflow(p.key), log: await store.workflowLog(p.key), ready,
+    project: p, workflow: saved ?? inherited, ...(inherited ? { inherited: p.workspace } : {}), log: await store.workflowLog(p.key), ready,
     ...(proposal ? { proposal: { diff: proposal.diff, at: proposal.at, base: proposal.base, ...(proposal.said ? { said: proposal.said } : {}) } } : {}),
   }
 }
@@ -113,6 +119,6 @@ export async function retryFreedMerges(deps: CoreAdminDeps & { store: PmStore },
 // `id` (a taken id is refused). The project is untouched.
 export async function templateFromProject(store: PmStore, key: unknown, id: unknown) {
   const { t } = await workflowOf(store, key)
-  const { version: _version, ...copy } = t
+  const { version: _version, workspaceGuards: _ws, ...copy } = t
   return { template: await store.saveTemplate({ ...copy, id }) }
 }

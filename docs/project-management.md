@@ -442,9 +442,10 @@ Needs: [Workflow](#workflow).
 
 Guards are the rules on branches: the **protected** branches, who may merge into
 them (by default only you), and who may merge into the others (by default wherdr
-itself, when a step says so). They come from your settings, the project, a task
-type and a task; the strictest wins, so a task type or a task can only make them
-stricter. A project can also let its coordinator merge an outside contributor's
+itself, when a step says so). They come from your settings, the
+[workspace](workspaces.md#shared-workflow) (for a member project), the project, a
+task type and a task; the strictest wins, so a member, a task type or a task can
+only make them stricter. A project can also let its coordinator merge an outside contributor's
 PR after your yes: never, into the branches not reserved for you, or into any.
 
 In the **Guards** tab:
