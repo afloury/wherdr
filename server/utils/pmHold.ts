@@ -3,6 +3,8 @@
 // released, so a promise that never settles cannot block its key forever. The
 // release a holder gets frees only its own hold: a late finally never frees
 // the next holder's.
+export type Release = (() => void) & { lost: () => boolean }
+
 export class Holds {
   private held = new Map<string, { at: number, what: string }>()
   constructor(private name: string, private limitMs: number, private log: (line: string) => void = l => console.warn(l)) {}
@@ -17,11 +19,13 @@ export class Holds {
     return false
   }
 
-  // The hold's release, or undefined when the key is held already.
-  take(key: string, what: string, now = Date.now()): (() => void) | undefined {
+  // The hold's release, or undefined when the key is held already. lost():
+  // the hold went past its limit (released, maybe taken by another holder).
+  take(key: string, what: string, now = Date.now()): Release | undefined {
     if (this.has(key, now)) return
     const mine = { at: now, what }
     this.held.set(key, mine)
-    return () => { if (this.held.get(key) === mine) this.held.delete(key) }
+    const release = () => { if (this.held.get(key) === mine) this.held.delete(key) }
+    return Object.assign(release, { lost: () => this.held.get(key) !== mine || Date.now() - mine.at >= this.limitMs })
   }
 }

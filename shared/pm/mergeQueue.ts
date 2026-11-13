@@ -35,7 +35,7 @@ export function queueOut(f: Pick<MechFacts, 'task' | 'plan' | 'pr' | 'head' | 'a
   if (s.agent) return s.agent.kind === 'catch-up' ? 'its agent resolves a conflict with the base' : 'its agent fixes the PR'
   if (s.catchUp) return `updating with ${s.catchUp.base}`
   if (f.agentBusy) return 'its agent is working'
-  if (!pr || !head || pr.headRefOid !== head) return 'its new commits are not on the PR yet'
+  if (!pr || !head || pr.headRefOid !== head) return NOT_PUSHED
   if (pr.mergeStateStatus === 'DIRTY') return 'conflict with its base'
   if (pr.mergeStateStatus === 'BEHIND') return `updating with ${pr.baseRefName}`
   // Its merge tried at this commit and refused: the user's (Try again, Merge), out of line meanwhile.
@@ -46,6 +46,9 @@ export function queueOut(f: Pick<MechFacts, 'task' | 'plan' | 'pr' | 'head' | 'a
   // Green, yet GitHub refuses it (a required review, a required check the step does not list).
   return pr.mergeStateStatus === 'BLOCKED' ? 'blocked by the branch rules' : undefined
 }
+
+// Out of line until its commits are on the PR: the merge step pushes them (mechanic.ts).
+export const NOT_PUSHED = 'its new commits are not on the PR yet'
 
 // The start of queueOut's reason for a refused merge: that one stays on Your turn.
 export const MERGE_REFUSED = 'merge refused: '

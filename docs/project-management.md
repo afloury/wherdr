@@ -1069,7 +1069,8 @@ when GitHub reports a conflict, or reports it behind because the branch rules
 want branches up to date. When the base moves, every queued PR that needs an
 update gets it in the same pass, and their checks run side by side. An update
 that merges cleanly is pushed by wherdr alone; a conflict goes to the task's
-agent (started again if it was ended). An update that fails (a network error)
+agent (started again if it was ended). What the agent commits for it (a
+conflict solved, red CI fixed) is pushed by wherdr whatever the PR's place. An update that fails (a network error)
 is tried again twice, a few minutes apart. Checks that fail go back to the
 agent as red CI, not to you.
 
@@ -1119,7 +1120,10 @@ the mechanical blocks itself and wakes it only when that fails:
   20 minutes is re-entered: its step's action, marked running but not running
   or never started, is run again (refused, the mark goes); a merge already
   tried at that commit is tried again once. wherdr looks again after 40 minutes, then 80…, and wakes the
-  coordinator once per task and step, saying what it saw and tried;
+  coordinator once per task and step, saying what it saw and tried. A step
+  action that hangs holds its task 30 minutes at most; should it end after
+  that, its late result is only noted in History (*its result is dropped*),
+  never undoing what a later run did;
 
 These blocks do not wake the coordinator. After 2 failed tries on the same
 step (or 15 minutes with nothing left to try), wherdr wakes it once (an
