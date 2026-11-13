@@ -59,6 +59,7 @@ export interface CoordinatorRecord {
   // version: wherdr's when this session started; told: the newer version it was told of.
   version?: string, told?: string
   cards?: UiCard[] // the action buttons it put in its replies (shared/uiActions.ts), newest first
+  cardNotes?: string[] // what the user did with its cards while it did not run, said at its next start (cardOutcome.ts)
   visits?: { at: number, by: string, what: string }[] // what other coordinators did on its project since its last wake (reach.ts)
 }
 
