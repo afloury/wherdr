@@ -6,7 +6,8 @@
 // coordinators/<KEY>.json (the hash of the coordinator's token, its current turn, its autopilot),
 // wakes.jsonl (the coordinators' wake queue, append-only: the last line of an id wins),
 // automations/<KEY>.json (the project's automations and where its tasks stood at the last tick),
-// incidents.json (why agents were gone, newest last: shared/pm/incident.ts).
+// incidents.json (why agents were gone, newest last: shared/pm/incident.ts),
+// maps/<WS>.json (a workspace's map: shared/pm/workspaceMap.ts).
 // Atomic writes (temp file + rename), one at a time. Switched off, every
 // write is refused except turning it back on.
 import fs from 'node:fs/promises'
@@ -35,6 +36,7 @@ import type { HealthSent } from '../../shared/pm/health'
 import type { Automation, AutomationProposal, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { cleanWorkspaceFields, effectiveProjects, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
+import type { MapFile } from '../../shared/pm/workspaceMap'
 import { DATA_DIR } from './env'
 
 // A project coordinator: the sha256 of its token, its terminal (herdr-core
@@ -104,7 +106,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     tasks: path.join(dir, 'tasks'), runs: path.join(dir, 'runs'), receipts: path.join(dir, 'receipts'), shots: path.join(dir, 'shots'),
     workflows: path.join(dir, 'workflows'), workflowLog: path.join(dir, 'workflow-log'),
     coordinators: path.join(dir, 'coordinators'), wakes: path.join(dir, 'wakes.jsonl'), automations: path.join(dir, 'automations'),
-    incidents: path.join(dir, 'incidents.json'),
+    incidents: path.join(dir, 'incidents.json'), maps: path.join(dir, 'maps'),
   }
   let queue: Promise<unknown> = Promise.resolve()
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {
@@ -416,6 +418,16 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const r = change({ automations: [], ...(await readJson<AutomationsFile>(file)) })
       await writeJson(file, { v: 1, ...r.file })
       return r.out
+    }),
+    map: async (key: string): Promise<MapFile> =>
+      ({ entries: [], ...(TASK_ID_RE.test(`${key}-1`) ? await readJson<MapFile>(path.join(files.maps, `${key}.json`)) : null) }),
+    // `change` gets the map as it is now, inside the write.
+    changeMap: (key: string, change: (f: MapFile) => MapFile) => write(async () => {
+      if (!TASK_ID_RE.test(`${key}-1`)) throw new HerdrError('not_found', 'Unknown project')
+      const file = path.join(files.maps, `${key}.json`)
+      const next = change({ entries: [], ...(await readJson<MapFile>(file)) })
+      await writeJson(file, next)
+      return next
     }),
     saveRun: (r: Run) => write(async () => { await writeJson(path.join(files.runs, `${r.id}.json`), r); if (runCache) runCache.at = -1 }),
     receipt: (id: string) => readJson<Receipt>(path.join(files.receipts, `${id}.json`)),

@@ -30,6 +30,7 @@ import { projectPlace } from './places'
 import { parseFiles } from './files'
 import { NOTES_COMMANDS, NOTES_RULE, parseNotes, type NotesCommand } from '../notes'
 import { MERGE_METHODS, contributorPrsLine, type MergeMethod } from './contributorPr'
+import { MAP_COMMANDS, parseMap, type MapCommand } from './workspaceMap'
 
 // The agent of a coordinator: the project's default, and the one its kept
 // conversation ran with (changing it starts a new conversation, never a
@@ -143,6 +144,7 @@ export type Command =
   | { name: 'ui action', action: UiAction, task: string }
   // A file of its folder or a task's screenshots beside it (shared/uiShow.ts).
   | UiShowCommand
+  | MapCommand // a workspace's map (shared/pm/workspaceMap.ts)
 
 // One table for the parser, the skill and the role file.
 export const COMMANDS: { usage: string, does: string }[] = [
@@ -180,6 +182,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'ui action resume|step|open <task>', does: 'a button in your reply that the user clicks: resume (continue a stopped task), step (the button of the step that waits for the user: "Merge", "Approve screenshots"), open (its sheet); only in a turn that comes from the user. Only their click runs it, through the task sheet\'s own action, and only if the task still waits the same way; end your reply with the block the answer gives, and never say it is done before the card shows it' },
   { usage: 'ui show file <path> | shots <task>', does: 'show a file of your folder (a path relative to it), or a task\'s screenshots (before and after side by side, toggled on a phone), beside your conversation (a card on a phone); only in a turn that comes from the user. It only shows: for the user\'s approval, add ui action step <task>; end your reply with the block the answer gives' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
+  ...MAP_COMMANDS,
   { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
 ]
 // Listed only where the project's guard allows it.
@@ -206,7 +209,7 @@ export function tellTarget(runs: Run[], task: string, holder: Holder | undefined
 const TASK_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 // The main coordinator names the project with --project <KEY>; a task names its own.
-const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'incidents', 'automation list', 'automation show', 'automation propose', 'task add']
+const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'incidents', 'automation list', 'automation show', 'automation propose', 'task add', 'map show', 'map list', 'map set', 'map remove']
 const URL_RE = /^https?:\/\/\S{1,2000}$/
 
 // argv after `wherdr pm` → a command, or the reason it is not one.
@@ -234,7 +237,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] as string
     if (!a.startsWith('--')) { words.push(a); continue }
-    if (a === '--spec' || a === '--archived' || a === '--remove' || a === '--until-user') { flags[a.slice(2)] = 'yes'; continue } // the options without a value
+    if (a === '--spec' || a === '--archived' || a === '--remove' || a === '--until-user' || a === '--refresh') { flags[a.slice(2)] = 'yes'; continue } // the options without a value
     const v = argv[i + 1] as string | undefined
     if (v === undefined) return { error: `${a} needs a value` }
     flags[a.slice(2)] = v
@@ -248,8 +251,9 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'step wait': ['for', 'until-user', 'reason'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files', 'from-branch'], 'task start': ['on'], 'list': ['archived'], 'automation propose': ['remove'], 'incidents': ['since'], 'ui open': ['target'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' || w0 === 'list' ? w0 : verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'step wait': ['for', 'until-user', 'reason'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'description', 'weight', 'files', 'from-branch'], 'task start': ['on'], 'list': ['archived'], 'automation propose': ['remove'], 'incidents': ['since'], 'ui open': ['target'], 'map set': ['does', 'talks', 'used-by'], 'map list': ['refresh'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' || w0 === 'list' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
+  if (w0 === 'map') return parseMap(words.slice(1), flags)
   if (w0 === 'ack') return words.length > 1 && words.slice(1).every(w => /^[0-9a-f]{8}$/.test(w)) ? { name: 'ack', wakes: words.slice(1) } : usage('ack')
   if (w0 === 'incidents') {
     if (w1) return { error: `unexpected argument: ${w1}` }
@@ -610,6 +614,10 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '## Your memory', '',
     `\`memory.md\` in your folder is yours: wherdr creates it once and never rewrites it, so it outlives a restart and a change of program. Read it first, at each start, and follow it: the user's decisions and preferences there come before your defaults. Note there, as you go, each decision or preference the user gives you, one fact per line; nothing a command or the board already says. Keep it clean: merge duplicates, drop stale lines, stay under ${MEMORY_CAP} characters.`, '',
     ...(members.length ? ['## Members', '', `This workspace's member projects: ${members.join(', ')}. They have no coordinator: you act on each (Act level: \`--project <KEY>\`), their tasks count in your autopilot's limits, and their wakes come to you.`, ''] : []),
+    ...(p.kind === 'workspace' ? ['## The workspace map', '',
+      `\`map.md\` in your folder is the workspace's map: what each repository under ${p.path} does, what it talks to and what uses it. wherdr writes it from \`wherdr pm map set\`; read it at each start, like your memory. Nobody reads every repository up front: the map fills as tasks touch them.`,
+      '- The first time a task touches a repository not on the map, write its line: `map set <repo> --does "<one line>" [--talks a,b] [--used-by c]`. Correct a line that turns out wrong.',
+      '- To find the repositories of a feature: `map show`, then `map list` (every repository under the root, with an automatic one-line description, marked mapped or not); read only the 2 or 3 likely ones, or ask the user.', ''] : []),
     ...reachLines(p.reach, shown ?? (k => k)),
     `## Commands (your token: ${p.reach?.length || members.length ? 'this project, and the other projects above' : 'this project only'})`, '', ...commandList(t), '',
     'When the user changes direction mid-task, record it as a spec change (`task edit`, `task note`, or `tell --spec`), not only a `tell`: the reviewer reviews against the spec.',
