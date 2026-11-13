@@ -24,7 +24,7 @@ export function tailscaledSocket(env?: Record<string, string | undefined>, exist
 export function tailscaleBins(env?: Record<string, string | undefined>, exists?: (p: string) => boolean, platform?: string): string[]
 export function tailscaleBin(env?: Record<string, string | undefined>, exists?: (p: string) => boolean, platform?: string): string | null
 export type TailscaleExec = (bin: string, args: string[], opts: { encoding: 'utf8', timeout: number }) => Promise<{ stdout: string, stderr: string }>
-export function readTailscale(candidates: string | string[] | null, args: string[], run?: TailscaleExec, timeout?: number): Promise<{ bin: string | null, out: string }>
+export function readTailscale(candidates: string | string[] | null, args: string[], run?: TailscaleExec, timeout?: number, now?: () => number): Promise<{ bin: string | null, out: string }>
 export function tailnetStatus(statusJson: string): { name: string | null, connected: boolean, https: boolean }
 export function phoneAddress(name: string | null, port: string | number, serveJson: string): PhoneAddress | null
 export function servedAddresses(name: string | null, port: string | number, serveJson: string): string[] | null

@@ -53,10 +53,15 @@ const firstLines = text => String(text || '').trim().split('\n').slice(0, 3).joi
 // `tailscale <args>` of a JSON command on each candidate in turn → { bin, out }:
 // the first answer that parses, else out '' (nothing could be read). A failed
 // or unparsable answer moves on to the next candidate and is logged once.
-export async function readTailscale(candidates, args, run = exec, timeout = 8000) {
+// `timeout` bounds the whole reading, all candidates together: callers such as
+// tailnetFacts must answer inside the client's handshake patience.
+export async function readTailscale(candidates, args, run = exec, timeout = 8000, now = Date.now) {
+  const deadline = now() + timeout
   for (const bin of bins(candidates)) {
+    const left = deadline - now()
+    if (left < 50) break
     try {
-      const { stdout, stderr } = await run(bin, args, { encoding: 'utf8', timeout })
+      const { stdout, stderr } = await run(bin, args, { encoding: 'utf8', timeout: left })
       if (isJson(stdout)) return { bin, out: stdout }
       logOnce(bin, args, `no JSON in its answer: ${firstLines(stdout || stderr) || '(empty)'}`)
     } catch (e) {

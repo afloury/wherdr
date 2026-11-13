@@ -57,6 +57,29 @@ describe('phone address', () => {
     expect(String(warn.mock.calls[2]![0])).toContain('/c/tailscale status --json failed: CLIError error 3 / more')
     warn.mockRestore()
   })
+
+  it('bounds the whole reading, all candidates together, by one timeout', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    let t = 0
+    const given: number[] = []
+    const run = async (_bin: string, _args: string[], o: { timeout: number }) => {
+      given.push(o.timeout)
+      t += o.timeout
+      throw new Error('timed out')
+    }
+    expect(await readTailscale(['/t1/tailscale', '/t2/tailscale'], ['status', '--json'], run, 4500, () => t)).toEqual({ bin: '/t1/tailscale', out: '' })
+    expect(given).toEqual([4500])
+    t = 0
+    given.length = 0
+    const slowThenOk = async (bin: string, _args: string[], o: { timeout: number }) => {
+      given.push(o.timeout)
+      if (bin === '/u1/tailscale') { t += 3000; throw new Error('failed') }
+      return { stdout: '{}', stderr: '' }
+    }
+    expect((await readTailscale(['/u1/tailscale', '/u2/tailscale'], ['status', '--json'], slowThenOk, 4500, () => t)).bin).toBe('/u2/tailscale')
+    expect(given).toEqual([4500, 1500])
+    warn.mockRestore()
+  })
 })
 
 describe('tailscale serve errors', () => {
