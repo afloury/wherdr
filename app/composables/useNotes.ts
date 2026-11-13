@@ -8,6 +8,8 @@ import { syncedRef } from './useSyncedSettings'
 export const notesOpen = ref(false)
 export const notesFilter = syncedRef<string>('notesFilter', raw => raw || NOTES_FOLLOW, v => (v === NOTES_FOLLOW ? null : v))
 export const notes = ref<Note[] | null>(null)
+// The linked files' paths (plans/x.md): a link to another shows as missing.
+export const noteFiles = ref<string[] | null>(null)
 // The groups of the home tab picked: a group, the groups holding a machine,
 // or null for every machine.
 export const notesTabGroups = computed(() => {
@@ -17,5 +19,6 @@ export const notesTabGroups = computed(() => {
   return g ? [g.id] : machineGroups.value.filter(x => x.machines.includes(pick)).map(x => x.id)
 })
 
-export const loadNotes = () => api<Note[]>('/api/notes').then((n) => { notes.value = n }, () => {})
+export const loadNotes = () => api<{ notes: Note[], files: string[] }>('/api/notes').then((r) => { notes.value = r.notes; noteFiles.value = r.files }, () => {})
+export const loadNoteFile = (path: string) => api<{ text: string | null }>(`/api/notes/file?path=${encodeURIComponent(path)}`).then(r => r.text, () => null)
 export function toggleNotes() { notesOpen.value = !notesOpen.value }
