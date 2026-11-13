@@ -4,6 +4,7 @@
 // scope. The server (server/utils/notesStore.ts) reads and writes the files.
 import { projectOnTab, projectTabMachines } from '../app/utils/projectTabs'
 import type { MachineGroup } from '../app/utils/machineBar'
+import { PROJECT_COLORS, isProjectColor } from './pm/projectKey'
 
 // all: every tab; else a tab group's id (*group:…), from the machineGroups setting.
 export type NoteScope = string
@@ -26,7 +27,47 @@ export const NOTES_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'notes file put <folder/name.md> < file.md', does: 'write a Markdown file under a folder of the notes (plans/x.md), for content too long for a note: link it from a note' },
   { usage: 'notes file remove <folder/name.md>', does: 'remove a linked file no note needs any more' },
 ]
-export const NOTES_RULE = 'Notes are the user\'s whiteboard, read-only for them: offer a reminder line in your reply ("Add a reminder: …?"), write it after their yes, and remove it once its subject is decided or done. Keep a note to a few lines; move anything longer to a linked file. Every change is logged with who made it'
+// Badges in a note's lines (NotesPanel.vue renders them): [[WHR]], [[WHR-12]]
+// a project's key badge; [[label|icon|colour|link]] one an agent makes up.
+// Plain text anywhere else, so a note stays readable Markdown.
+export const NOTE_ICONS: Record<string, string> = {
+  'flag': 'i-lucide-flag', 'clock': 'i-lucide-clock', 'calendar': 'i-lucide-calendar', 'alert': 'i-lucide-triangle-alert', 'info': 'i-lucide-info',
+  'check': 'i-lucide-circle-check', 'x': 'i-lucide-circle-x', 'pause': 'i-lucide-circle-pause', 'star': 'i-lucide-star', 'bug': 'i-lucide-bug',
+  'lightbulb': 'i-lucide-lightbulb', 'rocket': 'i-lucide-rocket', 'eye': 'i-lucide-eye', 'lock': 'i-lucide-lock', 'link': 'i-lucide-link',
+  'file': 'i-lucide-file-text', 'branch': 'i-lucide-git-branch', 'pr': 'i-lucide-git-pull-request', 'server': 'i-lucide-server', 'bell': 'i-lucide-bell',
+}
+export type NoteBadge = { kind: 'project', key: string, task?: string } | { kind: 'custom', label: string, icon?: string, colour?: string, link?: string }
+const NOTE_BADGE_HELP = `Badges in a line: [[KEY]] or [[KEY-12]] shows a project's key badge (a task id opens its sheet); [[label|icon|colour|link]] a badge of your own, icon one of ${Object.keys(NOTE_ICONS).join(', ')}, colour one of ${PROJECT_COLORS.join(', ')}, link optional (another note, a file, #/…); leave a field empty to skip it ([[Waiting||amber]])`
+export const NOTES_RULE = `Notes are the user's whiteboard, read-only for them: offer a reminder line in your reply ("Add a reminder: …?"), write it after their yes, and remove it once its subject is decided or done. Keep a note to a few lines; move anything longer to a linked file. Every change is logged with who made it. ${NOTE_BADGE_HELP}`
+
+// A badge's inside ([[…]]) → the badge, or null (left as text).
+export function noteBadge(inner: string): NoteBadge | null {
+  const p = /^([A-Z][A-Z0-9]{1,9})(-\d{1,6})?$/.exec(inner.trim())
+  if (p) return { kind: 'project', key: p[1]!, ...(p[2] ? { task: inner.trim() } : {}) }
+  const [label = '', icon = '', colour = '', link = ''] = inner.split('|').map(x => x.trim())
+  if (!label || label.length > 40 || inner.split('|').length > 4) return null
+  return { kind: 'custom', label, ...(NOTE_ICONS[icon] ? { icon: NOTE_ICONS[icon] } : {}), ...(isProjectColor(colour) ? { colour } : {}), ...(link && !/\s/.test(link) ? { link } : {}) }
+}
+// A note's lines with each badge out of the text, outside code: `mark(i)`
+// stands in for badges[i] (the panel mounts it there).
+export function noteBadges(body: string, mark: (i: number) => string): { text: string, badges: NoteBadge[] } {
+  const badges: NoteBadge[] = []
+  const text = body.split(/(`[^`\n]*`)/).map((part, i) => (i % 2 ? part : part.replace(/\[\[([^[\]\n]{1,200})\]\]/g, (all, inner: string) => {
+    const b = noteBadge(inner)
+    return b ? mark(badges.push(b) - 1) : all
+  }))).join('')
+  return { text, badges }
+}
+
+// The Notes panel's filter: follow the home tab, every note, or one group.
+export const NOTES_FOLLOW = 'follow'
+// The notes it shows. tabGroups: the groups of the home tab picked (follow),
+// null for every machine. A note scoped all shows in every group.
+export function notesShown(notes: readonly Note[], filter: string, tabGroups: readonly string[] | null): Note[] {
+  if (filter === 'all' || (filter === NOTES_FOLLOW && !tabGroups)) return [...notes]
+  const groups = filter === NOTES_FOLLOW ? tabGroups! : [filter]
+  return notes.filter(n => n.scope === 'all' || groups.includes(n.scope))
+}
 
 export const MAX_LINES = 12
 export const MAX_BODY = 1500
@@ -85,13 +126,16 @@ export function noteBody(input: unknown): string | { error: string } {
 // The note-folder targets a body links to, as paths from the folder: a note
 // (<id>.md) or a file. Web and in-app (#/…) links are left out; a link that
 // would leave the folder is an error.
+// A badge's link ([[label|icon|colour|plans/x.md]]) counts like any other.
 export function noteLinks(body: string): string[] | { error: string } {
   const out: string[] = []
-  for (const m of body.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)) {
-    const target = m[1]!.split('#')[0]!
-    if (/^[a-z][a-z0-9+.-]*:/i.test(m[1]!) || m[1]!.startsWith('#') || !target) continue
+  const hrefs = [...body.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)].map(m => m[1]!)
+  for (const b of noteBadges(body, () => '').badges) if (b.kind === 'custom' && b.link) hrefs.push(b.link)
+  for (const href of hrefs) {
+    const target = href.split('#')[0]!
+    if (/^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('#') || !target) continue
     const note = /^([^/]+)\.md$/.exec(target)
-    if (!(note && noteId(note[1]!)) && !filePath(target)) return { error: `${m[1]}: a link inside the notes is <id>.md or <folder>/<name>.md, never .. nor an absolute path` }
+    if (!(note && noteId(note[1]!)) && !filePath(target)) return { error: `${href}: a link inside the notes is <id>.md or <folder>/<name>.md, never .. nor an absolute path` }
     out.push(target)
   }
   return out

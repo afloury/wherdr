@@ -91,5 +91,9 @@ describe('notes under load and linked files', () => {
     await expect(run(['file', 'remove', 'plans/work.md'], undefined, wd)).rejects.toThrow(/outside your scopes/)
     expect((await run(['show', 'plans/work.md'])).text).toBe('# Work\n')
     expect(await run(['file', 'put', 'plans/home.md'], '# Home\n', wd)).toMatchObject({ put: 'plans/home.md' })
+    // A badge's link protects its file the same way.
+    await run(['add', 'Work badge', '--scope', 'work'], '[[Plan|file|amber|plans/badge.md]]')
+    await run(['file', 'put', 'plans/badge.md'], '# Badge\n')
+    await expect(run(['file', 'remove', 'plans/badge.md'], undefined, wd)).rejects.toThrow(/outside your scopes \(work-badge\)/)
   })
 })

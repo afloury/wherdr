@@ -22,6 +22,8 @@ export const SYNCED_SETTINGS = [
   'typewriterSpeed', 'encryptedText', 'replyStyle', 'defaultViewMode',
   // Board
   'boardGrouping', 'boardDone', 'boardFolds', 'boardProject',
+  // Notes panel: its filter (shared/notes.ts)
+  'notesFilter',
   // Files
   'wherdr.files.hidden', 'wherdr.files.md',
   // Security: files shown from conversations (shared/chatFiles.ts), read by the server

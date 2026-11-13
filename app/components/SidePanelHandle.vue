@@ -5,11 +5,14 @@
 // --settings-panel, which the panel and the conversation follow.
 import { PANEL_MIN, clampPanelWidth, panelWidthCss, readPanelWidth, savePanelWidth } from '~/utils/sideWidth'
 
+// controls: the panel's id (Settings, or Notes).
+const props = withDefaults(defineProps<{ controls?: string }>(), { controls: 'settings' })
+
 const width = ref<number | null>(null)
 const dragging = ref(false)
 const shown = ref(0)
 
-function panelNow() { return document.getElementById('settings')?.getBoundingClientRect().width || 480 }
+function panelNow() { return document.getElementById(props.controls)?.getBoundingClientRect().width || 480 }
 function listRight() { return document.getElementById('home')?.getBoundingClientRect().right || 0 }
 const clamp = (w: number) => clampPanelWidth(w, window.innerWidth, listRight())
 
@@ -66,7 +69,7 @@ function reset() {
   <Teleport to="body">
     <div
       class="panel-handle" :class="{ dragging }" role="separator" aria-orientation="vertical" tabindex="0"
-      aria-controls="settings" :aria-label="t('Panel width')" :aria-valuenow="shown || undefined" :aria-valuemin="PANEL_MIN"
+      :aria-controls="controls" :aria-label="t('Panel width')" :aria-valuenow="shown || undefined" :aria-valuemin="PANEL_MIN"
       :title="t('Drag to resize · double-click: default width')"
       @pointerdown="onGrab" @dblclick="reset" @keydown="onKey"
     />

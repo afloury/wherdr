@@ -79,6 +79,14 @@ its created and updated dates), plus the longer files they link to, such as
 | `wherdr alfred notes file put <folder/name.md> < file.md` | writes a linked file under a folder of the notes, for anything too long for a note |
 | `wherdr alfred notes file remove <folder/name.md>` | removes a linked file |
 
+A line may carry badges: `[[WD]]` or `[[WD-12]]` shows a project's key badge (a task id
+opens its sheet), and `[[label|icon|colour|link]]` a badge of the agent's own, such as
+`[[Waiting|clock|amber]]` or `[[Plan|file||plans/x.md]]`: an icon from a short list (flag,
+clock, calendar, alert, info, check, x, pause, star, bug, lightbulb, rocket, eye, lock, link,
+file, branch, pr, server, bell), a project palette colour (violet, blue, teal, green, amber,
+orange, red, pink), an optional link; an empty field is skipped. Anywhere else the text stays
+as written. You read them in the [Notes panel](home.md#notes).
+
 A note links to another note (`[Plan](other-note.md)`), a linked file
 (`[Plan](plans/x.md)`) or a place in wherdr (`[WD-12](#/board?task=WD-12)`).
 A link that would leave the notes folder (`..`, an absolute path) is refused, and

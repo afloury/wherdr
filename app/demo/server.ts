@@ -335,6 +335,7 @@ export class DemoServer {
         case '/api/auth/status': return ok({ enabled: false, unlocked: true, devices: [] })
         case '/api/config': return ok({ kinds: ['claude', 'codex', 'omp'], home: S.HOME, os: 'Darwin', dirs: [`${S.HOME}/code/acme-api`, `${S.HOME}/code/acme-web`], push: { enabled: false, key: null, devices: 0 } })
         case '/api/quotas': return ok(S.quotas(now))
+        case '/api/notes': return ok(S.notes(now))
         case '/api/pm/agents': return ok(S.taskAgents())
         case '/api/settings': return ok({ settings: this.settings })
         case '/api/push/quiet': return ok({})
