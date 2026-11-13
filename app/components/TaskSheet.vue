@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // A task's sheet. A task waiting for the user opens on To do (TaskTodo): what
 // it needs from them and its buttons. Otherwise: its Plan (the steps, the current one, what its holder was
-// told, the proofs and rounds), its links, the agent holding the step, and
+// told, the proofs and rounds), its links, Open the agent (AgentButton: whatever the step, disabled once it ended), and
 // the step's button when it waits for the user ("Merged"; busy while it runs, a
 // refused action said in plain words under it), Start for a task to do (or
 // the tasks it waits for; a refusal said under it), Stop (with its
@@ -138,11 +138,9 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
         <p v-if="card.archived" class="muted" data-testid="task-archived">{{ tl('Archived') }} {{ fmtWhen(new Date(card.archived).toISOString()) }}</p>
         <div class="task-sheet-actions">
           <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ card.sameFiles ? tl('Start anyway') : tl('Start', 'Lancer') }}</UButton>
-          <UButton v-if="!todo && pane" color="neutral" variant="outline" size="xl" icon="i-lucide-terminal" :to="panePath(pane.id)">
-            {{ card.holder === 'reviewer' ? tl('Open the reviewer', 'Ouvrir le relecteur') : tl('Open the agent', 'Ouvrir l’agent') }}
-          </UButton>
           <UButton v-if="failedAction" color="primary" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="task-retry" @click="press">{{ tl('Try again', 'Réessayer') }}</UButton>
           <UButton v-if="canReport && !reportOpen" color="neutral" variant="outline" size="xl" icon="i-lucide-flag" data-testid="task-report-start" @click="reportOpen = true">{{ tl('Report a problem') }}</UButton>
+          <AgentButton v-if="!card.archived" :card="card" :primary="todo === 'ask'" />
           <UButton v-if="canStop(card) && !confirmStop" color="error" variant="outline" size="xl" icon="i-lucide-square" data-testid="task-stop" @click="confirmStop = true">{{ tl('Stop', 'Arrêter') }}</UButton>
           <UButton v-if="canCheckGithub(card)" color="neutral" variant="outline" size="xl" icon="i-lucide-refresh-cw" :loading="busy" data-testid="task-check" @click="checkGithub">{{ tl('Check on GitHub') }}</UButton>
           <UButton v-if="card.archived" color="neutral" variant="outline" size="xl" icon="i-lucide-archive-restore" :loading="busy" data-testid="task-unarchive" @click="unarchive">{{ tl('Unarchive') }}</UButton>
@@ -246,7 +244,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-sheet .task-md :deep(p) { margin: 0 0 .75em; }
 .task-spec-notes { display: grid; gap: 6px; }
 .task-spec-note { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text-2); }
-.task-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.task-sheet-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
 .task-sheet-actions:empty { display: none; }
 /* On the phone a row's buttons share its width: a wrapped row is full too
    (Stop under Try again and Report a problem spans the line, not one stray button). */

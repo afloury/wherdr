@@ -36,6 +36,7 @@ export interface Card {
   step?: string // the current step's id, once started
   holder: Holder
   terminal?: string // herdr-core address of the holder's agent, if it runs
+  agents?: { worker?: string, reviewer?: string } // herdr-core address of each role's agent still running (Open the agent)
   yourTurn?: string // the badge
   stall?: Stall // stalled, the machine may still fix it (blocked.ts); past HANDLE_AFTER_MS, also its yourTurn
   userLabel?: string // the button of a step that waits for the user
@@ -99,10 +100,11 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
   const running = !started && task.state === 'working'
   const step = started ? plan[s!.at] : running ? plan.find(p => p.holder === 'worker') : undefined
   const holder: Holder = (!s?.done && step?.holder) || (running ? 'worker' : 'none')
-  // The holder's agent: its latest run that has not ended.
-  const run = holder === 'worker' || holder === 'reviewer'
-    ? runs.filter(r => r.task === task.id && r.role === holder && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
-    : undefined
+  // Each role's latest run that has not ended; the holder's is the card's terminal.
+  const live = (role: 'worker' | 'reviewer') => runs.filter(r => r.task === task.id && r.role === role && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
+  const run = holder === 'worker' || holder === 'reviewer' ? live(holder) : undefined
+  const worker = live('worker')?.terminal
+  const reviewer = live('reviewer')?.terminal
   const stall = stallOf(task, plan, now)
   const branch = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]?.branch
   // A done task (merged, archived) is never the user's turn.
@@ -125,6 +127,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(step ? { step: step.id } : {}),
     holder,
     ...(run?.terminal ? { terminal: run.terminal } : {}),
+    ...(worker || reviewer ? { agents: { ...(worker ? { worker } : {}), ...(reviewer ? { reviewer } : {}) } } : {}),
     ...(branch ? { branch } : {}),
     ...(task.prBase ? { pr: task.prBase } : {}),
     ...(yourTurn ? { yourTurn } : {}),
