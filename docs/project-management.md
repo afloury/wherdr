@@ -125,7 +125,7 @@ its folder, branches and task worktrees stay on the machine.
   branches of tasks started from then on); texts written before the change read the new key too. Links and commands with a former key still work.
   The color, picked from a small palette, is the project's key badge everywhere:
   its coordinator row and conversation header, board cards, the task sheet, its
-  task agents' headers and *Tasks to handle*.
+  task agents' headers and *Tasks to review*.
 - **Base branch**: the project's working branch. New tasks start their worktree
   from it, and a step that names no branch opens its PR to it or merges into it.
   Pick one of the repository's branches or type a name; unset, the repository's
@@ -631,7 +631,7 @@ autopilot on and its events left off, it wakes only for these: an agent's
 question, a choice after review rounds, a block the engine gave up on, a step
 it holds, its schedule and the health check. A task done, ready or started, or
 a block the engine fixed itself, wakes nobody. A permission request is yours,
-in *Tasks to handle*.
+in *Tasks to review*.
 
 Each kind is its own wake, sent one after the other. Every wake ends with
 `wherdr pm ack <id>`, whatever its kind.
@@ -839,7 +839,7 @@ them too.
 
 ## Task sheet
 
-A card opens the task's sheet. Tasks to handle, Decisions' *Open task* and a task
+A card opens the task's sheet. Tasks to review, Decisions' *Open task* and a task
 link in the chat (`#/board?task=ID`) open it over the page you are on (a bottom
 sheet on a phone), with `?task=ID` added to that page's address, so it survives a
 reload and can be shared; closing it leaves the page as it was. The sheet shows its id badge by the title (a tap copies it) and step, a note when it waits or was
@@ -904,12 +904,25 @@ when you ask them to unblock a task.
 Open a task under *Your turn* and its sheet starts on **To do**: what the task
 needs from you and the buttons for it, before its Description, Plan, Comments and History.
 
-A tap on a card under *Your turn*, or on an entry of the home's **Tasks to
-handle**, goes where you act: when the task's agent (worker or reviewer, on any
-machine) asks a question or a permission, it opens that agent's conversation,
-its question last; anything else opens the sheet on **To do**. The sheet stays
-one tap away: *Open the task* in the card's menu, or the small icon at the end
-of the entry. An agent that is not on screen here opens the sheet instead.
+A tap on a card under *Your turn* goes where you act: when the task's agent
+(worker or reviewer, on any machine) asks a question or a permission, it opens
+that agent's conversation, its question last; anything else opens the sheet on
+**To do**. The sheet stays one tap away: *Open the task* in the card's menu. An
+agent that is not on screen here opens the sheet instead.
+
+<a id="tasks-to-review"></a>**Tasks to review.** To clear a morning's work in a
+few minutes, tap Home's **Tasks to review** card: it shows what waits for you
+one at a time. A task to approve shows its key, title and project, its
+[TL;DR](#tldr), its newest screenshots (the sheet's viewer, before and after
+side by side), its PR and the review's verdict in one line, then **Approve**
+(the *Accept* of To do: it leaves the list, the next one shows, and the engine
+merges it in its own order) and **Skip** (the next one; the skipped one stays
+in the list). Anything else that waits (an agent's question, a failure to try
+again, a decision) shows what it waits for, with *Answer the agent* or *Open the
+task*. *3 of 12* with previous and next; on a computer, → next, ← previous, A
+approve, S skip. After the last one: *All done*. The filter at the top picks
+*Follow group tab* (the projects of the home tab), *All*, a group or a project;
+it follows you across devices like the Board's picker.
 
 - <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: its [TL;DR](#tldr); then its screenshots large (swipe between them on
   the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop),
@@ -997,7 +1010,7 @@ conflict with its base, or falls behind it under a branch rule that wants it up
 to date, wherdr merges the base into the branch at once (or asks the task's
 agent to resolve the conflicts, starting it again if it was ended, however it
 ended; if it could not start, the update is tried again a few times). While
-it runs, the task leaves *Your turn* and Tasks to handle, approved or not, and
+it runs, the task leaves *Your turn* and Tasks to review, approved or not, and
 stays in its column with a neutral line instead of the red conflict: *updating
 with v3*, *the worker is solving a conflict with v3* (or *fixing the PR* for red
 checks), then *updated with v3, GitHub is checking it* until GitHub reads the
@@ -1022,7 +1035,7 @@ and merging are two steps: you accept the work, and wherdr merges it in the
 merge queue's order. The click merges nothing by itself and never fails on the
 PR's state. It is an approval of the task's screenshots that stays: the log
 records who approved, when and at which commit. The task leaves *Your turn* and
-Tasks to handle at once and shows in its column (*Merging*) with its place in
+Tasks to review at once and shows in its column (*Merging*) with its place in
 the merge queue or what wherdr is doing (updating with the base, the worker
 solving a conflict, checks running). Later updates keep it: the base
 merged in, a conflict resolved, red CI fixed. The card shows *Approved, merges
@@ -1129,7 +1142,7 @@ These blocks do not wake the coordinator. After 2 failed tries on the same
 step (or 15 minutes with nothing left to try), wherdr wakes it once (an
 *Engine* wake, whatever the autopilot's events) and says what it tried. Every try, and giving
 up, is written to the task's **History**. Any other failure (a refused merge, a
-check that waits for you) goes to *Tasks to handle*, and wakes the coordinator
+check that waits for you) goes to *Tasks to review*, and wakes the coordinator
 only when its *Task stuck* event is on.
 
 ### A stalled task
@@ -1148,14 +1161,14 @@ shows the reason, and wherdr:
 - 10 minutes after the restart, if it is still stalled: wakes the coordinator
   (*Task stuck*, with the reason and what was tried);
 - 30 minutes after the stall began, if it is still there: puts the task under
-  *Your turn* and in the sidebar's **Tasks to handle**, with the reason, and
+  *Your turn* and in the **Tasks to review**, with the reason, and
   sends a notification (it needs the *Needs you* level).
 
 The task's **History** lists each of these: the stall, the nudge, the restart, the
 hand-over to you and the notification.
 
 A step that runs past its time limit (*Check work: over 3h*, *Check review:
-over 45m*) or a stall leaves *Your turn* and **Tasks to handle** once the task
+over 45m*) or a stall leaves *Your turn* and **Tasks to review** once the task
 is back to work: the coordinator tells its agent something (`wherdr pm tell`),
 you or the coordinator start it again, or the step's agent, idle, is seen
 working again. The step's time limit and the stall's 30 minutes start again
@@ -1225,7 +1238,7 @@ Once the cause is gone, the engine resumes it by itself, every minute:
   the task waits in Your turn until it is started again.
 
 Its Log says *resumed after incident …*, and a stall or a step past its time
-limit from the outage leaves Tasks to handle once the task works again.
+limit from the outage leaves Tasks to review once the task works again.
 
 ### The incident wake
 
@@ -1378,7 +1391,7 @@ an approval, guards, settings and limits stay yours.
 
 A step whose action failed (a push refused, a PR not opened) and that the
 coordinator, or you, hand to the worker with `--fix` leaves *Your turn* and
-**Tasks to handle** while the worker fixes it: the card says *the agent is
+**Tasks to review** while the worker fixes it: the card says *the agent is
 fixing it*, with no **Try again** in the middle of the fix, and the
 message asks the worker to say when it is done. A failed action
 wherdr hands the worker on its own (a catch-up, a CI fix) works the same way.
