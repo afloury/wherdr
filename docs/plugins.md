@@ -7,7 +7,7 @@
 This is what [the one command](installation.md#the-one-command) installs; you can also run it yourself, on Linux
 and macOS, with Herdr ≥ 0.9.1 (no checks for Herdr or Node.js first). In three lines:
 
-1. Run `herdr plugin install afloury/wherdr`: it installs wherdr, starts it
+1. Run `herdr plugin install afloury/wherdr --ref 2.x`: it installs wherdr, starts it
    (`✓ wherdr is running → http://localhost:7683`) and, at the first install on a computer with a
    screen, opens the setup guide in your browser (`open` on macOS, `xdg-open` on Linux with a
    display; a headless server, or `WHERDR_NO_BROWSER=1` in the environment of the install, just

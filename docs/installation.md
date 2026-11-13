@@ -58,7 +58,7 @@ The script ([read it first](https://wherdr.dev/install), source in
    Mac with Homebrew, otherwise the official Node.js 22 build from nodejs.org, its checksum
    checked, unpacked in `~/wherdr/node` (used by wherdr only: your `PATH` is not changed). With
    musl libc (Alpine) it gives the install links instead;
-4. runs `herdr plugin install afloury/wherdr --yes`: the [Herdr plugin](plugins.md#install-as-a-herdr-plugin)
+4. runs `herdr plugin install afloury/wherdr --ref 2.x --yes`: the [Herdr plugin](plugins.md#install-as-a-herdr-plugin)
    downloads the GitHub release package of its version (checksum checked, no wait for npm),
    installs it in `~/wherdr/app`, starts it on `http://localhost:7683`, opens the setup guide in
    your browser (first install) and binds **prefix+i** to its panel;
@@ -184,10 +184,10 @@ and the app says so. Every step is logged in `~/wherdr/update.log`.
 | Setup | Update command (in the wherdr folder) |
 | --- | --- |
 | The one command | Run `curl -fsSL https://wherdr.dev/install \| sh` again: it offers the update (GitHub release package) |
-| Herdr plugin, Node.js | **U** in the **wherdr** panel, or `herdr plugin install afloury/wherdr --yes` (wherdr restarts on the new version) |
+| Herdr plugin, Node.js | **U** in the **wherdr** panel, or `herdr plugin install afloury/wherdr --ref 2.x --yes` (wherdr restarts on the new version) |
 | `wherdr` command (npm) | `npm install -g wherdr@latest && wherdr restart` (npx: stop it, then `npx wherdr@latest`) |
 | `wherdr` command (Homebrew) | `brew upgrade wherdr`, then `brew services restart wherdr` |
-| From source | `git pull && npm ci && npm run build`, then restart wherdr |
+| From source | `git checkout 2.x && git pull && npm ci && npm run build`, then restart wherdr |
 
 Update notices also show the number of newer stable releases and up to four
 additional version numbers besides the latest. This measures published releases,

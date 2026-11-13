@@ -443,9 +443,12 @@ cmd_open() {
 cmd_address() { open_address; }
 
 # ----------------------------------------------------------------- update
+# From the release branch of this major (`2.x`), never `main`, which holds the
+# next major.
 cmd_update() {
-  say "Updating the wherdr plugin from ${SOURCE}…"
-  "$(herdr_bin)" plugin install "$SOURCE" --ref main --yes
+  major="$(sed -n 's/^version = "\([0-9]*\)\..*"$/\1/p' "$ROOT/herdr-plugin.toml" | head -n 1)"
+  say "Updating the wherdr plugin from ${SOURCE} (${major}.x)…"
+  "$(herdr_bin)" plugin install "$SOURCE" --ref "${major}.x" --yes
 }
 
 # ------------------------------------------------------------------ phone
