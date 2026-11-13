@@ -1,4 +1,4 @@
-// One-tap update (Update button of the app, server/utils/selfupdate.ts): runs
+// One-tap update (Update button of the app): runs
 // detached from the server it replaces, so it outlives the restart. Installs
 // the new version, restarts wherdr, waits for /api/health to report the new
 // version, and goes back to the previous one when it does not. Progress goes
@@ -29,6 +29,8 @@ import { pathToFileURL } from 'node:url'
 export const HEALTH_MS = 60_000
 
 const healthHost = host => !host || host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host.includes(':') ? `[${host}]` : host
+// v3 reports its own version (3.0.0-dev+<commit>) and the package one in `release`.
+export const healthReports = (body, version) => body?.version === version || body?.release === version
 export const healthUrl = plan => `http://${healthHost(plan.host)}:${plan.port}/api/health`
 
 // --------------------------------------------------------------- drivers
@@ -277,7 +279,8 @@ export function realIo(plan, now = Date.now) {
       for (const pid of new Set(pids.filter(p => p && p !== process.pid && alive(p)))) {
         log(`stopping pid ${pid}`)
         try { process.kill(pid, 'SIGTERM') } catch {}
-        for (let i = 0; i < 40 && alive(pid); i++) await sleep(250)
+        // 25 s: the server first waits for a merge that runs (server/plugins/pm.ts).
+        for (let i = 0; i < 100 && alive(pid); i++) await sleep(250)
         if (alive(pid)) try { process.kill(pid, 'SIGKILL') } catch {}
       }
       rmSync(path.join(plan.dir, 'wherdr.pid'), { force: true })
@@ -291,7 +294,7 @@ export function realIo(plan, now = Date.now) {
       while (now() < until) {
         try {
           const health = await get(healthUrl(plan))
-          if (health.body?.version === version) return true
+          if (healthReports(health.body, version)) return true
           // Versions up to 1.3.1 have no /api/health: their version is in
           // /api/update (unless the app is locked).
           if (health.body?.version === undefined && (await get(healthUrl(plan).replace(/health$/, 'update'))).body?.current === version) return true
