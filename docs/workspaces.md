@@ -43,6 +43,8 @@ A workspace has its own workflow, proposed and accepted like a project's
 without a workflow of its own runs the workspace's; a member may have its own
 instead (a repository with a different review, for instance): the first
 workflow accepted for the member becomes its own, and its tasks move to it.
+The member's Workflow and Guards tabs show the workspace's workflow it runs,
+with a line that says so; a change saved there gives the member its own.
 
 The workspace's [guards](project-management.md#guards) apply to every member,
 its own workflow included: they sit between your settings and the project's,
