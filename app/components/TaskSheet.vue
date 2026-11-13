@@ -10,10 +10,12 @@
 // buttons, with the PR and, for a PR closed unmerged, Archive), and Delete for
 // a task never started (confirmed), Unarchive for an archived one. Those stay at the top; below, tabs (the app's
 // segmented style) for the rest, in the sheet's one scroll: Description (the
-// text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR among them), Plan (each step with its
+// text in Markdown, the chat's safe renderer, no raw HTML; tags and links, the PR apart), Plan (each step with its
 // screenshots), Comments (the worker's and the reviewer's reports, in order)
 // and History (the whole log as one timeline, the hand-offs as entries; TaskHistory).
-import { branchLine, canStart, canStop, cardStatus, linkLabel, mergeWaits, statusText, type Card } from '#shared/pm/board'
+// The PR's badge sits on the branch line; scrolled out of sight, it shows in the
+// sheet's header, so the PR is always one tap away.
+import { branchLine, canStart, canStop, cardStatus, linkLabel, mergeWaits, prLink, statusText, type Card } from '#shared/pm/board'
 import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
 import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
@@ -56,6 +58,22 @@ const status = computed(() => { const s = cardStatus(props.card); return s && { 
 
 // Which branch merges into which, once it has a branch.
 const branch = computed(() => branchLine(props.card, props.projectBase))
+// The task's PR (the github.pr step's or a link proof's), a badge on that line,
+// not repeated with the other links under the description.
+const pr = computed(() => prLink(props.card))
+const otherLinks = computed(() => props.card.links.filter(l => l.url !== pr.value?.url))
+// The branch line scrolled out of the sheet: the badge moves to its header.
+const branchRow = ref<HTMLElement>()
+const prHidden = ref(false)
+let io: IntersectionObserver | undefined
+watch(branchRow, (el) => {
+  io?.disconnect()
+  prHidden.value = false
+  if (!el || typeof IntersectionObserver === 'undefined') return
+  io = new IntersectionObserver(([e]) => { prHidden.value = !e?.isIntersecting })
+  io.observe(el)
+})
+onBeforeUnmount(() => io?.disconnect())
 
 // Time per step, the waits for the user apart, review rounds and CI fixes, in one line.
 const times = computed(() => (props.card.times ? timesText(props.card.times) : ''))
@@ -73,7 +91,7 @@ type Tab = 'todo' | 'description' | 'plan' | 'comments' | 'history'
 const TAB_LABEL: Record<Tab, [string, string?]> = { todo: ['To do', 'À faire'], description: ['Description', 'Description'], plan: ['Plan', 'Plan'], comments: ['Comments'], history: ['History'] }
 const tabs = computed<Tab[]>(() => [
   ...(todo.value ? ['todo' as const] : []),
-  ...(props.card.description || props.card.specNotes?.length || props.card.tags.length || props.card.links.length ? ['description' as const] : []),
+  ...(props.card.description || props.card.specNotes?.length || props.card.tags.length || otherLinks.value.length ? ['description' as const] : []),
   'plan',
   ...(props.card.log.length ? ['comments' as const, 'history' as const] : []),
 ])
@@ -131,12 +149,20 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 
 <template>
   <AppSheet v-model:open="open" :title="card.title" tall hide-close @closed="emit('closed')">
-    <template #lead><ProjectBadge :text="card.shown" :color="card.color" copy /></template>
+    <template #lead>
+      <span class="task-sheet-lead">
+        <ProjectBadge :text="card.shown" :color="card.color" copy />
+        <a v-if="pr && prHidden" :href="pr.url" target="_blank" rel="noopener" class="board-chip task-pr" data-testid="task-pr-head">{{ linkLabel(pr) }} <UIcon name="i-lucide-arrow-up-right" aria-hidden="true" /></a>
+      </span>
+    </template>
     <div class="task-sheet" data-testid="task-sheet">
       <div class="task-sheet-top">
         <p v-if="card.step" class="mono-label">{{ card.step }}</p>
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
-        <BranchLine v-if="branch" :line="branch" />
+        <div v-if="branch || pr" ref="branchRow" class="task-branch-row" data-testid="task-branch-row">
+          <BranchLine v-if="branch" :line="branch" />
+          <a v-if="pr" :href="pr.url" target="_blank" rel="noopener" class="board-chip task-pr" data-testid="task-pr">{{ linkLabel(pr) }} <UIcon name="i-lucide-arrow-up-right" aria-hidden="true" /></a>
+        </div>
         <p v-if="times" class="task-times" data-testid="task-times">{{ times }}</p>
         <p v-if="recheck" class="task-times" data-testid="task-recheck">{{ recheck }}</p>
         <p v-if="card.archived" class="muted" data-testid="task-archived">{{ tl('Archived') }} {{ fmtWhen(new Date(card.archived).toISOString()) }}</p>
@@ -193,9 +219,9 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
             <span class="mono-label">{{ tl('Spec changes · the latest overrides the description') }}</span>
             <p v-for="n in card.specNotes" :key="n.at" class="task-spec-note"><span class="mono-label">{{ fmtDateTime(n.at) }}</span> {{ n.text }}</p>
           </section>
-          <div v-if="card.tags.length || card.links.length" class="board-tags">
+          <div v-if="card.tags.length || otherLinks.length" class="board-tags" data-testid="task-links">
             <span v-for="tag in card.tags" :key="tag" class="board-chip">{{ tag }}</span>
-            <a v-for="l in card.links" :key="l.url" :href="l.url" target="_blank" rel="noopener" class="board-chip">{{ linkLabel(l) }}</a>
+            <a v-for="l in otherLinks" :key="l.url" :href="l.url" target="_blank" rel="noopener" class="board-chip">{{ linkLabel(l) }}</a>
           </div>
         </template>
 
@@ -234,6 +260,13 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-status.bad { color: var(--danger); }
 .task-status.ok { color: var(--done); }
 .task-check { display: grid; gap: 4px; }
+/* The branch line, then the PR's badge; on a narrow screen the badge wraps to
+   the next line and the branch names ellipsize, never a sideways scroll. */
+.task-branch-row { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; }
+.task-branch-row > .branch-line { flex: 0 1 auto; }
+.task-pr { display: inline-flex; align-items: center; gap: 4px; flex: none; min-height: 24px; white-space: nowrap; }
+.task-pr .iconify { width: 12px; height: 12px; }
+.task-sheet-lead { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .task-times { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 .task-panel { display: flex; flex-direction: column; gap: 10px; min-width: 0; flex: 1 0 auto; }
 .task-desc { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); }
