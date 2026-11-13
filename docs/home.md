@@ -103,7 +103,8 @@ global.
 
 Under the coordinators, while something waits for you on the tab's projects, one **Tasks to
 review** card with its count: tasks to approve, an agent's question, a failure to try again, a
-decision. A tap opens them one at a time (a sheet on the phone), with Approve and Skip
+decision. A tap opens them one at a time (a sheet on the phone), with Approve, Reject and each
+item's own answers
 ([Tasks to review](project-management.md#tasks-to-review)).
 
 ### Offered agents

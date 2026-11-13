@@ -1,6 +1,7 @@
 // WHR-294: Home's Tasks to review card counts what waits for the user on the
 // home tab's projects; a tap opens the review sheet, one task at a time: Approve
-// (Accept, the next one shows), Skip (it stays), previous and next, the keys,
+// (Accept, the next one shows), Reject (a note and screenshots back to the worker),
+// the others' own answers, previous and next (a task passed over stays), the keys,
 // All done after the last; its filter follows the group tab by default.
 import { afterEach, expect, it } from 'vitest'
 import { readBody } from 'h3'
@@ -29,6 +30,8 @@ registerEndpoint('/api/pm/step-user', { method: 'POST', handler: async (e) => {
   cards = cards.filter(c => c.id !== id)
   return { task: { id } }
 } })
+let sentBack: unknown
+registerEndpoint('/api/pm/step-back', { method: 'POST', handler: async (e) => { sentBack = await readBody(e); return { task: {} } } })
 afterEach(() => { reviewOpen.value = false; reviewFilter.value = null; accepted.length = 0 })
 
 const sheet = () => document.querySelector('[data-testid="review-sheet"]')
@@ -36,9 +39,9 @@ const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${i
 const shown = () => sheet()?.querySelector('[data-testid="review-item"]')?.getAttribute('data-task') ?? (q('review-done') ? 'done' : null)
 const progress = () => q('review-progress')?.textContent
 
-it('counts what waits on Home and reviews it one by one: Approve, Skip, previous, next and the keys', async () => {
+it('counts what waits on Home and reviews it one by one: Approve, Reject, the others\' own answers, previous, next and the keys', async () => {
   cards = [card('HO-1', 'home'), card('HO-2', 'home', { tldr: undefined, state: { at: 2, started: true, proofs: {}, rounds: {}, yourTurn: { reason: 'user', badge: 'Merge' } } }),
-    card('HO-3', 'home', { yourTurn: 'Its agent asks', userLabel: undefined, asks: { kind: 'question', text: 'Which database?' }, terminal: 'host/t1', state: { at: 0, started: true, proofs: {}, rounds: {} } })]
+    card('HO-3', 'home', { yourTurn: 'Merge refused: conflict', state: { at: 2, started: true, proofs: {}, rounds: {}, yourTurn: { reason: 'action', badge: 'Merge refused: conflict' } } })]
   const w = await mountSuspended(ReviewCard)
   await expect.poll(() => w.find('[data-testid="review-count"]').exists() && w.find('[data-testid="review-count"]').text()).toBe('3')
   await w.find('[data-testid="review-open"]').trigger('click')
@@ -47,9 +50,9 @@ it('counts what waits on Home and reviews it one by one: Approve, Skip, previous
   expect(sheet()!.querySelector('[data-testid="todo-tldr"]')?.textContent).toContain('What HO-1 changes.')
   expect(sheet()!.querySelectorAll('[data-testid="shot"]').length).toBe(1)
   expect([q('review-pr')?.textContent, q('review-verdict')?.textContent]).toEqual(['PR #4', 'Review passed, 1 send-back'])
-  expect(progress()).toBe('1 of 3')
+  expect([progress(), q('review-skip')]).toEqual(['1 of 3', null]) // the arrows move on, no Skip
 
-  q('review-skip')!.click() // Skip: the next one, the skipped one stays
+  q('review-next')!.click() // passed over, it stays
   await expect.poll(shown).toBe('HO-2')
   expect(q('shot')).toBeNull() // no screenshots
   q('review-prev')!.click()
@@ -67,17 +70,28 @@ it('counts what waits on Home and reviews it one by one: Approve, Skip, previous
   await new Promise(r => setTimeout(r, 50))
   expect([shown(), accepted.length]).toEqual(['HO-3', 1])
   lightboxSrc.value = null
-  // Anything else that waits shows its own answer, no Approve.
-  expect([q('review-approve'), q('review-say')?.textContent, q('review-answer')?.textContent]).toEqual([null, 'Its agent asks', 'Answer the agent'])
-
-  document.dispatchEvent(new KeyboardEvent('keydown', { key: 's', bubbles: true })) // S: skip the last one
-  await expect.poll(shown).toBe('done')
-  expect(q('review-done')!.textContent).toContain('2 skipped, still in the list.')
+  // Anything else that waits shows its To do answers: a failed merge, Try again.
+  expect([q('review-approve'), !!q('task-todo'), q('review-answer')?.textContent]).toEqual([null, true, 'Open the task'])
+  q('review-retry')!.click()
+  await expect.poll(shown).toBe('done') // answered, read again: it left Your turn
+  expect(accepted).toEqual(['HO-2', 'HO-3'])
+  expect(q('review-done')!.textContent).toContain('1 passed over, still in the list.')
   q('review-restart')!.click()
   await expect.poll(shown).toBe('HO-1')
-  q('review-approve')!.click()
-  await expect.poll(shown).toBe('HO-3')
-  expect(accepted).toEqual(['HO-2', 'HO-1'])
+
+  // R: Reject, with a note and the screenshots that are wrong, back to its worker.
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', bubbles: true }))
+  await expect.poll(() => !!q('review-reject')).toBe(true)
+  const field = q('review-reject-note')!
+  const note = (field.tagName === 'TEXTAREA' ? field : field.querySelector('textarea')!) as HTMLTextAreaElement
+  note.value = 'The toggle is cut off'
+  note.dispatchEvent(new Event('input'))
+  q('task-report-shot')!.click()
+  await expect.poll(() => q('review-reject-send')?.hasAttribute('disabled')).toBe(false)
+  q('review-reject-send')!.click()
+  await expect.poll(shown).toBe('done')
+  expect(sentBack).toEqual({ id: 'HO-1', note: 'The toggle is cut off', shots: ['aaaaaaaaaaaa.png'] })
+  expect(q('review-done')!.textContent).toContain('The engine takes over')
   w.unmount()
 })
 

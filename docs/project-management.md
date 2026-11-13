@@ -914,15 +914,23 @@ agent that is not on screen here opens the sheet instead.
 few minutes, tap Home's **Tasks to review** card: it shows what waits for you
 one at a time. A task to approve shows its key, title and project, its
 [TL;DR](#tldr), its newest screenshots (the sheet's viewer, before and after
-side by side), its PR and the review's verdict in one line, then **Approve**
-(the *Accept* of To do: it leaves the list, the next one shows, and the engine
-merges it in its own order) and **Skip** (the next one; the skipped one stays
-in the list). Anything else that waits (an agent's question, a failure to try
-again, a decision, another step of yours such as *Create these tasks*) shows what it waits for, with *Answer the agent* or *Open the
-task*. *3 of 12* with previous and next; on a computer, → next, ← previous, A
-approve, S skip. After the last one: *All done*. The filter at the top picks
-*Follow group tab* (the projects of the home tab), *All*, a group or a project;
-it follows you across devices like the Board's picker.
+side by side), its PR and the review's verdict in one line, then:
+
+- **Approve**: the *Accept* of To do; it leaves the list, the next one shows,
+  and the engine merges it in its own order.
+- **Reject**: say what to change, tap the screenshots that are wrong, and add
+  your own (pick a file, or paste one); *Send back* returns it to its worker
+  with your note, and each picked screenshot as a download with the task's key.
+  It leaves the list too.
+
+Anything else that waits (an agent's question, a failure, a decision, another
+step of yours such as *Create these tasks*) shows the answers of its To do tab
+(its choices, *Try again* for a failed action, *Open the agent*), and *Open the
+task*. *3 of 12* with previous and next: a task you pass over stays in the list.
+On a computer, → next, ← previous, A approve, R reject. After the last one:
+*All done*. The filter at the top picks *Follow group tab* (the projects of the
+home tab), *All*, a group or a project; it follows you across devices like the
+Board's picker.
 
 - <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: its [TL;DR](#tldr); then its screenshots large (swipe between them on
   the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop),

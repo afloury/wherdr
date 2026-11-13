@@ -3,7 +3,7 @@ import { boardColumns, cardOf, shownTexts, type Board, type BoardMachine, type C
 import { initialState, onEvent, planSteps, reviewedCommit, reworkSince, waitsToMerge, type StepEvent } from '../../shared/pm/steps'
 import { endsMerged, taskGuards, type ActionResult } from '../../shared/pm/actions'
 import type { MergeBy, Template } from '../../shared/pm/workflow'
-import { addShot, isImage, needsShots, SHOT_TYPES, type Shot } from '../../shared/pm/shots'
+import { addShot, isImage, needsShots, SHOT_TOKEN_HEADER, SHOT_TYPES, shotUrl, type Shot } from '../../shared/pm/shots'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { taskPlan, type Task } from '../../shared/pm/run'
 import { boardOrder } from '../../shared/pm/boardOrder'
@@ -16,7 +16,7 @@ import { taskAgents, type TaskAgent } from '../../shared/pm/taskAgents'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { actionShell, dropMergedBranch, runAction } from './pmActions'
 import type { CoreAdminDeps } from './coreCreate'
-import { runOn } from './pmLaunch'
+import { runOn, wherdrBase } from './pmLaunch'
 import { HerdrError } from './herdr'
 import { localMachineLabel } from './machines'
 import { Holds, type Release } from './pmHold'
@@ -263,9 +263,32 @@ export async function userDecide(store: PmStore, id: unknown, choice: unknown) {
 }
 
 // The user sends their step (a visual merge) back to the worker, saying what to change.
-export async function userSendBack(store: PmStore, id: unknown, note: unknown) {
+// shots: screenshots of the task the user points at (the worker's, or their own
+// from userShot), each given to the worker as a download with its task's key,
+// or its path when the task has no key. origin: the address the user reached wherdr at.
+export async function userSendBack(store: PmStore, id: unknown, note: unknown, shots?: unknown, origin = '') {
   if (typeof note !== 'string' || note.length > 2000) throw new HerdrError('bad_input', 'note: what to change, 2000 characters at most')
-  return userEvent(store, id, { kind: 'back', note })
+  const task = await store.task(id)
+  const files = Array.isArray(shots) && task ? [...new Set(shots.filter((f): f is string => typeof f === 'string'))].slice(0, 10) : []
+  const kept = (await Promise.all(files.map(async f => ((await store.shot(task!.id, f)) ? f : null)))).filter((f): f is string => !!f)
+  if (!kept.length || !task) return userEvent(store, id, { kind: 'back', note })
+  const machine = task.run ? (await store.runs()).find(r => r.id === task.run)?.machine ?? '' : ''
+  const where = (f: string) => (task.shotToken
+    ? `curl -fsS -H '${SHOT_TOKEN_HEADER}: ${task.shotToken}' '${wherdrBase(machine, origin)}${shotUrl(task.id, f)}' -o ${f}`
+    : store.shotPath(task.id, f))
+  return userEvent(store, id, { kind: 'back', note: [note.trim(), '', 'Screenshots the user points at:', ...kept.map(f => `- ${where(f)}`)].join('\n') })
+}
+
+// A screenshot the user adds to a send-back (POST /api/pm/user-shot): kept with
+// the task's screenshots, not as a step's evidence.
+export async function userShot(store: PmStore, id: unknown, data: Buffer, ctype: string) {
+  const task = await store.task(id)
+  if (!task) throw new HerdrError('not_found', 'Unknown task')
+  const ext = SHOT_TYPES[ctype]
+  if (!ext || !isImage(data, ext)) throw new HerdrError('bad_input', 'A PNG, JPEG or WebP image, matching its Content-Type')
+  const file = `${randomUUID().replace(/-/g, '').slice(0, 12)}.${ext}`
+  await store.addShot(task.id, file, data, t => t)
+  return { file }
 }
 
 export async function userEvent(store: PmStore, id: unknown, ev: StepEvent, by = 'user') {

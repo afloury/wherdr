@@ -240,7 +240,7 @@ export function gateDecision(o: {
   // HTTP: Sec-Fetch-Site says another site; WS: the Origin differs from the host.
   crossSite: boolean
   ws?: boolean
-  // An agent's upload with its task's key (POST /api/pm/shot): the route
+  // An agent's upload or download with its task's key (/api/pm/shot): the route
   // checks the key, so the passkey session is not asked.
   agentKey?: boolean
 }): GateVerdict {

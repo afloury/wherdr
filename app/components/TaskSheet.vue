@@ -15,13 +15,11 @@
 // and History (the whole log as one timeline, the hand-offs as entries; TaskHistory).
 import { branchLine, canStart, canStop, cardStatus, linkLabel, mergeWaits, statusText, type Card } from '#shared/pm/board'
 import { canCheckGithub, type GhCheck } from '#shared/pm/ghCheck'
-import type { Resume } from '#shared/pm/stop'
 import type { Pane } from '#shared/types'
-import { reviewSwitch, type Task } from '#shared/pm/run'
+import { reviewSwitch } from '#shared/pm/run'
 import { shotMode } from '#shared/pm/shots'
 import { timesText } from '#shared/pm/times'
 import { nextRecheck } from '#shared/pm/steps'
-import type { Choice } from '#shared/pm/verdict'
 
 // stopping: opened from the card menu's Stop, the confirmation shown.
 // reporting: opened from its Report a problem, the form shown (TaskReport).
@@ -30,8 +28,7 @@ import type { Choice } from '#shared/pm/verdict'
 const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, reporting?: boolean, checking?: boolean, waitsFor?: string[], projectBase?: string }>()
 const emit = defineEmits<{ closed: [], changed: [] }>()
 const open = ref(true)
-const busy = ref(false)
-const error = ref('')
+const { busy, error, pressing, refused, run, press, start, resume, decide, sendBack, restartReview, startWorker } = useTaskActions(() => props.card, () => emit('changed'))
 
 const at = computed(() => (props.card.state?.started ? props.card.state.at : -1))
 const done = computed(() => !!props.card.state?.done)
@@ -81,36 +78,9 @@ const picked = ref<Tab>()
 // The tab picked while it is still there (the task read again), else the first.
 const tab = computed(() => (picked.value && tabs.value.includes(picked.value) ? picked.value : tabs.value[0]!))
 
-async function run(fn: () => Promise<unknown>) {
-  busy.value = true
-  error.value = ''
-  try { if (await fn() !== false) emit('changed') }
-  catch (e) { error.value = (e as Error).message }
-  finally { busy.value = false }
-}
-// The step's action refused (a merge on a PR in conflict, with red checks…):
-// its badge, said under the button until the step's badge changes.
-const pressing = ref(false)
-const refused = ref('')
-const press = () => run(async () => {
-  pressing.value = true
-  refused.value = ''
-  try {
-    const { task } = await api<{ task: Task }>('/api/pm/step-user', { id: props.card.id })
-    if (task.step?.yourTurn?.reason === 'action') refused.value = task.step.yourTurn.badge
-  }
-  finally { pressing.value = false }
-})
-watch(() => props.card.yourTurn, (b) => { if (b !== refused.value) refused.value = '' })
 const confirmStop = ref(!!props.stopping)
 const why = ref('')
 const stop = () => run(async () => { await stopTaskApi(props.card.id, why.value); confirmStop.value = false })
-const start = () => run(() => startTaskApi(props.card.id, undefined, props.card.sameFiles ? true : undefined))
-const resume = (how: Resume) => run(() => resumeTaskApi(props.card.id, how))
-const decide = (choice: Choice) => run(() => api('/api/pm/decide', { id: props.card.id, choice }))
-const sendBack = (note: string) => run(() => api('/api/pm/step-back', { id: props.card.id, note }))
-const restartReview = () => run(() => api('/api/pm/review-restart', { id: props.card.id }))
-const startWorker = () => run(() => api('/api/pm/worker-start', { id: props.card.id }))
 // A problem reported to the coordinator: open on the card until it acts or the user withdraws it.
 const reportOpen = ref(!!props.reporting)
 // An action step that failed (a merge refused): the user runs it again.
