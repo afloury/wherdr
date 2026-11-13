@@ -954,6 +954,8 @@ body.short-bottom { --safe-bottom: 0px; }
 /* A link that leads nowhere or out of the notes folder: muted, its title says why. */
 .notes-wrap a.note-link-missing { color: var(--dim); text-decoration-style: dotted; cursor: not-allowed; }
 .notes-empty { padding: 12px 0; border-top: 1px solid var(--line); }
+/* The tab the list follows: a muted line under the filter. */
+.notes-following { margin-top: -8px; font-size: 13px; overflow-wrap: anywhere; }
 
 /* ---------- Terminal ---------- */
 #termWrap { position: relative; flex: 1; min-height: 0; padding: 6px 4px 0 6px; background: var(--bg); }

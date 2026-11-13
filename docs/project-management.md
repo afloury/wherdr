@@ -695,8 +695,8 @@ acts.
 ### Coordinators' notes
 
 A coordinator writes [notes](alfred.md#notes) with `wherdr pm notes list|show|add|edit|remove|file put|file remove`,
-the same commands as Alfred's, in the tab groups its project shows in only (`--scope <group>`;
-`all` only when the project shows in every group). Each change is logged with the coordinator's name.
+the same commands as Alfred's, in the home tabs its project shows in only (`--scope <tab>`, a group or a machine shown as
+its own tab, by name; `all` only when the project shows in every tab). Each change is logged with the coordinator's name.
 
 ## Board
 
