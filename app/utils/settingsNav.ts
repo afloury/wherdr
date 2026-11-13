@@ -1,7 +1,6 @@
 // Settings: sections and Back button.
 
-export const SETTINGS_SECTIONS = ['appearance', 'conversation', 'terminal', 'agents', 'plugins', 'phone', 'notifications', 'security', 'shortcuts', 'advanced', 'about'] as const
-export type SettingsSection = typeof SETTINGS_SECTIONS[number]
+export { SETTINGS_ALIASES, SETTINGS_SECTIONS, type SettingsSection } from '../../shared/appLinks'
 
 // Phone: an open section is a history entry (?section=…), above
 // the list: Back pops it (like Android's Back button); opened
