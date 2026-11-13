@@ -15,6 +15,7 @@ describe('map commands', () => {
     expect(parseCommand(['map', 'list', '--refresh', '--project', 'WS'])).toEqual({ name: 'map list', refresh: true, project: 'WS' })
     expect(parseCommand(['map', 'show'])).toEqual({ name: 'map show' })
     expect(parseCommand(['map', 'remove', 'apps/web-app'])).toEqual({ name: 'map remove', repo: 'apps/web-app' })
+    expect(parseCommand(['map', 'set', 'clients/café app', '--does', 'Orders'])).toMatchObject({ repo: 'clients/café app' })
   })
 
   it('refuses what is past its limits', () => {
@@ -43,10 +44,13 @@ describe('map list', () => {
   it('reads names and descriptions: manifest first, else the README\'s first sentence', () => {
     const out = ['', 'payroll-api\n\x1fpackage.json\n{"name":"p","description":"Payroll \\"API\\" for payslips"}\n\x1fREADME.md\n# Payroll\n\nIgnored.',
       'apps/web-app\n\x1fREADME.md\n# Web app\n\n[![ci](x)](y)\n\nThe [customer](http://a) web app. It calls payroll-api.',
-      'tools/cli\n\x1fCargo.toml\n[package]\nname = "cli"\ndescription = "A command line"\n', 'empty\n', '.\n'].join('\x1e')
+      'tools/cli\n\x1fCargo.toml\n[package]\nname = "cli"\ndescription = "A command line"\n', 'empty\n', '.\n',
+      'payroll api\n\x1fpyproject.toml\n[project]\nname = \'payroll\'\ndescription = \'Pays "people"\'\n\x1fREADME.md\nNot this.', 'café\n'].join('\x1e')
     expect(parseRepoList(out, '/src/work/')).toEqual([
       { repo: 'apps/web-app', path: '/src/work/apps/web-app', does: 'The customer web app.' },
+      { repo: 'café', path: '/src/work/café', does: '' },
       { repo: 'empty', path: '/src/work/empty', does: '' },
+      { repo: 'payroll api', path: '/src/work/payroll api', does: 'Pays "people"' },
       { repo: 'payroll-api', path: '/src/work/payroll-api', does: 'Payroll "API" for payslips' },
       { repo: 'tools/cli', path: '/src/work/tools/cli', does: 'A command line' },
     ])

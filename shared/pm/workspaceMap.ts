@@ -8,8 +8,9 @@
 export const DOES_MAX = 160
 const LINKS_MAX = 20
 export const LIST_TTL = 24 * 3_600_000
-// A repository: its path under the root (payroll-api, or group/payroll-api).
-const REPO_RE = /^[\w.-]{1,100}(\/[\w.-]{1,100}){0,3}$/
+// A repository: its path under the root (payroll-api, or group/payroll-api),
+// up to 4 folders of any name (spaces and Unicode too) but . and .., no control character.
+const SEGMENT_RE = /^[^/\p{Cc}]{1,100}$/u
 
 export interface MapEntry {
   repo: string, path: string, does: string, talks: string[], usedBy: string[]
@@ -30,7 +31,10 @@ export const MAP_COMMANDS = [
   { usage: 'map remove <repo>', does: 'take a repository off the workspace\'s map' },
 ]
 
-const isRepo = (r: unknown): r is string => typeof r === 'string' && REPO_RE.test(r) && !r.split('/').some(s => s === '.' || s === '..')
+const isRepo = (r: unknown): r is string => {
+  const parts = typeof r === 'string' ? r.split('/') : []
+  return parts.length >= 1 && parts.length <= 4 && parts.every(s => SEGMENT_RE.test(s) && s !== '.' && s !== '..')
+}
 const repoList = (v: string, flag: string): string[] | { error: string } => {
   const list = [...new Set(v.split(',').map(s => s.trim()).filter(Boolean))]
   return list.length <= LINKS_MAX && list.every(isRepo) ? list : { error: `--${flag} is a list of repositories (at most ${LINKS_MAX}): a,b` }
@@ -102,7 +106,10 @@ export function manifestDescription(file: string, text: string): string {
     const m = /"description"\s*:\s*("(?:[^"\\]|\\.)*")/.exec(text)
     try { return m ? clip(JSON.parse(m[1]!) as string) : '' } catch { return '' }
   }
-  return clip(/^description\s*=\s*"((?:[^"\\]|\\.)*)"/m.exec(text)?.[1] ?? '')
+  // A TOML basic string ("…", with escapes) or literal string ('…', as is).
+  const m = /^description\s*=\s*(?:("(?:[^"\\]|\\.)*")|'([^']*)')/m.exec(text)
+  if (!m) return ''
+  try { return clip(m[2] ?? JSON.parse(m[1]!) as string) } catch { return clip(m[1]!.slice(1, -1)) }
 }
 
 // A README's first sentence: its first paragraph of prose (no heading, badge,
@@ -123,7 +130,7 @@ export function readmeSentence(text: string): string {
 export function parseRepoList(out: string, root: string): ListedRepo[] {
   const base = root.replace(/\/+$/, '')
   return out.split('\x1e').slice(1).flatMap((block) => {
-    const [head = '', ...parts] = block.split('\x1f'), repo = head.trim()
+    const [head = '', ...parts] = block.split('\x1f'), repo = head.replace(/\n$/, '')
     if (!isRepo(repo)) return []
     const files = parts.map((part) => { const i = part.indexOf('\n'); return { file: (i < 0 ? part : part.slice(0, i)).trim(), text: i < 0 ? '' : part.slice(i + 1) } })
     const manifest = files.find(f => !/^readme/i.test(f.file)), readme = files.find(f => /^readme/i.test(f.file))
