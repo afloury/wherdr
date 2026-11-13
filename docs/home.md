@@ -176,9 +176,13 @@ Codex agents of online machines. Choosing a result opens it.
 The note button in the header (Mod+Alt+P on a computer) opens the [notes](alfred.md#notes)
 Alfred and the coordinators write for you: read-only, a short whiteboard. On a computer of
 at least 1280 px they open beside the conversation, like Settings (drag the panel's left edge
-to resize it); otherwise in a sheet. They follow the machine tab's group by default (**Follow
-group tab**); the menu at the top shows **All** or one group instead, and the choice follows
-you across devices. A note scoped All shows in every group. Each note shows its title, its
+to resize it); otherwise in a sheet. They follow the home tab by default (**Follow
+tab**), with a muted line saying which (*Work · following the tab*); the menu at the top shows
+**All** or one tab instead (every group and every machine shown as its own tab, in the bar's
+order), and the choice follows you across devices. A tab shows its own notes and the ones
+scoped All; a group's tab also shows the notes of its machines, so a machine's note stays
+there when the machine joins a group. A tab with no note of its own says so (*No notes for
+Work yet*) above the All notes. Each note shows its title, its
 scope and its lines: checkboxes you cannot tick, project key badges (a task id opens its
 sheet), the agents' own badges, and links. A link to a place in wherdr opens it in place, a
 link to another note scrolls to it. A link to a Markdown file the agents wrote under the

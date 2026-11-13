@@ -4,13 +4,14 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { noteLinks, parseNotes, writableScopes } from '../shared/notes'
+import { machineScope, noteLinks, noteTabs, notesShown, parseNotes, resolveScope, writableScopes, NOTES_FOLLOW, type Note } from '../shared/notes'
 import { parseAlfredCommand } from '../shared/pm/alfredCli'
 import { parseCommand } from '../shared/pm/coordinator'
 import { notesStore, runNotes } from '../server/utils/notesStore'
 
 const groups = [{ id: '*group:work', name: 'Work', machines: ['mac'] }, { id: '*group:home', name: 'Home', machines: ['', 'pi'] }]
 const project = { key: 'WD', machine: '', machines: ['pi'] }
+const tabs = noteTabs(['*', ...groups.map(g => g.id)], groups, k => k)
 let dir: string, settingsFile: string
 beforeEach(async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), 'notes-'))
@@ -56,10 +57,10 @@ describe('notes store', () => {
 
 describe('notes scope rules', () => {
   it('lets a coordinator write the tab groups its project shows in, and all only when it shows in every one', async () => {
-    expect(writableScopes(project, undefined, groups)).toEqual(['*group:home'])
-    expect(writableScopes(project, '*', groups)).toEqual(['all', '*group:work', '*group:home'])
-    expect(writableScopes(project, '*group:work', groups)).toEqual(['*group:work'])
-    expect(writableScopes(project, undefined, [])).toEqual(['all'])
+    expect(writableScopes(project, undefined, groups, tabs)).toEqual(['*group:home'])
+    expect(writableScopes(project, '*', groups, tabs)).toEqual(['all', '*group:work', '*group:home'])
+    expect(writableScopes(project, '*group:work', groups, tabs)).toEqual(['*group:work'])
+    expect(writableScopes(project, undefined, [], [])).toEqual(['all'])
     const wd = { by: 'coordinator WD', project }
     expect((await run(['add', 'Mine'], 'x', wd)).added.scope).toBe('Home')
     await expect(run(['add', 'Theirs', '--scope', 'Work'], 'x', wd)).rejects.toThrow(/Home only/)
@@ -67,6 +68,28 @@ describe('notes scope rules', () => {
     await run(['add', 'Alfred\'s', '--scope', 'work'], 'x')
     expect((await run(['list'], undefined, wd)).notes.map((n: { id: string }) => n.id)).toEqual(['mine'])
     await expect(run(['remove', 'alfred-s'], undefined, wd)).rejects.toThrow(/No note alfred-s you may write/)
+  })
+
+  it('takes a machine shown as its own tab as a scope, and shows its notes on that tab and on its group', async () => {
+    const all = noteTabs(['*', '*group:work', 'laptop'], groups, k => (k === 'laptop' ? 'Laptop' : k))
+    expect(all.map(t => t.name)).toEqual(['Work', 'Laptop'])
+    expect(resolveScope('laptop', all)).toBe(machineScope('laptop'))
+    expect(resolveScope('Nope', all)).toEqual({ error: 'Unknown scope Nope: all, or a home tab (Work, Laptop)' })
+    expect(writableScopes({ machine: 'laptop' }, undefined, groups, all)).toEqual([machineScope('laptop')])
+    const n = (id: string, scope: string): Note => ({ id, title: id, scope, body: '', created: '', updated: '' })
+    const list = [n('every', 'all'), n('lap', machineScope('laptop')), n('work', '*group:work'), n('home', '*group:home')]
+    const ids = (filter: string, followed: string | null, g = groups) => notesShown(list, filter, followed, g).map(x => x.id)
+    expect(ids(NOTES_FOLLOW, machineScope('laptop'))).toEqual(['every', 'lap'])
+    expect(ids(machineScope('laptop'), null)).toEqual(['every', 'lap'])
+    expect(ids(NOTES_FOLLOW, '*group:work')).toEqual(['every', 'work'])
+    // the laptop joins the Work group: its note shows there too
+    expect(ids(NOTES_FOLLOW, '*group:work', [{ ...groups[0]!, machines: ['mac', 'laptop'] }, groups[1]!])).toEqual(['every', 'lap', 'work'])
+    expect(ids(NOTES_FOLLOW, null)).toEqual(['every', 'lap', 'work', 'home'])
+    await fs.writeFile(settingsFile, JSON.stringify({ v: 1, settings: { machineGroups: JSON.stringify(groups), machineBarHidden: JSON.stringify(['pi', 'mac', '']) } }))
+    const cmd = parseAlfredCommand(['notes', 'add', 'Charge it', '--scope', 'Laptop'])
+    if ('error' in cmd || cmd.name !== 'notes') throw new Error('not a notes command')
+    const machines = ['', 'mac', 'pi', 'laptop'].map(key => ({ key, label: key === 'laptop' ? 'Laptop' : key, local: !key, status: 'online' as const, error: null }))
+    expect(await runNotes(notesStore(path.join(dir, 'notes')), cmd.notes, 'x', { by: 'Alfred' }, settingsFile, machines)).toMatchObject({ added: { scope: 'Laptop' } })
   })
 
   it('parses the same notes words under wherdr pm', () => {

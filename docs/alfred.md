@@ -71,10 +71,10 @@ its created and updated dates), plus the longer files they link to, such as
 
 | Command | Does |
 | --- | --- |
-| `wherdr alfred notes list [--scope all\|<group>]` | the notes (id, title, scope, dates) and the linked files |
+| `wherdr alfred notes list [--scope all\|<tab>]` | the notes (id, title, scope, dates) and the linked files |
 | `wherdr alfred notes show <id\|path>` | one note, or one linked file |
-| `wherdr alfred notes add "<title>" [--scope all\|<group>] < lines.md` | adds a note: at most 12 short lines, checkboxes (`- [ ]`) and links allowed; scope `all` (every tab, the default) or one tab group, by name |
-| `wherdr alfred notes edit <id> [--title "<title>"] [--scope all\|<group>] < lines.md` | changes a note; new lines on stdin replace its own, empty stdin keeps them |
+| `wherdr alfred notes add "<title>" [--scope all\|<tab>] < lines.md` | adds a note: at most 12 short lines, checkboxes (`- [ ]`) and links allowed; scope `all` (every tab, the default) or one home tab (a tab group or a machine shown as its own tab), by name |
+| `wherdr alfred notes edit <id> [--title "<title>"] [--scope all\|<tab>] < lines.md` | changes a note; new lines on stdin replace its own, empty stdin keeps them |
 | `wherdr alfred notes remove <id>` | removes a note |
 | `wherdr alfred notes file put <folder/name.md> < file.md` | writes a linked file under a folder of the notes, for anything too long for a note |
 | `wherdr alfred notes file remove <folder/name.md>` | removes a linked file |
@@ -91,8 +91,8 @@ A note links to another note (`[Plan](other-note.md)`), a linked file
 (`[Plan](plans/x.md)`) or a place in wherdr (`[WD-12](#/board?task=WD-12)`).
 A link that would leave the notes folder (`..`, an absolute path) is refused, and
 the answer lists the links that lead nowhere yet. Coordinators have the same
-commands as `wherdr pm notes …`, for the tab groups their project shows in only:
-`all` only when it shows in every group (or there is no group).
+commands as `wherdr pm notes …`, for the home tabs their project shows in only:
+`all` only when it shows in every tab (or there is none).
 
 ## Suggestions
 

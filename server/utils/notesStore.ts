@@ -5,10 +5,11 @@
 import { randomUUID } from 'node:crypto'
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { MAX_FILE, filePath, noteBody, noteId, noteLinks, noteText, readNote, resolveScope, scopeName, slug, writableScopes, type Note, type NoteScope, type NotesCommand } from '../../shared/notes'
-import { readMachineGroups } from '../../app/utils/machineBar'
+import { MAX_FILE, filePath, noteBody, noteId, noteLinks, noteTabs, noteText, readNote, resolveScope, scopeName, slug, writableScopes, type Note, type NoteScope, type NotesCommand } from '../../shared/notes'
+import { groupedBarItems, readBarList, readMachineGroups } from '../../app/utils/machineBar'
 import { readProjectTabs } from '../../shared/settings'
 import type { Project } from '../../shared/pm/project'
+import type { MachineInfo } from '../../shared/types'
 import { DATA_DIR } from './env'
 import { HerdrError } from './herdr'
 import { readSettings } from './settings'
@@ -113,22 +114,29 @@ export type NotesStore = ReturnType<typeof notesStore>
 // Who runs the command: Alfred (every scope), or a project's coordinator.
 export interface NotesWriter { by: string, project?: Pick<Project, 'key' | 'machine' | 'machines' | 'paused'> }
 
-export async function runNotes(store: NotesStore, cmd: NotesCommand, input: unknown, who: NotesWriter, settingsFile?: string) {
+// machines: Herdr's machines, for the machines shown as their own home tab
+// (the bar's items the user has not taken off it).
+export async function runNotes(store: NotesStore, cmd: NotesCommand, input: unknown, who: NotesWriter, settingsFile?: string, machines: readonly MachineInfo[] = []) {
   const s = await readSettings(settingsFile)
   const groups = readMachineGroups(s.machineGroups ?? null)
-  const mine = who.project ? writableScopes(who.project, readProjectTabs(s.projectTabs)[who.project.key], groups) : ['all', ...groups.map(g => g.id)]
+  const bases = [...new Set(machines.map(m => m.baseKey ?? m.key))]
+  const label = (key: string) => machines.find(m => m.key === key)?.label || key || 'this machine'
+  const hidden = readBarList(s.machineBarHidden)
+  const tabs = noteTabs(groupedBarItems(readBarList(s.machineBarOrder), bases, groups).filter(id => !hidden.includes(id)), groups, label)
+  const name = (scope: string) => scopeName(scope, tabs, label)
+  const mine = who.project ? writableScopes(who.project, readProjectTabs(s.projectTabs)[who.project.key], groups, tabs) : ['all', ...tabs.map(t => t.scope)]
   const scopeOf = (raw: string) => {
-    const r = resolveScope(raw, groups)
+    const r = resolveScope(raw, tabs)
     if (typeof r !== 'string') throw new HerdrError('bad_input', r.error)
-    if (!mine.includes(r)) throw new HerdrError('refused', `Your project shows in ${mine.map(x => scopeName(x, groups)).join(', ') || 'no tab group'} only: you write notes there`)
+    if (!mine.includes(r)) throw new HerdrError('refused', `Your project shows in ${mine.map(name).join(', ') || 'no home tab'} only: you write notes there`)
     return r
   }
   // A coordinator's default: its only scope, else it names one.
   const defaultScope = () => {
     if (!who.project || mine.length === 1) return mine[0] ?? scopeOf('all')
-    throw new HerdrError('bad_input', `Name the scope: --scope ${mine.map(x => scopeName(x, groups)).join('|')}`)
+    throw new HerdrError('bad_input', `Name the scope: --scope ${mine.map(name).join('|')}`)
   }
-  const shown = (n: Note) => ({ ...n, scope: scopeName(n.scope, groups) })
+  const shown = (n: Note) => ({ ...n, scope: name(n.scope) })
   const lines = async () => {
     const body = noteBody(input)
     if (typeof body !== 'string') throw new HerdrError('bad_input', body.error)
@@ -156,7 +164,7 @@ export async function runNotes(store: NotesStore, cmd: NotesCommand, input: unkn
   switch (cmd.verb) {
     case 'list': {
       const only = cmd.scope ? scopeOf(cmd.scope) : undefined
-      return { notes: (await store.list()).filter(n => (only ? n.scope === only : mine.includes(n.scope))).map(({ body: _, ...n }) => ({ ...n, scope: scopeName(n.scope, groups) })), files: await store.files() }
+      return { notes: (await store.list()).filter(n => (only ? n.scope === only : mine.includes(n.scope))).map(({ body: _, ...n }) => ({ ...n, scope: name(n.scope) })), files: await store.files() }
     }
     case 'show': {
       if (cmd.id.includes('/')) {
