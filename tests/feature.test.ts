@@ -4,16 +4,19 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { splitFeature } from '../server/utils/pmFeature'
+import { REAL_ALL_SCRIPT, REAL_SCRIPT } from '../shared/pm/workspaceAdopt'
+import { PREPARE_SCRIPT, PROBE_SCRIPT } from '../server/utils/pmFolder'
+import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
 import { afterRefusal, closeRefusal, featureState, parsePlan } from '../shared/pm/feature'
 import { parseCommand } from '../shared/pm/coordinator'
 import type { Project } from '../shared/pm/project'
 import type { Task } from '../shared/pm/run'
 
 const projects = [
-  { key: 'WS', name: 'Work', machine: '', path: '/src/work', kind: 'workspace', git: false, addedAt: 1 },
-  { key: 'PA', name: 'Payroll', machine: '', path: '/src/work/payroll-api', workspace: 'WS', addedAt: 1 },
-  { key: 'QA', name: 'Quotes', machine: '', path: '/src/work/quotes-app', workspace: 'WS', addedAt: 1 },
-  { key: 'OT', name: 'Other', machine: '', path: '/src/other', addedAt: 1 },
+  { key: 'WS', name: 'Work', machine: 'home', path: '/h/work', kind: 'workspace', git: false, addedAt: 1 },
+  { key: 'PA', name: 'Payroll', machine: 'home', path: '/h/work/payroll-api', workspace: 'WS', addedAt: 1 },
+  { key: 'QA', name: 'Quotes', machine: 'home', path: '/h/work/quotes-app', workspace: 'WS', addedAt: 1 },
+  { key: 'OT', name: 'Other', machine: 'home', path: '/h/other', addedAt: 1 },
 ] as Project[]
 const sub = (id: string, more: Partial<Task> = {}) => ({ id, project: id.split('-')[0]!, title: id, description: '', type: 'feature', state: 'todo', createdAt: 1, feature: 'WS-1', ...more }) as Task
 const plan = (tasks: object[]) => ({ order: 'The API first: the app calls it', tasks })
@@ -41,6 +44,9 @@ describe('features: the plan, after and the derived state', () => {
     const f = { ...sub('WS-1'), feature: undefined, kind: 'feature' as const }
     const done = sub('PA-1', { step: { at: 0, started: true, done: true, proofs: {}, rounds: {} } })
     expect(featureState(f, [sub('PA-1')])).toBe('todo')
+    // Its work ended but not closed yet: still working, never back to do.
+    expect(featureState(f, [done])).toBe('working')
+    expect(featureState(f, [done, sub('QA-1')])).toBe('working')
     expect(featureState(f, [done, sub('QA-1', { state: 'working' })])).toBe('working')
     expect(featureState(f, [done, sub('QA-1', { state: 'waiting', waiting: 'A question' })])).toBe('waiting')
     expect(closeRefusal(f, [done, sub('QA-1')])).toMatch(/QA-1 still open/)
@@ -61,11 +67,27 @@ describe('feature split', () => {
     const feature = await store.addTask({ project: 'WS', title: 'Export payslips', type: 'feature' })
     expect(feature).toMatchObject({ id: 'WS-1', kind: 'feature' })
     const ws = projects[0]!, start = vi.fn(async () => {}), who = { by: 'coordinator WS', origin: 'user' as const }
-    const split = (p: object) => splitFeature({ store } as never, ws, feature, JSON.stringify(p), who, start)
+    // The machine's answers for adopting /h/work/ledger.
+    const call = async (_m: string, p: { argv: string[] }) => {
+      const [, , script] = p.argv
+      const out = script === REAL_ALL_SCRIPT ? p.argv.slice(4).map(a => `x${a}`).join('\n') : script === REAL_SCRIPT ? '/h/work\n/h/work/ledger' : script === PROBE_SCRIPT ? 'dir\ngit\nremote' : script === PREPARE_SCRIPT ? 'git' : script!.includes(REMOTE_SCRIPT.split('\n').at(-2)!) ? 'git@github.com:acme/ledger.git\n{"visibility":"PRIVATE"}' : script!.includes('$HOME') ? '/h' : ''
+      return { code: 0, stdout: Buffer.from(out).toString('base64') }
+    }
+    const deps = { store, call, machines: () => [{ key: 'home', label: 'home', local: true }] } as never
+    const split = (p: object) => splitFeature(deps, ws, feature, JSON.stringify(p), who, start)
+    const keys = async () => (await store.projects()).map(p => p.key)
     // Refused whole: an unknown task type, a link outside the workspace.
     await expect(split(plan([{ repo: 'payroll-api', title: 'Serve', type: 'task' }, { repo: 'QA', title: 'Show', type: 'study' }]))).rejects.toThrow(/no task type "study"/)
     await store.addTask({ project: 'OT', title: 'Elsewhere', type: 'task' })
     await expect(split(plan([{ repo: 'payroll-api', title: 'Serve', type: 'task' }, { repo: 'QA', title: 'Show', type: 'task', after: ['OT-1'] }]))).rejects.toThrow(/after/)
+    // A repository named twice (its key and its path), a bad link beside a new repository: nothing adopted.
+    await expect(split(plan([{ repo: 'PA', title: 'Serve', type: 'task' }, { repo: 'payroll-api', title: 'Again', type: 'task' }]))).rejects.toThrow(/its repository twice/)
+    await expect(split(plan([{ repo: 'ledger', title: 'Book', type: 'task', after: ['OT-1'] }]))).rejects.toThrow(/after/)
+    // Refused after its adoption: the new member is removed again.
+    const failing = vi.spyOn(store, 'splitFeature').mockRejectedValueOnce(new Error('disk full'))
+    await expect(split(plan([{ repo: 'ledger', title: 'Book', type: 'task' }]))).rejects.toThrow(/disk full/)
+    failing.mockRestore()
+    expect(await keys()).toEqual(['WS', 'PA', 'QA', 'OT'])
     expect((await store.tasks()).filter(t => t.feature)).toEqual([])
 
     const r = await split(plan([{ repo: 'QA', title: 'Show it', type: 'task', after: ['payroll-api'] }, { repo: 'payroll-api', title: 'Serve it', type: 'task', files: ['api'] }]))

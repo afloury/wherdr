@@ -118,9 +118,10 @@ The workspace's coordinator runs them with no question to you:
 - `wherdr pm feature split <WS-n> < plan.json`: in **one call**, adopts the
   repositories the plan needs (as [repo adopt](#adopting-a-repository) does),
   adds one sub-task per repository, chains them and starts those that wait
-  for nothing. It is all or nothing: the whole plan is checked first (task
-  types, links, cycles), and the sub-tasks are added together or not at all
-  (a repository adopted before a refusal stays a member). The plan:
+  for nothing. It is all or nothing: the whole plan is checked first (each
+  repository once, what adopting it would refuse, task types, links,
+  cycles), and the sub-tasks are added together or not at all; a split
+  refused after its adoptions removes the members it adopted. The plan:
 
   ```json
   {
@@ -146,8 +147,9 @@ A task of a member may start after tasks of the workspace's other members
 in a cycle. A task others wait for cannot be removed.
 
 A feature's state is never stored, it comes from its sub-tasks: **to do**
-until one starts, **working**, **waiting for you** while one is under *Your
-turn*, and **done** once the coordinator closed it. `wherdr pm list` gives it.
+until one starts, **working** (also once they have all ended, until it is
+closed), **waiting for you** while one is under *Your turn*, and **done** once
+the coordinator closed it. `wherdr pm list` gives it.
 
 ## The workspace map
 

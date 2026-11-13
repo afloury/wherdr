@@ -92,13 +92,13 @@ export type FeatureState = 'todo' | 'working' | 'waiting' | 'done'
 export const subTasks = (feature: Pick<Task, 'id'>, tasks: Task[]) => tasks.filter(t => t.feature === feature.id)
 const ended = (t: Task) => !!t.step?.done || !!t.step?.abandoned
 
-// Never stored: done once closed; waiting for you while a sub-task is under
-// Your turn; working once one started; else to do.
+// Never stored: done once closed; waiting for you while an open sub-task is
+// under Your turn; working once one started or ended (until it is closed); else to do.
 export function featureState(feature: Task, tasks: Task[]): FeatureState {
   if (feature.closed) return 'done'
-  const subs = subTasks(feature, tasks).filter(t => !ended(t))
-  if (subs.some(t => t.step?.yourTurn || t.stopped || t.state === 'waiting')) return 'waiting'
-  return subs.some(t => t.step?.started || t.state === 'working') ? 'working' : 'todo'
+  const subs = subTasks(feature, tasks)
+  if (subs.some(t => !ended(t) && (t.step?.yourTurn || t.stopped || t.state === 'waiting'))) return 'waiting'
+  return subs.some(t => ended(t) || t.step?.started || t.state === 'working') ? 'working' : 'todo'
 }
 
 // Why the feature may not be closed: a sub-task neither done nor abandoned.
