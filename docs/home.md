@@ -175,7 +175,7 @@ Codex agents of online machines. Choosing a result opens it.
 
 The note button in the header (Mod+Alt+P on a computer) opens the [notes](alfred.md#notes)
 Alfred and the coordinators write for you: read-only, a short whiteboard. On a computer of
-at least 1280 px they open beside the conversation, like Settings (drag the panel's left edge
+at least 1280 px they open beside the conversation or Home's list, like Settings (drag the panel's left edge
 to resize it); otherwise in a sheet. They follow the home tab by default (**Follow
 tab**), with a muted line saying which (*Work · following the tab*); the menu at the top shows
 **All** or one tab instead (every group and every machine shown as its own tab, in the bar's

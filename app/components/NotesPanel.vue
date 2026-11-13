@@ -1,12 +1,12 @@
 <script setup lang="ts">
 // Notes (shared/notes.ts): the whiteboard agents write, read-only for the
-// user. Beside the conversation on a computer with room, in place of the
-// Settings panel; otherwise a sheet. Read again every few seconds while open.
+// user. Beside the conversation (or Home's list) on a computer with room, in
+// place of the Settings panel; otherwise a sheet. Read again every few seconds while open.
 import { isConversationPath } from '~/utils/settingsPanel'
 
 const route = useRoute()
 const router = useRouter()
-const panel = computed(() => sidePanelRoom.value && isConversationPath(route.path))
+const panel = computed(() => sidePanelRoom.value && (route.path === '/' || isConversationPath(route.path)))
 const sheetOpen = computed({ get: () => notesOpen.value && !panel.value, set: (v) => { notesOpen.value = v } })
 const close = () => { notesOpen.value = false }
 // A link followed from the sheet leaves it; the panel stays beside the conversation.
