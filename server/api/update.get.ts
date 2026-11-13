@@ -1,3 +1,2 @@
-// Is a new wherdr version available? (see utils/updates.ts) The Update
-// button shows whenever this installation can update itself (update.post.ts).
-export default defineApi(async () => checkUpdate())
+// Is a new wherdr version available? (see utils/updates.ts) No one-tap update in v3.
+export default defineApi(() => checkUpdate())
