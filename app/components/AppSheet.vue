@@ -8,13 +8,47 @@ import { PHONE_QUERY } from '~/utils/layoutMode'
 // safe areas included); unchanged on a computer. The `footer` slot stays
 // pinned under the scrolling content (above the home bar or the keyboard).
 // `top`: above the other windows (a confirmation asked from an open sheet).
+// `clamp`: a long title (a task's) on the phone: two lines in smaller type, a tap
+// shows it whole; one line once the body is scrolled or a field is typed in.
+import { kbOpen } from '~/composables/useViewport'
 import { SHEET_DRAG_SLOP, sheetDragCloses, sheetDragOffset } from '~/utils/sheetDrag'
 
 const open = defineModel<boolean>('open', { default: false })
-const props = defineProps<{ hideClose?: boolean, title?: string, tall?: boolean, wide?: boolean, full?: boolean, screen?: boolean, top?: boolean }>()
+const props = defineProps<{ hideClose?: boolean, title?: string, tall?: boolean, wide?: boolean, full?: boolean, screen?: boolean, top?: boolean, clamp?: boolean }>()
 const emit = defineEmits<{ closed: [] }>()
 const slots = defineSlots<{ default?: () => unknown, footer?: () => unknown, lead?: () => unknown }>()
 watch(open, (v, old) => { if (old && !v) emit('closed') })
+// Typing on the phone: a text field of the sheet has focus, the keyboard over
+// the page. The bars pinned over the body hide (`.typing` on the body or the
+// footer, main.css), so nothing covers the field; its form (the field and its
+// own send button) is kept in view while it fits. Back on blur, or when the
+// keyboard closes with the field still focused (Android; the composer's rule),
+// and on again when the keyboard reopens on that same field (no new focusin).
+const typing = ref(false)
+const bodyEl = ref<HTMLElement>()
+const footEl = ref<HTMLElement>()
+const isField = (el: EventTarget | null) => el instanceof HTMLElement
+  && (el.isContentEditable || el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !/^(button|submit|reset|checkbox|radio|file|range|color)$/.test(el.type)))
+function focusIn(e: FocusEvent) { typing.value = isField(e.target) && matchMedia(PHONE_QUERY).matches }
+function focusOut(e: FocusEvent) { if (!isField(e.relatedTarget)) typing.value = false }
+function showForm() {
+  const form = typing.value ? document.activeElement?.closest('form') : null
+  const body = form?.closest<HTMLElement>('.hw-sheet-body')
+  if (form && body && form.offsetHeight <= body.clientHeight) requestAnimationFrame(() => form.scrollIntoView({ block: 'nearest' }))
+}
+function fieldInSheet() {
+  const el = document.activeElement
+  return isField(el) && !!(bodyEl.value?.contains(el) || footEl.value?.contains(el)) && matchMedia(PHONE_QUERY).matches
+}
+watch(kbOpen, (v) => {
+  typing.value = v && fieldInSheet()
+  if (v) showForm()
+})
+const scrolledDown = ref(false)
+const fullTitle = ref(false)
+function bodyScroll(e: Event) { scrolledDown.value = (e.currentTarget as HTMLElement).scrollTop > 8 }
+const compact = computed(() => props.clamp && (scrolledDown.value || typing.value))
+watch(compact, (v) => { if (v) fullTitle.value = false })
 const ui = computed(() => ({
   overlay: `hw-scrim${props.screen ? ' screen' : ''}${props.top ? ' top' : ''}`,
   content: `hw-sheet${props.tall ? ' tall' : ''}${props.wide ? ' wide' : ''}${props.full ? ' full' : ''}${props.screen ? ' screen' : ''}${props.top ? ' top' : ''}`,
@@ -88,20 +122,21 @@ function dragEnd(e: TouchEvent) {
         @click="open = false" @touchstart.passive="dragStart($event, true)" @touchmove="dragMove" @touchend="dragEnd" @touchcancel="dragEnd"
       />
       <div
-        v-if="title" data-slot="header" class="hw-sheet-head"
+        v-if="title" data-slot="header" class="hw-sheet-head" :class="{ compact }"
         @touchstart.passive="dragStart($event, true)" @touchmove="dragMove" @touchend="dragEnd" @touchcancel="dragEnd"
       >
         <span v-if="slots.lead" class="hw-sheet-lead"><slot name="lead" /></span>
-        <span class="hw-sheet-title" aria-hidden="true">{{ title }}</span>
+        <span class="hw-sheet-title" :class="{ clamp, open: fullTitle }" :title="clamp ? title : undefined" aria-hidden="true" data-testid="sheet-title" @click="fullTitle = !!clamp && !fullTitle">{{ title }}</span>
         <UButton v-if="!hideClose" icon="i-lucide-x" color="neutral" variant="ghost" data-slot="close" class="hw-sheet-close" :aria-label="tl('Close', 'Fermer')" @click="open = false" />
       </div>
       <div
-        data-slot="body" class="hw-sheet-body"
+        ref="bodyEl" data-slot="body" class="hw-sheet-body" :class="{ typing }"
+        @focusin="focusIn" @focusout="focusOut" @input="showForm" @scroll.passive="bodyScroll"
         @touchstart.passive="dragStart($event, false)" @touchmove="dragMove" @touchend="dragEnd" @touchcancel="dragEnd"
       >
         <slot />
       </div>
-      <div v-if="slots.footer" data-slot="footer" class="hw-sheet-foot">
+      <div v-if="slots.footer" data-slot="footer" ref="footEl" class="hw-sheet-foot" :class="{ typing }" @focusin="focusIn" @focusout="focusOut">
         <slot name="footer" />
       </div>
     </template>

@@ -842,7 +842,7 @@ them too.
 A card opens the task's sheet. Tasks to review, Decisions' *Open task* and a task
 link in the chat (`#/board?task=ID`) open it over the page you are on (a bottom
 sheet on a phone), with `?task=ID` added to that page's address, so it survives a
-reload and can be shared; closing it leaves the page as it was. The sheet shows its id badge by the title (a tap copies it) and step, a note when it waits or was
+reload and can be shared; closing it leaves the page as it was. The sheet shows its id badge by the title (a tap copies it; on a phone a long title takes two lines at most, cut with an ellipsis, a tap shows it whole, and one line once the sheet is scrolled or you type) and step, a note when it waits or was
 stopped, the time it spent in each step with the time it waited for you apart,
 its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*), which branch merges into
@@ -998,7 +998,11 @@ On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
 *Start*, *Open the agent*) stay pinned at the bottom of the sheet while its
 content scrolls, so they are always in reach: flush with the sheet's bottom
 edge, the home bar's room inside the bar, with nothing scrolling under them;
-the tab's last content still scrolls up above them. A row of buttons that
+the tab's last content still scrolls up above them. While you type in a field
+of the sheet (*Send back*'s note, *Report a problem*, *Stop*'s reason), the
+pinned buttons hide and come back when the keyboard closes: nothing covers the
+field, whose own button (*Send back*) stays in view under it, and a long text
+scrolls inside the field, the line you type always above the keyboard. A row of buttons that
 wraps on a phone shares the width, so no button sits alone on its line.
 
 ### Report a problem
