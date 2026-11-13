@@ -7,6 +7,6 @@ defineProps<{ pane: Pane | null | undefined, kind?: boolean, model?: boolean }>(
 </script>
 
 <template>
-  <span v-if="pane" class="pill" :class="statusKey(pane)"><i />{{ statusLabel(pane) }}<template v-if="kind && pane.agent"><span class="sep">·</span><span class="pill-kind" :class="pane.agent">{{ pane.agent }}</span></template><template v-if="model && pane.model"><span class="sep">·</span><span class="pill-model">{{ pane.model.label }}</span><span v-if="pane.model.effort" class="pill-effort">{{ pane.model.effort }}</span></template></span>
-  <span v-else class="pill unknown"><i />{{ t('Closed') }}</span>
+  <span v-if="pane && statusLabel(pane)" class="pill" :class="statusKey(pane)"><i />{{ statusLabel(pane) }}<template v-if="kind && pane.agent"><span class="sep">·</span><span class="pill-kind" :class="pane.agent">{{ pane.agent }}</span></template><template v-if="model && pane.model"><span class="sep">·</span><span class="pill-model">{{ pane.model.label }}</span><span v-if="pane.model.effort" class="pill-effort">{{ pane.model.effort }}</span></template></span>
+  <span v-else-if="!pane" class="pill unknown"><i />{{ t('Closed') }}</span>
 </template>
