@@ -1,0 +1,39 @@
+// `wherdr pm repo adopt <repo>` (shared/pm/workspaceAdopt.ts) for a
+// workspace's coordinator: the folder probed on the workspace's machine, the
+// member added (store.addProject), its visibility checked, its map line
+// pointed at it and the adoption written to the workspace's log.
+import { adoptRefusal, adoptedMember, repoUnder, type RepoCommand } from '../../shared/pm/workspaceAdopt'
+import { effectiveWorkflow, isWorkspace } from '../../shared/pm/workspace'
+import { needsRemote } from '../../shared/pm/newProject'
+import { renderMap } from '../../shared/pm/workspaceMap'
+import type { Project } from '../../shared/pm/project'
+import { homeOf, machineOn, type CoreAdminDeps } from './coreCreate'
+import { HerdrError } from './herdr'
+import { pmFolderCheck, probeFolder } from './pmFolder'
+import { writeMapFile } from './pmMap'
+import { ensureVisibility } from './pmVisibility'
+import type { PmStore } from './pmStore'
+
+type Deps = CoreAdminDeps & { store: PmStore }
+
+export async function adoptRepo(deps: Deps, ws: Project | undefined, projects: Project[], cmd: RepoCommand, by: string) {
+  if (!ws || !isWorkspace(ws)) throw new HerdrError('bad_input', 'repo adopt is a workspace\'s: run it from a workspace\'s coordinator, or name one with --project <KEY>')
+  const { store } = deps
+  const home = cmd.repo.trim().startsWith('~') ? await homeOf(deps, machineOn(deps, ws.machine).on) ?? '' : ''
+  const repo = repoUnder(cmd.repo, ws.path, home)
+  if (typeof repo !== 'string') throw new HerdrError('refused', repo.error)
+  const member = adoptedMember(ws, repo, projects)
+  const probe = await probeFolder(ws.machine, member.path, deps)
+  const workflow = effectiveWorkflow(member.key, null, member as Project, ws, await store.savedWorkflow(ws.key))
+  const refused = adoptRefusal(probe.path, ws.machine, projects, probe, needsRemote(workflow))
+  if (refused) throw new HerdrError('refused', refused)
+  const added = await ensureVisibility(deps, await store.addProject({ ...member, path: probe.path }, (m, f, o) => pmFolderCheck(m, f, o, deps)))
+  await store.logProject(ws.key, { by, text: `adopted ${repo} as project ${added.key}`, adopted: { project: added.key, repo } })
+  // Its map line, when it has one, names it now (map.md is written again at the next map set if this fails).
+  const file = await store.changeMap(ws.key, f => ({ ...f, entries: f.entries.map(e => (e.repo === repo ? { ...e, project: added.key } : e)) }))
+  if (file.entries.some(e => e.repo === repo)) await writeMapFile(deps, ws, renderMap(ws, file)).catch(() => {})
+  return {
+    adopted: { key: added.key, name: added.name, color: added.color, repo, path: added.path, visibility: added.visibility?.value ?? 'unknown' },
+    next: `Add its tasks with task add --project ${added.key}; they run on the machines with its clone under the workspace's root`,
+  }
+}

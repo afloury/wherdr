@@ -19,8 +19,9 @@ const list = (items: string[]) =>
 const firstLine = (s?: string) => s?.split('\n')[0]
 
 // The summary's lines since the last check (`seen`: each task's status then).
-// idleMachines: the project's machines with no agent at work, by name. Empty: nothing to say.
-export function healthSummary(tasks: Task[], seen: Record<string, TaskStatus>, now: number, idleMachines: string[]): string[] {
+// idleMachines: the project's machines with no agent at work, by name; adopted: the
+// repositories a workspace adopted since (adoptedSince). Empty: nothing to say.
+export function healthSummary(tasks: Task[], seen: Record<string, TaskStatus>, now: number, idleMachines: string[], adopted: string[] = []): string[] {
   const name = (t: Task, why?: string) => `${t.id} (${t.title})${why ? `: ${why}` : ''}`
   const done = tasks.filter(t => taskStatus(t) === 'done' && seen[t.id] !== 'done').map(t => name(t))
   const user = tasks.filter(t => ['waiting', 'ready'].includes(taskStatus(t)))
@@ -32,6 +33,7 @@ export function healthSummary(tasks: Task[], seen: Record<string, TaskStatus>, n
     done.length ? `Done since the last check: ${list(done)}` : '',
     user.length ? `Waiting for the user: ${list(user)}` : '',
     stuck.length ? `Stuck for over ${STUCK_LONG_MS / 3_600_000} h: ${list(stuck)}` : '',
+    adopted.length ? `Repositories adopted since the last check: ${list(adopted)}` : '',
     todo && idleMachines.length ? `Machines idle while ${todo} to-do task${todo > 1 ? 's' : ''} wait${todo > 1 ? '' : 's'}: ${list(idleMachines)}` : '',
   ].filter(Boolean)
   return lines.length ? [...lines, HEALTH_ACK] : []

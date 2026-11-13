@@ -94,7 +94,8 @@ async function writeJson(file: string, data: unknown) {
 
 // A line of a project's log: a task removed (task), or a contributor's PR
 // merged on the user's yes (pr, said: the user's own message), by whom and why.
-export interface ProjectLogEntry extends TaskLogEntry { task?: string, pr?: number, said?: string }
+// adopted: a repository a workspace adopted (repo adopt), listed in its next health check.
+export interface ProjectLogEntry extends TaskLogEntry { task?: string, pr?: number, said?: string, adopted?: { project: string, repo: string } }
 
 const TASK_ID_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const badInput = (errors: { path: string, message: string }[]) =>
@@ -467,7 +468,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const list = await projects()
       const clash = keyClash(list, project.key)
       if (clash) throw new HerdrError('exists', `Project ${clash.name} already has the key ${project.key}`)
-      // A member keeps only its key, name, machine, path and workspace: the rest comes from the workspace.
+      // A member keeps only its key, name, color, machine, path and workspace: the rest comes from the workspace.
       const { template, ...fields } = project
       const source = template && !ws.fields.workspace ? await sourceOf(template) : null
       const checked = await check(project.machine, project.path, ws.fields.kind ? { ...opts, plain: true } : opts)
@@ -476,7 +477,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       // A removed project's workflow and log under the same key are not the new one's.
       await Promise.all([workflowFile(fields.key), workflowLogFile(fields.key)].map(f => fs.rm(f, { force: true })))
       let added: Project = ws.fields.workspace
-        ? { key: fields.key, name: fields.name, machine: fields.machine, path: folder, workspace: ws.fields.workspace, addedAt: Date.now() }
+        ? { key: fields.key, name: fields.name, color: fields.color ?? defaultColor(list), machine: fields.machine, path: folder, workspace: ws.fields.workspace, addedAt: Date.now() }
         : { ...fields, ...ws.fields, color: fields.color ?? defaultColor(list), path: folder, ...(git && !ws.fields.kind ? {} : { git: false as const }), addedAt: Date.now() }
       if (source) added = { ...added, from: (await copyTemplate(added.key, source, 'user')).from }
       await saveProjects([...list, added])

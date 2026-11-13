@@ -14,6 +14,7 @@ import { taskPlan } from '../../shared/pm/run'
 import { due as isDue, parseSchedule } from '../../shared/pm/schedule'
 import { addSkip, enqueue, tickWakes, wakesFor, wakeText, type CoordStatus, type Wake, type WakeSkip } from '../../shared/pm/wakes'
 import { healthEvery, healthRepeats, healthSummary } from '../../shared/pm/health'
+import { adoptedSince } from '../../shared/pm/workspaceAdopt'
 import { allowedMachines, type Project } from '../../shared/pm/project'
 import type { Run, Task } from '../../shared/pm/run'
 import type { Template } from '../../shared/pm/workflow'
@@ -121,7 +122,7 @@ async function gather(deps: WakeDeps, now: number) {
     // it, or 12 h since the last one sent.
     const every = on ? healthEvery(ap) : null
     const healthDue = !!every && !!c.health && now - c.health.at >= durationMs(every)
-    const lines = healthDue ? healthSummary(mine, c.health!.seen, now, idleMachines(deps, p, runs)) : []
+    const lines = healthDue ? healthSummary(mine, c.health!.seen, now, idleMachines(deps, p, runs), adoptedSince(await store.projectLog(p.key), c.health!.at)) : []
     const repeats = lines.length > 0 && healthRepeats(lines, c.health?.sent, now)
     if (repeats) skips.push({ at: now, what: 'health', why: 'Health check: the same lines as the last one sent' })
     else add(p.key, lines, { kind: 'health' })

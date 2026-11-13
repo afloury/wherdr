@@ -13,7 +13,7 @@ import type { PmStore } from './pmStore'
 type Deps = CoreAdminDeps & { store: PmStore }
 
 // map.md in the workspace coordinator's folder, on the workspace's machine.
-async function writeMapFile(deps: Deps, ws: Project, text: string) {
+export async function writeMapFile(deps: Deps, ws: Project, text: string) {
   const { on } = machineOn(deps, ws.machine)
   const home = await homeOf(deps, on)
   if (!home) throw new HerdrError('core', 'Home folder not found on the workspace\'s machine')
