@@ -34,6 +34,7 @@ import { readQueue, sinceYesterday, type Wake, type WakeSkip } from '../../share
 import type { HealthSent } from '../../shared/pm/health'
 import type { Automation, AutomationProposal, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
+import { cleanWorkspaceFields, effectiveProjects, memberOverrides, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
 import { DATA_DIR } from './env'
 
 // A project coordinator: the sha256 of its token, its terminal (herdr-core
@@ -143,7 +144,12 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   const projectLog = async (key: string) =>
     (TASK_ID_RE.test(`${key}-1`) ? (await readJson<{ entries?: ProjectLogEntry[] }>(path.join(files.projectLog, `${key}.json`)))?.entries : null) ?? []
   const readProjects = async () => (await readJson<{ projects?: Project[] }>(files.projects))?.projects ?? []
-  const saveProjects = (list: Project[]) => writeJson(files.projects, { v: 1, projects: list })
+  // A list with a workspace mistake (workspace.ts) is never saved.
+  const saveProjects = (list: Project[]) => {
+    const errors = workspaceErrors(list)
+    if (errors.length) throw badInput(errors.map(message => ({ path: 'workspace', message })))
+    return writeJson(files.projects, { v: 1, projects: list })
+  }
   const workflowFile = (key: string) => path.join(files.workflows, `${key}.json`)
   const workflowLogFile = (key: string) => path.join(files.workflowLog, `${key}.json`)
   const readLog = async (file: string) => (await readJson<{ entries?: LogEntry[] }>(file))?.entries ?? []
@@ -197,6 +203,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     await saveProjects(out)
   }
   let migrated: Promise<void> | null = null
+  // As stored: what writes change. Readers get effective ones (shown below).
   const projects = async () => { await (migrated ??= migrate().then(migrateColors).catch((e) => { migrated = null; throw e })); return readProjects() }
   async function templates(): Promise<TemplateInfo[]> {
     const names = await fs.readdir(files.templates).catch(() => [] as string[])
@@ -233,6 +240,15 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await writeJson(path.join(files.tasks, `${task.id}.json`), out)
     }
   }
+  // A member's overrides recomputed from its stored form (no change: nothing written).
+  async function keepOverrides(i: number, of: (p: Project) => Pick<Project, 'overrides'>, list: Project[]) {
+    if (!list[i]!.workspace) return
+    const { overrides: old, ...rest } = list[i]!
+    const next = of(list[i]!)
+    if (JSON.stringify(next.overrides) === JSON.stringify(old)) return
+    list[i] = { ...rest, ...next }
+    await saveProjects(list)
+  }
   async function knownTemplate(id: string) {
     const t = isTemplateId(id) ? await readJson<Template>(path.join(files.templates, `${id}.json`)) : null
     if (!t) throw new HerdrError('not_found', 'Unknown template')
@@ -247,7 +263,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   return {
     files,
     async overview(): Promise<PmOverview> {
-      return { enabled: await enabled(), projects: await projects(), templates: await templates(), tasks: (await tasks()).map(publicTask) }
+      return { enabled: await enabled(), projects: effectiveProjects(await projects()), templates: await templates(), tasks: (await tasks()).map(publicTask) }
     },
     setEnabled: (on: boolean) => serial(async () => writeJson(files.pm, { ...await pm(), v: 1, enabled: on })),
     // Marks the terminals this wherdr starts (wherdr.install), so that two
@@ -261,7 +277,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     }),
     enabled,
     tasks,
-    projects,
+    // Each member with its workspace's settings in force (effectiveProject).
+    projects: async () => effectiveProjects(await projects()),
     // A task by its id, or by a key the project had or has now (WD-5 finds WHR-5).
     task: async (id: unknown) => {
       const direct = typeof id === 'string' && TASK_ID_RE.test(id) ? await readJson<Task>(path.join(files.tasks, `${id}.json`)) : null
@@ -269,21 +286,28 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       return direct ?? (stored ? readJson<Task>(path.join(files.tasks, `${stored}.json`)) : null)
     },
     // A project by any of its keys (any case), or undefined.
-    project: async (key: unknown) => projectOf(await projects(), key),
+    project: async (key: unknown) => projectOf(effectiveProjects(await projects()), key),
     template: (id: string) => (isTemplateId(id) ? readJson<Template>(path.join(files.templates, `${id}.json`)) : Promise.resolve(null)),
     templateLog: async (id: string) => (isTemplateId(id) ? readLog(path.join(files.templateLog, `${id}.json`)) : []),
     // The project's own workflow (a Template), what its tasks follow: the
     // minimal default until the user accepts one. saved: the accepted one only (null: none yet).
-    workflow: async (key: string) => (KEY_RE.test(key) ? await readJson<Template>(workflowFile(key)) ?? defaultWorkflow(key) : null),
+    // A member's has its workspace's agents and worktree setup unless it overrides them.
+    workflow: async (key: string) => {
+      if (!KEY_RE.test(key)) return null
+      const t = await readJson<Template>(workflowFile(key)) ?? defaultWorkflow(key), list = await projects()
+      const p = list.find(x => x.key === key)
+      return p?.workspace ? effectiveWorkflow(t, p, workspaceOf(p, list)) : t
+    },
     savedWorkflow: (key: string) => (KEY_RE.test(key) ? readJson<Template>(workflowFile(key)) : Promise.resolve(null)),
     workflowLog: (key: string) => (KEY_RE.test(key) ? readLog(workflowLogFile(key)) : Promise.resolve([])),
     // by, said: as saveTemplate. Its id is always the project's (lowercased key).
     saveWorkflow: (key: string, t: unknown, { by = 'user', said = '' } = {}) => write(async () => {
-      await findProject(key)
+      const { list, i } = await findProject(key)
       const errors = validateTemplate(t)
       if (errors.length) throw badInput(errors)
       const old = await readJson<Template>(workflowFile(key))
       const version = await saveVersioned(workflowFile(key), workflowLogFile(key), { ...(t as Template), id: key.toLowerCase() }, old, by, said)
+      await keepOverrides(i, p => workflowOverrides(p, workspaceOf(p, list), t as Template), list)
       // Before the first one, the tasks followed the default workflow.
       await replanTasks(key, old ?? defaultWorkflow(key), t as Template)
       return { id: key.toLowerCase(), version }
@@ -397,6 +421,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const title = str('title'), type = str('type')
       if (!title || title.length > 200) throw badInput([{ path: 'title', message: '1 to 200 characters' }])
       if (!type) throw badInput([{ path: 'type', message: 'is required' }])
+      const refused = workspaceTaskError(p, type)
+      if (refused) throw badInput([{ path: 'type', message: refused }])
       // A removed task's number is never given again.
       const ids = [...(await tasks()).filter(t => t.project === p.key).map(t => t.id), ...(await projectLog(p.key)).flatMap(e => (e.task ? [e.task] : []))]
       const n = 1 + Math.max(0, ...ids.map(id => Number(id.slice(p.key.length + 1)) || 0))
@@ -415,20 +441,25 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
 
     addProject: (raw: unknown, check: FolderCheck, opts?: FolderOptions) => write(async () => {
       const { project, errors } = cleanProjectInput(raw)
-      if (!project) throw badInput(errors)
+      const ws = cleanWorkspaceFields(raw)
+      if (!project || ws.errors.length) throw badInput([...errors, ...ws.errors])
       const list = await projects()
       const clash = keyClash(list, project.key)
       if (clash) throw new HerdrError('exists', `Project ${clash.name} already has the key ${project.key}`)
+      // A member keeps only its key, name, machine, path and workspace: the rest comes from the workspace.
       const { template, ...fields } = project
-      const source = template ? await sourceOf(template) : null
-      const checked = await check(project.machine, project.path, opts)
+      const source = template && !ws.fields.workspace ? await sourceOf(template) : null
+      const checked = await check(project.machine, project.path, ws.fields.kind ? { ...opts, plain: true } : opts)
       const { path: folder, git } = typeof checked === 'string' ? { path: checked, git: true } : checked
       if (list.some(p => p.machine === project.machine && p.path === folder)) throw new HerdrError('exists', 'This folder is already a project')
       // A removed project's workflow and log under the same key are not the new one's.
       await Promise.all([workflowFile(fields.key), workflowLogFile(fields.key)].map(f => fs.rm(f, { force: true })))
-      let added: Project = { ...fields, color: fields.color ?? defaultColor(list), path: folder, ...(git ? {} : { git: false as const }), addedAt: Date.now() }
+      let added: Project = ws.fields.workspace
+        ? { key: fields.key, name: fields.name, machine: fields.machine, path: folder, workspace: ws.fields.workspace, addedAt: Date.now() }
+        : { ...fields, ...ws.fields, color: fields.color ?? defaultColor(list), path: folder, ...(git && !ws.fields.kind ? {} : { git: false as const }), addedAt: Date.now() }
       if (source) added = { ...added, from: (await copyTemplate(added.key, source, 'user')).from }
       await saveProjects([...list, added])
+      if (added.workspace) return added // no coordinator of its own: the workspace's runs it
       // A new project's tasks at once: Auto, from its machines (an existing project keeps its number).
       const coordinator = path.join(files.coordinators, `${added.key}.json`)
       if (!(await readJson(coordinator))) await writeJson(coordinator, { project: added.key, tokenHash: '', autopilot: NEW_AUTOPILOT } satisfies CoordinatorRecord)
@@ -469,11 +500,12 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const next = update.key ?? shownKey(list[i]!)
       const clash = keyClash(list, next, rest.key)
       if (clash) throw new HerdrError('exists', `Project ${clash.name} already has the key ${next}`)
-      const { machines: _m, clones: _c, paused: _p, placement: _s, ...kept } = rest
+      const { machines: _m, clones: _c, paused: _p, placement: _s, overrides: _o, ...kept } = rest
       const placement = update.placement ?? rest.placement
       const allowed = machinesOf(rest, update)
       if (allowed.errors.length) throw badInput(allowed.errors)
-      list[i] = { ...kept, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...ownName, ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(allowed.paused ? { paused: allowed.paused } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}), ...(update.archiveAfter !== undefined ? { archiveAfter: update.archiveAfter } : {}), ...(keepBranch ? { deleteBranch: false as const } : {}), ...(reach.length ? { reach } : {}) }
+      const overrides = memberOverrides(list[i]!, update)
+      list[i] = { ...kept, ...overrides, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...ownName, ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(allowed.paused ? { paused: allowed.paused } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}), ...(update.archiveAfter !== undefined ? { archiveAfter: update.archiveAfter } : {}), ...(keepBranch ? { deleteBranch: false as const } : {}), ...(reach.length ? { reach } : {}) }
       await saveProjects(list)
       return list[i]!
     }),
@@ -493,8 +525,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const b = typeof base === 'string' ? base.trim() : ''
       if (b && !isBranch(b)) throw badInput([{ path: 'base', message: 'invalid branch name' }])
       const { list, i } = await findProject(key)
-      const { base: _old, ...rest } = list[i]!
-      list[i] = b ? { ...rest, base: b } : rest
+      const { base: _old, overrides: _o, ...rest } = list[i]!
+      list[i] = { ...rest, ...(b ? { base: b } : {}), ...memberOverrides(list[i]!, { base: b }) }
       await saveProjects(list)
       return list[i]!
     }),

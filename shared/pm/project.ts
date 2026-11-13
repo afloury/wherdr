@@ -8,6 +8,7 @@ import { PAUSED, isStrategy, type Strategy } from './placement'
 import { branchNameError } from './branchName'
 import { ARCHIVE_DAYS } from './archive'
 import { cleanReach, type Reach } from './reach'
+import type { SharedField, WorkspaceShared } from './workspace'
 
 export interface Project {
   key: string // the fixed id (see projectKey.ts): task ids are <key>-<n>: WHR-344
@@ -38,11 +39,19 @@ export interface Project {
   archiveAfter?: number // days a done task stays in Done before it is archived, 0 never; missing: 7 (archive.ts)
   deleteBranch?: false // keep each task's remote branch after its merge; missing: deleted when safe (pmActions.ts)
   reach?: Reach[] // other projects its coordinator may read or act on (reach.ts); missing: none
+  // A workspace (workspace.ts): git false, path its root folder, in tab group
+  // `group`, its members take `shared`. A member names its workspace's key and
+  // the shared fields it sets itself; read it through effectiveProject.
+  kind?: 'workspace'
+  group?: string
+  shared?: WorkspaceShared
+  workspace?: string
+  overrides?: SharedField[]
   addedAt: number
 }
 
 // template: a library template id or example:<id>, copied into the project's workflow.
-export type ProjectInput = Omit<Project, 'addedAt' | 'from' | 'label' | 'aliases'> & { template?: string }
+export type ProjectInput = Omit<Project, 'addedAt' | 'from' | 'label' | 'aliases' | 'kind' | 'group' | 'shared' | 'workspace' | 'overrides'> & { template?: string }
 export interface TemplateInfo { id: string, version?: number }
 // GET /api/pm/overview
 export interface PmOverview { enabled: boolean, projects: Project[], templates: TemplateInfo[], tasks?: Task[] }
