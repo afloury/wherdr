@@ -512,7 +512,7 @@ function resetListWidth() {
 
       <AlfredRow v-if="st.ok" />
       <CoordinatorsSection v-if="st.ok" />
-      <TasksToHandle v-if="st.ok" />
+      <ReviewCard v-if="st.ok" />
 
       <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />

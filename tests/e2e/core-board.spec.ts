@@ -29,7 +29,7 @@ test('board: Your turn, the reviewer\'s state and the step button', async ({ pag
       { key: 'CM', name: 'Studies', machine: '', path: '/workspace/other', template: 'common', addedAt: 1 },
     ] })
     await json('templates/company.json', company)
-    // A long step button: the sidebar's Tasks to handle shows it as the row's badge.
+    // A long step button: the board's Your turn card shows it as its badge.
     const long = (st: { id: string }) => (st.id === 'pick' ? { ...st, userLabel: `Create these tasks ${LONG}` } : st)
     await json('templates/common.json', { ...common, taskTypes: { ...common.taskTypes, 'feature-split': { steps: common.taskTypes['feature-split']!.steps.map(long) } } })
     const task = (id: string, type: string, s: unknown) => ({ id, project: id.split('-')[0], title: `Task ${id}: ${LONG}`, description: 'What to do.', type, state: 'working', step: s, createdAt: 1 })
@@ -41,7 +41,7 @@ test('board: Your turn, the reviewer\'s state and the step button', async ({ pag
     // The sidebar never scrolls sideways: every row shrinks or ellipsizes (phone and computer).
     await core.open(page, '/')
     const list = page.locator('#home .scroll')
-    await expect(page.getByTestId('tasks-to-handle')).toBeVisible()
+    await expect(page.getByTestId('tasks-to-review')).toBeVisible()
     await mkdir('.shots', { recursive: true })
     for (const size of [{ width: 390, height: 664 }, { width: 320, height: 700 }, { width: 1440, height: 900 }]) {
       await page.setViewportSize(size)
