@@ -19,6 +19,12 @@ type Deps = CoreAdminDeps & { store: PmStore }
 
 export async function adoptRepo(deps: Deps, ws: Project | undefined, projects: Project[], cmd: RepoCommand, by: string) {
   if (!ws || !isWorkspace(ws)) throw new HerdrError('bad_input', 'repo adopt is a workspace\'s: run it from a workspace\'s coordinator, or name one with --project <KEY>')
+  return addAdopted(deps, ws, await checkAdoption(deps, ws, projects, cmd), by)
+}
+
+// Everything adopting checks, nothing changed: the repository (symlinks
+// resolved) and its folder as probed.
+export async function checkAdoption(deps: Deps, ws: Project, projects: Project[], cmd: RepoCommand) {
   const { store } = deps
   const { on } = machineOn(deps, ws.machine)
   const home = await homeOf(deps, on) ?? ''
@@ -41,7 +47,17 @@ export async function adoptRepo(deps: Deps, ws: Project | undefined, projects: P
   const owners = others.map((o, i) => ({ project: o.project, folders: [o.folder, resolved[i]!] }))
   const refused = adoptRefusal([probe.path, realFolder], owners, probe, needsRemote(workflow))
   if (refused) throw new HerdrError('refused', refused)
-  const added = await ensureVisibility(deps, await store.addProject({ ...member, path: probe.path }, (m, f, o) => pmFolderCheck(m, f, o, deps)))
+  return { repo, path: probe.path }
+}
+
+// The checked repository made a member (key and color picked from the projects as they are now).
+// saved: told the member's key as soon as it is saved, before what may still fail.
+export async function addAdopted(deps: Deps, ws: Project, { repo, path }: { repo: string, path: string }, by: string, saved?: (key: string) => void) {
+  const { store } = deps
+  const member = adoptedMember(ws, repo, await store.projects())
+  const project = await store.addProject({ ...member, path }, (m, f, o) => pmFolderCheck(m, f, o, deps))
+  saved?.(project.key)
+  const added = await ensureVisibility(deps, project)
   await store.logProject(ws.key, { by, text: `adopted ${repo} as project ${added.key}`, adopted: { project: added.key, repo } })
   // Its map line, when it has one, names it now (map.md is written again at the next map set if this fails).
   const file = await store.changeMap(ws.key, f => ({ ...f, entries: f.entries.map(e => (e.repo === repo ? { ...e, project: added.key } : e)) }))
