@@ -50,7 +50,7 @@ it('wherdr: screenshots, timeouts and a squash merge once smoke is green', () =>
   expect(say(wherdr, 'visual')).toMatchObject({
     work: 'The worker does the task and says when it is done; it must attach screenshots. After 3h, it comes to you.',
     review: 'The reviewer checks the work: a major finding sends it back to work, up to 3 times, then you decide. After 45m, it comes to you.',
-    merge: 'Waits here until you act (button “Merge”). Then: the engine merges the GitHub PR (squash) once smoke is green.',
+    merge: 'Waits here until you act (button “Accept”). Then: the engine merges the GitHub PR (squash) once smoke is green.',
   })
   expect(say(wherdr, 'simple').merge).toBe('The engine merges the GitHub PR (squash) once smoke is green.')
 })
