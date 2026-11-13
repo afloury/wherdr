@@ -3,8 +3,8 @@
 // (Accept, the next one shows), Reject (a note and screenshots back to the worker),
 // the others' own answers, previous and next (a task passed over stays), the keys,
 // All done after the last; its filter follows the group tab by default.
-import { afterEach, expect, it } from 'vitest'
-import { readBody } from 'h3'
+import { afterEach, expect, it, vi } from 'vitest'
+import { createError, readBody } from 'h3'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import ReviewCard from '~/components/ReviewCard.vue'
 import { coordinators } from '~/composables/useCoordinators'
@@ -26,6 +26,7 @@ registerEndpoint('/api/pm/board', () => ({ projects: [{ key: 'home', name: 'Home
 registerEndpoint('/api/pm/handle', () => toHandle(cards))
 registerEndpoint('/api/pm/step-user', { method: 'POST', handler: async (e) => {
   const { id } = await readBody(e) as { id: string }
+  if (id === 'HO-X') throw createError({ statusCode: 409, statusMessage: 'The PR has conflicts' })
   accepted.push(id)
   cards = cards.filter(c => c.id !== id)
   return { task: { id } }
@@ -120,4 +121,30 @@ it('follows the group tab by default, and keeps the filter picked', async () => 
     await expect.poll(progress).toBe('1 of 3')
     w.unmount()
   } finally { coordinators.value = []; machineGroups.value = []; machineBarSaved.value = null }
+})
+
+it('confirms Approve, then slides to the next task; a failure stays put; reduced motion fades', async () => {
+  cards = [card('HO-1', 'home'), card('HO-X', 'home'), card('HO-3', 'home')]
+  reviewOpen.value = true
+  const w = await mountSuspended(ReviewCard)
+  await expect.poll(shown).toBe('HO-1')
+  expect(q('review-stage')!.dataset.motion).toBe('slide')
+  q('review-approve')!.click()
+  // Approved on its button, the same task still there, then the next one.
+  await expect.poll(() => q('review-approve')?.textContent).toBe('Approved')
+  expect([shown(), progress()]).toEqual(['HO-1', '1 of 3'])
+  await expect.poll(shown).toBe('HO-X')
+  expect([progress(), q('review-approve')?.textContent]).toEqual(['1 of 2', 'Approve'])
+  q('review-approve')!.click() // refused by the server: the error, the same task, no confirmation
+  await expect.poll(() => !!q('review-error')).toBe(true)
+  await new Promise(r => setTimeout(r, 500))
+  expect([shown(), q('review-approve')?.textContent]).toEqual(['HO-X', 'Approve'])
+  w.unmount()
+
+  const mm = vi.spyOn(window, 'matchMedia').mockImplementation(query => ({ matches: query.includes('reduced-motion'), media: query, addEventListener() {}, removeEventListener() {} }) as unknown as MediaQueryList)
+  try {
+    const r = await mountSuspended(ReviewCard)
+    await expect.poll(() => q('review-stage')?.dataset.motion).toBe('fade')
+    r.unmount()
+  } finally { mm.mockRestore() }
 })
