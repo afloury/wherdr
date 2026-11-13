@@ -38,6 +38,18 @@ export const isWorkspace = (p: Pick<Project, 'kind'> | undefined) => p?.kind ===
 export const workspaceOf = (member: Pick<Project, 'workspace'>, list: Project[]) =>
   member.workspace ? list.find(p => p.key === member.workspace && isWorkspace(p)) : undefined
 
+// A workspace's members (none for any other project).
+export const membersOf = (key: string, list: Project[]) =>
+  isWorkspace(list.find(p => p.key === key)) ? list.filter(p => p.workspace === key) : []
+// Whose coordinator handles a project: a member's workspace, else its own.
+export const coordinatorKey = (key: string, list: Project[]) => {
+  const p = list.find(x => x.key === key)
+  return p && workspaceOf(p, list) ? p.workspace! : key
+}
+// The projects a coordinator handles (its own, and a workspace's members):
+// one autopilot, whose limits count all their tasks.
+export const handledBy = (key: string, list: Project[]) => list.filter(p => p.key === key || membersOf(key, list).includes(p))
+
 const defined = <T extends object>(o: T) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>
 const trim = (p: string) => p.replace(/\/+$/, '')
 

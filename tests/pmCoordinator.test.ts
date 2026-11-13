@@ -18,7 +18,7 @@ import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import type { Finding } from '../shared/pm/verdict'
 import { defaultWorkflow, type Template } from '../shared/pm/workflow'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
-import { runNow, wakeTick } from '../server/utils/pmWakes'
+import { runNow, wakeCoordinators, wakeTick } from '../server/utils/pmWakes'
 import { askCoordinator } from '../server/utils/pmReport'
 import { answerQuestion } from '../server/utils/pmAnswer'
 import { cardOf, toHandle } from '../shared/pm/board'
@@ -135,6 +135,48 @@ describe('other projects (WHR-311)', () => {
     const agents = roleFiles((await store.projects()).find(x => x.key === 'CO')!, company, [])['AGENTS.md']!
     expect(agents).toContain('## Other projects')
     expect(agents).toContain('- ST: Act')
+  })
+})
+
+describe('workspaces (WHR-314)', () => {
+  // WS is a workspace with members PA and QA; its token acts on them, at the Act level.
+  beforeEach(async () => {
+    const raw = JSON.parse(await fs.readFile(store.files.projects, 'utf8'))
+    raw.projects.push({ key: 'WS', name: 'Work', machine: '', path: '/src/work', kind: 'workspace', git: false, addedAt: 1 },
+      { key: 'PA', name: 'Payroll', machine: '', path: '/src/work/payroll-api', workspace: 'WS', addedAt: 1 },
+      { key: 'QA', name: 'Quotes', machine: '', path: '/src/work/quotes-app', workspace: 'WS', addedAt: 1 })
+    await fs.writeFile(store.files.projects, JSON.stringify(raw))
+    token = await issueToken(store, 'WS')
+    await noteTurn(store, 'WS', 'user', 'go')
+  })
+
+  it('reads and acts on its members only, no setting needed; the rest stays at Act', async () => {
+    const pa = await store.addTask({ project: 'PA', title: 'Pay', type: 'feature' })
+    const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
+    expect((await cli(['list', '--project', 'PA']) as { tasks: { id: string }[] }).tasks.map(t => t.id)).toEqual([pa.id])
+    await cli(['task', 'tag', pa.id, 'X-1'])
+    expect((await store.task(pa.id))!.log!.at(-1)).toMatchObject({ by: 'coordinator WS', text: 'tag X-1' })
+    await refused(cli(['show', st.id]), 'project WS only')
+    await refused(cli(['template', 'show', '--project', 'PA']), 'stays with its own coordinator and the user')
+    // Its instructions list its members.
+    expect(roleFiles((await store.projects()).find(x => x.key === 'WS')!, null, [], undefined, k => k, ['PA', 'QA'])['AGENTS.md']).toContain('member projects: PA, QA')
+  })
+
+  it('one autopilot: a member\'s start in a wake counts the other members\' tasks', async () => {
+    await store.saveCoordinator({ ...(await store.coordinator('WS'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true, atOnce: 1 }, turn: { kind: 'wake', at: Date.now() } })
+    const qa = await store.addTask({ project: 'QA', title: 'Quote', type: 'feature' })
+    await store.saveTask({ ...qa, state: 'working' })
+    const pa = await store.addTask({ project: 'PA', title: 'Pay', type: 'feature' })
+    await refused(cli(['task', 'start', pa.id]), '1 tasks already work at once (limit 1)')
+  })
+
+  it('no coordinator for a member: none starts, none listed; its wakes go to the workspace\'s', async () => {
+    await refused(startCoordinator(deps(), 'PA', {}, { local: 'http://127.0.0.1:3000' }), 'member of workspace WS')
+    expect((await coordinatorsView(store)).map(c => c.project)).toEqual([MAIN, 'CO', 'ST', 'WS'])
+    await store.saveCoordinator({ ...(await store.coordinator('WS'))!, terminal: 'host/t1', autopilot: { ...DEFAULT_AUTOPILOT, on: true } })
+    const pa = await store.addTask({ project: 'PA', title: 'Pay', type: 'feature' })
+    expect(await wakeCoordinators({ store }, pa, 'stuck: no output for 30 min', 1000)).toEqual(['the workspace\'s coordinator'])
+    expect((await store.wakes()).map(w => [w.coordinator, w.reasons[0]])).toEqual([['WS', `${pa.id}: stuck: no output for 30 min`]])
   })
 })
 

@@ -13,6 +13,26 @@ project, with its own key, tasks and board, but **no coordinator of its own**.
 The workspace's coordinator handles it. A repository belongs to one workspace
 at most, and a workspace is never itself in a workspace.
 
+## The workspace's coordinator
+
+The workspace's coordinator handles its members as its own projects: its
+token reads and acts on each member, with no setting to change, at the *Act*
+level of [Other projects this coordinator may act on](project-management.md#coordinators-on-other-projects)
+(list, show, read, plan, adding, starting, editing and ordering tasks, tell…;
+commands that name a project take `--project <member>`). A member's guards,
+merges, settings and workflow stay with you. Its instructions (`AGENTS.md`)
+list the members.
+
+A member has **no coordinator**: none is started for it, and none shows in the
+sidebar. Every wake about a member's task goes to the workspace's coordinator,
+its first line naming the task (`PAY-3: stuck: …`), and *Ask the coordinator*
+on a member's task asks it too. Its health checks cover all the members' tasks.
+
+The workspace has **one autopilot** for all its members: *At once* and *Tasks
+/ day* count the tasks of every member together, and *Keep the board busy*
+starts the members' to-do tasks in board order. Features never start: they
+have no agent.
+
 ## Shared settings
 
 A workspace holds the settings its members take:
