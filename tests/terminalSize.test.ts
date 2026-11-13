@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { columnsForWidth, terminalPixelWidth } from '../app/utils/terminalSize'
+import { columnsForWidth, proposeTerminalSize, terminalPixelWidth } from '../app/utils/terminalSize'
 
 describe('largeur du terminal en pixels → colonnes', () => {
   it.each([
@@ -20,5 +20,28 @@ describe('largeur du terminal en pixels → colonnes', () => {
     expect(terminalPixelWidth(390, 'normal', false)).toBe(390)
     expect(terminalPixelWidth(400, 'wide')).toBe(352)
     expect(columnsForWidth(12, 10)).toBe(1)
+  })
+})
+
+describe('size proposed for "Fit to this screen"', () => {
+  // iPhone 13: #term is 382 px wide, cells 7 × 15 px.
+  const style = (values: Record<string, string>) => ({ getPropertyValue: (n: string) => values[n] ?? '0px' }) as unknown as CSSStyleDeclaration
+  const parent = {} as HTMLElement
+  const element = { parentElement: parent } as unknown as HTMLElement
+  const styles = (e: Element) => style(e === parent ? { width: '382px', height: '600px' } : {})
+  const term = (scrollback: number, cols: number) => ({
+    element, cols, options: { scrollback },
+    _core: { _renderService: { dimensions: { css: { cell: { width: 7, height: 15 } } } } },
+  })
+
+  it('gives the open size after the other-screen view, with core scrollback on', () => {
+    const opened = proposeTerminalSize(term(0, 54), styles) // before web.capabilities
+    const fitted = proposeTerminalSize(term(5000, 103), styles) // watching at the desktop size
+    expect(opened).toEqual({ cols: 54, rows: 40 })
+    expect(fitted).toEqual(opened)
+  })
+
+  it('waits for the cell size', () => {
+    expect(proposeTerminalSize({ element, _core: { _renderService: { dimensions: { css: { cell: { width: 0, height: 0 } } } } } }, styles)).toBeUndefined()
   })
 })
