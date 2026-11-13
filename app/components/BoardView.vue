@@ -10,6 +10,7 @@ import { RESUMES } from '#shared/pm/stop'
 import { cardTime } from '#shared/pm/times'
 import { shownTaskId, storedTaskId } from '#shared/pm/projectKey'
 import type { Pane } from '#shared/types'
+import { projectOption } from '~/utils/projectOption'
 
 const data = ref<Board | null>(null)
 const error = ref('')
@@ -54,7 +55,7 @@ const cards = computed(() => (data.value?.cards ?? [])
   .filter(c => shownProject(c.project) && (!tag.value || c.tags.includes(tag.value)))
   .map(c => (!c.yourTurn && waitsForYou(c) ? { ...c, yourTurn: tl('Answer the agent', 'Réponds à l’agent') } : c)))
 const tagPick = noneModel(tag)
-const projectItems = computed(() => [{ label: tl('Follow machine tab'), value: BOARD_FOLLOW }, { label: tl('All projects', 'Tous les projets'), value: BOARD_ALL }, ...(data.value?.projects ?? []).map(p => ({ label: p.name, value: p.key }))])
+const projectItems = computed(() => [{ label: tl('Follow machine tab'), value: BOARD_FOLLOW }, { label: tl('All projects', 'Tous les projets'), value: BOARD_ALL }, ...(data.value?.projects ?? []).map(p => projectOption(p))])
 const tagItems = computed(() => [{ label: tl('Tags', 'Étiquettes'), value: NONE }, ...tags.value.map(x => ({ label: x, value: x }))])
 const tags = computed(() => boardTags((data.value?.cards ?? []).filter(c => shownProject(c.project))))
 // The header's coordinator button: the project's; none on All projects (Alfred has no autopilot).
@@ -150,7 +151,7 @@ const openArchived = (c: Card) => { keepArchivedCard(c); show(c.id) }
       <UButton icon="i-lucide-plus" color="neutral" variant="outline" size="lg" class="board-add" :aria-label="tl('Add a task', 'Ajouter une tâche')" :disabled="!data?.projects.length" data-testid="board-add" @click="adding = true">
         <span class="board-add-label">{{ tl('Add task', 'Ajouter') }}</span>
       </UButton>
-      <USelect v-model="projectPick" :items="projectItems" size="lg" class="board-select" :aria-label="tl('Project', 'Projet')" data-testid="board-project" />
+      <ProjectSelect v-model="projectPick" :items="projectItems" size="lg" class="board-select" :aria-label="tl('Project', 'Projet')" data-testid="board-project" />
       <USelect v-if="tags.length || tag" v-model="tagPick" :items="tagItems" size="lg" class="board-select" :aria-label="tl('Tag', 'Étiquette')" data-testid="board-tag" />
       <UButton icon="i-lucide-server" color="neutral" variant="ghost" size="lg" class="icon-btn" :to="machinesLink" :aria-label="tl('Machines')" :title="tl('Machines')" data-testid="board-machines" />
       <CoordinatorButton v-if="coordinator" :c="coordinator" open />
@@ -217,6 +218,12 @@ const openArchived = (c: Card) => { keepArchivedCard(c); show(c.id) }
   .board-add-label { display: none; }
   .board-top h1 { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
   .board-top [data-testid="board-decisions"] { margin-right: auto; }
+  /* A picked project shows its key badge alone, without the chevron, at its full width; a crowded
+     header (Autopilot too) wraps to a second row instead of running off the screen. */
+  .board-top:has(.project-select-value) { flex-wrap: wrap; row-gap: 4px; padding-bottom: 4px; }
+  .board-top :deep(.board-select:has(.project-select-value)) { flex: none; padding-inline: 6px; }
+  .board-top :deep(.board-select:has(.project-select-value) [data-slot="trailing"]) { display: none; }
+  .board-top :deep(.project-select-value .truncate) { display: none; }
 }
 .board-top :deep(.board-select) { min-width: 0; flex: 0 1 auto; }
 .board-note { padding: 12px 16px; }
