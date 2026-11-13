@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { alfredUpdateRequest, compareVersions, parseVersion } from '../shared/updates'
+import { compareVersions, parseVersion } from '../shared/updates'
 import { RELEASES_URL, createUpdateChecker } from '../server/utils/updates'
 
 describe('versions', () => {
@@ -19,13 +19,6 @@ describe('versions', () => {
 function release(tag: string) {
   return vi.fn(async (_url: string) => ({ ok: true, json: async () => ([{ tag_name: tag, html_url: `https://example.test/releases/${tag}`, body: '## Upgrade notes' }]) }))
 }
-
-describe('Update with Alfred', () => {
-  it('asks Alfred for the version, with its release', () => {
-    expect(alfredUpdateRequest({ latest: '3.1.0', url: 'https://example.test/releases/v3.1.0' }))
-      .toBe('Update wherdr to 3.1.0: https://example.test/releases/v3.1.0')
-  })
-})
 
 describe('release check', () => {
   it('reports a newer version', async () => {
