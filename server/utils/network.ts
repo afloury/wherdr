@@ -12,6 +12,11 @@
 //   interface, so a reply to a forged peer address never goes back to the
 //   Wi-Fi. An interface address in that range proves nothing (a LAN may use
 //   it): Tailscale's state is read from Tailscale (CLI or its socket).
+//   Only your own devices count: untagged peers of the same Tailscale user
+//   as this machine (bin/lib/tailnet.mjs tailnetPeers). Any other peer
+//   (another user's device in a team tailnet, a node shared in from another
+//   tailnet, a sharee's or tagged node) is refused ('foreign') until the
+//   owner sets up a passkey, which then locks it out.
 // What a peer on this machine cannot prove: a relay running here (a reverse
 // proxy, a TCP forward, `tailscale funnel`) connects from loopback like a
 // local browser. wherdr reads Tailscale's serve configuration: once it shows
@@ -20,8 +25,8 @@
 // a valid reading shows it gone (a failed or stale reading does not reopen).
 // When Funnel was never seen, a failed or missing reading is served and the
 // server log says Funnel cannot be checked.
-// The passkey is never required by the network: it locks the app when the
-// owner sets one up, wherever the device is. Any other relay the owner runs
+// The passkey is never required by your own devices: it locks the app when
+// the owner sets one up, wherever the device is. Any other relay the owner runs
 // is indistinguishable from this computer: documented, with the passkey
 // recommended as soon as the access is HTTPS.
 //
@@ -36,8 +41,9 @@ import { tailnetFacts, tailnetPeers, tailscaleBin } from '../../bin/lib/tailnet.
 
 export type NetZone = 'local' | 'tailnet' | 'trusted' | 'open'
 // peer: another network; forwarded: a proxy names a client from one;
-// funnel: Tailscale Funnel exposes wherdr.
-export type NetRefusal = 'peer' | 'forwarded' | 'funnel'
+// funnel: Tailscale Funnel exposes wherdr; foreign: a tailnet peer that is not
+// one of your devices, without a passkey.
+export type NetRefusal = 'peer' | 'forwarded' | 'funnel' | 'foreign'
 export type NetCheck =
   | { ok: true, zone: NetZone }
   | { ok: false, reason: NetRefusal }
@@ -53,8 +59,9 @@ export interface TrustedNetworks {
 }
 
 // Tailscale as Tailscale reports it. funnel: Funnel exposes wherdr's port;
-// null: unknown (served, warned at startup).
-export interface TailscaleState { running: boolean, selfIps: string[], peerIps: string[], funnel: boolean | null }
+// null: unknown (served, warned at startup). peerIps: your own devices;
+// otherIps: the other peers (bin/lib/tailnet.mjs tailnetPeers).
+export interface TailscaleState { running: boolean, selfIps: string[], peerIps: string[], otherIps?: string[], funnel: boolean | null }
 
 export interface NetContext {
   trusted: TrustedNetworks
@@ -63,6 +70,11 @@ export interface NetContext {
   // Funnel was seen exposing wherdr and no valid reading has shown it gone
   // since (kept through failed and stale readings).
   funnelExposed?: boolean
+  // Tailnet peers that are not yours, from the last valid reading (kept
+  // through failed and stale ones: they only refuse more).
+  otherIps?: string[]
+  // A passkey is set up: the other peers are let through to the lock.
+  passkey?: boolean
 }
 
 const LOOPBACK = new net.BlockList()
@@ -121,6 +133,13 @@ export function tailnetKnown(ip: string, ts: TailscaleState | null): boolean {
   return [...ts.selfIps, ...ts.peerIps].some(x => sameIp(plainIp(x), a))
 }
 
+// A tailnet address Tailscale lists as a peer that is not one of your devices.
+export function tailnetOther(ip: string, ctx: NetContext): boolean {
+  const a = plainIp(ip)
+  if (!isTailnetIp(a) || tailnetKnown(a, ctx.tailscale)) return false
+  return [...(ctx.tailscale?.otherIps || []), ...(ctx.otherIps || [])].some(x => sameIp(plainIp(x), a))
+}
+
 type Headers = Record<string, string | string[] | undefined>
 const header = (h: Headers, name: string) => {
   const v = h[name]
@@ -146,14 +165,21 @@ export function forwardedClients(h: Headers): string[] {
   return out
 }
 
-// The zone of an address a local proxy names. These only restrict (the
-// connection already comes from this machine), so the tailnet range is taken
-// at its word here: it can only turn "local" into "tailnet".
-function forwardedZone(ip: string, ctx: NetContext): NetZone | null {
+// The zone of an address a local proxy names (`tailscale serve` names the
+// tailnet client). These only restrict (the connection already comes from
+// this machine). Without a passkey, a tailnet address counts only when
+// Tailscale lists it as one of your devices, like a direct connection: a peer
+// listed as not yours is 'foreign', one it does not list (a device that just
+// joined, Tailscale unreadable) is refused. With a passkey, any tailnet
+// client goes on to the lock.
+function forwardedZone(ip: string, ctx: NetContext): NetZone | 'foreign' | null {
   const a = plainIp(ip)
   if (!family(a)) return ctx.trusted.any ? 'open' : null
   if (isLoopbackIp(a)) return 'local'
-  if (isTailnetIp(a)) return 'tailnet'
+  if (isTailnetIp(a)) {
+    if (ctx.passkey || tailnetKnown(a, ctx.tailscale)) return 'tailnet'
+    return tailnetOther(a, ctx) ? 'foreign' : null
+  }
   if (inList(ctx.trusted.list, a)) return 'trusted'
   return ctx.trusted.any ? 'open' : null
 }
@@ -168,6 +194,7 @@ export function checkClient(peer: string | undefined, h: Headers, ctx: NetContex
   let zone: NetZone = 'local'
   if (isLoopbackIp(p)) zone = 'local'
   else if (tailnetKnown(p, ctx.tailscale)) return { ok: true, zone: 'tailnet' }
+  else if (tailnetOther(p, ctx)) return ctx.passkey ? { ok: true, zone: 'tailnet' } : { ok: false, reason: 'foreign' }
   else if (inList(ctx.trusted.list, p)) return { ok: true, zone: 'trusted' }
   else return any ? { ok: true, zone: 'open' } : { ok: false, reason: 'peer' }
 
@@ -180,6 +207,7 @@ export function checkClient(peer: string | undefined, h: Headers, ctx: NetContex
   for (const client of forwardedClients(h)) {
     const z = forwardedZone(client, ctx)
     if (!z) return { ok: false, reason: 'forwarded' }
+    if (z === 'foreign') return { ok: false, reason: 'foreign' }
     if (RANK[z] > RANK[zone]) zone = z
   }
   return { ok: true, zone }
@@ -188,7 +216,15 @@ export function checkClient(peer: string | undefined, h: Headers, ctx: NetContex
 // ------------------------------------------------------------------ gate
 
 export type GateVerdict = 'ok' | 'network' | 'host' | 'origin' | 'locked'
-const needsUnlock = (p: string) => (p.startsWith('/api/') && !p.startsWith('/api/auth/') && p !== '/api/health') || p.startsWith('/uploads/')
+const needsUnlock = (p: string) => (p.startsWith('/api/') && !p.startsWith('/api/auth/') && p !== '/api/health') || p.startsWith('/uploads/') || p.startsWith('/models/')
+
+// A coordinator's `wherdr pm` call, or Alfred's `wherdr alfred` call from
+// this machine only, carries its token instead of the passkey session; the
+// route checks the token.
+export function cliTokenCall(path: string, check: NetCheck, authorization: unknown): boolean {
+  const local = check.ok && check.zone === 'local'
+  return (path === '/api/pm/cli' || (path === '/api/alfred/cli' && local)) && /^Bearer [0-9a-f]{64}$/.test(String(authorization || ''))
+}
 
 // The whole guard decision for one request (server/middleware/guard.ts) or one
 // WebSocket upgrade (server/utils/ws.ts), in order:
@@ -204,11 +240,14 @@ export function gateDecision(o: {
   // HTTP: Sec-Fetch-Site says another site; WS: the Origin differs from the host.
   crossSite: boolean
   ws?: boolean
+  // An agent's upload or download with its task's key (/api/pm/shot): the route
+  // checks the key, so the passkey session is not asked.
+  agentKey?: boolean
 }): GateVerdict {
   if (!o.check.ok) return 'network'
   if (!o.hostOk) return 'host'
   if (o.crossSite && (o.ws || o.path.startsWith('/api/'))) return 'origin'
-  if ((o.ws || needsUnlock(o.path)) && !o.unlocked) return 'locked'
+  if ((o.ws || needsUnlock(o.path)) && !o.unlocked && !(o.agentKey && !o.ws && o.path === '/api/pm/shot')) return 'locked'
   return 'ok'
 }
 
@@ -225,7 +264,9 @@ const STALE_MS = 3 * REFRESH_MS
 let ts: (TailscaleState & { at: number }) | null = null
 // Funnel seen exposing wherdr; cleared only by a valid reading without it.
 let funnelSeen = false
-export type TailscaleReader = () => Promise<{ installed?: boolean, readable?: boolean, running: boolean, selfIps: string[], peerIps: string[], funnel: boolean | null }>
+// The peers that are not yours, from the last valid reading.
+let othersSeen: string[] = []
+export type TailscaleReader = () => Promise<{ installed?: boolean, readable?: boolean, running: boolean, selfIps: string[], peerIps: string[], otherIps?: string[], funnel: boolean | null }>
 const defaultReader: TailscaleReader = () => tailnetFacts(PORT)
 
 // Called after every reading (server/utils/ws.ts closes the WebSockets the
@@ -251,7 +292,8 @@ export async function refreshTailscale(read: TailscaleReader = defaultReader, no
   if (f) {
     // A temporarily missing Tailscale binary cannot clear a known exposure.
     const funnel = f.installed === false && funnelSeen ? null : f.funnel
-    ts = { running: f.readable === false ? false : f.running, selfIps: f.selfIps, peerIps: f.peerIps, funnel, at: now }
+    ts = { running: f.readable === false ? false : f.running, selfIps: f.selfIps, peerIps: f.peerIps, otherIps: f.otherIps || [], funnel, at: now }
+    if (f.readable !== false && f.installed !== false && f.otherIps) othersSeen = f.otherIps
     // Only a valid reading changes what is known about Funnel.
     if (funnel !== null) {
       funnelSeen = funnel
@@ -267,7 +309,6 @@ export async function refreshTailscale(read: TailscaleReader = defaultReader, no
 // a WebSocket upgrade asks for a reading started after it arrived.
 let inflight: { at: number, done: Promise<void> } | null = null
 export async function ensureFresh(maxAgeMs: number, read: TailscaleReader = defaultReader, now = Date.now()) {
-  if (forced) return
   if (ts && ts.at >= now - maxAgeMs) return
   if (inflight && inflight.at >= now - maxAgeMs) return inflight.done
   const at = Date.now()
@@ -276,20 +317,29 @@ export async function ensureFresh(maxAgeMs: number, read: TailscaleReader = defa
   return done
 }
 
-let forced: NetContext | null = null
-// Tests: a fixed context (null = the live one).
-export function setNetContextForTests(ctx: NetContext | null) { forced = ctx }
+// HTTP requests (server/middleware/guard.ts): a reading started at most
+// `freshMs` ago, else the current one while it is at most `blockMs` old, with
+// a new reading started in the background for the next requests. Older, or
+// none: the request waits for a new reading. Funnel traffic is still refused
+// on each request by its own header (checkClient), whatever the reading's age.
+export async function ensureRecent(freshMs: number, blockMs: number, read: TailscaleReader = defaultReader, now = Date.now()) {
+  if (ts && ts.at >= now - freshMs) return
+  const done = ensureFresh(freshMs, read, now)
+  if (ts && ts.at >= now - blockMs) return
+  return done
+}
+
 // Tests: forget what was read.
-export function resetNetworkStateForTests() { ts = null; inflight = null; started = 0; published = 0; funnelSeen = false }
+export function resetNetworkStateForTests() { ts = null; inflight = null; started = 0; published = 0; funnelSeen = false; othersSeen = [] }
 
 export function netContext(now = Date.now()): NetContext {
-  if (forced) return forced
   // Stale (no reading finished lately): nothing is known.
   const fresh = ts && now - ts.at < STALE_MS ? ts : null
   return {
     trusted: TRUSTED,
-    tailscale: fresh ? { running: fresh.running, selfIps: fresh.selfIps, peerIps: fresh.peerIps, funnel: fresh.funnel } : null,
+    tailscale: fresh ? { running: fresh.running, selfIps: fresh.selfIps, peerIps: fresh.peerIps, otherIps: fresh.otherIps, funnel: fresh.funnel } : null,
     ...(funnelSeen ? { funnelExposed: true } : {}),
+    ...(othersSeen.length ? { otherIps: othersSeen } : {}),
   }
 }
 export const openNetworkMode = () => TRUSTED.any
@@ -320,8 +370,10 @@ export function startNetworkWatch() {
 export function stopNetworkWatch() { if (timer) clearInterval(timer); timer = null }
 export const networkReady = () => ready ?? Promise.resolve()
 
-export function checkRequestClient(socketPeer: string | undefined, h: Headers): NetCheck {
-  return checkClient(socketPeer, h, netContext())
+// passkey: one is set up (auth.isEnabled()), which lets the tailnet peers
+// that are not yours through to the lock.
+export function checkRequestClient(socketPeer: string | undefined, h: Headers, passkey = false): NetCheck {
+  return checkClient(socketPeer, h, { ...netContext(), passkey })
 }
 
 // ------------------------------------------------------------------ listening

@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { ChatItem } from '../shared/types'
-import { boxHolds, takeBackInterrupted, unansweredLast, unansweredTurn, withoutTakenBack } from '../server/utils/interruptRestore'
+import { boxHolds, takeBackInterrupted, unansweredLast, withoutTakenBack } from '../server/utils/interruptRestore'
 import { inputBox } from '../server/utils/unqueue'
 import { parseClaude } from '../server/utils/transcripts'
 import { restoreDraft } from '../app/utils/queuedCancel'
@@ -53,25 +53,6 @@ describe('unansweredLast', () => {
   it('is null once the agent replied or used a tool', () => {
     expect(unansweredLast([{ role: 'user', text: 'b' }, { role: 'assistant', text: 'ok' }])).toBeNull()
     expect(unansweredLast([{ role: 'user', text: 'b' }, { role: 'tool', text: 'Read x' }])).toBeNull()
-  })
-})
-
-describe('unansweredTurn', () => {
-  const photo = '/home/user/.cache/herdr-web/uploads/2026-01-01T00-00-00-000Z-abc123.png'
-  it('first message of a conversation, with a photo, taken by Claude with no reply yet', () => {
-    const u: ChatItem = { role: 'user', text: 'fictional first question', images: 1, ts: '1' }
-    expect(unansweredTurn([u], `fictional first question\n${photo}`)).toBe(u)
-    expect(unansweredTurn([u, { role: 'system', text: 'Interrupted' }], 'fictional first question')).toBe(u)
-  })
-  it('photos alone: matched by their images', () => {
-    const u: ChatItem = { role: 'user', text: '', images: 1, ts: '1' }
-    expect(unansweredTurn([u], photo)).toBe(u)
-  })
-  it('null once a reply started, or for another message', () => {
-    const u: ChatItem = { role: 'user', text: 'fictional first question', ts: '1' }
-    expect(unansweredTurn([u, { role: 'assistant', text: 'Sure' }], 'fictional first question')).toBeNull()
-    expect(unansweredTurn([u], 'something else entirely')).toBeNull()
-    expect(unansweredTurn([], 'fictional first question')).toBeNull()
   })
 })
 
@@ -194,5 +175,29 @@ describe('taken back with an attached file', () => {
     expect(draft.text).toBe('fictional question about the notes')
     expect(draft.atts).toHaveLength(1)
     expect(draft.atts[0]).toMatchObject({ path: FILE, name: '2026-01-01T00-00-00-000Z-abc123-notes.md', ref: `@${FILE}` })
+  })
+})
+
+// Claude Code 2.1.317, Esc while a tool runs with a message queued (real shape):
+// the queued prompt is written first, then the result of the cancelled tool call,
+// both children of the same assistant line.
+describe('parseClaude: queued message run after an interrupt', () => {
+  const asked = [
+    user('u1', null, 'run a slow command', '2026-01-01T00:00:00.000Z'),
+    line({ type: 'assistant', uuid: 't1', parentUuid: 'u1', timestamp: '2026-01-01T00:00:01.000Z', message: { role: 'assistant', content: [{ type: 'tool_use', id: 'tool1', name: 'Bash', input: { command: 'sleep 20' } }] } }),
+  ]
+  const queued = line({ type: 'user', uuid: 'q', parentUuid: 't1', promptSource: 'queued', timestamp: '2026-01-01T00:00:05.000Z', message: { role: 'user', content: 'fictional queued message' } })
+  const cancelled = line({ type: 'user', uuid: 'r', parentUuid: 't1', timestamp: '2026-01-01T00:00:05.100Z', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tool1', content: 'The user doesn\'t want to proceed', is_error: true }] } })
+  const answer = reply('a2', 'r', 'queued answer', '2026-01-01T00:00:07.000Z')
+  it('keeps the bubble of the queued message, before the answer', () => {
+    const t = texts([...asked, queued, cancelled, answer])
+    expect(t).toContain('user:fictional queued message')
+    expect(t.indexOf('user:fictional queued message')).toBeLessThan(t.indexOf('assistant:queued answer'))
+  })
+  it('keeps it even when its sibling is a new typed prompt (queued prompts are never put back)', () => {
+    expect(texts([...asked, queued, user('y', 't1', 'another', '2026-01-01T00:00:06.000Z')])).toContain('user:fictional queued message')
+  })
+  it('a cancelled tool result alone does not drop a typed prompt', () => {
+    expect(texts([...asked, user('x', 't1', 'typed prompt', '2026-01-01T00:00:05.000Z'), cancelled, answer])).toContain('user:typed prompt')
   })
 })
