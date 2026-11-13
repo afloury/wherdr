@@ -157,12 +157,16 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
    sheet while its content scrolls: always in reach, flush with the sheet's edge,
    the home bar's room inside the bar (--sheet-safe). The sheet's body then adds
    no padding below it (main.css), so nothing shows under it; the bar comes last
-   (order), under the step's status and Send back, and at the bottom of a short tab. */
+   (order), under the step's status and Send back, and at the bottom of a short tab.
+   While a field of the sheet is typed in, it hides (below). */
 @media (max-width: 699px) {
   .todo-shot img { max-height: 26vh; }
   .todo-actions .task-sheet-actions > * { flex: 1 1 auto; justify-content: center; }
-  :global(.hw-sheet > [data-slot="body"]:has(.todo-actions > .todo-buttons:not(:empty))) { padding-bottom: 0; }
+  :global(.hw-sheet > [data-slot="body"]:not(.typing):has(.todo-actions > .todo-buttons:not(:empty))) { padding-bottom: 0; }
   .todo-actions:has(> .todo-buttons:not(:empty)) { order: 1; margin-top: auto; position: sticky; bottom: 0; z-index: 1; padding: 10px 0 calc(10px + var(--sheet-safe, 0px)); background: var(--sheet-bg, var(--bg)); border-top: 1px solid var(--line-soft); }
+  /* A field typed in (Send back's note, AppSheet `.typing`): the bar hides, so
+     it never covers the text; Send back stays right under its field. */
+  :global(.hw-sheet:has(> .typing) .todo-actions:has(> .todo-buttons:not(:empty))) { display: none; }
 }
 /* On a computer the screenshots wrap as a grid. */
 @media (min-width: 700px) {
