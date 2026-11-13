@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { execFileSync } from 'node:child_process'
-import { REAL_SCRIPT, adoptRefusal, adoptedSince, realRepo, repoUnder } from '../shared/pm/workspaceAdopt'
+import { REAL_ALL_SCRIPT, REAL_SCRIPT, adoptRefusal, adoptedSince, foldersOn, realLines, realRepo, repoUnder } from '../shared/pm/workspaceAdopt'
 import { parseCommand } from '../shared/pm/coordinator'
 import { healthSummary } from '../shared/pm/health'
 import { placeTask, type Candidate } from '../shared/pm/placement'
@@ -28,16 +28,17 @@ describe('repo adopt: what it refuses', () => {
   it('refuses a folder already a project (of any workspace), without git, or without the origin its workflow needs', () => {
     const other = { key: 'PA', name: 'Payroll', machine: 'home', path: '/h/work/payroll-api', workspace: 'WS2', addedAt: 1 } as Project
     const repo = { exists: true, git: true, remote: true }
-    expect(adoptRefusal(['/h/work/payroll-api'], 'home', [other], repo, true)).toMatch(/already project PA \(workspace WS2\)/)
-    expect(adoptRefusal(['/h/work/ledger'], 'home', [other], { ...repo, git: false }, true)).toMatch(/not a git repository/)
-    expect(adoptRefusal(['/h/work/ledger'], 'home', [other], { ...repo, exists: false }, true)).toMatch(/does not exist/)
-    expect(adoptRefusal(['/h/work/ledger'], 'home', [other], { ...repo, remote: false }, true)).toMatch(/no origin/)
-    expect(adoptRefusal(['/h/work/ledger'], 'home', [other], { ...repo, remote: false }, false)).toBe('')
-    // Another project's clone on this machine, its home elsewhere.
-    const cloned = { key: 'LED', name: 'Ledger', machine: 'box', path: '/srv/ledger', clones: { home: '/h/work/ledger' }, addedAt: 1 } as Project
-    expect(adoptRefusal(['/h/work/ledger'], 'home', [cloned], repo, true)).toMatch(/already project LED/)
+    const own = (ps: Project[]) => foldersOn(ps, 'home', '/h').map(o => ({ project: o.project, folders: [o.folder] }))
+    expect(adoptRefusal(['/h/work/payroll-api'], own([other]), repo, true)).toMatch(/already project PA \(workspace WS2\)/)
+    expect(adoptRefusal(['/h/work/ledger'], own([other]), { ...repo, git: false }, true)).toMatch(/not a git repository/)
+    expect(adoptRefusal(['/h/work/ledger'], own([other]), { ...repo, exists: false }, true)).toMatch(/does not exist/)
+    expect(adoptRefusal(['/h/work/ledger'], own([other]), { ...repo, remote: false }, true)).toMatch(/no origin/)
+    expect(adoptRefusal(['/h/work/ledger'], own([other]), { ...repo, remote: false }, false)).toBe('')
+    // Another project's clone on this machine (~ expanded), its home elsewhere.
+    const cloned = { key: 'LED', name: 'Ledger', machine: 'box', path: '/srv/ledger', machines: ['box', 'home'], clones: { home: '~/work/ledger/' }, addedAt: 1 } as Project
+    expect(adoptRefusal(['/h/work/ledger'], own([cloned]), repo, true)).toMatch(/already project LED/)
     // Named through a link, resolved to a project's folder.
-    expect(adoptRefusal(['/h/work/alias', '/h/work/payroll-api'], 'home', [other], repo, true)).toMatch(/already project PA/)
+    expect(adoptRefusal(['/h/work/alias', '/h/work/payroll-api'], own([other]), repo, true)).toMatch(/already project PA/)
   })
 
   it('resolves symlinks on the machine: a link out of the root is refused, one inside is named by its target', async () => {
@@ -53,6 +54,9 @@ describe('repo adopt: what it refuses', () => {
     expect(real('linked')).toEqual({ error: expect.stringMatching(/leads outside the workspace's root/) })
     expect(real('alias')).toBe('api')
     expect(real('missing')).toBe('missing')
+    // Other projects' folders, resolved in one call: a missing one keeps its place.
+    const all = execFileSync('sh', ['-c', REAL_ALL_SCRIPT, 'sh', `${tmp}/nope`, `${tmp}/work/alias`]).toString().trim()
+    expect(realLines(all, 2)).toEqual(['', `${tmp}/work/api`])
     await fs.rm(tmp, { recursive: true, force: true })
   })
 })
@@ -70,7 +74,7 @@ describe('repo adopt: the new member', () => {
     await store.changeMap('WS', () => ({ entries: [{ repo: 'payroll-api', path: '/h/work/payroll-api', does: 'Pays', talks: [], usedBy: [], readAt: 1 }] }))
     const call = async (_m: string, p: { argv: string[] }) => {
       const [, , script] = p.argv
-      const out = script === REAL_SCRIPT ? '/h/work\n/h/work/payroll-api' : script === PROBE_SCRIPT ? 'dir\ngit\nremote' : script === PREPARE_SCRIPT ? 'git' : script!.includes(REMOTE_SCRIPT.split('\n').at(-2)!) ? 'git@github.com:acme/payroll-api.git\n{"visibility":"PRIVATE"}' : script!.includes('$HOME') ? '/h' : ''
+      const out = script === REAL_ALL_SCRIPT ? (p.argv.slice(4).map(a => `x${a}`).join('\n')) : script === REAL_SCRIPT ? '/h/work\n/h/work/payroll-api' : script === PROBE_SCRIPT ? 'dir\ngit\nremote' : script === PREPARE_SCRIPT ? 'git' : script!.includes(REMOTE_SCRIPT.split('\n').at(-2)!) ? 'git@github.com:acme/payroll-api.git\n{"visibility":"PRIVATE"}' : script!.includes('$HOME') ? '/h' : ''
       return { code: 0, stdout: Buffer.from(out).toString('base64') }
     }
     const deps = { store, call, machines: () => [{ key: 'home', label: 'home', local: true }] } as unknown as Parameters<typeof adoptRepo>[0]

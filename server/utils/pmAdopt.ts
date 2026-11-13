@@ -2,7 +2,7 @@
 // workspace's coordinator: the folder probed on the workspace's machine, the
 // member added (store.addProject), its visibility checked, its map line
 // pointed at it and the adoption written to the workspace's log.
-import { REAL_SCRIPT, adoptRefusal, adoptedMember, realRepo, repoUnder, type RepoCommand } from '../../shared/pm/workspaceAdopt'
+import { REAL_ALL_SCRIPT, REAL_SCRIPT, adoptRefusal, foldersOn, realLines, adoptedMember, realRepo, repoUnder, type RepoCommand } from '../../shared/pm/workspaceAdopt'
 import { effectiveWorkflow, isWorkspace } from '../../shared/pm/workspace'
 import { needsRemote } from '../../shared/pm/newProject'
 import { renderMap } from '../../shared/pm/workspaceMap'
@@ -21,7 +21,7 @@ export async function adoptRepo(deps: Deps, ws: Project | undefined, projects: P
   if (!ws || !isWorkspace(ws)) throw new HerdrError('bad_input', 'repo adopt is a workspace\'s: run it from a workspace\'s coordinator, or name one with --project <KEY>')
   const { store } = deps
   const { on } = machineOn(deps, ws.machine)
-  const home = cmd.repo.trim().startsWith('~') ? await homeOf(deps, on) ?? '' : ''
+  const home = await homeOf(deps, on) ?? ''
   const named = repoUnder(cmd.repo, ws.path, home)
   if (typeof named !== 'string') throw new HerdrError('refused', named.error)
   // Symlinks resolved on the machine: a link out of the root is refused.
@@ -33,7 +33,13 @@ export async function adoptRepo(deps: Deps, ws: Project | undefined, projects: P
   const member = adoptedMember(ws, repo, projects)
   const probe = await probeFolder(ws.machine, member.path, deps)
   const workflow = effectiveWorkflow(member.key, null, member as Project, ws, await store.savedWorkflow(ws.key))
-  const refused = adoptRefusal([probe.path, realFolder], ws.machine, projects, probe, needsRemote(workflow))
+  // Every project's folder on this machine, its clones' included, ~ expanded and resolved there.
+  const others = foldersOn(projects, ws.machine, home)
+  const real = others.length ? await exec(deps, on, REAL_ALL_SCRIPT, others.map(o => o.folder)) : { code: 0, out: '' }
+  if (real.code !== 0) throw new HerdrError('core', 'Could not resolve the projects\' folders on the workspace\'s machine')
+  const resolved = realLines(real.out, others.length)
+  const owners = others.map((o, i) => ({ project: o.project, folders: [o.folder, resolved[i]!] }))
+  const refused = adoptRefusal([probe.path, realFolder], owners, probe, needsRemote(workflow))
   if (refused) throw new HerdrError('refused', refused)
   const added = await ensureVisibility(deps, await store.addProject({ ...member, path: probe.path }, (m, f, o) => pmFolderCheck(m, f, o, deps)))
   await store.logProject(ws.key, { by, text: `adopted ${repo} as project ${added.key}`, adopted: { project: added.key, repo } })

@@ -5,7 +5,7 @@
 // free one. Nothing is cloned: a member runs only where its clone is.
 import { isRepo } from './workspaceMap'
 import { proposeKey, proposeName, type FolderProbe } from './newProject'
-import type { Project } from './project'
+import { cloneOn, type Project } from './project'
 
 export type RepoCommand = { name: 'repo adopt', repo: string }
 
@@ -46,6 +46,17 @@ export function realRepo(rel: string, realRoot: string, realFolder: string): str
   return isRepo(real) ? real : { error: `${rel} is not a repository path under the root (4 folders at most)` }
 }
 
+// Each project's folder on the machine (its own, or its clone there; ~ expanded
+// as cloneOn does), to resolve with REAL_ALL_SCRIPT before ownership is checked.
+export const foldersOn = (projects: Project[], machine: string, home: string) =>
+  projects.flatMap((p) => { const f = cloneOn(p, machine, home); return f ? [{ project: p, folder: trim(f) }] : [] })
+// Each argument resolved (pwd -P), one line each, "x" first so an empty one keeps its place.
+export const REAL_ALL_SCRIPT = `for d in "$@"; do printf 'x%s\\n' "$(cd "$d" 2>/dev/null && pwd -P)"; done; exit 0`
+export const realLines = (out: string, n: number) => {
+  const lines = out.split('\n')
+  return Array.from({ length: n }, (_, i) => (lines[i] ?? '').replace(/^x/, ''))
+}
+
 // The member to add: on the workspace's machine, its key and name from the folder.
 export function adoptedMember(ws: Project, repo: string, projects: Project[]) {
   const name = proposeName(repo)
@@ -54,12 +65,12 @@ export function adoptedMember(ws: Project, repo: string, projects: Project[]) {
 }
 
 // Why the folder cannot be adopted ('' when it can). folders: its paths on the
-// machine (as named, and resolved); projects: with their effective clones, so
-// a folder that is another project's clone on this machine is that project's.
+// machine (as named, and resolved); owners: each project's folder on that
+// machine (its own or its clone, from foldersOn), as written and resolved.
 // needsOrigin: the workflow the member would run pushes or opens pull requests.
-export function adoptRefusal(folders: string[], machine: string, projects: Project[], probe: Pick<FolderProbe, 'exists' | 'git' | 'remote'>, needsOrigin: boolean): string {
+export function adoptRefusal(folders: string[], owners: { project: Project, folders: string[] }[], probe: Pick<FolderProbe, 'exists' | 'git' | 'remote'>, needsOrigin: boolean): string {
   const mine = new Set(folders.filter(Boolean).map(trim)), folder = folders[0]!
-  const owner = projects.find(p => (p.machine === machine && mine.has(trim(p.path))) || (p.clones?.[machine] !== undefined && mine.has(trim(p.clones[machine]!))))
+  const owner = owners.find(o => o.folders.some(f => f && mine.has(trim(f))))?.project
   if (owner) return `${folder} is already project ${owner.key}${owner.workspace ? ` (workspace ${owner.workspace})` : ''}: a repository belongs to one workspace at most`
   if (!probe.exists) return `${folder} does not exist: nothing is cloned for you, clone it under the root first`
   if (!probe.git) return `${folder} is not a git repository`
