@@ -83,6 +83,6 @@ export const notStarted = (task: Task, runs: { task: string }[]) =>
 export function removeRefusal(task: Task, runs: { task: string }[], tasks: Task[], by: Stopper): string | undefined {
   if (!notStarted(task, runs)) return `${task.id} has started: stop it, then archive it`
   if (by.who === 'coordinator' && by.wake && !autopilots(task)) return `In a wake, you remove only the tasks your autopilot added: ${task.id} is the user's`
-  const waiting = tasks.filter(t => t.id !== task.id && t.project === task.project && !t.step?.done && afterIds(t).includes(task.id))
+  const waiting = tasks.filter(t => t.id !== task.id && !t.step?.done && afterIds(t).includes(task.id))
   if (waiting.length) return `${waiting.map(t => t.id).join(', ')} wait${waiting.length > 1 ? '' : 's'} for ${task.id} (after): remove ${waiting.length > 1 ? 'them' : 'it'} first`
 }

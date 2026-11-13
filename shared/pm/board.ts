@@ -135,7 +135,8 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(queue ? { queue } : {}),
     ...(queueOut ? { queueOut } : {}),
     ...(step?.ends === 'user' && started && !s?.done ? { userLabel: stepLabels(step).button } : {}),
-    tags: task.tags ?? [],
+    // A feature's sub-task: its feature's id first.
+    tags: [...(task.feature ? [task.feature] : []), ...task.tags ?? []],
     // Then the links steps gave as their proof, labelled 'PR' when a pull request, else by step; each address once.
     links: [...task.links ?? [], ...plan.flatMap((p) => { const url = s?.proofs[p.id]?.link; return url ? [{ label: isPrUrl(url) ? 'PR' : p.id, url }] : [] })]
       .filter((l, i, all) => all.findIndex(x => x.url === l.url) === i),

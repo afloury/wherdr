@@ -35,6 +35,7 @@ import { readQueue, sinceYesterday, type Wake, type WakeSkip } from '../../share
 import type { HealthSent } from '../../shared/pm/health'
 import type { Automation, AutomationProposal, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
+import { afterRefusal, subTasks } from '../../shared/pm/feature'
 import { cleanWorkspaceFields, effectiveProjects, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
 import type { MapFile } from '../../shared/pm/workspaceMap'
 import { DATA_DIR } from './env'
@@ -233,6 +234,36 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   }
   // A workflow change moves each started task of the project by its step's id
   // (replan), said in its log. Within the workflow's write.
+  // A new task from addTask's input, checked, not saved; pending: those of
+  // the same write, not saved yet.
+  async function newTask(raw: unknown, pending: Task[] = []): Promise<Task> {
+    const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
+    const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '')
+    const list = await projects(), p = projectOf(list, o.project)
+    if (!p) throw new HerdrError('not_found', 'Unknown project')
+    const title = str('title'), type = str('type')
+    if (!title || title.length > 200) throw badInput([{ path: 'title', message: '1 to 200 characters' }])
+    if (!type) throw badInput([{ path: 'type', message: 'is required' }])
+    const refused = workspaceTaskError(p, type)
+    if (refused) throw badInput([{ path: 'type', message: refused }])
+    // A removed task's number is never given again.
+    const known = [...await tasks(), ...pending]
+    const ids = [...known.filter(t => t.project === p.key).map(t => t.id), ...(await projectLog(p.key)).flatMap(e => (e.task ? [e.task] : []))]
+    const n = 1 + Math.max(0, ...ids.map(id => Number(id.slice(p.key.length + 1)) || 0))
+    const after = afterIds({ after: str('after') }).map(a => storedTaskId(list, a) ?? a).join(',')
+    const outside = afterRefusal(p.key, afterIds({ after }), known, list)
+    if (outside) throw badInput([{ path: 'after', message: outside }])
+    // A member's sub-task names a feature of its workspace.
+    const feature = str('feature') && (storedTaskId(list, str('feature')) ?? str('feature'))
+    if (feature && !known.some(t => t.id === feature && t.kind === 'feature' && !t.closed && t.project === p.workspace)) throw badInput([{ path: 'feature', message: 'an open feature of the project\'s workspace' }])
+    const auto = str('auto'), addedBy = str('addedBy').slice(0, 100), planned = parseFiles(o.files), fromBranch = str('fromBranch')
+    if (fromBranch && !isGitBranch(fromBranch)) throw badInput([{ path: 'fromBranch', message: 'a branch name' }])
+    if (o.weight !== undefined && o.weight !== '' && !isWeight(o.weight)) throw badInput([{ path: 'weight', message: `one of ${WEIGHTS.join(', ')}` }])
+    const weight = isWeight(o.weight) ? o.weight : undefined
+    const origin = (['coordinator', 'automation', 'mission'] as const).find(x => x === o.origin) ?? 'user'
+    return { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(isWorkspace(p) ? { kind: 'feature' as const } : {}), ...(feature ? { feature } : {}), ...(after ? { after } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}), ...(fromBranch ? { fromBranch } : {}) }
+  }
+
   async function replanTasks(key: string, before: Template, after: Template) {
     const { list, i } = await findProject(key)
     const p = list[i]!
@@ -434,31 +465,28 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     receipt: (id: string) => readJson<Receipt>(path.join(files.receipts, `${id}.json`)),
     saveReceipt: (r: Receipt) => write(() => writeJson(path.join(files.receipts, `${r.id}.json`), r)),
 
-    // { project, title, description?, type, after?, auto?, origin?, addedBy? }: a new task, to do (origin: 'user' when unset).
+    // { project, title, description?, type, after?, feature?, auto?, origin?, addedBy? }: a new task, to do (origin: 'user' when unset).
     addTask: (raw: unknown) => write(async () => {
-      const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
-      const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '')
-      const p = projectOf(await projects(), o.project)
-      if (!p) throw new HerdrError('not_found', 'Unknown project')
-      const title = str('title'), type = str('type')
-      if (!title || title.length > 200) throw badInput([{ path: 'title', message: '1 to 200 characters' }])
-      if (!type) throw badInput([{ path: 'type', message: 'is required' }])
-      const refused = workspaceTaskError(p, type)
-      if (refused) throw badInput([{ path: 'type', message: refused }])
-      // A removed task's number is never given again.
-      const ids = [...(await tasks()).filter(t => t.project === p.key).map(t => t.id), ...(await projectLog(p.key)).flatMap(e => (e.task ? [e.task] : []))]
-      const n = 1 + Math.max(0, ...ids.map(id => Number(id.slice(p.key.length + 1)) || 0))
-      const after = afterIds({ after: str('after') }).map(a => storedTaskId([p], a) ?? a).join(',')
-      const known = await tasks()
-      if (afterIds({ after }).some(a => !known.some(t => t.id === a && t.project === p.key))) throw badInput([{ path: 'after', message: 'tasks of the same project, comma-separated' }])
-      const auto = str('auto'), addedBy = str('addedBy').slice(0, 100), planned = parseFiles(o.files), fromBranch = str('fromBranch')
-      if (fromBranch && !isGitBranch(fromBranch)) throw badInput([{ path: 'fromBranch', message: 'a branch name' }])
-      if (o.weight !== undefined && o.weight !== '' && !isWeight(o.weight)) throw badInput([{ path: 'weight', message: `one of ${WEIGHTS.join(', ')}` }])
-      const weight = isWeight(o.weight) ? o.weight : undefined
-      const origin = (['coordinator', 'automation', 'mission'] as const).find(x => x === o.origin) ?? 'user'
-      const task: Task = { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(after ? { after } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}), ...(fromBranch ? { fromBranch } : {}) }
+      const task = await newTask(raw)
       await writeJson(path.join(files.tasks, `${task.id}.json`), task)
       return task
+    }),
+    // A feature's sub-tasks (feature.ts), all added or none: each raw is
+    // addTask's, afterIndex naming earlier ones of the same split; the
+    // feature keeps the plan's order.
+    splitFeature: (id: string, raws: (Record<string, unknown> & { afterIndex: number[] })[], order: string, by: string) => write(async () => {
+      const all = await tasks(), feature = all.find(t => t.id === id)
+      if (feature?.kind !== 'feature' || feature.closed) throw new HerdrError('refused', `${id} is not an open feature`)
+      if (subTasks(feature, all).length) throw new HerdrError('refused', `${id} is already split: add a sub-task with task add --feature ${id}`)
+      const added: Task[] = [], at = Date.now()
+      for (const { afterIndex, ...raw } of raws) {
+        const t = await newTask({ ...raw, feature: id, after: [raw.after, ...afterIndex.map(i => added[i]!.id)].filter(Boolean).join(',') }, added)
+        added.push({ ...t, log: [{ at, by, text: `added the task, a sub-task of ${id}${t.after ? `, after ${t.after}` : ''}` }] })
+      }
+      for (const t of added) await writeJson(path.join(files.tasks, `${t.id}.json`), t)
+      const split = { ...feature, plan: { order }, log: [...(feature.log ?? []), { at, by, text: `split into ${added.map(t => t.id).join(', ')}: ${order}` }].slice(-200) }
+      await writeJson(path.join(files.tasks, `${id}.json`), split)
+      return { feature: split, tasks: added }
     }),
 
     addProject: (raw: unknown, check: FolderCheck, opts?: FolderOptions) => write(async () => {

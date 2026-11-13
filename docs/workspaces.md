@@ -108,8 +108,46 @@ apart (`workspaceGuards`) and says when it runs the workspace's workflow.
 
 A workspace's tasks are **features**, never ordinary tasks: wherdr refuses any
 other task type on a workspace and asks to add the task to one of its member
-projects instead. A feature has no agent; its sub-tasks are ordinary tasks of
-the members, one per repository.
+projects instead. A feature has no agent and no step of its own; its
+sub-tasks are ordinary tasks of the members, one per repository. Each
+sub-task's card on the board shows its feature's id (`WS-3`) as a tag.
+
+The workspace's coordinator runs them with no question to you:
+
+- `wherdr pm feature add "<title>" [--description "<text>"]`: a new feature.
+- `wherdr pm feature split <WS-n> < plan.json`: in **one call**, adopts the
+  repositories the plan needs (as [repo adopt](#adopting-a-repository) does),
+  adds one sub-task per repository, chains them and starts those that wait
+  for nothing. It is all or nothing: the whole plan is checked first (task
+  types, links, cycles), and the sub-tasks are added together or not at all
+  (a repository adopted before a refusal stays a member). The plan:
+
+  ```json
+  {
+    "order": "The API first: the app calls it",
+    "tasks": [
+      { "repo": "payroll-api", "title": "Serve payslips as PDF", "type": "task", "files": ["src/pdf"] },
+      { "repo": "web-app", "title": "Add a Download button", "type": "task", "after": ["payroll-api"] }
+    ]
+  }
+  ```
+
+  `repo` is the repository's path under the root, or a member's key; `after`
+  names repositories of the plan or existing tasks. `order` is the
+  coordinator's one-line reason for the order, kept on the feature.
+- `wherdr pm task add … --feature <WS-n> --project <member>`: one more
+  sub-task later; `wherdr pm task edit <task> --after <task>,<task>` changes
+  what a task not started yet waits for (`""` for nothing).
+- `wherdr pm feature close <WS-n> [--reason "<one sentence>"]`: once every
+  sub-task is done or abandoned.
+
+A task of a member may start after tasks of the workspace's other members
+(`after`), never after a task outside the workspace or a feature, and never
+in a cycle. A task others wait for cannot be removed.
+
+A feature's state is never stored, it comes from its sub-tasks: **to do**
+until one starts, **working**, **waiting for you** while one is under *Your
+turn*, and **done** once the coordinator closed it. `wherdr pm list` gives it.
 
 ## The workspace map
 
