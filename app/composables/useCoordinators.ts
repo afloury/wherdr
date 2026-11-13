@@ -3,6 +3,7 @@
 // which shows its coordinator bar on their panes.
 import { MAIN, sameAgent, type CoordinatorAgent, type CoordinatorView } from '#shared/pm/coordinator'
 import type { AlfredProgram } from '#shared/pm/alfred'
+import { projectCoordinatorName } from '#shared/pm/project'
 import type { Pane } from '#shared/types'
 
 export const coordinators = ref<CoordinatorView[]>([])
@@ -42,12 +43,13 @@ export const alfredPane = computed(() => (alfred.value?.terminal ? herdrState.va
 
 // The coordinator a pane is, by its herdr-core address.
 export const coordinatorOf = (p?: Pane | null) => (p?.coreAddress ? coordinators.value.find(c => c.terminal === p.coreAddress) : undefined)
-// A coordinator's name, as the sidebar shows it: Alfred's current name for the main one.
-export const coordinatorName = (c: CoordinatorView) => (c.main ? alfred.value?.name || 'Alfred' : tl(`${c.label ?? c.project} coordinator`))
+// A coordinator's name, as the sidebar shows it (after its key badge): Alfred's
+// current name for the main one, else the one the user gave it or its project's.
+export const coordinatorName = (c: CoordinatorView) => (c.main ? alfred.value?.name || 'Alfred' : projectCoordinatorName(c))
 // Alfred's own pane: its header shows its emblem.
 export const isAlfredPane = (p?: Pane | null) => Boolean(p?.coreAddress && p.coreAddress === alfred.value?.terminal)
 // A pane's project key badge, in its header: a project coordinator's key (its
-// title then reads "coordinator"), or a task agent's task id (shown key, WD-5).
+// title then reads its name), or a task agent's task id (shown key, WD-5).
 export function paneBadge(p?: Pane | null): { text: string, color?: string, coordinator?: true } | null {
   const c = coordinatorOf(p)
   if (c) return c.main ? null : { text: c.label ?? c.project, color: c.color, coordinator: true }

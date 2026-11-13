@@ -23,7 +23,7 @@ registerEndpoint('/api/pm/coordinator-start', { method: 'POST', handler: async (
 registerEndpoint('/api/pm/coordinator-agent', { method: 'POST', handler: async (e) => { posts.push({ agent: await readBody(e) }); return {} } })
 
 const pane = (id: string, coreAddress: string) => ({ id, coreAddress, status: 'idle', agent: 'claude', workspace: 'w', tab: 't' }) as Pane
-const view = (project: string, more: Partial<CoordinatorView> = {}): CoordinatorView => ({ project, name: project, agent: { program: 'claude' }, ...more })
+const view = (project: string, more: Partial<CoordinatorView> = {}): CoordinatorView => ({ project, name: `${project.toLowerCase()} app`, agent: { program: 'claude' }, ...more })
 let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
 // A coordinators read still in flight would answer the next test's first one
 // with this test's views (loadCoordinators shares it): let it end first.
@@ -35,7 +35,9 @@ it('lists the running project coordinators only (Alfred, the main one, has its o
   w = await mountSuspended(CoordinatorsSection)
   await vi.waitFor(() => expect(w!.findAll('button')).toHaveLength(1))
   const co = w.find('button')
-  expect(co.text()).toContain('CO coordinator')
+  // Its key badge, then its project's name.
+  expect(co.find('[data-testid="project-badge"]').text()).toBe('CO')
+  expect(co.find('[data-testid="coordinator-name"]').text()).toBe('co app')
   // Running: one tap opens its conversation, nothing started.
   await co.trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w%3Ap1'))
@@ -84,7 +86,7 @@ it('follows the home tab: a personal tab hides a work project, All shows all (WH
     w = await mountSuspended(CoordinatorsSection)
     const shown = () => w!.findAll('[data-testid="coordinator-row"]').map(r => r.text())
     await vi.waitFor(() => expect(shown()).toHaveLength(1))
-    expect(shown()[0]).toContain('HOME coordinator')
+    expect(shown()[0]).toContain('home app')
     machineBarSaved.value = '*'
     await vi.waitFor(() => expect(shown()).toHaveLength(2))
   } finally { machineGroups.value = []; machineBarSaved.value = null }
@@ -136,7 +138,9 @@ it('no ••• button: right click (computer) and long press (touch) open its 
 it("titles a coordinator's pane by its name, not its session title (WHR-15)", () => {
   coordinators.value = [view(MAIN, { main: true, terminal: 'host/t1' }), view('CO', { terminal: 'host/t2' })]
   const p = (id: string, at: string) => ({ ...pane(id, at), title: 'Template proposal' }) as Pane
-  expect(paneCoordinatorName(p('w:p2', 'host/t2'))).toBe('CO coordinator')
+  expect(paneCoordinatorName(p('w:p2', 'host/t2'))).toBe('co app')
+  coordinators.value[1]!.coordinatorName = 'Pilot'
+  expect(paneCoordinatorName(p('w:p2', 'host/t2'))).toBe('Pilot')
   // The main coordinator: Alfred's current name, the default before it loads.
   alfred.value = null
   expect(paneCoordinatorName(p('w:p1', 'host/t1'))).toBe('Alfred')

@@ -70,6 +70,13 @@ watch(key, (k, old) => { if (old && k) run(async () => {}) })
 const agents = computed(() => offerCoordinators(undefined, key.value))
 const agent = ref('')
 const model = ref('') // empty: the agent's default
+// Its name, prefilled with the project's; saved when changed ('' or the project's name: follows it).
+const coordName = ref('')
+watch(p, x => { coordName.value = x ? x.coordinatorName || x.name : '' }, { immediate: true })
+function saveCoordName() {
+  const v = coordName.value.trim()
+  if (p.value && v !== (p.value.coordinatorName || p.value.name)) run(() => api('/api/pm/project-update', { key: key.value, coordinatorName: v === p.value!.name ? '' : v }))
+}
 watch(agents, a => { if (!a.some(x => x === agent.value)) agent.value = a[0] ?? '' }, { immediate: true })
 
 // 3. Its coordinator: started with that agent, asked to set up how the user
@@ -125,6 +132,8 @@ const BODY: Record<SetupStepId, string> = {
           <USelect :model-value="visibility(p.visibility)" :items="visibilityItems" size="xl" class="w-full" :disabled="busy" :aria-label="tl('Repository')" data-testid="setup-visibility" @update:model-value="v => setVisibility(String(v))" />
           <small v-if="visibility(p.visibility) !== 'unknown'" class="muted" data-testid="setup-public-note">{{ tl('Public: its coordinator and tasks keep private paths, names and secrets out of it.') }}</small>
           <template v-if="!coord?.terminal && agents.length">
+            <label class="field-label" for="setupCoordName">{{ tl('Coordinator name') }}</label>
+            <UInput id="setupCoordName" v-model="coordName" size="xl" class="w-full" maxlength="80" :placeholder="p.name" data-testid="setup-coordinator-name" @change="saveCoordName" />
             <span class="field-label">{{ tl('Its coordinator') }}</span>
             <AgentPicker v-model="agent" :programs="agents" />
             <label class="field-label" for="setupModel">{{ tl('Model') }}</label>

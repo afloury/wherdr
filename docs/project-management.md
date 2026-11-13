@@ -28,7 +28,8 @@ in the project's [Workflow](#workflow) tab for advanced use.
    any folder (a new or empty one offers `git init`); name, key and color
    follow the folder and can be changed. Once added, wherdr checks whether the
    repository is public; correct it if the check is wrong (until it is
-   checked, it says *not checked* and nothing more). Then pick its
+   checked, it says *not checked* and nothing more). Then name its coordinator
+   (prefilled with the project's name), pick its
    coordinator's agent and, for Claude or Codex, its model (empty: the agent's
    default; you can also change it later in its conversation). Both are kept as
    the project's coordinator default, so a restart uses them again. With several projects, pick the one to set up,
@@ -126,6 +127,9 @@ its folder, branches and task worktrees stay on the machine.
   The color, picked from a small palette, is the project's key badge everywhere:
   its coordinator row and conversation header, board cards, the task sheet, its
   task agents' headers and *Tasks to review*.
+- **Coordinator name**: what the project's coordinator is called after its key badge,
+  in its sidebar row, its conversation header and what names it (notifications,
+  decisions, proposals). Empty: the project's name, which follows a rename.
 - **Base branch**: the project's working branch. New tasks start their worktree
   from it, and a step that names no branch opens its PR to it or merges into it.
   Pick one of the repository's branches or type a name; unset, the repository's

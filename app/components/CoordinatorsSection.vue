@@ -89,10 +89,10 @@ onUnmounted(() => clearInterval(timer))
     <UContextMenu v-for="c in rows" :key="c.project" :disabled="sheetMenus" :items="rowMenu.dropdown(menu(c))" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="rowMenu.opened">
     <button
       type="button" class="coord-row" :class="{ on: !!coordinatorPane(c), sel: selected(c) }" :aria-current="selected(c) ? 'page' : undefined"
-      :disabled="!!busy" data-testid="coordinator-row" v-on="rowMenu.on(menu(c), coordinatorName(c))" @click="open(c)"
+      :disabled="!!busy" data-testid="coordinator-row" :title="c.main ? undefined : tl(`Coordinator of ${c.name}`)" v-on="rowMenu.on(menu(c), coordinatorName(c))" @click="open(c)"
     >
       <i class="coord-dot" aria-hidden="true" />
-      <span class="coord-text"><b v-if="c.main">{{ coordinatorName(c) }}</b><b v-else><ProjectBadge :text="c.label ?? c.project" :color="c.color" /> {{ tl('coordinator') }}</b><small>{{ busy === c.project ? tl('Starting…', 'Lancement…') : sub(c) }}</small></span>
+      <span class="coord-text"><b v-if="c.main">{{ coordinatorName(c) }}</b><b v-else class="coord-name"><ProjectBadge :text="c.label ?? c.project" :color="c.color" /><span data-testid="coordinator-name">{{ coordinatorName(c) }}</span></b><small>{{ busy === c.project ? tl('Starting…', 'Lancement…') : sub(c) }}</small></span>
       <UIcon :name="coordinatorPane(c) ? 'i-lucide-chevron-right' : 'i-lucide-play'" class="coord-go" />
     </button>
     </UContextMenu>
@@ -137,6 +137,8 @@ onUnmounted(() => clearInterval(timer))
 .coord-row.on .coord-dot { background: var(--green); }
 .coord-text { display: grid; flex: 1; min-width: 0; }
 .coord-text b { font: 600 14px/1.3 var(--display); }
+.coord-name { display: flex; align-items: center; gap: var(--badge-gap); min-width: 0; }
+.coord-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .coord-text small { overflow: hidden; color: var(--muted); font: 12px/1.4 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
 .coord-go { flex: none; color: var(--dim); }
 .coord-error { margin: 6px 0 0; }

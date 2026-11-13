@@ -10,7 +10,7 @@ const entry = computed(() => tabOf(props.pane.tab))
 const panes = computed(() => entry.value?.panes || [props.pane])
 const tabs = computed(() => spaceTabs(props.pane.workspace))
 const badge = computed(() => paneBadge(props.pane))
-const title = computed(() => (badge.value?.coordinator ? tl('coordinator') : props.pane.label || props.pane.name || paneOwnTitle(props.pane)))
+const title = computed(() => (badge.value?.coordinator ? paneCoordinatorName(props.pane) : props.pane.label || props.pane.name || paneOwnTitle(props.pane)))
 const kind = computed(() => kindLabel(props.pane.agent))
 // No " · omp" under a pane already titled "omp".
 const context = computed(() => props.pane.agent === 'omp' ? parseOmpContext(props.pane.ompStatus?.meters) : null)
@@ -106,8 +106,8 @@ function tabStatus(e: typeof tabs.value[number]) {
 .phone-identity:active { background: var(--bg-2); }
 .phone-identity:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 .phone-identity-copy { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.head-badge { margin-right: 6px; }
-.head-emblem { display: inline-block; width: 16px; margin-right: 6px; vertical-align: -1px; }
+.head-badge { margin-right: var(--badge-gap); }
+.head-emblem { display: inline-block; width: 16px; margin-right: var(--badge-gap); vertical-align: -1px; }
 .phone-identity-title { font-size: 14px; font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .phone-identity-meta { display: flex; align-items: center; gap: 5px; min-width: 0; overflow: hidden; color: var(--muted); font: 500 11px/1.2 var(--mono); white-space: nowrap; }
 /* omp's context percentage takes the kind's place (still in the panel and the label) and stays

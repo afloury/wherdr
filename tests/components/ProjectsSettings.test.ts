@@ -95,7 +95,7 @@ it('opens the project sheet on the URL\'s tab; Guards saves a branch added; Gene
   copy.dispatchEvent(new Event('input'))
   inSheet('pm-save')!.closest('form')!.dispatchEvent(new Event('submit'))
   await vi.waitFor(() => expect(calls[0]).toEqual({ url: '/api/pm/project-update', body: {
-    key: 'WEB', name: 'Website', base: '', branchName: '', archiveAfter: 7, deleteBranch: true, prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' },
+    key: 'WEB', name: 'Website', coordinatorName: '', base: '', branchName: '', archiveAfter: 7, deleteBranch: true, prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' },
     worktree: { copy: ['.env', 'config/local.json'], share: [], lockfile: '', command: '', timeout: '' }, // share none kept
   } }))
 

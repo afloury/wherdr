@@ -11,7 +11,7 @@ const p = computed(() => props.c.proposal)
 const main = computed(() => (p.value?.by ?? (props.c.main ? 'main' : props.c.project)) === 'main')
 const key = computed(() => props.c.label ?? props.c.project)
 const badge = computed(() => !!props.c.color && !main.value)
-const who = computed(() => (main.value ? alfred.value?.name || 'Alfred' : badge.value ? tl('coordinator') : `${key.value} ${tl('coordinator')}`))
+const who = computed(() => (main.value ? alfred.value?.name || 'Alfred' : badge.value ? coordinatorName(props.c) : `${key.value} ${coordinatorName(props.c)}`))
 // Long: more than 4 lines or 280 characters, shown folded until asked.
 const long = computed(() => (p.value?.said?.length ?? 0) > 280 || (p.value?.said?.split('\n').length ?? 0) > 4)
 const unfolded = ref(false)
@@ -20,7 +20,7 @@ const unfolded = ref(false)
 <template>
   <div v-if="p" class="origin" data-testid="proposal-origin">
     <p class="origin-by" data-testid="proposal-by">
-      <span class="muted">{{ tl('Proposed by') }}</span> <ProjectBadge v-if="badge" :text="key" :color="c.color" data-testid="proposal-key" />{{ badge ? ' ' : '' }}<span>{{ who }}</span>
+      <span class="muted">{{ tl('Proposed by') }}</span> <ProjectBadge v-if="badge" :text="key" :color="c.color" data-testid="proposal-key" /><span>{{ who }}</span>
     </p>
     <div v-if="p.said" class="origin-said">
       <span class="mono-label muted">{{ tl('Your request') }}<template v-if="p.saidAt"> · {{ fmtDateTime(p.saidAt) }}</template></span>
@@ -35,7 +35,7 @@ const unfolded = ref(false)
 
 <style scoped>
 .origin { display: grid; gap: 6px; }
-.origin-by { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.origin-by { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--badge-gap); }
 .origin-said { display: grid; gap: 4px; }
 .origin-text { margin: 0; padding-left: 8px; border-left: 2px solid var(--line); white-space: pre-wrap; overflow-wrap: anywhere; }
 .origin-text.folded { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }

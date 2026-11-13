@@ -85,10 +85,11 @@ export interface CoordinatorView {
   // main: the main coordinator (project is MAIN).
   // agent: the default the user set for it, if any (else the first of their agents).
   // git: false: a folder without git, its coordinator works in it (no template needed).
+  // name: the project's; coordinatorName: the one the user gave its coordinator (projectCoordinatorName).
   // label, color: the project's shown key and its badge's color.
   // machines: the project's allowed machines, home first (none for the main coordinator);
   // paused: those paused for it; busy: the paused ones where one of its tasks still runs.
-  project: string, machines?: string[], paused?: string[], busy?: string[], name: string, label?: string, color?: ProjectColor, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
+  project: string, machines?: string[], paused?: string[], busy?: string[], name: string, coordinatorName?: string, label?: string, color?: ProjectColor, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
   // proposal: the change waiting for the user, as a person reads it too (template: the
   // workflow it proposes, drawn with its changes); answers: the last ones, oldest first.
   proposal?: Omit<Proposal, 'template' | 'base'> & { template?: Template }, answers?: ProposalAnswer[]

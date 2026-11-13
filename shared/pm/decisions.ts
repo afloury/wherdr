@@ -7,6 +7,7 @@ import type { Wake } from './wakes'
 import { CHOICES, type Advice, type Choice } from './verdict'
 import { stoppedText } from './stop'
 import { turnText } from './refusal'
+import { projectCoordinatorName } from './project'
 
 // agent: a permission, question or login an agent waits on. arbitrate: the
 // after-N rule hands a review to the user. proposal: a template change of the
@@ -75,13 +76,13 @@ export function decisionsOf({ cards, tasks, coordinators, wakes, now = Date.now(
     }
   }
   for (const c of coordinators)
-    if (c.proposal) out.push({ id: `proposal:${c.project}:${c.proposal.at}`, group: 'proposal', project: c.project, title: c.name, text: c.proposal.said ? `After your message: “${c.proposal.said}”` : 'Template change proposed', at: c.proposal.at })
+    if (c.proposal) out.push({ id: `proposal:${c.project}:${c.proposal.at}`, group: 'proposal', project: c.project, title: projectCoordinatorName(c), text: c.proposal.said ? `After your message: “${c.proposal.said}”` : 'Template change proposed', at: c.proposal.at })
   // A wake that got no answer, unless the coordinator acked a later one.
   for (const c of coordinators) {
     const mine = wakes.filter(w => w.coordinator === c.project).sort((a, b) => a.createdAt - b.createdAt)
     const last = mine.findLast(w => w.ended === 'unanswered')
     if (last && !mine.some(w => w.createdAt > last.createdAt && w.ackedAt))
-      out.push({ id: `wake:${last.id}`, group: 'coordinator', project: c.project, title: c.name, text: `The coordinator did not answer wake ${last.id}: ${last.reasons[0]?.slice(0, 160) ?? ''}`, at: last.endedAt ?? last.createdAt })
+      out.push({ id: `wake:${last.id}`, group: 'coordinator', project: c.project, title: projectCoordinatorName(c), text: `The coordinator did not answer wake ${last.id}: ${last.reasons[0]?.slice(0, 160) ?? ''}`, at: last.endedAt ?? last.createdAt })
   }
   const rank = (d: Decision) => DECISION_GROUPS.indexOf(d.group)
   return out.sort((a, b) => rank(a) - rank(b) || Number(!!b.recommend) - Number(!!a.recommend) || a.at - b.at)

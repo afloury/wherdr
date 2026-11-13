@@ -133,6 +133,8 @@
 /* Default palette: wherdr Titanium. Keep these values in sync with
    app/utils/themes.ts so the first paint matches the selected theme. */
 :root {
+  /* Between a project key badge and the name after it. */
+  --badge-gap: 8px;
   --bg: #12151b;
   --bg-2: #0d1015;
   --surface: #1a1e26;
