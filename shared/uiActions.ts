@@ -75,6 +75,19 @@ export function outcomeText(card: Pick<UiCard, 'kind' | 'label'>, after?: Pick<T
   return waits ? `${card.label}: approved by you, merges once ready` : `${card.label}: done by you`
 }
 
+// What the user did with a card, told to the agent that put it in its reply
+// (server/utils/cardOutcome.ts): marked so the chat shows it as from the card.
+export const CARD_NOTE = 'From the card: '
+export const cardNote = (outcome: string) => `${CARD_NOTE}${outcome}`
+export const cardNoteOf = (text: string) => (text.startsWith(CARD_NOTE) ? text.slice(CARD_NOTE.length) : null)
+// Applied / Cancelled / Not applied, with the card's one-line summary.
+export function cardOutcome(card: Pick<UiCard, 'kind' | 'label' | 'setting' | 'state'>, refused?: string) {
+  const what = card.setting ? `${card.label} (${card.setting.before ?? 'default'} → ${card.setting.after})` : card.label
+  if (refused) return `Not applied: ${what}: ${refused}`
+  if (card.state === 'stale') return `Not applied: ${what}: this changed since, nothing was applied`
+  return `${card.state === 'dismissed' ? 'Cancelled' : 'Applied'}: ${what}`
+}
+
 // A setting card holds while the setting still has the value it was proposed
 // over: changed since (in Settings, on another device), it runs nothing.
 export const settingStamp = (key: string, value: string | undefined) => `setting:${key}:${value ?? ''}`

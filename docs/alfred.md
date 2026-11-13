@@ -38,7 +38,8 @@ A change without `--apply` (all but `setting set`, which is only proposed) chang
 the command that makes it. Alfred shows you those lines and runs that command, with `--apply`,
 only after your yes in the chat. With `--propose` instead (only in a turn that follows your
 message), nothing changes yet: Alfred's reply carries a [card you apply](conversation.md#project-changes-alfred-proposes)
-with the change's lines, *Show me*, *Cancel* and *Apply*. When the answer names a `remote` machine (a project on another
+with the change's lines, *Show me*, *Cancel* and *Apply*. Your click is [told to Alfred](conversation.md#what-a-card-tells-its-agent)
+(*Applied: …*), so it goes on to the next step (the next v2 project) without you typing "ok, next". When the answer names a `remote` machine (a project on another
 machine, its coordinator), Alfred makes the change only when you asked for it. No `wherdr alfred`
 command deletes anything but its own [notes](#notes) (removing a project's machine leaves its clone and tasks there): removing a project, a template or a setting stays yours, in Settings.
 The one removal a coordinator has is `wherdr pm task remove`, for a task never started.

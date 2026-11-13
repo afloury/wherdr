@@ -6,6 +6,8 @@ import { addFiring, answerAutomation, firesOn, firingTask, taskEvents, type Auto
 import { due, parseSchedule } from '../../shared/pm/schedule'
 import type { Project } from '../../shared/pm/project'
 import { HerdrError } from './herdr'
+import { tellCardOutcome } from './cardOutcome'
+import { MAIN } from '../../shared/pm/coordinator'
 import { paceWait } from '../../shared/pm/pace'
 import { forgetMemory } from './pmMemory'
 import { goesTo, paceOf, placeFor } from './pmPlace'
@@ -75,9 +77,22 @@ export async function fireAutomation(deps: PmLaunchDeps, key: string, id: string
 }
 
 // The user's Accept or Refuse on a proposal of the coordinator or Alfred.
-export const answerAutomationProposal = (deps: Pick<PmLaunchDeps, 'store'>, key: string, id: string, accept: boolean) =>
-  deps.store.changeAutomations(key, (f) => {
-    const r = answerAutomation(f, id, accept, Date.now())
-    if ('error' in r) throw new HerdrError('refused', r.error)
-    return { file: { ...f, ...r }, out: { accepted: accept } }
-  })
+// The proposer learns the answer in its conversation (cardOutcome.ts).
+export async function answerAutomationProposal(deps: Pick<PmLaunchDeps, 'store' | 'call'>, key: string, id: string, accept: boolean) {
+  const p = (await deps.store.automations(key)).proposals?.find(x => x.id === id && !x.outcome)
+  const what = p && `${p.action === 'add' ? 'New' : p.action === 'remove' ? 'Remove' : 'Change'} automation ${p.automation.id}`
+  const tell = (text: string) => (p ? tellCardOutcome(deps, p.by === 'main' ? MAIN : p.by, text).catch(() => {}) : undefined)
+  try {
+    const out = await deps.store.changeAutomations(key, (f) => {
+      const r = answerAutomation(f, id, accept, Date.now())
+      if ('error' in r) throw new HerdrError('refused', r.error)
+      return { file: { ...f, ...r }, out: { accepted: accept } }
+    })
+    await tell(`${accept ? 'Applied' : 'Cancelled'}: ${what}`)
+    return out
+  }
+  catch (e) {
+    if (e instanceof HerdrError) await tell(`Not applied: ${what}: ${e.message}`)
+    throw e
+  }
+}

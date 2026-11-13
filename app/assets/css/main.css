@@ -3013,6 +3013,9 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .msg-wake[data-kind="engine"] { --wake: var(--blocked); }
 .msg-wake[data-kind="health"] { --wake: var(--done); }
 .msg-wake[data-kind="incident"] { --wake: var(--danger); }
+/* The user's click on a card, told to the agent: the same muted row, not a button. */
+.card-note .wake-row { cursor: default; }
+.msg-wake[data-kind="card"] { --wake: var(--done); }
 /* Floating "Reply" button near a selected passage. */
 .sel-reply {
   position: fixed; z-index: 60; display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px;

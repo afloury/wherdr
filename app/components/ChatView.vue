@@ -22,6 +22,7 @@ import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/ut
 import { findReplyOrigin, parseReply, type ReplyTarget } from '#shared/replyQuote'
 import { messageId, messageOf, messageRef, pointRef, refLine, refsIn, sameRef, type Reference } from '#shared/reference'
 import { WAKE_LABEL, wakeKindOf, type WakeKind } from '#shared/pm/wakes'
+import { cardNoteOf } from '#shared/uiActions'
 import type { ProposalAnswer } from '#shared/pm/coordinator'
 import type { AutomationProposal } from '#shared/pm/automations'
 import { proposalSpot, type PlacedBlock } from '~/utils/proposalPlace'
@@ -500,6 +501,8 @@ type Block = ({ k: 'day', key: string, label: string }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
   | { k: 'turn', key: string, text: string, copy: string | null, reply: string | null }
   // A wake: one compact row, the coordinator's answer under it (see foldWakes).
+  // The user's click on a card, told to the agent (shared/uiActions.ts cardNote): a muted row.
+  | { k: 'card', key: string, text: string, time: string | null, at: string | null }
   | { k: 'wake', key: string, kind: WakeKind, head: string, text: string, time: string | null, at: string | null, answer: string | null, loud: boolean, ms?: number }
   // `last`: the first line of the last answer in the run.
   | { k: 'wakes', key: string, n: number, from: string | null, to: string | null, last: string | null }) & { in?: string[] }
@@ -690,6 +693,8 @@ const blocks = computed<Block[]>(() => {
       // file), then photos stored on the server whose path stayed as text.
       const { text, srcs, files } = userMessageParts(it.text, itemImageSrcs(it))
       // Reply to a specific message: the marker becomes a quote linking to the original.
+      const card = cardNoteOf(text)
+      if (card !== null) { out.push({ k: 'card', key, text: card, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null }); return }
       const parsed = parseReply(text)
       const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
       out.push({ k: 'user', key, text: parsed ? parsed.body : text, pasted: it.pasted, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin, wake: wakeKindOf(text), ...msOf(it) })
@@ -762,7 +767,7 @@ const changes = (it: ChatItem) => /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(i
 // Its answer asks the user: a question line, or questions the reply bar offers.
 const asks = (b: Block & { k: 'assistant' }) => /\?\s*$/m.test(b.text) || replyTargets(b.html).questions.length > 0
 // A block the user started: it ends a wake's turn.
-const fromUser = (b: Block) => b.k === 'user' || b.k === 'shell' || b.k === 'ompRun' || (b.k === 'notice' && !!b.scheduled) || (b.k === 'system' && !!b.cmd)
+const fromUser = (b: Block) => b.k === 'user' || b.k === 'card' || b.k === 'shell' || b.k === 'ompRun' || (b.k === 'notice' && !!b.scheduled) || (b.k === 'system' && !!b.cmd)
 const plainLine = (text: string) => text.replace(/[*_`#>]+/g, '').replace(/\s+/g, ' ').trim()
 const firstLine = (text: string) => plainLine(text.split('\n').find(l => plainLine(l)) || '')
 // Ends a wake's turn: the user's input, or a turn the agent took by itself.
@@ -1215,7 +1220,7 @@ function queuedNow() {
   // Agent idle, nothing holding it: Claude's own queue is empty by now.
   const idle = waitFor.value === 'sending'
   // A wake waiting in Claude's queue shows as its row once taken, never first as a bubble.
-  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle, input: props.pane.draft?.text }).filter(q => !wakeKindOf(q.raw)).map((q) => {
+  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle, input: props.pane.draft?.text }).filter(q => !wakeKindOf(q.raw) && cardNoteOf(q.raw) === null).map((q) => {
     const { text, files } = userMessageParts(q.raw)
     const parsed = parseReply(text)
     return {
@@ -1596,6 +1601,14 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <span v-if="b.last" class="wake-last" :title="b.last">· last: “{{ b.last }}”</span>
                 <span v-if="b.from" class="wake-time">{{ b.from === b.to ? b.from : `${b.from}–${b.to}` }}</span>
               </button>
+
+              <div v-else-if="b.k === 'card'" class="wake card-note" :data-hit-key="b.key" data-testid="card-note">
+                <div class="wake-row">
+                  <span class="msg-wake" data-kind="card">{{ t('From the card') }}</span>
+                  <span class="wake-head" :title="b.text">{{ b.text }}</span>
+                  <span v-if="b.time" class="wake-time" :title="b.at || undefined">{{ b.time }}</span>
+                </div>
+              </div>
 
               <div v-else-if="b.k === 'wake'" class="wake" :class="{ loud: b.loud, open: isOpen(b.key) }" :data-kind="b.kind" :data-hit-key="b.key" data-testid="wake">
                 <button type="button" class="wake-row" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
