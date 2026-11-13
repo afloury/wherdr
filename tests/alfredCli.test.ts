@@ -160,6 +160,13 @@ describe('runAlfredCommand', () => {
     expect(done).toMatchObject({ state: 'done', outcome: { lines: ['APP: added; coordinator not started: agent missing', 'SITE: added, coordinator started'] } })
     expect((await store.projects()).map(p => [p.key, p.from])).toEqual([['APP', undefined], ['SITE', undefined]])
     expect(started).toEqual([{ key: 'SITE', first: [expect.stringContaining('Your first conversation')] }])
+    // --only and --start no are the card's defaults; an Apply without a choice keeps them.
+    await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind: 'user', at: Date.now() } })
+    await run('v2', 'import', '--only', 'mydocs', '--start', 'no', '--propose')
+    const narrow = (await store.coordinator(MAIN))!.cards![0]!
+    expect(narrow.change).toMatchObject({ argv: ['v2', 'import'], picks: [null, 'MYDOCS'], on: ['MYDOCS'], start: false })
+    expect(await actOnCard({ store, applyChange: (argv: string[], lines: string[], c?: typeof choice) => applyProposedChange(deps(), argv, lines, c) } as never, narrow.id, undefined)).toMatchObject({ outcome: { lines: ['MYDOCS: added'] } })
+    expect(started).toHaveLength(1)
     // A project without a template: its coordinator starts all the same.
     expect(await run('coordinator', 'start', 'APP')).toMatchObject({ dryRun: true, change: ['start the coordinator of APP with claude on this machine'] })
   })

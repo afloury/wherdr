@@ -7,10 +7,10 @@
 // A proposed setting change (kind 'setting'): before → after and the user's
 // message behind it, Show me (highlights the setting), Cancel and Apply. A
 // proposed project change (kind 'change'): the lines of its dry run instead;
-// several projects (`v2 import`, change.picks): a checkbox per project (on by
-// default, none for one that cannot be added) and one to start their
+// several projects (`v2 import`, change.picks): a checkbox per project (on as
+// the command asked, none for one that cannot be added) and one to start their
 // coordinators; the outcome then lists each project.
-import type { UiCard } from '#shared/uiActions'
+import { defaultChoice, type UiCard } from '#shared/uiActions'
 import { appRoute } from '#shared/appLinks'
 import { uiTargetLink } from '#shared/uiTargets'
 
@@ -29,7 +29,7 @@ const error = ref('')
 // The checkboxes of a several-projects card: the keys to add, and whether to start their coordinators.
 const picked = ref<string[]>([])
 const start = ref(true)
-watch(() => card.value?.change?.picks, (p) => { picked.value = (p ?? []).filter((k): k is string => !!k); start.value = card.value?.change?.start !== false }, { immediate: true })
+watch(() => card.value?.change?.picks, () => { const c = defaultChoice(card.value?.change ?? {}); picked.value = c.picks; start.value = c.start }, { immediate: true })
 
 async function load() {
   try { card.value = (await api<{ card: UiCard }>(`/api/ui/card?id=${encodeURIComponent(props.id)}`)).card }

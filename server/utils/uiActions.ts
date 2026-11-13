@@ -6,7 +6,7 @@ import { randomBytes } from 'node:crypto'
 import type { Turn } from '../../shared/pm/coordinator'
 import { shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, type Task } from '../../shared/pm/run'
-import { actionBlock, actionLabel, actionRefusal, actionStamp, cardNow, cardOutcome, changeStamp, keepCards, outcomeText, settingStamp, type CardChoice, type ProjectChange, type SettingChange, type UiAction, type UiCard } from '../../shared/uiActions'
+import { actionBlock, actionLabel, actionRefusal, actionStamp, cardNow, cardOutcome, changeStamp, defaultChoice, keepCards, outcomeText, settingStamp, type CardChoice, type ProjectChange, type SettingChange, type UiAction, type UiCard } from '../../shared/uiActions'
 import { MAIN } from '../../shared/pm/coordinator'
 import { tellCardOutcome } from './cardOutcome'
 import { HerdrError } from './herdr'
@@ -129,7 +129,7 @@ async function act(deps: ActDeps, id: unknown, cancel: boolean, choice?: CardCho
   const c = card.change
   if (c) {
     if (!deps.applyChange) throw new HerdrError('unavailable', 'Project changes are not applied here')
-    const made = await deps.applyChange(c.argv, c.lines, c.picks ? choice ?? { picks: c.picks.filter(k => k !== null), start: c.start !== false } : undefined)
+    const made = await deps.applyChange(c.argv, c.lines, c.picks ? choice ?? defaultChoice(c) : undefined)
     return save(deps.store, made ? { ...card, state: 'done', outcome: { text: 'Applied by you', at: Date.now(), ...(made.length ? { lines: made } : {}) } } : { ...card, state: 'stale' })
   }
   if (card.kind === 'open') return card

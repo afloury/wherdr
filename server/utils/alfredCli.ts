@@ -34,6 +34,17 @@ type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: Coordina
 // A coordinator started by a v2 import speaks first: its workflow questions.
 const FIRST_TALK = 'You were just started for a project brought over from wherdr v2. Follow "Your first conversation" in AGENTS.md now: look at the repository, introduce yourself, and ask the user your first question on how they work.'
 
+// The command a card keeps: without --propose; a card with checkboxes, without --only and --start too.
+function cardArgv(argv: string[], picks: boolean) {
+  const out: string[] = []
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--propose') continue
+    if (picks && (argv[i] === '--only' || argv[i] === '--start')) { i++; continue }
+    out.push(argv[i]!)
+  }
+  return out
+}
+
 // A turn the server saw start over an hour ago is not trusted any more (as a coordinator's).
 const TURN_MS = 3_600_000
 
@@ -95,14 +106,15 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
   }
   // A change: its plan, then (with --apply, or the user's Apply on its card
   // while the plan is the same) the change itself; --propose: the card.
-  // picks, start: a card with a checkbox per line (v2 import).
-  const change = async (plan: AlfredPlan & { picks?: (string | null)[], start?: boolean }, make: () => Promise<unknown>) => {
+  // picks, on, start: a card with a checkbox per line (v2 import); the click
+  // gives --only and --start again, so the card's argv leaves them out.
+  const change = async (plan: AlfredPlan & { picks?: (string | null)[], on?: string[], start?: boolean }, make: () => Promise<unknown>) => {
     if (card) return plan.change.join('\n') === card.join('\n') ? { applied: true, change: plan.change, result: await make() } : { stale: true }
     if ('apply' in cmd && cmd.apply) return { applied: true, change: plan.change, result: await make() }
     if (!('propose' in cmd && cmd.propose)) return dryRun(argv as string[], plan)
     const key = 'input' in cmd ? cmd.input.key : 'key' in cmd ? cmd.key : '', place = CHANGE_PLACES[cmd.name]!, turn = await alfredTurn()
     const target = cmd.name === 'project add' ? undefined : place.target
-    return addChangeCard(store, { turn: turn?.kind ?? 'none', by: ALFRED, label: place.label(key), change: { argv: (argv as string[]).filter(a => a !== '--propose'), lines: plan.change, project: key, ...(plan.picks ? { picks: plan.picks, start: plan.start } : {}), ...(turn?.said ? { said: turn.said } : {}), ...(target ? { target } : {}) } })
+    return addChangeCard(store, { turn: turn?.kind ?? 'none', by: ALFRED, label: place.label(key), change: { argv: cardArgv(argv as string[], !!plan.picks), lines: plan.change, project: key, ...(plan.picks ? { picks: plan.picks, ...(plan.on ? { on: plan.on } : {}), start: plan.start } : {}), ...(turn?.said ? { said: turn.said } : {}), ...(target ? { target } : {}) } })
   }
 
   switch (cmd.name) {
@@ -138,7 +150,7 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
         }))
       if (!rows.length) throw new HerdrError('not_found', 'No v2 project left to bring over (see wherdr alfred v2)')
       const only = cmd.only && new Set(cmd.only)
-      return change({ change: rows.map(r => r.line), picks: rows.map(r => (r.why ? null : r.c.key)), start: true }, async () => {
+      return change({ change: rows.map(r => r.line), picks: rows.map(r => (r.why ? null : r.c.key)), ...(cmd.only ? { on: cmd.only } : {}), start: cmd.start }, async () => {
         // One project failing does not stop the others: each line says what happened.
         const outcome: string[] = []
         for (const { c, why } of rows) {
