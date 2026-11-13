@@ -12,6 +12,7 @@ import { noteBack } from './pmStall'
 import type { CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
 import { HerdrError } from './herdr'
+import { coordinatorKey } from '../../shared/pm/workspace'
 
 type Deps = CoreAdminDeps & { store: PmStore }
 
@@ -77,8 +78,9 @@ export async function withdrawReport(store: PmStore, id: unknown) {
 
 // Typed into its terminal as the user's message; a coordinator that does not
 // run starts with it as its first message.
-async function toCoordinator(deps: Deps, key: string, msg: string, said: string, urls: CoordinatorUrls) {
-  const c = await deps.store.coordinator(key)
+async function toCoordinator(deps: Deps, project: string, msg: string, said: string, urls: CoordinatorUrls) {
+  // A member's task: its workspace's coordinator.
+  const key = coordinatorKey(project, await deps.store.projects()), c = await deps.store.coordinator(key)
   const live = c?.terminal && await deps.call<{ state?: string }>('terminal.get', { terminal: c.terminal }, 3000).then(s => s?.state !== 'finished', () => false)
   if (live) await deps.call('terminal.send', { terminal: c!.terminal, text: msg }, 30000)
   else await startCoordinator(deps, key, {}, urls, [msg])

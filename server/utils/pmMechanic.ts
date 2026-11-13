@@ -23,7 +23,8 @@ import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, runOn, startTask, type PmLaunchDeps, launched } from './pmLaunch'
 import { busyNext, busyQueue, coordinatorStartRefusal, AUTOPILOT_STARTED, UNCONFIRMED } from '../../shared/pm/autopilot'
 import { originOf, pacedStart, paceRefusal } from '../../shared/pm/pace'
-import { paceOf, placeFor, slotsOf } from './pmPlace'
+import { paceOf, pilotOf, placeFor, slotsOf } from './pmPlace'
+import { coordinatorKey } from '../../shared/pm/workspace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { isResumeWait, resumeWait } from '../../shared/pm/recovery'
 import { resumeInterrupted, wakeIncidents } from './pmRecovery'
@@ -96,7 +97,7 @@ const startedElsewhere = (e: Error) => e instanceof HerdrError && e.code === 'bu
 
 export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
-  const tasks = await store.tasks(), runs = await store.runs(), started: string[] = []
+  const tasks = await store.tasks(), started: string[] = []
   for (const t of tasks.filter(x => x.after && !x.step?.started)) {
     const c = chainState(t, tasks)
     const held = c && c !== 'go' && 'wait' in c ? c.wait : undefined
@@ -109,14 +110,17 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
     else if (t.state === 'todo' && !quiet && isResumeWait(t.held)) await store.saveTask({ ...t, held: undefined })
   }
   const machines = new Set<string>() // one start per machine and tick: the next reading counts the new agent
-  for (const p of await store.projects()) {
-    const ap = (await store.coordinator(p.key))?.autopilot
-    const mine = (await store.tasks()).filter(t => t.project === p.key)
+  const projects = await store.projects()
+  for (const p of projects) {
+    // A member's: its workspace's autopilot, whose limits count all its projects' tasks.
+    // Runs read again: a member started above counts in its workspace's limits.
+    const { ap, all, holds } = await pilotOf(store, projects, p.key), runs = await store.runs()
+    const mine = all.filter(t => t.project === p.key)
     // A chain the coordinator or an automation made is automatic work: held by the pace.
     let next: typeof mine[number] | undefined, pace: Awaited<ReturnType<typeof paceOf>> | undefined
     for (const t of mine.filter(x => x.after && x.state === 'todo' && !x.sameFiles)) {
       pace = pacedStart(t, 'engine') ? await paceOf(store, p, t, now) : undefined
-      if (!coordinatorStartRefusal(ap, t, mine, runs, now, false, { pace: pace?.verdict, engine: true, holds: await slotsOf(store, [p]) })) { next = t; break }
+      if (!coordinatorStartRefusal(ap, t, all, runs, now, false, { pace: pace?.verdict, engine: true, holds })) { next = t; break }
     }
     if (!next) continue
     // No room on any allowed machine: held, with why on its card, until a later tick finds room.
@@ -140,14 +144,14 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
 // the pace: over a limit it waits, with why; the autopilot off drops the hold.
 export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
-  const projects = await store.projects(), runs = await store.runs(), started: string[] = [], machines = new Set<string>()
+  const projects = await store.projects(), started: string[] = [], machines = new Set<string>()
   for (const t of (await store.tasks()).filter(x => x.held && x.state === 'todo' && !x.after && !x.sameFiles)) {
-    const p = projects.find(x => x.key === t.project)
+    const p = projects.find(x => x.key === t.project), runs = await store.runs() // a start above counts in the limits
     if (!p) continue
     const pace = pacedStart(t, 'wake') ? await paceOf(store, p, t, now) : undefined
     // An engine start its machine was out of reach for: already decided, it only waits for a machine.
     const why = t.machineWait ? undefined : originOf(t) === 'automation' ? paceRefusal(pace?.verdict)
-      : coordinatorStartRefusal((await store.coordinator(p.key))?.autopilot, t, (await store.tasks()).filter(x => x.project === p.key), runs, now, true, { pace: pace?.verdict, holds: await slotsOf(store, [p]) })
+      : await pilotOf(store, projects, p.key).then(o => coordinatorStartRefusal(o.ap, t, o.all, runs, now, true, { pace: pace?.verdict, holds: o.holds }))
     if (why && /autopilot on/.test(why)) { await store.logTask({ ...t, held: undefined }, 'engine', `no longer held: ${why}`); continue }
     const placed = why ? { hold: `Waits: ${why}` } : await placeFor(deps, t, { waits: pace?.waits })
     if ('hold' in placed) { if (placed.hold !== t.held) await store.saveTask({ ...t, held: placed.hold }); continue }
@@ -253,8 +257,9 @@ async function machineDown(deps: PmLaunchDeps, task: Task, run: Run) {
 // A wake the engine does not send: noted for each coordinator it would have woken (autopilot show); how many.
 async function skipWake(deps: PmLaunchDeps, task: Task, why: string, now: number) {
   const { store } = deps
-  const coords = new Map([[task.project, await store.coordinator(task.project)], [MAIN, await store.coordinator(MAIN)]])
-  const keys = wakesFor([task.project, MAIN], k => coords.get(k) ?? undefined, now)
+  const own = coordinatorKey(task.project, await store.projects()) // a member's: its workspace's
+  const coords = new Map([[own, await store.coordinator(own)], [MAIN, await store.coordinator(MAIN)]])
+  const keys = wakesFor([own, MAIN], k => coords.get(k) ?? undefined, now)
   for (const key of keys) {
     const c = coords.get(key)!, skips = addSkip(c.skips, { at: now, what: 'engine', why })
     if (skips) await store.saveCoordinator({ ...c, skips })
@@ -291,16 +296,16 @@ async function handedWaits(deps: PmLaunchDeps, task: Task, why: string, now: num
 // to-do task starts by itself while a machine it allows has room, within its
 // autopilot's limits, hours and pace; no coordinator wake for it. One per
 // project, one per machine and tick. Started another way meanwhile: dropped.
+// A workspace's: one autopilot for it and its members, their tasks in board order.
 export async function startNext(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
-  const runs = await store.runs(), started: string[] = [], machines = new Set<string>()
-  for (const p of await store.projects()) {
-    const ap = (await store.coordinator(p.key))?.autopilot
-    const mine = (await store.tasks()).filter(t => t.project === p.key)
+  const runs = await store.runs(), started: string[] = [], machines = new Set<string>(), projects = await store.projects()
+  for (const p of projects.filter(x => coordinatorKey(x.key, projects) === x.key)) {
+    const { ap, all: mine, holds, held } = await pilotOf(store, projects, p.key)
     const first = ap?.on ? busyQueue(mine)[0] : undefined
     if (!first) continue
-    const pace = await paceOf(store, p, first, now)
-    const next = busyNext(ap, mine, runs, now, { pace: pace.verdict, holds: await slotsOf(store, [p]) })
+    const pace = await paceOf(store, held.find(x => x.key === first.project)!, first, now)
+    const next = busyNext(ap, mine, runs, now, { pace: pace.verdict, holds })
     if (!('task' in next)) continue
     const placed = await placeFor(deps, first, { waits: pace.waits })
     if ('hold' in placed || machines.has(placed.machine)) continue
