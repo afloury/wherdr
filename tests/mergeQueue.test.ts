@@ -102,6 +102,10 @@ describe('merge queue', () => {
     expect(out(led({ step: step({ at: 3 }) }))).toBe('waits for LED-4 to be done')
     expect(mergeOrder([{ id: 'CO-1', files: ['x.ts'], size: 1, out: out(led()) }, { id: 'CO-2', files: ['y.ts'], size: 9 }])).toEqual(['CO-2', 'CO-1'])
     expect(nextMove(facts({ task: waiting, queue: 2, queueOut: out(led()) }))).toBeUndefined()
+    // New commits not on the PR yet: not pushed either, since the merge step would push and merge at once.
+    const unpushed = facts({ task: waiting, head: 'def5678' })
+    expect(queueOut(unpushed, [led()])).toBe('waits for LED-4 to be done')
+    expect(nextMove({ ...unpushed, queue: 1, queueOut: queueOut(unpushed, [led()]) })?.move.kind).not.toBe('merge')
     // Its whole workflow done (merged, deploy watched): it goes.
     expect(out(led({ step: step({ done: true }) }))).toBeUndefined()
     // Stopped or abandoned: it keeps waiting; its coordinator is woken once per stop.

@@ -162,7 +162,9 @@ If an upstream task is stopped or abandoned, the waiting one keeps waiting
 (no cascade stop) and the workspace's coordinator gets one wake for it: start
 the upstream again, or drop the wait with `task edit <task> --merge-after ""`.
 `mergeAfter` follows the same rules as `after`: within the workspace, never
-a feature, never a cycle.
+a feature, never a cycle, counting `after` and `mergeAfter` together (a task
+that merges after one that starts after it would block both). While it waits,
+its new commits are not pushed either: they go once the upstream is done.
 
 A feature's state is never stored, it comes from its sub-tasks: **to do**
 until one starts, **working** (also once they have all ended, until it is

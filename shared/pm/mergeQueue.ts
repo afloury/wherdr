@@ -37,7 +37,9 @@ export function queueOut(f: Pick<MechFacts, 'task' | 'plan' | 'pr' | 'head' | 'a
   if (s.agent) return s.agent.kind === 'catch-up' ? 'its agent resolves a conflict with the base' : 'its agent fixes the PR'
   if (s.catchUp) return `updating with ${s.catchUp.base}`
   if (f.agentBusy) return 'its agent is working'
-  if (!pr || !head || pr.headRefOid !== head) return NOT_PUSHED
+  // Upstream tasks not done: its new commits wait too, since pushing them would merge it (NOT_PUSHED lets the merge step push and merge).
+  const waits = mergeWaits(task, tasks)
+  if (!pr || !head || pr.headRefOid !== head) return waits.length ? waitText(waits) : NOT_PUSHED
   if (pr.mergeStateStatus === 'DIRTY') return 'conflict with its base'
   if (pr.mergeStateStatus === 'BEHIND') return `updating with ${pr.baseRefName}`
   // Its merge tried at this commit and refused: the user's (Try again, Merge), out of line meanwhile.
@@ -46,8 +48,7 @@ export function queueOut(f: Pick<MechFacts, 'task' | 'plan' | 'pr' | 'head' | 'a
   const ready = prReady(pr, head, plan[s.at]?.action?.checks)
   if (!ready.ok) return ready.later ? 'waiting for its checks' : 'checks failed'
   // Ready, but its upstream tasks are not done: out of line, the others merge meanwhile.
-  const waits = mergeWaits(task, tasks)
-  if (waits.length) return `waits for ${waits.join(', ')} to be done`
+  if (waits.length) return waitText(waits)
   // Green, yet GitHub refuses it (a required review, a required check the step does not list).
   return pr.mergeStateStatus === 'BLOCKED' ? 'blocked by the branch rules' : undefined
 }
@@ -55,6 +56,7 @@ export function queueOut(f: Pick<MechFacts, 'task' | 'plan' | 'pr' | 'head' | 'a
 // The tasks it merges after (mergeAfter) not done yet: done is the whole
 // workflow finished (merged, its deploy watched when the workflow has one).
 // One stopped or abandoned is still waited for; a removed one no longer.
+const waitText = (ids: string[]) => `waits for ${ids.join(', ')} to be done`
 export const mergeWaits = (task: Pick<Task, 'mergeAfter'>, tasks: Task[]) =>
   mergeAfterIds(task).filter((id) => { const t = tasks.find(x => x.id === id); return !!t && !(t.step?.done && !t.step.abandoned) })
 

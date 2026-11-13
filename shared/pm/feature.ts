@@ -64,23 +64,27 @@ export function parsePlan(raw: unknown): Plan | { error: string } {
     const bad = tasks.flatMap(t => t[k]).find(a => !repos.has(a) && !TASK_RE.test(a))
     if (bad) return { error: `plan.tasks[].${k}: ${bad} is neither a repository of the plan nor a task` }
   }
-  // Start order: each task once those of the plan it waits for are placed; merges in the same way, never in a cycle.
-  const ranked = (k: 'after' | 'mergeAfter') => {
+  // Start order: each task once those of the plan it waits for are placed.
+  // Never a cycle, through after and mergeAfter together: a task waits to be
+  // done for both, so any such cycle blocks every task in it.
+  const ranked = (links: (t: PlanTask) => string[], what: string) => {
     const sorted: PlanTask[] = []
     while (sorted.length < tasks.length) {
-      const next = tasks.find(t => !sorted.includes(t) && t[k].every(a => !repos.has(a) || sorted.some(s => s.repo === a)))
-      if (!next) return { error: `plan: a cycle in ${k} (${tasks.filter(t => !sorted.includes(t)).map(t => t.repo).join(', ')})` }
+      const next = tasks.find(t => !sorted.includes(t) && links(t).every(a => !repos.has(a) || sorted.some(s => s.repo === a)))
+      if (!next) return { error: `plan: a cycle in ${what} (${tasks.filter(t => !sorted.includes(t)).map(t => t.repo).join(', ')})` }
       sorted.push(next)
     }
     return sorted
   }
-  const merges = ranked('mergeAfter'), sorted = ranked('after')
-  if ('error' in merges) return merges
-  return 'error' in sorted ? sorted : { order, tasks: sorted }
+  const sorted = ranked(t => t.after, 'after')
+  if ('error' in sorted) return sorted
+  const both = ranked(t => [...t.after, ...t.mergeAfter], 'after and mergeAfter')
+  return 'error' in both ? both : { order, tasks: sorted }
 }
 
 // Why `after` (or `mergeAfter`) may not link this task (self: its id, once it
-// exists) to these: a task outside its project's workspace (or project), a feature, or a cycle.
+// exists) to these: a task outside its project's workspace (or project), a
+// feature, or a cycle through after and mergeAfter together (each blocks it).
 export function afterRefusal(project: string, ids: string[], tasks: Pick<Task, 'id' | 'project' | 'after' | 'mergeAfter' | 'kind'>[], projects: Project[], self?: string, field: 'after' | 'mergeAfter' = 'after'): string | undefined {
   const group = coordinatorKey(project, projects)
   const out = ids.find(id => !tasks.some(t => t.id === id && t.kind !== 'feature' && coordinatorKey(t.project, projects) === group))
@@ -91,7 +95,8 @@ export function afterRefusal(project: string, ids: string[], tasks: Pick<Task, '
     if (id === self) return `${self} would wait for itself: a cycle in ${field}`
     if (seen.has(id)) continue
     seen.add(id)
-    todo.push(...(field === 'after' ? afterIds : mergeAfterIds)(tasks.find(t => t.id === id) ?? {}))
+    const t = tasks.find(x => x.id === id) ?? {}
+    todo.push(...afterIds(t), ...mergeAfterIds(t))
   }
   return undefined
 }

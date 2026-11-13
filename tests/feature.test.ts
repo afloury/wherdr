@@ -29,6 +29,8 @@ describe('features: the plan, after and the derived state', () => {
     const p = parsePlan(plan([{ repo: 'quotes-app', title: 'Show it', type: 'feature', after: ['payroll-api'] }, { repo: 'payroll-api', title: 'Serve it', type: 'feature' }]))
     expect('tasks' in p && p.tasks.map(t => t.repo)).toEqual(['payroll-api', 'quotes-app'])
     expect(parsePlan(plan([{ repo: 'a', title: 'A', type: 'x', after: ['b'] }, { repo: 'b', title: 'B', type: 'x', after: ['a'] }]))).toEqual({ error: 'plan: a cycle in after (a, b)' })
+    // after and mergeAfter together: the API merges after the app, which starts after the API.
+    expect(parsePlan(plan([{ repo: 'api', title: 'A', type: 'x', mergeAfter: ['app'] }, { repo: 'app', title: 'B', type: 'x', after: ['api'] }]))).toEqual({ error: 'plan: a cycle in after and mergeAfter (api, app)' })
     expect(parsePlan(plan([{ repo: 'a', title: 'A', type: 'x' }, { repo: 'a', title: 'B', type: 'x' }]))).toMatchObject({ error: expect.stringMatching(/twice/) })
   })
 
@@ -38,6 +40,8 @@ describe('features: the plan, after and the derived state', () => {
     expect(afterRefusal('QA', ['OT-1'], tasks, projects)).toMatch(/tasks of the same project or workspace, comma-separated \(not OT-1\)/)
     expect(afterRefusal('PA', ['WS-1'], tasks, projects)).toMatch(/not WS-1/)
     expect(afterRefusal('PA', ['QA-1'], tasks, projects, 'PA-1')).toMatch(/a cycle/)
+    // A merge waiting on a task that starts after it: a cycle too.
+    expect(afterRefusal('PA', ['QA-1'], tasks, projects, 'PA-1', 'mergeAfter')).toBe('PA-1 would wait for itself: a cycle in mergeAfter')
   })
 
   it('derives the feature\'s state from its sub-tasks, done once closed', () => {
