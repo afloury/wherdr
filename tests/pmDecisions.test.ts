@@ -10,7 +10,7 @@ import type { Finding } from '../shared/pm/verdict'
 import type { Wake } from '../shared/pm/wakes'
 import { createPmStore } from '../server/utils/pmStore'
 import { userDecide } from '../server/utils/pmBoard'
-import { decisionsTick, resetDecisionsTold } from '../server/utils/pmDecisions'
+import { decisions, decisionsTick, resetDecisionsTold } from '../server/utils/pmDecisions'
 
 const card = (id: string, state: Partial<StepState>, more: Partial<Card> = {}): Card => ({
   id, project: 'CO', title: `Task ${id}`, description: '', column: 'Review', phase: 'working', step: 'review', holder: 'none', tags: [], links: [], log: [], plan: [],
@@ -75,6 +75,16 @@ let dir = ''
 afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 const project = { key: 'GH', name: 'GitHub', machine: '', path: '/src/gh', template: 'github', addedAt: 1 }
 const bug: Finding = { id: 'bug', severity: 'major', title: 'Crashes', proof: 'npm test: 1 failed' }
+
+it('titles a proposal decision by the coordinator name the user saved', async () => {
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-decisions-'))
+  const store = createPmStore(dir)
+  await store.setEnabled(true)
+  await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ ...project, name: 'Website', coordinatorName: 'Pilot' }] }))
+  await fs.mkdir(store.files.coordinators, { recursive: true })
+  await fs.writeFile(path.join(store.files.coordinators, 'GH.json'), JSON.stringify({ project: 'GH', tokenHash: '', proposal: { template: github, diff: '+ x', at: 5, base: 1 } }))
+  expect((await decisions(store)).find(d => d.group === 'proposal')).toMatchObject({ project: 'GH', title: 'Pilot' })
+})
 
 it('the user settles a review in one tap, and the grouped push tells only what is new', async () => {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-decisions-'))

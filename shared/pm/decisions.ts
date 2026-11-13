@@ -36,7 +36,7 @@ export interface Decision {
 export interface DecisionsInput {
   cards: Card[]
   tasks: Pick<Task, 'id' | 'state' | 'waiting' | 'waitKind' | 'stopped' | 'specPass'>[]
-  coordinators: { project: string, name: string, proposal?: { at: number, said?: string } }[]
+  coordinators: { project: string, name: string, coordinatorName?: string, proposal?: { at: number, said?: string } }[]
   wakes: Wake[]
   now?: number
 }

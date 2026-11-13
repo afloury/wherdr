@@ -23,6 +23,7 @@ import { machineOfPane } from './machines'
 import { createCodexStatus, dirWritable } from './codexStatus'
 import { runLocal, setCodexKnownWeek } from './quotas'
 import { pmStore } from './pmStore'
+import { projectCoordinatorName } from '../../shared/pm/project'
 import { createHeld } from './coreHeld'
 import { coreInputDeps, coreSend } from './coreInput'
 
@@ -251,10 +252,16 @@ const isTaskAgent = async (address: string) => {
   catch { return false }
 }
 
-// Alfred's or a project coordinator's terminal: its coordinator exception decides.
+// Alfred's or a project coordinator's terminal: its coordinator exception
+// decides, and its push names it (Alfred's name, else the coordinator's: projectCoordinatorName).
 const coordinatorAt = async (address: string) => {
-  try { const c = (await pmStore().coordinators()).find(x => x.terminal === address); return c ? coordinatorTarget(c.project) : undefined }
-  catch { return undefined }
+  try {
+    const store = pmStore(), c = (await store.coordinators()).find(x => x.terminal === address)
+    if (!c) return undefined
+    const p = (await store.projects()).find(x => x.key === c.project)
+    const name = p ? projectCoordinatorName(p) : (await (await import('./pmCoordinator')).alfredView({ store })).name
+    return { target: coordinatorTarget(c.project), name }
+  } catch { return undefined }
 }
 
 async function notifyCorePane(address: string, kind: CoreAlertKind) {
@@ -264,11 +271,11 @@ async function notifyCorePane(address: string, kind: CoreAlertKind) {
   if (kind === 'needs-you' && await isTaskAgent(address)) return
   const event: NotificationEvent = kind === 'needs-you' ? 'needs-you' : 'finished'
   const coordinator = await coordinatorAt(address)
-  if (!await notificationAllowed(event, state, p, { machine: p.machine ?? '', ...(coordinator ? { coordinator } : {}) })) return
+  if (!await notificationAllowed(event, state, p, { machine: p.machine ?? '', ...(coordinator ? { coordinator: coordinator.target } : {}) })) return
   const ws = state.workspaces.find(w => w.id === p.workspace)
   const where = [ws && ws.label, notificationTitle(p.title)].filter(Boolean).join(' · ')
   const on = state.machines && state.machines.length > 1 && p.machine ? `${state.machines.find(m => m.key === p.machine)?.label ?? p.machine} · ` : ''
-  const { title, titleFr } = agentNotificationTitle(kind === 'needs-you' ? 'blocked' : 'done', `${on}${agentLabel(p.agent)}`)
+  const { title, titleFr } = agentNotificationTitle(kind === 'needs-you' ? 'blocked' : 'done', `${on}${coordinator?.name || agentLabel(p.agent)}`)
   const badge = state.panes.filter(x => x.status === 'blocked' || x.status === 'done').length
   const sent = await pushSend({ title, titleFr, body: where || p.id, tag: `pane-${p.id}`, url: `/#/a/${encodeURIComponent(p.id)}`, badge })
   log(`notification ${p.id} ${kind} "${title}" -> ${sent} device(s)`)

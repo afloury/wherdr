@@ -11,7 +11,7 @@ export async function decisions(store: PmStore) {
   const [b, tasks, wakes, projects] = [await board(store), await store.tasks(), await store.wakes(), await store.projects()]
   const coordinators = await Promise.all(projects.map(async (p) => {
     const c = await store.coordinator(p.key)
-    return { project: p.key, name: p.name, ...(c?.proposal ? { proposal: { at: c.proposal.at, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}) }
+    return { project: p.key, name: p.name, ...(p.coordinatorName ? { coordinatorName: p.coordinatorName } : {}), ...(c?.proposal ? { proposal: { at: c.proposal.at, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}) }
   }))
   return decisionsOf({ cards: b.cards, tasks, coordinators, wakes })
 }
