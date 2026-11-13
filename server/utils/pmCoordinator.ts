@@ -63,6 +63,7 @@ import { readV2Projects, type V2Candidate } from './v2Board'
 import pkg from '../../package.json'
 import { openUi, showUi, uiTargetsList, type UiOpenDeps } from './uiOpen'
 import { addAction } from './uiActions'
+import { runMap } from './pmMap'
 
 // The running build's version (shared/v3Version.ts: package version plus commit),
 // so the update notice fires between two builds of one version. Outside Nitro
@@ -235,6 +236,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
 
   switch (cmd.name) {
     case 'help': return { commands: commandList(t) }
+    case 'map show': case 'map list': case 'map set': case 'map remove': return runMap(deps, pk ? projects.find(x => x.key === pk) : undefined, projects, cmd)
     case 'ui targets': return uiTargetsList()
     case 'ui action': return addAction(store, { scope, turn, by: main ? ALFRED : `${shownKey(p ?? { key: scope })} coordinator`, kind: cmd.action, task: await taskOf(cmd.task) })
     case 'ui show': return showUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope, turn, by: main ? ALFRED : `${shownKey(p ?? { key: scope })} coordinator`, ...(cmd.what === 'file' ? { what: cmd.what, path: cmd.path } : { what: cmd.what, task: await taskOf(cmd.task) }) })
