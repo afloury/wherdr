@@ -61,3 +61,24 @@ export const tldrPrompt = (input: string) => `${TLDR_PROMPT}\n\n---\n\n${input}`
 // The model's answer, kept short: at most 5 lines, 700 characters, no code formatting.
 export const cleanTldr = (out: string) =>
   out.replaceAll('`', '').trim().split('\n').filter(l => l.trim()).slice(0, 5).join('\n').slice(0, 700).trim()
+
+// An agent's question (Tasks to review): its last message in 2 or 3 plain
+// lines, written again only when the question changes (its key). The whole
+// message shows under it, and alone while the pace holds this one.
+export const QUESTION_VERSION = 'q1'
+export const QUESTION_PROMPT = [
+  'An AI agent working on a software task stopped to ask its owner a question. Its owner is not a developer and must answer in 10 seconds.',
+  'In plain words, in English, at most 3 short lines of plain Markdown, no heading, no preamble: what the agent asks, why it cannot go on without the answer, and what each option means for the owner (when it gives options).',
+  'Never name a file, path, function, class, component, test, command or tool, and no code formatting. Use only the text below.',
+  '\n\nGood: The agent needs the test server running to check its change. It asks whether to wait while you start it, to write the change without checking it, or to stop here.',
+  '\n\nBad: Run `docker compose up` in ~/project so `npm test` passes, or pick choices "Write it without testing".',
+].join(' ')
+
+// The question's key: the prompt's version and the message's hash (FNV-1a).
+export function questionKey(text: string) {
+  let h = 0x811C9DC5
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193)
+  return `${QUESTION_VERSION}|${text.length}|${(h >>> 0).toString(36)}`
+}
+export const questionPrompt = (title: string, question: string) =>
+  `${QUESTION_PROMPT}\n\n---\n\nTask: ${title}\n\n## The agent's message\n\n${maskLeaks(question.slice(-INPUT_MAX))}`

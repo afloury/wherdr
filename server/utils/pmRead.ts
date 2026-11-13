@@ -31,9 +31,11 @@ export async function lastWords(deps: Deps, terminal: string, lines = READ_LINES
 }
 
 // The question for the task's waiting line and its wake: one line, its end
-// kept (where the question is), from the conversation only (a screen is no sentence).
+// kept (where the question is), from the conversation only (a screen is no
+// sentence); and the whole message, for Tasks to review (its start kept).
+export const QUESTION_MAX = 12_000
 export async function askedQuestion(deps: Deps, terminal: string) {
-  const said = await fromConversation(deps, terminal, 20)
+  const said = await fromConversation(deps, terminal, 1000)
   const line = said?.text.replace(/\s+/g, ' ').trim()
-  return line ? (line.length > 500 ? `…${line.slice(-499)}` : line) : undefined
+  return line ? { line: line.length > 500 ? `…${line.slice(-499)}` : line, full: said!.text.slice(0, QUESTION_MAX) } : undefined
 }

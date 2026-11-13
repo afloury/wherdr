@@ -78,9 +78,9 @@ export async function syncWaits(deps: PmLaunchDeps) {
     const msg = typeof term.status === 'object' ? term.status?.msg?.trim().slice(0, 300) : undefined
     // A question carries its text, for the board and the coordinator's wake.
     const asked = kind === 'question' && task.state === 'working' ? await askedQuestion(deps, run!.terminal!) : undefined
-    if (task.state === 'working' && kind) await store.saveTask({ ...task, state: 'waiting', waiting: (kind === 'permission' && msg) || (asked ? `${WAITS.question}: ${asked}` : WAITS[kind]), waitKind: kind })
+    if (task.state === 'working' && kind) await store.saveTask({ ...task, state: 'waiting', waiting: (kind === 'permission' && msg) || (asked ? `${WAITS.question}: ${asked.line}` : WAITS[kind]), waitKind: kind, question: asked?.full })
     else if (task.state === 'waiting' && (task.waitKind === 'question' || task.waitKind === 'permission') && !kind)
-      await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, answered: undefined })
+      await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, answered: undefined, question: undefined })
     // The answered question gone from its agent: the next one wakes the coordinator again.
     else if (task.answered && task.state === 'working' && !kind) await store.saveTask({ ...task, answered: undefined })
   }

@@ -8,7 +8,11 @@
 // a note and screenshots back to its worker; it leaves the list too). Anything
 // else that waits (a question, a failure, a decision, another step of the user's)
 // shows its To do tab's answers (TaskTodo, the same actions as the task's sheet,
-// useTaskActions), Try again for a failed action, and Open the task. "3 of 12"
+// useTaskActions), Try again for a failed action, and Open the task. An agent's
+// question (ReviewQuestion) is answered here: its choices or another answer go
+// to the agent (POST /api/pm/answer), it leaves the list like an approved one;
+// Open the agent and Open the task stay. Answered elsewhere (a coordinator's
+// tell, the agent's conversation): the board is read again as the agent works. "3 of 12"
 // with previous and next (a task passed over stays in the list); on a computer
 // → next, ← previous, A approve, R reject. After the last one: All done.
 // Approve and Send back say so on their button for a moment (DONE_MS), then the
@@ -47,7 +51,7 @@ const at = ref(0)
 const index = computed(() => Math.min(at.value, items.value.length))
 // Approved or sent back: kept on screen with its confirmation, whatever the board reads meanwhile.
 const held = ref<Card>()
-const done = ref<'' | 'approved' | 'sent'>('')
+const done = ref<'' | 'approved' | 'sent' | 'answered'>('')
 const heldAt = ref('')
 const card = computed<Card | undefined>(() => held.value ?? items.value[index.value])
 // Another filter, or another home tab followed: back to the first one.
@@ -80,7 +84,7 @@ const rejecting = ref(false)
 watch(() => card.value?.id, () => { error.value = ''; rejecting.value = false })
 const DONE_MS = 400
 // Done with the current one: its confirmation, then off the list, the next one shows.
-async function leave(c: Card, how: 'approved' | 'sent') {
+async function leave(c: Card, how: 'approved' | 'sent' | 'answered') {
   if (error.value || refused.value) return
   heldAt.value = progress.value
   held.value = c
@@ -104,6 +108,28 @@ async function reject(note: string, shots: string[]) {
   if (!error.value) rejecting.value = false
   await leave(c, 'sent')
 }
+
+// An agent's question answered here: typed to the agent, then the next one.
+const asked = computed(() => card.value?.asks?.kind === 'question')
+const answering = ref(false)
+const answered = ref<string>()
+async function reply(text: string) {
+  const c = card.value
+  if (!c || answering.value || done.value) return
+  answering.value = true
+  error.value = ''
+  try {
+    await api('/api/pm/answer', { id: c.id, text })
+    answered.value = text
+    taskChanged()
+  }
+  catch (e) { error.value = (e as Error).message }
+  finally { answering.value = false }
+  await leave(c, 'answered')
+  answered.value = undefined
+}
+// An asking agent at work again (answered in its conversation, or by a coordinator): read the board at once.
+watch(() => items.value.map(c => (c.asks && c.terminal ? herdrState.value?.panes.find(p => p.coreAddress === c.terminal)?.status : '')).join(), load)
 
 // Where the user answers anything else: the asking agent's conversation when it is on screen here, else the task's sheet.
 function answer(where: 'agent' | 'sheet' = 'agent') {
@@ -150,6 +176,7 @@ function onKey(e: KeyboardEvent) {
             <span v-if="verdict" data-testid="review-verdict">{{ tl(verdict) }}</span>
           </p>
         </template>
+        <ReviewQuestion v-else-if="asked" :card="card" :busy="answering" :sent="answered" @send="reply" />
         <TaskTodo v-else-if="kind" :card="card" :kind="kind" :pane="pane" :busy="busy" :pressing="pressing" :refused="refused"
           @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" @review="restartReview" @worker="startWorker" @comments="answer('sheet')" />
         <ReviewReject v-if="approves && rejecting" :card="card" :busy="busy" @send="reject" @cancel="rejecting = false" />
@@ -177,6 +204,7 @@ function onKey(e: KeyboardEvent) {
           </template>
           <template v-else>
             <UButton v-if="kind === 'refused'" color="primary" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="review-retry" @click="press">{{ tl('Try again') }}</UButton>
+            <UButton v-if="asked && pane" color="neutral" variant="outline" size="xl" icon="i-lucide-terminal" data-testid="review-agent" @click="answer('agent')">{{ tl('Open the agent') }}</UButton>
             <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" data-testid="review-answer" @click="answer('sheet')">{{ tl('Open the task') }}</UButton>
           </template>
         </div>
@@ -210,7 +238,12 @@ function onKey(e: KeyboardEvent) {
 .review-head h3 { flex: 1; min-width: 0; margin: 0; font: 600 16px/1.3 var(--display); overflow-wrap: anywhere; }
 .review-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font: 12px/1.4 var(--mono); }
 .review-meta a { color: var(--accent); }
-.review-done { display: grid; gap: 8px; justify-items: center; padding: 32px 0; text-align: center; }
+/* All done: icon, title, line and button grouped, centred in the body; the button at its own size. */
+.review-done { display: flex; flex-direction: column; align-items: center; justify-content: center; align-self: center; gap: 8px; padding: 32px 0; text-align: center; }
+.review-done > * { flex: none; }
+.review:has(> .review-stage > .review-done) { min-height: 100%; }
+.review-stage:has(> .review-done) { flex: 1 0 auto; }
+.review-done .review-restart { margin-top: 4px; }
 .review-done-icon { width: 32px; height: 32px; color: var(--done); }
 .review-foot { display: grid; gap: 8px; padding: 12px 16px 0; border-top: 1px solid var(--line-soft); }
 .review-choices { display: flex; flex-wrap: wrap; gap: 8px; }

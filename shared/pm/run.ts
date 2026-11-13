@@ -78,6 +78,8 @@ export interface Task {
   workReports?: WorkReport[] // the worker's reports, each as it arrived, newest last (history.ts)
   tldr?: TaskTldr // a cheap model's few lines for the user to decide, per significant change (summary.ts)
   tldrHeld?: true // a new one waits for the pace of the Claude account
+  question?: string // its agent's last message while it waits on a question, whole (Markdown)
+  questionTldr?: TaskTldr // that question in a few plain lines, per question (summary.ts)
   recovery?: Recovery // its agent gone with an incident: the engine resumes it (recovery.ts)
   archived?: number // when the engine archived it, done for its project's delay: off the board (archive.ts)
   unarchived?: number // when the user brought it back to Done: its delay runs again from then

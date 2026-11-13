@@ -18,6 +18,7 @@ import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
 import { AGENT_ENDED, retriesAction, waitsShort } from './release'
 import { recovering } from './incident'
 import { showIds } from './projectKey'
+import { questionKey } from './summary'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -54,7 +55,8 @@ export interface Card {
   machine?: string // the machine it went to, named, when its project allows several
   queue?: number // its place in its project's merge queue (mergeQueue.ts)
   queueOut?: string // why it stepped out of the queue's line
-  asks?: { kind: WaitKind, text: string } // its agent waits on a question, a permission or a login
+  // its agent waits on a question, a permission or a login; a question's whole message and its summary (summary.ts)
+  asks?: { kind: WaitKind, text: string, full?: string, tldr?: string }
   report?: Report // a problem the user reported, open (report.ts)
   workReports?: WorkReport[] // the worker's reports as they arrived (Comments, history.ts)
   tldr?: string // what the user needs to decide, in a few lines (summary.ts)
@@ -139,7 +141,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(s ? { state: s } : {}),
     ...(task.workReports?.length ? { workReports: task.workReports } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
-    ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '' } } : {}),
+    ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '', ...askedOf(task) } } : {}),
     // Waiting for the engine to resume it after an incident, or for its agent to start again (watchdog.ts): shown as a wait, not the user's turn.
     ...(task.held && (task.state === 'todo' || task.state === 'working') ? { held: task.held } : recovering(task) ? { held: task.held || task.waiting || 'Waiting' } : {}),
     ...(task.sameFiles && task.state === 'todo' ? { sameFiles: task.sameFiles } : {}),
@@ -151,6 +153,9 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(task.archived ? { archived: task.archived } : {}),
   }
 }
+
+// A question's whole message, and its summary while it is the one summarized.
+const askedOf = (t: Task) => (t.waitKind !== 'question' || !t.question ? {} : { full: t.question, ...(t.questionTldr?.key === questionKey(t.question) ? { tldr: t.questionTldr.text } : {}) })
 
 // The short action of a card in Your turn, for the sidebar's Tasks to handle.
 export function handleLabel(c: Pick<Card, 'stopped' | 'asks' | 'state' | 'stall' | 'userLabel'>): string {

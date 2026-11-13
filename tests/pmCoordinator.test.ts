@@ -20,6 +20,7 @@ import { defaultWorkflow, type Template } from '../shared/pm/workflow'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 import { runNow, wakeTick } from '../server/utils/pmWakes'
 import { askCoordinator } from '../server/utils/pmReport'
+import { answerQuestion } from '../server/utils/pmAnswer'
 import { cardOf, toHandle } from '../shared/pm/board'
 import { WAKE } from '../shared/pm/wakes'
 import { DEFAULT_AUTOPILOT } from '../shared/pm/autopilot'
@@ -1028,8 +1029,8 @@ describe('commands of lot 10', () => {
   })
 
   it('tell: an agent\'s question in a wake; never a permission', async () => {
-    const sent: string[] = []
-    const call = async (method: string, p: { text: string }) => { if (method === 'terminal.send') sent.push(p.text); return {} }
+    const sent: string[] = [], labels: unknown[] = []
+    const call = async (method: string, p: { text: string, labels?: unknown }) => { if (method === 'terminal.send') sent.push(p.text); if (method === 'terminal.label') labels.push(p.labels); return {} }
     const tell = (argv: string[]) => runCommand({ store, call } as unknown as Parameters<typeof runCommand>[0], token, { argv })
     const task = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
     await store.saveRun({ id: 'r1', task: task.id, role: 'worker', program: 'claude', model: 'opus', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: 'host/t3', attempt: 1, state: 'running', startedAt: 1 })
@@ -1041,6 +1042,8 @@ describe('commands of lot 10', () => {
     expect(sent).toEqual(['From the project coordinator: Postgres, as in the README'])
     const told = (await store.task(task.id))!
     expect([told.state, told.waitKind, told.log?.at(-1)?.text]).toEqual(['working', undefined, 'told the worker: Postgres, as in the README'])
+    // Its question label goes at once: the engine's next pass does not bring it back.
+    expect(labels).toEqual([{ 'wherdr.report': '' }])
     await refused(tell(['tell', task.id, 'and also…']), 'only answers an agent\'s question')
     // A mechanical fix: with the autopilot on, twice per step, logged with its reason.
     const fix = ['tell', task.id, 'Merge', 'the', 'base', '--fix', 'base', '--reason', 'The PR conflicts with v3.']
@@ -1063,6 +1066,29 @@ describe('commands of lot 10', () => {
     await noteTurn(store, 'CO', 'user', 'tell it')
     const blocked = async (method: string, p: { text: string }) => (method === 'terminal.get' ? { status: { state: 'blocked' } } : call(method, p))
     await refused(runCommand({ store, call: blocked } as unknown as Parameters<typeof runCommand>[0], token, { argv: ['tell', task.id, 'yes'] }), 'permission request is the user\'s')
+  })
+
+  it('answer: a choice or a free answer typed to the asking agent, or one typed in its conversation; off Your turn at once', async () => {
+    const calls: [string, unknown][] = []
+    let label = 'blocked:question'
+    const call = async (method: string, p: unknown) => { calls.push([method, p]); return method === 'terminal.get' ? { labels: { 'wherdr.report': label } } : {} }
+    const task = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+    await store.saveRun({ id: 'r1', task: task.id, role: 'worker', program: 'claude', model: 'opus', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: 'host/t3', attempt: 1, state: 'running', startedAt: 1 })
+    const asking = { ...task, run: 'r1', state: 'waiting' as const, waiting: 'The agent asks a question: Docker?', waitKind: 'question' as const, question: 'Docker?' }
+    await store.saveTask(asking)
+    expect(cardOf(asking, [], await store.runs()).asks).toMatchObject({ kind: 'question', full: 'Docker?' })
+    const answered = await answerQuestion({ store, call } as unknown as Parameters<typeof answerQuestion>[0], task.id, 'Stop here')
+    expect(calls).toEqual([['terminal.send', { terminal: 'host/t3', text: 'Stop here' }], ['terminal.label', { terminal: 'host/t3', labels: { 'wherdr.report': '' } }]])
+    expect([answered.state, answered.question, toHandle([cardOf(answered, [], await store.runs())])]).toEqual(['working', undefined, []])
+    await expect(answerQuestion({ store, call } as never, task.id, 'Again')).rejects.toThrow('no longer waits')
+    // Typed in its conversation before the engine read the question: its label says so.
+    calls.length = 0
+    await answerQuestion({ store, call } as never, task.id, undefined, 'host/t3')
+    expect(calls.map(c => c[0])).toEqual(['terminal.get', 'terminal.label'])
+    label = ''
+    calls.length = 0
+    await answerQuestion({ store, call } as never, task.id, undefined, 'host/t3') // no question: nothing changes
+    expect(calls.map(c => c[0])).toEqual(['terminal.get'])
   })
 
   it('spec changes: task edit, task note and tell --spec reach the running agent and the reviewer\'s next prompt; never in a wake', async () => {

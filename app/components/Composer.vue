@@ -225,6 +225,8 @@ const sendTap = createTouchTap({
 })
 const hint = computed(() => desk.value && !stopMode.value)
 
+// A task's agent told something: if it waited on a question, its task leaves Tasks to review at once (POST /api/pm/answer).
+const answered = (p?: Pane) => { if (p?.task && p.coreAddress) api('/api/pm/answer', { id: p.task, terminal: p.coreAddress }).then(taskChanged, () => {}) }
 async function submit() {
   if (readOnly.value) return toast(t('Sending unavailable offline'), true)
   if (stopMode.value) return interrupt()
@@ -261,7 +263,7 @@ async function submit() {
     rememberPastes(pastes)
     haptic()
     emit('sent', null)
-    outboxSend(p, props.paneId, msg).then(() => emit('sent', null), (err: Error) => toast(err.message, true))
+    outboxSend(p, props.paneId, msg).then(() => { emit('sent', null); answered(p) }, (err: Error) => toast(err.message, true))
     return
   }
   sending.value = true
@@ -288,6 +290,7 @@ async function submit() {
     for (const a of atts) if (a.url) URL.revokeObjectURL(a.url)
     haptic()
     emit('sent', queued)
+    if (!isSlashCommand(msg)) answered(p)
   } catch (err) {
     giveBack()
     toast((err as Error).message, true)
@@ -306,9 +309,9 @@ async function sendText(msg: string) {
   haptic()
   if (viaPrompt(p)) {
     emit('sent', null)
-    return outboxSend(p, props.paneId, msg).then(() => emit('sent', null), (err: Error) => toast(err.message, true))
+    return outboxSend(p, props.paneId, msg).then(() => { emit('sent', null); answered(p) }, (err: Error) => toast(err.message, true))
   }
-  try { emit('sent', await sendMessage(p, props.paneId, msg)) } catch (err) {
+  try { emit('sent', await sendMessage(p, props.paneId, msg)); answered(p) } catch (err) {
     releaseSend(props.paneId, msg)
     toast((err as Error).message, true)
   }

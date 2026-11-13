@@ -24,6 +24,7 @@ import { allowedMachines, machineNamed, taskMachine, type Project } from '../../
 import { projectOf, showIds, shownKey, shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, trustKeys, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
+import { answeredTask, clearQuestion } from './pmAnswer'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { CREATE_SCRIPT, WRITE_SCRIPT, exec, launched, startTask } from './pmLaunch'
 import { actionShell } from './pmActions'
@@ -386,7 +387,9 @@ async function command(deps: Deps, token: unknown, body: CliBody) {
       const why = tellRefusal({ ...task, state: live ? 'waiting' : task.state, waitKind: live ?? task.waitKind }, wake, fix)
       if (why) throw new HerdrError('refused', why)
       await deps.call('terminal.send', { terminal: run.terminal, text: said }, 30000)
-      const saved = await noted(await handed(await store.logTask(fixed(task.state === 'waiting' && task.waitKind === 'question' ? { ...task, state: 'working', waiting: undefined, waitKind: undefined, answered: Date.now() } : task), by, `told the ${role}${fixNote}: ${cmd.text.slice(0, 300)}`)))
+      // Its question answered: its label goes, the task leaves Your turn at once (pmAnswer.ts).
+      if (live === 'question' || task.waitKind === 'question') await clearQuestion(deps, run.terminal)
+      const saved = await noted(await handed(await store.logTask(fixed(answeredTask(task)), by, `told the ${role}${fixNote}: ${cmd.text.slice(0, 300)}`)))
       return { task: t ? await noteBack(store, saved, planOf(t, saved, p), by, `the ${by} told the ${role}`) : saved, sentTo: role }
     }
     case 'read': {
