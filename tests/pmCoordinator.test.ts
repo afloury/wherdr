@@ -113,6 +113,15 @@ describe('other projects (WHR-311)', () => {
     expect((await store.task(st.id))!.log!.at(-1)).toMatchObject({ by: 'coordinator CO', text: 'tag X-1' })
     for (const argv of [['step', 'done', st.id, '--user-said', 'ok'], ['task', 'decide', st.id, 'pass', '--reason', 'x'], ['autopilot', 'show', '--project', 'ST'], ['template', 'show', '--project', 'ST'], ['automation', 'list', '--project', 'ST']])
       await refused(cli(argv), 'stays with its own coordinator and the user')
+    // A look-for-work wake: the other project's new-work limit and count hold too.
+    for (const k of ['CO', 'ST']) { const c = (await store.coordinator(k))!; await store.saveCoordinator({ ...c, autopilot: { ...DEFAULT_AUTOPILOT, on: true, lookForWork: true, lookPerDay: 2 } }) }
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, turn: { kind: 'wake', at: Date.now(), look: true } })
+    await cli(['task', 'add', 'Look', '--type', 'study', '--project', 'ST'])
+    expect([(await store.coordinator('CO'))!.lookAdded, (await store.coordinator('ST'))!.lookAdded].map(d => d?.n)).toEqual([1, 1])
+    await store.saveCoordinator({ ...(await store.coordinator('ST'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true, lookForWork: true, lookPerDay: 1 } })
+    await refused(cli(['task', 'add', 'Again', '--type', 'study', '--project', 'ST']), 'limit of new work is reached (1 tasks')
+    expect((await store.tasks()).filter(x => x.title === 'Again')).toEqual([])
+    await store.saveCoordinator({ ...(await store.coordinator('ST'))!, visits: (await store.coordinator('ST'))!.visits!.slice(0, 2) })
     expect((await store.coordinator('ST'))!.visits!.map(v => [v.by, v.what])).toEqual([['coordinator CO', `task tag ${st.id}`], ['coordinator CO', 'task add "More"']])
     // Its next wake says so, once.
     await store.saveCoordinator({ ...(await store.coordinator('ST'))!, terminal: 'host/t2' })

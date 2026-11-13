@@ -491,13 +491,16 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
     }
     case 'task add': {
       const look = turn === 'wake' && !!rec?.turn?.look
-      const why = addRefusal(pilot, turn !== 'user') ?? (look ? lookAddRefusal(pilot, today(rec?.lookAdded, Date.now())) : undefined)
+      // Another project's: its own new-work limit and count hold too, beside the acting coordinator's.
+      const cross = !main && key !== scope && pilotRec ? pilotRec : undefined
+      const why = addRefusal(pilot, turn !== 'user') ?? (look ? lookAddRefusal(pilot, today((cross ?? rec)?.lookAdded, Date.now())) ?? (cross ? lookAddRefusal(rec?.autopilot, today(rec?.lookAdded, Date.now())) : undefined) : undefined)
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
       // Added in the user's turn: their request, never held by the pace.
       const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', files: cmd.files ?? [], ...(cmd.weight ? { weight: cmd.weight } : {}), ...(cmd.fromBranch ? { fromBranch: cmd.fromBranch } : {}), origin: turn === 'user' ? 'user' : 'coordinator', addedBy: scope })
       const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
       if (look) await store.saveCoordinator({ ...rec!, lookAdded: bump(rec!.lookAdded, Date.now()) })
+      if (look && cross) { const c = (await store.coordinator(cross.project))!; await store.saveCoordinator({ ...c, lookAdded: bump(c.lookAdded, Date.now()) }) }
       return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}`) }
     }
     case 'pr merge': {
