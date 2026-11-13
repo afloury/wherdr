@@ -172,7 +172,7 @@ function checkGuards(g: unknown, path: string, errs: WorkflowError[], project = 
   }
 }
 
-function checkPrefs(p: unknown, path: string, errs: WorkflowError[]) {
+export function checkPrefs(p: unknown, path: string, errs: WorkflowError[]) {
   if (p === undefined) return
   if (!isObj(p)) return void errs.push({ path, message: 'must be an object' })
   checkKeys(p, PREF_KEYS, path, errs)
@@ -233,7 +233,7 @@ function checkWatch(a: Record<string, unknown>, s: Record<string, unknown>, err:
 
 // A path inside the worktree, as typed: no glob, no .., not absolute.
 const isRelPath = (v: unknown) => isStr(v) && (v as string).length <= 200 && !/^[/~]|[*?[\]\0\n]|(^|\/)\.\.(\/|$)/.test(v as string)
-function checkSetup(w: unknown, errs: WorkflowError[]) {
+export function checkSetup(w: unknown, errs: WorkflowError[]) {
   if (w === undefined) return
   if (!isObj(w)) return void errs.push({ path: 'worktree', message: 'must be an object' })
   checkKeys(w, SETUP_KEYS, 'worktree', errs)

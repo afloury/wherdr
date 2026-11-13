@@ -158,6 +158,25 @@ describe('template library', () => {
     expect(await store.templateLog('team')).toEqual([])
     expect(await store.workflow('WEB')).toMatchObject({ id: 'web' })
   })
+
+  it('stores a member\'s own fields only, serves it with its workspace\'s settings, and refuses what breaks a workspace', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await store.addProject({ key: 'ws', name: 'Work', machine: '', path: '~/work', kind: 'workspace', group: 'g1', shared: { base: 'develop', machines: ['big'], clones: { big: '/srv/work' } } }, okFolder)
+    await store.addProject({ key: 'pay', machine: '', path: '~/work/payroll-api', workspace: 'ws', base: 'main', color: 'red' }, okFolder)
+    const raw = JSON.parse(await fs.readFile(path.join(dir, 'projects.json'), 'utf8')).projects
+    expect(Object.keys(raw[1]).sort()).toEqual(['addedAt', 'key', 'machine', 'name', 'path', 'workspace'])
+    expect(raw[0]).toMatchObject({ kind: 'workspace', git: false, group: 'g1' })
+    expect(await store.project('PAY')).toMatchObject({ base: 'develop', clones: { big: '/srv/work/payroll-api' } })
+    expect(await store.coordinator('PAY')).toBeNull()
+    await expect(store.addTask({ project: 'WS', title: 'Fix', type: 'task' })).rejects.toThrow('features only')
+    await expect(store.addProject({ key: 'xy', machine: '', path: '~/x', workspace: 'NOPE' }, okFolder)).rejects.toThrow('no existing workspace')
+    // An override is the member's own; '' gives it back.
+    await store.updateProject('PAY', { base: 'main' })
+    expect(await store.project('PAY')).toMatchObject({ base: 'main', overrides: ['base'] })
+    await store.updateProject('PAY', { base: '' })
+    expect((await store.project('PAY'))?.base).toBe('develop')
+  })
 })
 
 describe('cleanProjectInput', () => {

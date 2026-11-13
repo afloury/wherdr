@@ -118,6 +118,10 @@ Autopilot; on a computer it is a wide window, and its General fields pair up
 side by side (name and key, worker and reviewer). Its ⋯ menu removes the project from wherdr, after a confirmation:
 its folder, branches and task worktrees stay on the machine.
 
+A project can also be a [workspace](workspaces.md): a folder without git whose
+coordinator runs several linked repositories, each one a member project that
+takes the workspace's settings unless it sets its own.
+
 ### General
 
 - **Name**, **Key** and **Color**. Task ids start with the key. Change it and every task,
