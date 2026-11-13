@@ -128,23 +128,43 @@ The workspace's coordinator runs them with no question to you:
     "order": "The API first: the app calls it",
     "tasks": [
       { "repo": "payroll-api", "title": "Serve payslips as PDF", "type": "task", "files": ["src/pdf"] },
-      { "repo": "web-app", "title": "Add a Download button", "type": "task", "after": ["payroll-api"] }
+      { "repo": "web-app", "title": "Add a Download button", "type": "task", "after": ["payroll-api"], "mergeAfter": ["payroll-api"] }
     ]
   }
   ```
 
   `repo` is the repository's path under the root, or a member's key; `after`
-  names repositories of the plan or existing tasks. `order` is the
+  and `mergeAfter` name repositories of the plan or existing tasks. `order` is the
   coordinator's one-line reason for the order, kept on the feature.
 - `wherdr pm task add … --feature <WS-n> --project <member>`: one more
-  sub-task later; `wherdr pm task edit <task> --after <task>,<task>` changes
-  what a task not started yet waits for (`""` for nothing).
+  sub-task later (`--merge-after <task>,<task>` too); `wherdr pm task edit
+  <task> --after <task>,<task>` changes what a task not started yet waits
+  for, and `--merge-after <task>,<task>` what a task not done yet merges
+  after (`""` for nothing).
 - `wherdr pm feature close <WS-n> [--reason "<one sentence>"]`: once every
   sub-task is done or abandoned.
 
 A task of a member may start after tasks of the workspace's other members
 (`after`), never after a task outside the workspace or a feature, and never
 in a cycle. A task others wait for cannot be removed.
+
+### Merge order
+
+`after` orders the starts; `mergeAfter` orders the merges. A sub-task whose
+`mergeAfter` tasks are not **done** waits in its project's merge queue, out
+of line, with the reason *waits for LED-4 to be done*; the other PRs of that
+queue merge meanwhile. Done means the upstream task finished its whole
+workflow: merged, and its deploy watch passed when the workflow has one. The
+task's sheet says *Merges once LED-4 is done.*, and its card shows the wait
+while it is in the merge queue.
+
+If an upstream task is stopped or abandoned, the waiting one keeps waiting
+(no cascade stop) and the workspace's coordinator gets one wake for it: start
+the upstream again, or drop the wait with `task edit <task> --merge-after ""`.
+`mergeAfter` follows the same rules as `after`: within the workspace, never
+a feature, never a cycle, counting `after` and `mergeAfter` together (a task
+that merges after one that starts after it would block both). While it waits,
+its new commits are not pushed either: they go once the upstream is done.
 
 A feature's state is never stored, it comes from its sub-tasks: **to do**
 until one starts, **working** (also once they have all ended, until it is

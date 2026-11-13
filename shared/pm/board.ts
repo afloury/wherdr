@@ -7,7 +7,7 @@ import { caughtUpSettled, stepLabels, waitsToMerge, type PlannedStep, type StepS
 import type { Run, SpecNote, Task, WaitKind } from './run'
 import { notStarted, type Stopped } from './stop'
 import { HANDLE_AFTER_MS, stallOf, stallTurn, type Stall } from './blocked'
-import { afterIds } from './advance'
+import { afterIds, mergeAfterIds } from './advance'
 import { GREEN, type Check, type PrInfo } from './actions'
 import type { Report } from './report'
 import type { WorkReport } from './history'
@@ -48,6 +48,7 @@ export interface Card {
   stopped?: Stopped // who stopped it and why: Continue, Take it as it is or Archive
   removable?: true // never started (no agent, worktree or branch): the user may remove it
   after?: string[] // tasks of the same project it starts after
+  mergeAfter?: string[] // tasks of its project or workspace its PR merges after
   prNow?: string // its PR as the engine last read it (prNow)
   branch?: string // its working branch, once an agent worked on it
   pr?: { base: string, commits?: number } // its PR's base and commit count, as the engine last read them
@@ -153,6 +154,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(task.tldrHeld ? { tldrWaits: true as const } : task.tldr?.text ? { tldr: task.tldr.text } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
+    ...(task.mergeAfter ? { mergeAfter: mergeAfterIds(task) } : {}),
     ...(s?.started ? { times: timesOf(task, plan, runs, now) } : {}),
     ...(task.archived ? { archived: task.archived } : {}),
   }

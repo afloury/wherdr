@@ -40,8 +40,10 @@ export async function splitFeature(deps: Deps, ws: Project | undefined, feature:
   for (const [i, t] of plan.tasks.entries()) {
     const w = where[i]!, types = (await store.workflow('key' in w ? w.key : ws.key))?.taskTypes
     if (types && !Object.hasOwn(types, t.type)) throw new HerdrError('bad_input', `${t.repo}: no task type "${t.type}": ${Object.keys(types).join(', ')}`)
-    const outside = afterRefusal(ws.key, t.after.filter(a => !plan.tasks.some(x => x.repo === a)).map(a => storedTaskId(list, a) ?? a), all, list)
-    if (outside) throw new HerdrError('bad_input', `${t.repo}: after: ${outside}`)
+    for (const k of ['after', 'mergeAfter'] as const) {
+      const outside = afterRefusal(ws.key, t[k].filter(a => !plan.tasks.some(x => x.repo === a)).map(a => storedTaskId(list, a) ?? a), all, list)
+      if (outside) throw new HerdrError('bad_input', `${t.repo}: ${k}: ${outside}`)
+    }
   }
   const adopted: { key: string, repo: string }[] = []
   try {
@@ -52,11 +54,12 @@ export async function splitFeature(deps: Deps, ws: Project | undefined, feature:
     const { feature: split, tasks } = await store.splitFeature(feature.id, plan.tasks.map((t, i) => ({
       project: keyOf(where[i]!), title: t.title, type: t.type, description: t.description, files: t.files, origin, addedBy: ws.key,
       after: t.after.filter(a => index(a) < 0).join(','), afterIndex: t.after.map(index).filter(x => x >= 0),
+      mergeAfter: t.mergeAfter.filter(a => index(a) < 0).join(','), mergeAfterIndex: t.mergeAfter.map(index).filter(x => x >= 0),
     })), plan.order, by)
     // A start that fails leaves its sub-task to do, as task start would: the split stays.
     const started: string[] = [], notStarted: Record<string, string> = {}
     for (const t of tasks.filter(x => !x.after)) await start(t).then(() => started.push(t.id), (e: Error) => { notStarted[t.id] = e.message })
-    return { feature: split, tasks: tasks.map(t => ({ id: t.id, project: t.project, title: t.title, ...(t.after ? { after: t.after } : {}) })), ...(adopted.length ? { adopted: adopted.map(a => a.key) } : {}), started, ...(Object.keys(notStarted).length ? { notStarted } : {}) }
+    return { feature: split, tasks: tasks.map(t => ({ id: t.id, project: t.project, title: t.title, ...(t.after ? { after: t.after } : {}), ...(t.mergeAfter ? { mergeAfter: t.mergeAfter } : {}) })), ...(adopted.length ? { adopted: adopted.map(a => a.key) } : {}), started, ...(Object.keys(notStarted).length ? { notStarted } : {}) }
   } catch (e) {
     await dropAdopted(deps, ws, adopted, by, feature.id)
     throw e
