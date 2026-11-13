@@ -115,6 +115,7 @@ onUnmounted(() => {
     <NuxtPage />
     <SettingsView v-if="settingsPanel" panel />
     <UiShowPanel />
+    <NotesPanel />
     <TaskSheetHost />
     <NewAgentSheet />
     <MenuSheet />

@@ -163,6 +163,19 @@ not filtered by tab; the board is, when its picker follows the machine tab.
 The magnifier (⌘K / Ctrl+K) searches every agent and the conversations of the Claude Code and
 Codex agents of online machines. Choosing a result opens it.
 
+### Notes
+
+The note button in the header (Mod+Alt+P on a computer) opens the [notes](alfred.md#notes)
+Alfred and the coordinators write for you: read-only, a short whiteboard. On a computer of
+at least 1280 px they open beside the conversation, like Settings (drag the panel's left edge
+to resize it); otherwise in a sheet. They follow the machine tab's group by default (**Follow
+group tab**); the menu at the top shows **All** or one group instead, and the choice follows
+you across devices. A note scoped All shows in every group. Each note shows its title, its
+scope and its lines: checkboxes you cannot tick, project key badges (a task id opens its
+sheet), the agents' own badges, and links. A link to a place in wherdr opens it in place, a
+link to another note scrolls to it; a link to a file does nothing yet. An agent's change shows
+within a few seconds, without a reload.
+
 ### Also
 
 **Quotas** (remaining Claude and Codex usage, see [quotas](quotas.md)), **notifications**

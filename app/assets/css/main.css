@@ -927,6 +927,24 @@ body.short-bottom { --safe-bottom: 0px; }
 .ui-show-head { display: flex; flex-direction: column; justify-content: center; gap: 3px; flex: 1; min-width: 0; padding: 8px 16px; }
 .ui-show-head h2 { font: 700 16px/1.2 var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-show-body { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+/* Notes (NotesList.vue): a short whiteboard, the filter then each note's title and lines. */
+.notes-wrap { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+#notes .notes-wrap { padding: 14px 16px 20px; }
+.notes-filter { width: min(100%, 260px); }
+.notes-list { display: flex; flex-direction: column; min-width: 0; }
+.note { padding: 10px 0 12px; border-top: 1px solid var(--line); min-width: 0; scroll-margin-top: 8px; }
+.note h3 { display: flex; align-items: baseline; gap: 8px; min-width: 0; margin-bottom: 4px; font: 700 15px/1.3 var(--sans); color: var(--text-strong); }
+.note h3 span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.note h3 small { flex: none; color: var(--dim); }
+.note-body { font-size: 14px; line-height: 1.5; overflow-wrap: anywhere; }
+.note-body :is(p, ul, ol) { margin: 0; }
+.note-body :is(ul, ol) { padding-left: 20px; }
+.note-body ul:has(> li > input[type=checkbox]) { padding-left: 0; list-style: none; }
+.note-body input[type=checkbox] { margin-right: 6px; vertical-align: -1px; pointer-events: none; }
+.note-body a { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
+/* A linked file (folder/name.md) opens in a later version: plain text for now. */
+.note-body a[href*="/"][href$=".md"]:not([href*=":"], [href^="#"]) { color: inherit; text-decoration: none; cursor: text; }
+.notes-empty { padding: 12px 0; border-top: 1px solid var(--line); }
 
 /* ---------- Terminal ---------- */
 #termWrap { position: relative; flex: 1; min-height: 0; padding: 6px 4px 0 6px; background: var(--bg); }
@@ -2671,8 +2689,9 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   body:has(#settings.settings-panel) :is(#agent, #placeholder, #tabview) { right: var(--settings-panel); }
   .settings-panel .settings-top h2 { flex: 1; }
   /* What an agent showed with `ui show` (UiShowPanel.vue): the same column, in place of Settings. */
-  #ui-show { position: fixed; top: 0; bottom: 0; right: 0; width: var(--settings-panel); display: flex; flex-direction: column; background: var(--bg); border-left: 1px solid var(--line); z-index: 4; }
-  body:has(#ui-show) :is(#agent, #placeholder, #tabview) { right: var(--settings-panel); }
+  /* Notes (NotesPanel.vue) too. */
+  :is(#ui-show, #notes) { position: fixed; top: 0; bottom: 0; right: 0; width: var(--settings-panel); display: flex; flex-direction: column; background: var(--bg); border-left: 1px solid var(--line); z-index: 4; }
+  body:has(#ui-show, #notes) :is(#agent, #placeholder, #tabview) { right: var(--settings-panel); }
   .settings-panel .settings-nav { width: 57px; padding: 16px 6px; }
   .settings-panel .settings-nav-item { justify-content: center; padding: 0; }
   .settings-panel .settings-nav-item span:not(.iconify) { display: none; }
