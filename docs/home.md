@@ -92,12 +92,20 @@ the same options) or *New conversation*; its menu (right click or long press), *
 which becomes its default: its folder and memory stay, the current session stops. A coordinator
 shows only in its own row, never again among the agents.
 
-Coordinators and **Tasks to handle** follow the [machine tab](#machines-as-tabs): a tab shows the
+Coordinators and **Tasks to review** follow the [machine tab](#machines-as-tabs): a tab shows the
 projects whose allowed machines it holds (a project on machines of several groups shows on each
 of those tabs), **All** shows every project, and Alfred shows on every tab. An open coordinator
 conversation stays open on the tabs that show its project. The board follows the tab too when
 its picker is on *Follow machine tab* ([Board](project-management.md#board)); notifications stay
 global.
+
+### Tasks to review
+
+Under the coordinators, while something waits for you on the tab's projects, one **Tasks to
+review** card with its count: tasks to approve, an agent's question, a failure to try again, a
+decision. A tap opens them one at a time (a sheet on the phone), with Approve, Reject and each
+item's own answers
+([Tasks to review](project-management.md#tasks-to-review)).
 
 ### Offered agents
 
@@ -116,7 +124,7 @@ The **machine tabs** at the top of the list are **All**, then one tab per machin
 machine wherdr runs on, shown by its host name with a **HOST** badge, and each core machine,
 online or offline) with its count: the total of its counters (its rows,
 Alfred and its coordinators). A tap shows that machine alone, with its projects' coordinators
-and tasks to handle,
+and tasks to review,
 with its Claude and Codex quotas at the top; an offline or reconnecting machine says so there.
 The tabs hide when they would show a single machine. A machine's actions (New agent here, Keep awake,
 Reconnect, Machine settings) open on a right click or long press of its tab. With the tabs hidden,
@@ -128,7 +136,7 @@ hides them all. In **Groups**, create a named selection of machines; groups foll
 devices; deleting a group puts the projects shown in it back to Automatic.
 Machines themselves are managed in [Settings › Machines](machines.md#manage-machines).
 
-A project's coordinator and its tasks to handle show on the tabs holding one of its machines
+A project's coordinator and its tasks to review show on the tabs holding one of its machines
 (**All** shows every project); a machine paused for the project counts only while one of its
 tasks still runs there. The project sheet's **Shown in** (General tab) keeps it on one
 group or on all tabs instead ([General](project-management.md#general)). Push notifications are

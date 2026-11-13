@@ -24,6 +24,8 @@ export const SYNCED_SETTINGS = [
   'boardGrouping', 'boardDone', 'boardFolds', 'boardProject',
   // Notes panel: its filter (shared/notes.ts)
   'notesFilter',
+  // Tasks to review: its filter (useReview.ts)
+  'reviewFilter',
   // Files
   'wherdr.files.hidden', 'wherdr.files.md',
   // Security: files shown from conversations (shared/chatFiles.ts), read by the server
