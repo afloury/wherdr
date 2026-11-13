@@ -30,7 +30,7 @@ import { nextRecheck } from '#shared/pm/steps'
 const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, reporting?: boolean, checking?: boolean, waitsFor?: string[], projectBase?: string }>()
 const emit = defineEmits<{ closed: [], changed: [] }>()
 const open = ref(true)
-const { busy, error, pressing, refused, run, press, start, resume, decide, sendBack, restartReview, startWorker } = useTaskActions(() => props.card, () => emit('changed'))
+const { busy, error, pressing, refused, run, press, start, resume, decide, sendBack, restartReview, startWorker, askCoordinator } = useTaskActions(() => props.card, () => emit('changed'))
 
 const at = computed(() => (props.card.state?.started ? props.card.state.at : -1))
 const done = computed(() => !!props.card.state?.done)
@@ -181,7 +181,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 
       <div id="task-panel" class="task-panel" role="tabpanel" :aria-labelledby="`task-tab-${tab}`" data-testid="task-panel">
         <TaskTodo v-if="tab === 'todo' && todo" :card="card" :kind="todo" :pane="pane" :busy="busy" :pressing="pressing" :refused="refused" :waits-for="waitsFor"
-          @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" @review="restartReview" @worker="startWorker" @comments="picked = 'comments'" />
+          @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" @review="restartReview" @worker="startWorker" @ask="askCoordinator" @comments="picked = 'comments'" />
         <template v-else-if="tab === 'description'">
           <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
           <div v-if="descHtml" class="md-body task-md" data-testid="task-description" @click="onDescClick" v-html="descHtml" />

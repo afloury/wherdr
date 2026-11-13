@@ -401,3 +401,23 @@ export function mergeStuck(c: Parameters<typeof mergeWaits>[0], now = Date.now()
   if (s.catchUp && now - s.catchUp.at >= CATCH_UP_STUCK_MS) return `Its PR conflicts with ${s.catchUp.base} and no agent is solving it. Start the worker to solve the conflict; the merge then goes on.`
   if (redAtMerge(c)) return 'Its PR\'s checks failed and no agent is fixing them. Start the worker to fix them; the merge then goes on.'
 }
+
+// A step the coordinator holds that waits on the user: past its time limit,
+// or its rechecks stopped until the user writes (step wait --until-user), or
+// the user just asked the coordinator to look (askCoordinator, the log line
+// below). For the To do tab's line and its Ask the coordinator button.
+// reason: the coordinator's last `step wait` reason at this step; asked: when
+// the user asked, while no new time limit or wait came since (the button says Asked).
+export const ASKED_COORDINATOR = 'asked the coordinator to check the '
+export interface CoordinatorWait { step: string, since: number, reason?: string, asked?: number }
+export function coordinatorWait(c: Pick<Card, 'holder' | 'plan' | 'state' | 'log' | 'stopped'>): CoordinatorWait | undefined {
+  const s = c.state, step = s?.started && !s.done ? c.plan[s.at] : undefined
+  if (c.holder !== 'coordinator' || !step || c.stopped) return
+  const since = s!.since ?? 0, log = c.log.filter(e => e.at >= since)
+  const asked = log.findLast(e => e.by === 'user' && e.text.startsWith(ASKED_COORDINATOR))?.at
+  const over = s!.yourTurn?.reason === 'timeout'
+  if (!over && s!.waitUser === undefined && asked === undefined) return
+  const reason = log.findLast(e => e.text.startsWith(`${step.id}: next recheck `))?.text.split('. ').slice(1).join('. ')
+  const still = asked !== undefined && !over && !((s!.waitUser ?? 0) > asked)
+  return { step: step.id, since, ...(reason ? { reason } : {}), ...(still ? { asked } : {}) }
+}
