@@ -18,6 +18,7 @@
 import { linkLabel, mayAccept, prLink, taskRow, type Board, type Card, type ToHandle } from '#shared/pm/board'
 import { reviewLine, reviewNote, workerNote } from '#shared/pm/report'
 import { shotMode } from '#shared/pm/shots'
+import { projectOption } from '~/utils/projectOption'
 
 const emit = defineEmits<{ closed: [] }>()
 const open = ref(true)
@@ -33,7 +34,7 @@ const filterItems = computed(() => [
   { label: tl('Follow group tab'), value: REVIEW_FOLLOW },
   { label: tl('All'), value: REVIEW_ALL },
   ...machineGroups.value.map(g => ({ label: g.name, value: g.id })),
-  ...projects.value.map(p => ({ label: p.name, value: `p:${p.key}` })),
+  ...projects.value.map(p => projectOption(p, `p:${p.key}`)),
 ])
 const known = (v: string) => filterItems.value.some(i => i.value === v) || (!data.value && v.startsWith('p:'))
 const filter = computed({ get: () => reviewPick(known), set: (v: string) => { reviewFilter.value = v } })
@@ -130,7 +131,7 @@ function onKey(e: KeyboardEvent) {
 <template>
   <AppSheet v-model:open="open" :title="tl('Tasks to review')" tall @closed="emit('closed')">
     <div class="review review-sheet" data-testid="review-sheet">
-      <USelect v-model="filter" :items="filterItems" size="lg" class="review-filter" :aria-label="tl('Tasks shown')" data-testid="review-filter" />
+      <ProjectSelect v-model="filter" :items="filterItems" size="lg" class="review-filter" :aria-label="tl('Tasks shown')" data-testid="review-filter" />
 
       <div class="review-stage" :data-motion="still ? 'fade' : 'slide'" data-testid="review-stage">
         <Transition :name="motion">

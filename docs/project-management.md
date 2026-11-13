@@ -705,7 +705,8 @@ project picker, a tag filter when tasks have tags, and,
 with one project picked, its [Autopilot](#autopilot) button. The picker offers
 *Follow machine tab* (the projects the [home tab](home.md#machines-as-tabs) picked
 shows; **All** shows every one, and changing the tab updates the board in place),
-*All projects*, or one project. Your pick is kept and follows you across devices;
+*All projects*, or one project, shown as its key badge in its color then its name
+(as in every project picker). Your pick is kept and follows you across devices;
 until you pick, it is *Follow machine tab* once machine groups exist, else *All
 projects*. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects. A done
@@ -944,7 +945,7 @@ motion); a failed action keeps the task with its error. After the last one:
 *All done*. On a computer it is a large window (960 px wide, up to 90 % of the
 screen's height, screenshots two per row): only the task's content scrolls, the
 filter, its title and the buttons stay. The filter at the top picks *Follow group tab* (the projects of the
-home tab), *All*, a group or a project; it follows you across devices like the
+home tab), *All*, a group or a project (its key badge, then its name); it follows you across devices like the
 Board's picker.
 
 - <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: its [TL;DR](#tldr); then its screenshots large (swipe between them on

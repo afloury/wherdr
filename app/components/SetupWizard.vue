@@ -10,6 +10,7 @@ import type { PmOverview } from '#shared/pm/project'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import { isCoordinatorProgram } from '#shared/pm/coordinator'
 import { SETUP_STEPS, coordinatorStart, setupDone, setupProject, setupResume, type SetupStepId } from '#shared/pm/setup'
+import { projectOption } from '~/utils/projectOption'
 
 const open = defineModel<boolean>('open', { default: false })
 const props = defineProps<{ project?: string, adding?: boolean }>()
@@ -64,7 +65,7 @@ const VISIBILITY = [{ label: 'Repository: not checked', value: 'unknown', disabl
 const visibilityItems = computed(() => VISIBILITY.map(v => ({ ...v, label: tl(v.label) })))
 const setVisibility = (value: string) => run(() => api('/api/pm/project-visibility', { key: key.value, value }))
 const visibility = (v?: RepoVisibility) => v?.value ?? 'unknown'
-const projectItems = computed(() => (data.value?.projects ?? []).filter(x => x.git !== false).map(x => ({ label: x.name, value: x.key })))
+const projectItems = computed(() => (data.value?.projects ?? []).filter(x => x.git !== false).map(x => projectOption(x)))
 watch(key, (k, old) => { if (old && k) run(async () => {}) })
 const agents = computed(() => offerCoordinators(undefined, key.value))
 const agent = ref('')
@@ -119,7 +120,7 @@ const BODY: Record<SetupStepId, string> = {
       <template v-else-if="step === 'project'">
         <SetupProject v-if="!p" :projects="data?.projects ?? []" @added="added" />
         <template v-else>
-          <USelect v-if="projectItems.length > 1" v-model="key" :items="projectItems" size="xl" class="w-full" :aria-label="tl('Project')" data-testid="setup-project" />
+          <ProjectSelect v-if="projectItems.length > 1" v-model="key" :items="projectItems" size="xl" class="w-full" :aria-label="tl('Project')" data-testid="setup-project" />
           <p class="setup-ok" data-testid="setup-ok">{{ p.name }} <span class="mono-label">{{ p.key }}</span></p>
           <USelect :model-value="visibility(p.visibility)" :items="visibilityItems" size="xl" class="w-full" :disabled="busy" :aria-label="tl('Repository')" data-testid="setup-visibility" @update:model-value="v => setVisibility(String(v))" />
           <small v-if="visibility(p.visibility) !== 'unknown'" class="muted" data-testid="setup-public-note">{{ tl('Public: its coordinator and tasks keep private paths, names and secrets out of it.') }}</small>

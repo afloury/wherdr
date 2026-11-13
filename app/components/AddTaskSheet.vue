@@ -6,6 +6,7 @@
 import type { BoardProject, Card } from '#shared/pm/board'
 import type { Task } from '#shared/pm/run'
 import { WEIGHTS, type Weight } from '#shared/pm/workflow'
+import { projectOption } from '~/utils/projectOption'
 
 const AUTO = 'auto'
 
@@ -25,7 +26,7 @@ const error = ref('')
 const tried = ref(false) // the field errors show once the user tried to add
 
 const projectPick = noneModel(project)
-const projectItems = computed(() => [{ label: tl('Pick a project', 'Choisis un projet'), value: NONE, disabled: true }, ...props.projects.map(p => ({ label: p.name, value: p.key }))])
+const projectItems = computed(() => [{ label: tl('Pick a project', 'Choisis un projet'), value: NONE, disabled: true }, ...props.projects.map(p => projectOption(p))])
 const types = computed(() => props.projects.find(p => p.key === project.value)?.types ?? [])
 const typeItems = computed(() => types.value.map(x => ({ label: x.id, value: x.id, description: x.plan })))
 const plan = computed(() => types.value.find(x => x.id === type.value)?.plan)
@@ -71,7 +72,7 @@ async function add() {
   <AppSheet v-model:open="open" :title="tl('Add a task', 'Ajouter une tâche')" tall>
     <form id="add-task" class="sheet-form" data-testid="add-task" novalidate @submit.prevent="add">
       <label class="field-label">{{ tl('Project', 'Projet') }}</label>
-      <USelect v-model="projectPick" :items="projectItems" size="xl" class="w-full" :aria-label="tl('Project', 'Projet')" data-testid="add-task-project" />
+      <ProjectSelect v-model="projectPick" :items="projectItems" size="xl" class="w-full" :aria-label="tl('Project', 'Projet')" data-testid="add-task-project" />
       <p v-if="shown('project')" class="form-error" data-testid="add-task-error">{{ shown('project') }}</p>
 
       <label class="field-label" for="add-task-title">{{ tl('Title', 'Titre') }}</label>
