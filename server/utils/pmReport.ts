@@ -59,9 +59,13 @@ export async function askCoordinator(deps: Deps, id: unknown, urls: CoordinatorU
   const step = plan[task.step!.at]!
   const msg = `Check where ${shownTaskId(projects, task.id)} (${task.title}) stands at its ${step.id} step and end the step or tell me what blocks it.`
   await toCoordinator(deps, task.project, msg, msg, urls)
-  const s = { ...task.step!, rechecks: 0, waitUser: undefined, ...(step.recheck ? { recheckAt: now + durationMs(step.recheck) } : {}) }
-  const logged = await store.logTask({ ...(await store.task(task.id))!, step: s }, 'user', `${ASKED_COORDINATOR}${step.id} step`)
-  return noteBack(store, logged, plan, 'user', 'the user asked the coordinator', now)
+  // Read again after delivery: the coordinator or the engine may have moved the
+  // step meanwhile. Only the same run of the same step is reset; else the ask is just logged.
+  const fresh = (await store.task(task.id))!, cur = fresh.step
+  const same = !!cur?.started && !cur.done && cur.at === task.step!.at && cur.since === task.step!.since
+  const s = same ? { ...cur, rechecks: 0, waitUser: undefined, ...(step.recheck ? { recheckAt: now + durationMs(step.recheck) } : {}) } : cur
+  const logged = await store.logTask({ ...fresh, ...(s ? { step: s } : {}) }, 'user', `${ASKED_COORDINATOR}${step.id} step`)
+  return same ? noteBack(store, logged, plan, 'user', 'the user asked the coordinator', now) : logged
 }
 
 export async function withdrawReport(store: PmStore, id: unknown) {

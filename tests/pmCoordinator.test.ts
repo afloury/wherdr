@@ -385,6 +385,14 @@ describe('Ask the coordinator', () => {
     await refused(askCoordinator(d, task.id, urls), 'does not wait for you')
     await store.saveTask({ ...saved, step: state(1, { yourTurn: over }) })
     await refused(askCoordinator(d, task.id, urls), 'does not wait for you')
+    // The coordinator ends the step while the message is delivered: its progress is kept.
+    await store.saveTask({ ...saved, log: [], step: state(5, { since: 1, yourTurn: over }) })
+    const ends = async (m: string, p: unknown) => {
+      if (m === 'terminal.send') { const t = (await store.task(task.id))!; await store.saveTask({ ...t, step: { ...t.step!, at: 6, since: 2, yourTurn: undefined, proofs: { deploy: { result: 'Deployed' } } } }) }
+      return call(m, p)
+    }
+    const kept = await askCoordinator({ ...d, call: ends } as typeof d, task.id, urls)
+    expect(kept.step).toMatchObject({ at: 6, since: 2, proofs: { deploy: { result: 'Deployed' } } })
   })
 })
 
