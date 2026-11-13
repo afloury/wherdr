@@ -918,7 +918,7 @@ side by side), its PR and the review's verdict in one line, then **Approve**
 (the *Accept* of To do: it leaves the list, the next one shows, and the engine
 merges it in its own order) and **Skip** (the next one; the skipped one stays
 in the list). Anything else that waits (an agent's question, a failure to try
-again, a decision) shows what it waits for, with *Answer the agent* or *Open the
+again, a decision, another step of yours such as *Create these tasks*) shows what it waits for, with *Answer the agent* or *Open the
 task*. *3 of 12* with previous and next; on a computer, → next, ← previous, A
 approve, S skip. After the last one: *All done*. The filter at the top picks
 *Follow group tab* (the projects of the home tab), *All*, a group or a project;

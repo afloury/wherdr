@@ -9,7 +9,7 @@
 // decision) shows what it waits for and opens where the user answers. "3 of 12"
 // with previous and next; on a computer → next, ← previous, A approve, S skip.
 // After the last one: All done.
-import { linkLabel, prLink, taskRow, type Board, type Card, type ToHandle } from '#shared/pm/board'
+import { linkLabel, mayAccept, prLink, taskRow, type Board, type Card, type ToHandle } from '#shared/pm/board'
 import { reviewLine, reviewNote, workerNote } from '#shared/pm/report'
 import { shotMode } from '#shared/pm/shots'
 import type { Task } from '#shared/pm/run'
@@ -31,7 +31,7 @@ const filterItems = computed(() => [
   ...projects.value.map(p => ({ label: p.name, value: `p:${p.key}` })),
 ])
 const known = (v: string) => filterItems.value.some(i => i.value === v) || (!data.value && v.startsWith('p:'))
-const filter = computed({ get: () => reviewPick(known), set: (v: string) => { reviewFilter.value = v; at.value = 0 } })
+const filter = computed({ get: () => reviewPick(known), set: (v: string) => { reviewFilter.value = v } })
 
 // Approved here: off the list at once, before the board says so.
 const approved = ref<string[]>([])
@@ -40,10 +40,13 @@ const items = computed(() => (data.value?.cards ?? []).filter(c => c.yourTurn &&
 const at = ref(0)
 const index = computed(() => Math.min(at.value, items.value.length))
 const card = computed<Card | undefined>(() => items.value[index.value])
+// Another filter, or another home tab followed: back to the first one.
+watch([filter, machineBarPick], () => { at.value = 0 })
 const go = (step: number) => { at.value = Math.max(0, Math.min(index.value + step, items.value.length)) }
 
 const kind = computed(() => (card.value ? taskTodo(card.value) : undefined))
-const approves = computed(() => !!card.value?.userLabel && (kind.value === 'merge' || kind.value === 'step'))
+// Only a merge to accept: another step of the user's (Create these tasks…) keeps its own button, in the task's sheet.
+const approves = computed(() => !!card.value && (kind.value === 'merge' || kind.value === 'step') && mayAccept(card.value))
 const row = computed<ToHandle | undefined>(() => (card.value ? taskRow(card.value) : undefined))
 const shotStep = computed(() => (card.value ? shotSteps(card.value)[0] : undefined))
 const shots = computed(() => (shotStep.value ? card.value!.state!.shots![shotStep.value.id]! : []))
@@ -82,7 +85,8 @@ function answer(where: 'agent' | 'sheet' = 'agent') {
 }
 
 function onKey(e: KeyboardEvent) {
-  if (e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement)?.closest?.('input, textarea, select, [contenteditable="true"], [role="listbox"]')) return
+  // The screenshot viewer open over it has its own keys (← →).
+  if (e.defaultPrevented || lightboxSrc.value || e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement)?.closest?.('input, textarea, select, [contenteditable="true"], [role="listbox"]')) return
   const k = e.key.toLowerCase()
   if (k === 'arrowright') go(1)
   else if (k === 'arrowleft') go(-1)

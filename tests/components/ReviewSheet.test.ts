@@ -9,9 +9,10 @@ import ReviewCard from '~/components/ReviewCard.vue'
 import { coordinators } from '~/composables/useCoordinators'
 import { machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 import { reviewFilter, reviewOpen } from '~/composables/useReview'
+import { lightboxSrc } from '~/composables/useUi'
 import { toHandle, type Card } from '#shared/pm/board'
 
-const plan = [{ id: 'work', holder: 'worker', ends: 'report' }, { id: 'review', holder: 'reviewer', ends: 'verdict' }, { id: 'merge', holder: 'user' }]
+const plan = [{ id: 'work', holder: 'worker', ends: 'report' }, { id: 'review', holder: 'reviewer', ends: 'verdict' }, { id: 'merge', holder: 'user', ends: 'user', action: { kind: 'github.merge' } }]
 const card = (id: string, project: string, over: Partial<Card> = {}): Card => ({
   id, shown: id, project, title: `Task ${id}`, description: '', column: 'Merge', phase: 'your-turn', holder: 'user', tags: [], log: [],
   links: [{ label: 'PR', url: `https://example.com/o/r/pull/${id.length}` }], plan: plan as Card['plan'], yourTurn: 'Merge', userLabel: 'Accept', tldr: `What ${id} changes.`,
@@ -59,6 +60,13 @@ it('counts what waits on Home and reviews it one by one: Approve, Skip, previous
   await expect.poll(shown).toBe('HO-3') // it leaves the list, the next one shows
   expect(accepted).toEqual(['HO-2'])
   expect(progress()).toBe('2 of 2')
+  // The screenshot viewer open over it keeps its keys: no next, no approve behind it.
+  lightboxSrc.value = '/shot.png'
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }))
+  await new Promise(r => setTimeout(r, 50))
+  expect([shown(), accepted.length]).toEqual(['HO-3', 1])
+  lightboxSrc.value = null
   // Anything else that waits shows its own answer, no Approve.
   expect([q('review-approve'), q('review-say')?.textContent, q('review-answer')?.textContent]).toEqual([null, 'Its agent asks', 'Answer the agent'])
 
@@ -76,15 +84,18 @@ it('counts what waits on Home and reviews it one by one: Approve, Skip, previous
 it('follows the group tab by default, and keeps the filter picked', async () => {
   coordinators.value = [{ project: 'home', name: 'Home', machines: ['laptop'] }, { project: 'work', name: 'Work', machines: ['office'] }]
   machineGroups.value = [{ id: '*group:personal', name: 'Personal', machines: ['laptop'] }, { id: '*group:work', name: 'Work', machines: ['office'] }]
-  cards = [card('HO-1', 'home'), card('WK-1', 'work')]
+  cards = [card('HO-1', 'home'), card('HO-2', 'home', { userLabel: 'Create these tasks', plan: [plan[0], { id: 'pick', holder: 'user', ends: 'user' }] as Card['plan'], state: { at: 1, started: true, proofs: {}, rounds: {}, yourTurn: { reason: 'user', badge: 'Pick the tasks' } } }), card('WK-1', 'work')]
   try {
     machineBarSaved.value = '*group:personal'
     reviewOpen.value = true
     const w = await mountSuspended(ReviewCard)
-    await expect.poll(() => w.find('[data-testid="review-count"]').exists() && w.find('[data-testid="review-count"]').text()).toBe('1')
+    await expect.poll(() => w.find('[data-testid="review-count"]').exists() && w.find('[data-testid="review-count"]').text()).toBe('2')
     await expect.poll(shown).toBe('HO-1')
-    expect(progress()).toBe('1 of 1')
-    machineBarSaved.value = '*group:work' // the tab changes: the sheet follows it
+    q('review-next')!.click()
+    await expect.poll(shown).toBe('HO-2')
+    // Another step of the user's keeps its own button: no Approve.
+    expect([q('review-approve'), q('review-answer')?.textContent]).toEqual([null, 'Open the task'])
+    machineBarSaved.value = '*group:work' // the tab changes from the second one: the sheet follows it, from its first
     await expect.poll(shown).toBe('WK-1')
     reviewFilter.value = 'p:home' // one project, kept like the Board's picker
     await expect.poll(shown).toBe('HO-1')
@@ -92,7 +103,7 @@ it('follows the group tab by default, and keeps the filter picked', async () => 
     machineBarSaved.value = '*group:personal'
     await expect.poll(shown).toBe('WK-1')
     reviewFilter.value = 'all'
-    await expect.poll(progress).toBe('1 of 2')
+    await expect.poll(progress).toBe('1 of 3')
     w.unmount()
   } finally { coordinators.value = []; machineGroups.value = []; machineBarSaved.value = null }
 })
