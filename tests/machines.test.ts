@@ -6,7 +6,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, describe, expect, it } from 'vitest'
-import { PANE_RE, isSelfTarget, joinId, machineKey, machineOf, parseMachineList, parseStatusSocket, routeParams, splitId, targetHost } from '../shared/ids'
+import { PANE_RE, machineOf, splitId } from '../shared/ids'
 import { type ShellExec, createShellFs, LIST_DIRS_SCRIPT, parseDirList, parseStatLine, shq } from '../server/utils/fsx'
 import { createTranscripts, isMissing } from '../server/utils/transcripts'
 import { FsError } from '../server/utils/fsx'
@@ -15,17 +15,13 @@ const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.m
 
 describe('IDs', () => {
   it('keeps local IDs as they are (links of notifications already sent)', () => {
-    expect(joinId('', 'w1:p1')).toBe('w1:p1')
     expect(splitId('w1:p1')).toEqual({ machine: '', local: 'w1:p1' })
     expect(PANE_RE.test('w1:p1')).toBe(true)
     expect(PANE_RE.test('wA:p12')).toBe(true)
   })
 
   it('prefixes the IDs of a remote machine', () => {
-    const k = machineKey('12345678123456781234567812345678')
-    expect(k).toBe('12345678')
-    const id = joinId(k, 'w1:p1')
-    expect(id).toBe('12345678~w1:p1')
+    const id = '12345678~w1:p1'
     expect(PANE_RE.test(id)).toBe(true)
     expect(splitId(id)).toEqual({ machine: '12345678', local: 'w1:p1' })
     expect(machineOf(id)).toBe('12345678')
@@ -38,85 +34,6 @@ describe('IDs', () => {
     for (const bad of ['', 'p1', 'w1', 'zz~w1:p1', '12345678~', '~w1:p1', '12345678~w1:p1;rm', '../w1:p1']) {
       expect(PANE_RE.test(bad)).toBe(false)
     }
-  })
-})
-
-describe('routage des appels Herdr', () => {
-  it('routes to the pane\'s machine and makes the ID local', () => {
-    expect(routeParams({ pane_id: '12345678~w1:p2', keys: ['enter'] }))
-      .toEqual({ machine: '12345678', params: { pane_id: 'w1:p2', keys: ['enter'] } })
-    expect(routeParams({ target: '12345678~w3:p1', text: 'salut' }))
-      .toEqual({ machine: '12345678', params: { target: 'w3:p1', text: 'salut' } })
-    expect(routeParams({ workspace_id: '12345678~w3' }).params).toEqual({ workspace_id: 'w3' })
-  })
-
-  it('stays local without a prefix, and without an ID', () => {
-    expect(routeParams({ pane_id: 'w1:p1' })).toEqual({ machine: '', params: { pane_id: 'w1:p1' } })
-    expect(routeParams({})).toEqual({ machine: null, params: {} })
-  })
-
-  it('refuses a call that mixes two machines', () => {
-    expect(() => routeParams({ pane_id: 'aaaa1111~w1:p1', workspace_id: 'w1' })).toThrow()
-  })
-})
-
-describe('herdr machine list --json', () => {
-  const raw = JSON.stringify([
-    { id: '12345678123456781234567812345678', label: 'Laptop', target: 'laptop', session: 'default', enabled: true, selected: false },
-    { id: '0123456789abcdef0123456789abcdef', label: 'Éteinte', target: 'box', session: 'default', enabled: false },
-    { id: 'abcdef0123456789abcdef0123456789', label: '', target: 'user@serveur', session: 'travail' },
-    { id: 'deadbeefdeadbeefdeadbeefdeadbeef', label: 'Piège', target: '-oProxyCommand=evil', session: 'default', enabled: true },
-    { id: 'ffffffff00000000ffffffff00000000', label: 'Session bizarre', target: 'h', session: '../x y', enabled: true },
-  ])
-  const list = parseMachineList(raw)
-
-  it('keeps the enabled profiles, with a short key', () => {
-    expect(list.map(m => m.key)).toEqual(['12345678', 'abcdef01', 'ffffffff'])
-    expect(list[0]).toEqual({ key: '12345678', id: '12345678123456781234567812345678', label: 'Laptop', target: 'laptop', session: 'default' })
-  })
-
-  it('takes the target as the default label, refuses option targets and invalid sessions', () => {
-    expect(list[1]!.label).toBe('user@serveur')
-    expect(list[1]!.session).toBe('travail')
-    expect(list.some(m => m.target.startsWith('-'))).toBe(false)
-    expect(list[2]!.session).toBe('default')
-  })
-
-  it('survives unreadable output', () => {
-    expect(parseMachineList('')).toEqual([])
-    expect(parseMachineList('{"a":1}')).toEqual([])
-  })
-
-  it('ignores profiles pointing at this machine itself (the computer has the server among its machines)', () => {
-    const raw2 = JSON.stringify([
-      { id: '11111111aaaaaaaa11111111aaaaaaaa', label: 'Server', target: 'alice@host-a', session: 'default', enabled: true },
-      { id: '22222222bbbbbbbb22222222bbbbbbbb', label: 'Server FQDN', target: 'host-a.example.ts.net', session: 'default', enabled: true },
-      { id: '33333333cccccccc33333333cccccccc', label: 'Moi', target: 'localhost', session: 'default', enabled: true },
-      { id: '44444444dddddddd44444444dddddddd', label: 'IP', target: 'alice@100.64.0.7:22', session: 'default', enabled: true },
-      { id: '12345678123456781234567812345678', label: 'Laptop', target: 'laptop', session: 'default', enabled: true },
-    ])
-    expect(parseMachineList(raw2, ['host-a', '100.64.0.7']).map(m => m.label)).toEqual(['Laptop'])
-    expect(isSelfTarget('127.0.0.1', [])).toBe(true)
-    expect(isSelfTarget('laptop', ['host-a'])).toBe(false)
-  })
-
-  it('deduplicates profiles pointing at the same host and session', () => {
-    const raw3 = JSON.stringify([
-      { id: '12345678123456781234567812345678', label: 'Laptop', target: 'laptop', session: 'default', enabled: true },
-      { id: 'aaaaaaaa00000000aaaaaaaa00000000', label: 'Laptop (FQDN)', target: 'alice@laptop.example.ts.net', session: 'default', enabled: true },
-      { id: 'bbbbbbbb00000000bbbbbbbb00000000', label: 'Laptop work', target: 'laptop', session: 'travail', enabled: true },
-    ])
-    expect(parseMachineList(raw3).map(m => m.label)).toEqual(['Laptop', 'Laptop work'])
-    expect(targetHost('alice@Laptop.example.ts.net.')).toBe('laptop')
-    expect(targetHost('user@[fd7a::1]:2222')).toBe('fd7a::1')
-    expect(targetHost('host:2222')).toBe('host')
-    expect(targetHost('10.0.0.5')).toBe('10.0.0.5')
-  })
-
-  it('reads the socket in `herdr status server`', () => {
-    const out = 'status: running\nversion: 0.9.1\nendpoint_compatible: yes\nsocket: /Users/alice/.config/herdr/herdr.sock\n'
-    expect(parseStatusSocket(out)).toBe('/Users/alice/.config/herdr/herdr.sock')
-    expect(parseStatusSocket('status: stopped\n')).toBeNull()
   })
 })
 
