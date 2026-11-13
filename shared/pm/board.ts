@@ -232,8 +232,10 @@ export const boardTags = (cards: Pick<Card, 'tags'>[]) => [...new Set(cards.flat
 
 // The columns shown: Your turn first, then the project's columns (or To do /
 // Working / Done for all projects). A card in Your turn is in no other column.
+// An accepted merge is the engine's (its column: Merging), back in Your turn
+// only when the engine cannot go on alone (mergeStuck).
 export function boardLanes(cards: Card[], columns: string[] | null): { id: string, cards: Card[] }[] {
-  const mine = (c: Card) => (!!turnText(c) || mergeWaits(c) !== undefined) && !prUpdating(c)
+  const mine = (c: Card) => (!!turnText(c) || mergeStuck(c) !== undefined) && !prUpdating(c)
   const lane = (c: Card) => (columns ? c.column : c.phase)
   return [
     { id: 'your-turn', cards: cards.filter(mine) },
@@ -352,6 +354,14 @@ export function mergeWaits(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'yourTur
   if (!s?.approved || s.done || c.stopped || c.yourTurn || !waitsToMerge(c.plan[s.at])) return
   const pr = c.prNow && c.prNow !== 'ready to merge' && c.prNow !== 'merged' ? c.prNow : undefined
   return cardStatus(c)?.text || pr || 'waiting for its turn to merge'
+}
+
+// A merge the user may accept now: its review passed, not accepted yet. Whatever
+// its PR's state (an update with its base, its worker on a conflict or red
+// checks, its worker ended): the engine's work on it never hides Accept.
+export function mayAccept(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'userLabel'>): boolean {
+  const s = c.state
+  return !!c.userLabel && !!s?.started && !s.done && !s.acting && !s.approved && !c.stopped && waitsToMerge(c.plan[s.at])
 }
 
 // An approved merge that can go on now: its Merge loading. Not while its checks are red.

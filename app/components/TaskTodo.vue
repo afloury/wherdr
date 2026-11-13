@@ -5,10 +5,13 @@
 // screenshots large (swipe between them, tap to zoom), the link to the full reports, then
 // Merge or Send back with a note. A step the user ends shows the TL;DR too. A step to merge
 // or a refused one has Open the PR when a link proof is a pull request (any host).
-// Once approved, Merge stays loading until the merge ends, what it waits for said under it;
-// while its checks are red, it is on hold instead, with why (the worker fixes them, or waits to).
+// Accept is there as soon as the review passed, whatever the PR's state: while the engine
+// updates it, what goes on is said under it (prUpdating). Once accepted, it stays loading until
+// the merge ends, what it waits for said under it; while its checks are red, it is on hold
+// instead, with why (the worker fixes them, or waits to).
 import { adviceChoices } from '#shared/pm/decisions'
-import { canStart, mergeGoesNow, mergeStuck, mergeWaits, prLink, type Card } from '#shared/pm/board'
+import { canStart, mayAccept, mergeGoesNow, mergeStuck, mergeWaits, prLink, prUpdating, type Card } from '#shared/pm/board'
+import { stepLabels } from '#shared/pm/steps'
 import { RESUMES, stoppedText, type Resume } from '#shared/pm/stop'
 import { shotUrl } from '#shared/pm/shots'
 import { reviewNote, workerNote } from '#shared/pm/report'
@@ -29,7 +32,11 @@ const waits = computed(() => mergeWaits(props.card))
 const stuck = computed(() => mergeStuck(props.card))
 // Otherwise it goes on now (Merge loading), or it is held: red checks the worker fixes or waits to fix.
 const goes = computed(() => !stuck.value && mergeGoesNow(props.card))
-const badge = computed(() => (stuck.value ? tl(waits.value !== undefined ? 'Merge approved: it waits for its worker' : 'The merge waits for its worker') : goes.value ? tl('Merge approved: it merges by itself') : waits.value !== undefined ? `${tl('Merge approved, on hold')}: ${waits.value}` : stepRefusalText(props.card.yourTurn ?? '', told.value)))
+// Not the user's turn yet the engine updates its PR: Accept with the step's own badge, what goes on under it.
+const open = computed(() => mayAccept(props.card))
+const accepts = computed(() => !props.card.yourTurn && open.value)
+const updating = computed(() => (accepts.value ? prUpdating(props.card) : undefined))
+const badge = computed(() => (stuck.value ? tl(waits.value !== undefined ? 'Merge approved: it waits for its worker' : 'The merge waits for its worker') : goes.value ? tl('Merge approved: it merges by itself') : waits.value !== undefined ? `${tl('Merge approved, on hold')}: ${waits.value}` : accepts.value ? tl(stepLabels(props.card.plan[props.card.state!.at]!).badge) : stepRefusalText(props.card.yourTurn ?? '', told.value)))
 const advice = computed(() => props.card.state?.yourTurn?.advice)
 const choices = computed(() => (advice.value ? adviceChoices(advice.value) : { options: [] }))
 
@@ -108,7 +115,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       </template>
       <div v-else class="task-sheet-actions todo-buttons">
         <!-- A refused action is tried again from the sheet's top (Try again). -->
-        <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy || goes" :disabled="!!stuck || (waits !== undefined && !goes)" data-testid="step-user" @click="emit('press')">{{ card.userLabel }}</UButton>
+        <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy || goes" :disabled="!open && (!!stuck || (waits !== undefined && !goes))" data-testid="step-user" @click="emit('press')">{{ waits !== undefined && !stuck ? tl('Merging') : card.userLabel }}</UButton>
         <UButton v-if="pr" color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" :to="pr.url" target="_blank" data-testid="todo-pr">{{ tl('Open the PR') }}</UButton>
         <UButton v-if="stuck" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="todo-worker-start" @click="emit('worker')">{{ tl('Start the worker') }}</UButton>
         <UButton v-if="kind === 'review'" color="primary" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="todo-review-restart" @click="emit('review')">{{ tl('Restart the review') }}</UButton>
@@ -121,6 +128,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
     <p v-if="pressing" class="muted" role="status" data-testid="step-user-busy">{{ tl('Running this step… A merge waits for the PR\'s checks, which can take a few minutes.', 'Étape en cours… Une fusion attend les vérifications de la PR, ce qui peut prendre quelques minutes.') }}</p>
     <p v-else-if="stuck" class="error" role="alert" data-testid="step-user-stuck">{{ tl(stuck) }}</p>
     <p v-else-if="waits !== undefined" class="muted" role="status" data-testid="step-user-waits">{{ tl('Waiting:') }} {{ waits }}</p>
+    <p v-else-if="updating" class="muted" role="status" data-testid="step-user-updating">{{ tl(`${updating[0]!.toUpperCase()}${updating.slice(1)}: accept now, it merges once the PR is ready.`) }}</p>
     <p v-else-if="refused" class="error" role="alert" :title="refused" data-testid="step-user-refused">{{ stepRefusalText(refused, told) }}</p>
 
     <form v-if="kind === 'merge'" class="todo-back" data-testid="todo-back" @submit.prevent="emit('back', note.trim())">

@@ -6,8 +6,9 @@
 // refused: a failed engine action (a merge refused). review: a review over its
 // time limit or whose reviewer stopped, with no verdict (Restart the review).
 // blocked: anything else that waits (overdue, a task it starts after failed).
-// An approved merge on its way stays merge or step, its button loading (mergeWaits).
-import { mergeWaits, type Card } from '#shared/pm/board'
+// An approved merge on its way stays merge or step, its button loading (mergeWaits);
+// a merge to accept is one too while the engine updates its PR (mayAccept).
+import { mayAccept, mergeWaits, type Card } from '#shared/pm/board'
 
 export type TodoKind = 'merge' | 'decide' | 'stopped' | 'step' | 'ask' | 'refused' | 'review' | 'blocked'
 
@@ -19,6 +20,7 @@ export function taskTodo(c: Card): TodoKind | undefined {
   if (c.stopped) return 'stopped'
   // An approved merge on its way keeps its tab, its Merge loading until it ends.
   if (c.userLabel && mergeWaits(c) !== undefined) return shotSteps(c).length ? 'merge' : 'step'
+  if (!c.yourTurn && mayAccept(c)) return shotSteps(c).length ? 'merge' : 'step'
   if (!c.yourTurn || c.state?.done) return
   const reason = c.state?.yourTurn?.reason
   if (reason === 'rounds' && c.state?.yourTurn?.advice) return 'decide'

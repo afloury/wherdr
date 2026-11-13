@@ -56,12 +56,12 @@ export interface StepState {
   swapped?: Record<string, true> // verdict steps after which the agent was changed
   done?: boolean
   abandoned?: true
-  approved?: Approval // the user clicked Merge: it stays, the engine merges once the PR is clean
+  approved?: Approval // the user accepted: it stays, the merge queue merges it once the PR is clean
   catchUp?: CatchUp // the PR conflicts with or is behind its base: being updated, one at a time
   caughtUp?: CaughtUp // updated with its base: not the user's turn until GitHub reads the PR clean (caughtUpSettled)
 }
 
-// The user's Merge click, kept: who, when, at which reviewed commit.
+// The user's Accept, kept: who, when, at which reviewed commit.
 export interface Approval { by: 'user', at: number, commit?: string }
 // from: the task's commit when the catch-up started; base: the branch merged in.
 export interface CatchUp { base: string, from: string, at: number }
@@ -76,7 +76,7 @@ export const caughtUpSettled = (c: CaughtUp, pr: { headRefOid: string, mergeStat
   now - c.at >= SETTLE_MS || (!!pr && pr.headRefOid === c.head && !['DIRTY', 'BEHIND', 'UNKNOWN'].includes(pr.mergeStateStatus ?? ''))
 
 // A merge step that waits for the user's click (a visual merge).
-export const waitsToMerge = (step: PlannedStep | undefined) => step?.ends === 'user' && step.action?.kind === 'github.merge'
+export const waitsToMerge = (step: Pick<Step, 'ends' | 'action'> | undefined) => step?.ends === 'user' && step.action?.kind === 'github.merge'
 
 export type StepEvent =
   | { kind: 'start' }
@@ -174,9 +174,11 @@ export const proofLink = (plan: Step[], s: Pick<StepState, 'at' | 'proofs'>) =>
 // checks: you merge on the host, then say so. A workflow's own text wins.
 export function stepLabels(step: Step, link?: string): { badge: string, button: string } {
   const verify = step.ends === 'user' && step.action?.kind === 'git.verify-merged'
+  // A merge the user approves: they accept the work, the engine merges it.
+  const label = waitsToMerge(step) && (!step.userLabel || step.userLabel === 'Merge') ? 'Accept' : step.userLabel
   return {
-    badge: step.badge || (verify ? `Merge the PR on ${gitHost(link)}` : step.userLabel || step.id),
-    button: step.userLabel || (verify ? 'I merged it' : 'Done'),
+    badge: step.badge || (verify ? `Merge the PR on ${gitHost(link)}` : label || step.id),
+    button: label || (verify ? 'I merged it' : 'Done'),
   }
 }
 
@@ -363,8 +365,16 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       if (step.ends !== 'user' && !retry) return refuse(`Step "${step.id}" does not wait for you`)
       if (state.acting) return refuse('Already checking')
       state = { ...state, caughtUp: undefined }
-      // The click on Merge is an approval that stays, at the reviewed commit.
-      if (waitsToMerge(step) && !state.approved && !ev.engine) state = { ...state, approved: { by: 'user', at: now, ...(reviewedCommit(plan, state) ? { commit: reviewedCommit(plan, state) } : {}) } }
+      // Accept is an approval that stays, at the reviewed commit, whatever the PR's state
+      // (a conflict, behind, checks running or red, its worker ended): the task leaves
+      // Your turn and the merge queue merges it in its own order once the PR is ready.
+      if (waitsToMerge(step) && !state.approved && !ev.engine) {
+        const commit = reviewedCommit(plan, state)
+        // Work handed to its worker meanwhile no longer brings the user's turn back when it is in.
+        const { was: _, ...agent } = state.agent ?? {} as AgentWork
+        const handed = state.agent ? { agent: state.agent.was?.reason === 'user' ? agent : state.agent } : {}
+        return { state: { ...state, ...handed, yourTurn: undefined, approved: { by: 'user', at: now, ...(commit ? { commit } : {}) } }, effects }
+      }
       // Updating with its base already: it merges once that is done.
       if (state.catchUp) return { state, effects }
       if (!step.action) return next()

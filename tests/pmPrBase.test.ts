@@ -63,7 +63,7 @@ it('a merge keeps the base it went to on the task, which the mechanic no longer 
     await store.saveTemplate(wherdr)
     await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'WHR', name: 'wherdr', machine: '', path: '/src/w', template: 'wherdr', base: 'v3', addedAt: 1 }] }))
     const t = await store.addTask({ project: 'WHR', title: 'Visual fix', type: 'visual' })
-    await store.saveTask({ ...t, state: 'working', step: { ...initialState(), started: true, at: 4, yourTurn: { reason: 'user', badge: 'Merge' } } })
+    await store.saveTask({ ...t, state: 'working', step: { ...initialState(), started: true, at: 4, approved: { by: 'user', at: 1 }, yourTurn: { reason: 'user', badge: 'Merge' } } })
     await store.saveRun({ id: 'r1', task: t.id, role: 'worker', program: 'claude', model: 'm', machine: '', worktree: '/w', branch: `task/${t.id}`, instructions: '/i', attempt: 1, state: 'running', startedAt: 1 })
     const after = await userStep({ store } as unknown as CoreAdminDeps & { store: typeof store }, t.id)
     expect(after.step?.done).toBe(true)

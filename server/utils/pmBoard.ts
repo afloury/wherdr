@@ -19,7 +19,7 @@ import type { CoreAdminDeps } from './coreCreate'
 import { runOn } from './pmLaunch'
 import { HerdrError } from './herdr'
 import { localMachineLabel } from './machines'
-import { Holds } from './pmHold'
+import { Holds, type Release } from './pmHold'
 import { noteTaskError } from './pmSentinel'
 import type { PmStore } from './pmStore'
 import { archiveDays, archiveDue, archivedMatch, archivedText, doneAt } from '../../shared/pm/archive'
@@ -136,7 +136,7 @@ const running = new Holds('step action of', ACTION_LIMIT_MS)
 // A step action of this task runs now in this process (its `acting` is not stale).
 export const actionRunning = (id: string) => running.has(id)
 // held: the hold startAction took already.
-export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: unknown, by: MergeBy, userSaid = false, held?: () => void): Promise<Task> {
+export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: unknown, by: MergeBy, userSaid = false, held?: Release): Promise<Task> {
   const { store } = deps
   let release = held
   try {
@@ -147,7 +147,7 @@ export async function stepAction(deps: CoreAdminDeps & { store: PmStore }, id: u
     if (task.report?.block) { if (by === 'user') throw new HerdrError('refused', 'A problem you reported blocks the merge: withdraw it, or wait for the coordinator'); return task }
     release ??= running.take(task.id, by === 'user' ? 'the user\'s step action' : 'the engine\'s step action')
     if (!release) throw new HerdrError('busy', 'Already checking')
-    return await stepActionOf(deps, task, by, userSaid)
+    return await stepActionOf(deps, task, by, userSaid, release.lost)
   } finally { release?.() }
 }
 
@@ -167,7 +167,8 @@ export function startAction(deps: CoreAdminDeps & { store: PmStore }, id: string
 // The step actions started so far, settled (tests, and a shutdown that waits).
 export const actionsSettled = async () => { while (started.size) await Promise.allSettled([...started]) }
 
-async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task, by: MergeBy, userSaid: boolean): Promise<Task> {
+// lost: its hold went past its limit; another run of the step may have ended it since.
+async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task, by: MergeBy, userSaid: boolean, lost: () => boolean): Promise<Task> {
   const { store } = deps
   const p = (await store.projects()).find(x => x.key === task.project)
   const t = p ? await store.workflow(p.key) : null
@@ -200,6 +201,8 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
           halted: async () => !!(await store.task(task.id))?.stopped,
         }).catch((e: Error) => ({ ok: false, error: e.message }))
       : { ok: false, error: 'No worktree: the task never started' }
+    // Past its time limit, the step was the engine's again: this late result is only said.
+    if (lost()) return store.logTask(await fresh(), 'engine', `${act.step}: a run past its time limit ended (${result.ok ? 'done' : result.error ?? 'failed'}): its result is dropped`)
     if (userSaid && by === 'user' && !result.ok && act.action.kind === 'git.verify-merged')
       result = { ok: true, ...(result.commit ? { commit: result.commit } : {}), note: `verify-merged disagreed: ${(result.error ?? 'no answer').replace(/^verify-merged: /, '')}` }
     const evidence = { ...(result.link ? { link: result.link } : {}), ...(result.commit ? { commit: result.commit } : {}), ...(result.report ? { report: result.report } : {}) }
