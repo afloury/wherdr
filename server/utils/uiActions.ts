@@ -6,8 +6,9 @@ import { randomBytes } from 'node:crypto'
 import type { Turn } from '../../shared/pm/coordinator'
 import { shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, type Task } from '../../shared/pm/run'
-import { actionBlock, actionLabel, actionRefusal, actionStamp, cardNow, changeStamp, keepCards, outcomeText, settingStamp, type ProjectChange, type SettingChange, type UiAction, type UiCard } from '../../shared/uiActions'
+import { actionBlock, actionLabel, actionRefusal, actionStamp, cardNow, cardOutcome, changeStamp, keepCards, outcomeText, settingStamp, type ProjectChange, type SettingChange, type UiAction, type UiCard } from '../../shared/uiActions'
 import { MAIN } from '../../shared/pm/coordinator'
+import { tellCardOutcome } from './cardOutcome'
 import { HerdrError } from './herdr'
 import { userStep } from './pmBoard'
 import type { PmLaunchDeps } from './pmLaunch'
@@ -94,11 +95,30 @@ export async function readCard(store: PmStore, id: unknown, settingsFile?: strin
 // applyChange: makes a project change while its dry run still shows `lines`
 // (false: it no longer does), server/utils/alfredCli.ts.
 export type ApplyChange = (argv: string[], lines: string[]) => Promise<boolean>
-export async function actOnCard(deps: PmLaunchDeps & { settingsFile?: string, applyChange?: ApplyChange }, id: unknown, authorization: unknown, cancel = false): Promise<UiCard> {
+type ActDeps = PmLaunchDeps & { settingsFile?: string, applyChange?: ApplyChange }
+// Its outcome is told to the agent whose reply holds the card (cardOutcome.ts):
+// a click on a card no longer open changes nothing and tells nothing.
+export async function actOnCard(deps: ActDeps, id: unknown, authorization: unknown, cancel = false): Promise<UiCard> {
   if (authorization) throw new HerdrError('forbidden', 'Only the user\'s click in wherdr runs an action, never a token')
+  const before = await find(deps.store, id)
+  const tell = (text: string) => tellCardOutcome(deps, before!.rec.project, text).catch(() => {})
+  let card: UiCard
+  // A check that fails at the click (a folder no longer a repository): not applied, and why.
+  try { card = await act(deps, id, cancel) }
+  catch (e) {
+    if (before?.card.state === 'open' && !cancel && e instanceof HerdrError) await tell(cardOutcome(before.card, e.message))
+    throw e
+  }
+  const turned = before && (before.card.state !== card.state || card.refused)
+  if (turned) await tell(cardOutcome(card, card.refused))
+  return card
+}
+
+async function act(deps: ActDeps, id: unknown, cancel: boolean): Promise<UiCard> {
   const card = await readCard(deps.store, id, deps.settingsFile)
   if (!card) throw new HerdrError('not_found', 'Unknown action')
-  if (card.state !== 'open') return card
+  // Stale at the click (changed since, too old): kept so, and said once to the agent.
+  if (card.state !== 'open') return card.state === 'stale' && !cancel ? save(deps.store, card) : card
   if (cancel) return save(deps.store, { ...card, state: 'dismissed', outcome: { text: 'Cancelled by you', at: Date.now() } })
   const s = card.setting
   if (s) {

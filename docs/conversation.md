@@ -101,6 +101,15 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   the change from your session, only if it would still make the same lines (else *This changed
   since: nothing was applied*); a check that fails then (a folder that is no longer a repository)
   shows under the buttons.
+- <a id="what-a-card-tells-its-agent"></a>**What a card tells its agent**: once you click *Apply* or
+  *Cancel* on one of these cards (a setting, a project change, a coordinator start, a task's
+  button), or answer a workflow or automation change, wherdr tells the agent that proposed it in
+  its conversation, so it goes on by itself (Alfred moves to the next project): *Applied:
+  Project WEB › Guards*, *Cancelled: …*, or *Not applied: …* with why (changed since, a check
+  that failed). It shows as a muted *From the card* row, not as a message you typed, and counts as
+  your turn (the agent may propose the next card). A second click on a closed card tells nothing.
+  While that agent does not run, nothing is typed: its next start's first message lists what you
+  applied or cancelled since.
 - **Files and screenshots beside the conversation**: an agent can show you a file of its own
   folder (`wherdr pm ui show file docs/plan.md`, a path relative to its folder: never `~`, `..`
   or a path outside it) or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task

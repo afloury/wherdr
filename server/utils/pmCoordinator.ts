@@ -24,6 +24,7 @@ import { allowedMachines, machineNamed, taskMachine, type Project } from '../../
 import { projectOf, showIds, shownKey, shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, trustKeys, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
+import { cardNotesMessage, tellCardOutcome } from './cardOutcome'
 import { answeredTask, clearQuestion } from './pmAnswer'
 import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
 import { CREATE_SCRIPT, WRITE_SCRIPT, exec, launched, startTask } from './pmLaunch'
@@ -576,7 +577,14 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
   const { proposal, ...rest } = rec
   const p = (await store.projects()).find(x => x.key === rec.project)
   const t = p ? await store.workflow(p.key) : null
-  const done = (outcome: ProposalOutcome) => store.saveCoordinator(withAnswer(rest, answerOf(proposal, outcome, 'user', t)))
+  // The proposer learns the answer in its conversation (cardOutcome.ts).
+  const done = async (outcome: ProposalOutcome) => {
+    const a = answerOf(proposal, outcome, 'user', t)
+    await store.saveCoordinator(withAnswer(rest, a))
+    const what = `Workflow change${a.summary?.length ? ` (${a.summary.join('; ')})` : ''}`
+    const said = outcome === 'accepted' ? 'Applied' : outcome === 'refused' ? 'Cancelled' : 'Not applied'
+    await tellCardOutcome(deps, proposal.by === 'main' ? MAIN : rec.project, `${said}: ${what}${said === 'Not applied' ? `: ${outcome}` : ''}`).catch(() => {})
+  }
   if (accept !== true) { await done('refused'); return { accepted: false } }
   // Its diff was made against that version: saved over a newer one, it would
   // undo a change the user made since.
@@ -818,7 +826,8 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const { program } = a
   if (resume && !canResume(program)) throw new HerdrError('bad_input', 'Only a Claude or Codex conversation can be resumed: start a new one')
   const c = await prepareCoordinator(deps, key, program, urls, resume, a.model)
-  const prompt = [...c.prompt, ...first]
+  // What the user applied on its cards while it did not run, said once (a resume too).
+  const prompt = [...c.prompt, ...first, ...cardNotesMessage(before)]
   // A resumed Codex reads a word after `resume --last` as a session: its messages are typed.
   const asArg = promptAsArg(program) && !resume
   const argv = [...c.argv, ...(asArg ? prompt : [])]
@@ -834,7 +843,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   if (!asArg) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' || r === 'installing' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
   // version: what this session knows (takeUpdateNotice tells it of an update).
-  const { told: _told, ...rec } = (await deps.store.coordinator(key))!
+  const { told: _told, cardNotes: _said, ...rec } = (await deps.store.coordinator(key))!
   await deps.store.saveCoordinator({ ...rec, terminal: address, ran: a, version: wherdrVersion(), ...(key === MAIN ? { agent: a } : {}) })
   // This conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
