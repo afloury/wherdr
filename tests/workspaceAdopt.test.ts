@@ -2,7 +2,8 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { adoptRefusal, adoptedSince, repoUnder } from '../shared/pm/workspaceAdopt'
+import { execFileSync } from 'node:child_process'
+import { REAL_SCRIPT, adoptRefusal, adoptedSince, realRepo, repoUnder } from '../shared/pm/workspaceAdopt'
 import { parseCommand } from '../shared/pm/coordinator'
 import { healthSummary } from '../shared/pm/health'
 import { placeTask, type Candidate } from '../shared/pm/placement'
@@ -27,11 +28,32 @@ describe('repo adopt: what it refuses', () => {
   it('refuses a folder already a project (of any workspace), without git, or without the origin its workflow needs', () => {
     const other = { key: 'PA', name: 'Payroll', machine: 'home', path: '/h/work/payroll-api', workspace: 'WS2', addedAt: 1 } as Project
     const repo = { exists: true, git: true, remote: true }
-    expect(adoptRefusal('/h/work/payroll-api', 'home', [other], repo, true)).toMatch(/already project PA \(workspace WS2\)/)
-    expect(adoptRefusal('/h/work/ledger', 'home', [other], { ...repo, git: false }, true)).toMatch(/not a git repository/)
-    expect(adoptRefusal('/h/work/ledger', 'home', [other], { ...repo, exists: false }, true)).toMatch(/does not exist/)
-    expect(adoptRefusal('/h/work/ledger', 'home', [other], { ...repo, remote: false }, true)).toMatch(/no origin/)
-    expect(adoptRefusal('/h/work/ledger', 'home', [other], { ...repo, remote: false }, false)).toBe('')
+    expect(adoptRefusal(['/h/work/payroll-api'], 'home', [other], repo, true)).toMatch(/already project PA \(workspace WS2\)/)
+    expect(adoptRefusal(['/h/work/ledger'], 'home', [other], { ...repo, git: false }, true)).toMatch(/not a git repository/)
+    expect(adoptRefusal(['/h/work/ledger'], 'home', [other], { ...repo, exists: false }, true)).toMatch(/does not exist/)
+    expect(adoptRefusal(['/h/work/ledger'], 'home', [other], { ...repo, remote: false }, true)).toMatch(/no origin/)
+    expect(adoptRefusal(['/h/work/ledger'], 'home', [other], { ...repo, remote: false }, false)).toBe('')
+    // Another project's clone on this machine, its home elsewhere.
+    const cloned = { key: 'LED', name: 'Ledger', machine: 'box', path: '/srv/ledger', clones: { home: '/h/work/ledger' }, addedAt: 1 } as Project
+    expect(adoptRefusal(['/h/work/ledger'], 'home', [cloned], repo, true)).toMatch(/already project LED/)
+    // Named through a link, resolved to a project's folder.
+    expect(adoptRefusal(['/h/work/alias', '/h/work/payroll-api'], 'home', [other], repo, true)).toMatch(/already project PA/)
+  })
+
+  it('resolves symlinks on the machine: a link out of the root is refused, one inside is named by its target', async () => {
+    const tmp = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'pm-real-')))
+    await fs.mkdir(path.join(tmp, 'work/api'), { recursive: true })
+    await fs.mkdir(path.join(tmp, 'outside'))
+    await fs.symlink(path.join(tmp, 'outside'), path.join(tmp, 'work/linked'))
+    await fs.symlink(path.join(tmp, 'work/api'), path.join(tmp, 'work/alias'))
+    const real = (rel: string) => {
+      const [root = '', folder = ''] = execFileSync('sh', ['-c', REAL_SCRIPT, 'sh', `${tmp}/work`, `${tmp}/work/${rel}`]).toString().trim().split('\n')
+      return realRepo(rel, root, folder)
+    }
+    expect(real('linked')).toEqual({ error: expect.stringMatching(/leads outside the workspace's root/) })
+    expect(real('alias')).toBe('api')
+    expect(real('missing')).toBe('missing')
+    await fs.rm(tmp, { recursive: true, force: true })
   })
 })
 
@@ -48,7 +70,7 @@ describe('repo adopt: the new member', () => {
     await store.changeMap('WS', () => ({ entries: [{ repo: 'payroll-api', path: '/h/work/payroll-api', does: 'Pays', talks: [], usedBy: [], readAt: 1 }] }))
     const call = async (_m: string, p: { argv: string[] }) => {
       const [, , script] = p.argv
-      const out = script === PROBE_SCRIPT ? 'dir\ngit\nremote' : script === PREPARE_SCRIPT ? 'git' : script!.includes(REMOTE_SCRIPT.split('\n').at(-2)!) ? 'git@github.com:acme/payroll-api.git\n{"visibility":"PRIVATE"}' : script!.includes('$HOME') ? '/h' : ''
+      const out = script === REAL_SCRIPT ? '/h/work\n/h/work/payroll-api' : script === PROBE_SCRIPT ? 'dir\ngit\nremote' : script === PREPARE_SCRIPT ? 'git' : script!.includes(REMOTE_SCRIPT.split('\n').at(-2)!) ? 'git@github.com:acme/payroll-api.git\n{"visibility":"PRIVATE"}' : script!.includes('$HOME') ? '/h' : ''
       return { code: 0, stdout: Buffer.from(out).toString('base64') }
     }
     const deps = { store, call, machines: () => [{ key: 'home', label: 'home', local: true }] } as unknown as Parameters<typeof adoptRepo>[0]

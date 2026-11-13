@@ -74,8 +74,10 @@ check*).
 
 wherdr refuses:
 
-- a path outside the workspace's root;
-- a folder that is already a project, of this workspace, another one or none;
+- a path outside the workspace's root, a symbolic link that leads out of it
+  included (a link inside the root counts as the folder it leads to);
+- a folder that is already a project, of this workspace, another one or none,
+  or another project's clone on that machine;
 - a folder that does not exist (nothing is cloned for you) or is not a git
   repository;
 - a repository without an `origin` when the workflow its tasks would run
