@@ -89,9 +89,15 @@ in the project's General tab (*[WHR] wherdr*; the tooltip reads *Coordinator of 
 ([Project management](project-management.md)). A tap opens its conversation, shown as selected
 while it is open. A coordinator whose terminal ended (its machine restarted, say) stays, marked
 *Stopped*: a tap offers *Resume the conversation* (its last one, with the agent that ran it and
-the same options) or *New conversation*; its menu (right click or long press), *Restart with…*, picks another agent,
-which becomes its default: its folder and memory stay, the current session stops. A coordinator
-shows only in its own row, never again among the agents.
+the same options) or *New conversation*. Its menu (right click on a computer, long press on a
+phone, where it opens as a sheet) offers, in order: *Open the board* (filtered on its project),
+*Project settings* (its General tab), *Autopilot* (its tab, with a check while autopilot is on),
+*Rename…* (an inline field; empty gives it its project's name back), *Mute notifications* /
+*Unmute notifications* (the conversation header's levels, kept across its restarts), *Restart
+with…*, which picks another agent that becomes its default (its folder and memory stay, the
+current session stops), and *Stop the coordinator*, after a short confirm: its agent ends and it
+starts again on the next message or wake. Mute and Stop show while it runs. Alfred's row keeps
+its own menu. A coordinator shows only in its own row, never again among the agents.
 
 Coordinators and **Tasks to review** follow the [machine tab](#machines-as-tabs): a tab shows the
 projects whose allowed machines it holds (a project on machines of several groups shows on each
