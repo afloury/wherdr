@@ -14,6 +14,7 @@ import { byBoardOrder } from '../../shared/pm/boardOrder'
 import { sameFilesText } from '../../shared/pm/files'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 import type { PmStore } from './pmStore'
+import { coordinatorKey, handledBy, isWorkspace } from '../../shared/pm/workspace'
 import { atWork, machineCapacity, readMemorySettings } from './pmMemory'
 import { lastReadiness, readiness } from './pmReady'
 import { projectPace } from './pmPace'
@@ -120,16 +121,27 @@ export async function machinesNow(deps: PmLaunchDeps, p: Project, now = Date.now
   const weight = weightOf(await deps.store.workflow(p.key), task).weight
   const candidates = (await machineViews(deps, p, now, task)).map(v => (v.paused ? { ...v, wait: PAUSED } : v))
   const placed = placeTask({ weight, estimate: estimates[weight], home: p.machine, strategy, candidates })
-  const ap = (await deps.store.coordinator(p.key))?.autopilot, runs = await deps.store.runs()
+  // A member's limits: its workspace's autopilot, over all its projects' tasks.
+  const { ap, all: counted, holds } = await pilotOf(deps.store, projects, p.key), runs = await deps.store.runs()
   const pace = await paceOf(deps.store, p, task, now).catch(() => undefined)
-  const n = head ? busyNext(ap, tasks, runs, now, { pace: pace?.verdict, holds: await slotsOf(deps.store, [p]) }) : undefined
+  const n = head ? busyNext(ap, counted, runs, now, { pace: pace?.verdict, holds }) : undefined
   const why = n ? ('why' in n ? n.why : undefined)
-    : task.held || (task.sameFiles ? sameFilesText(task.sameFiles) : coordinatorStartRefusal(ap, task, tasks, runs, now, false, { engine: true }) ?? `${task.id} starts after ${task.after}`)
+    : task.held || (task.sameFiles ? sameFilesText(task.sameFiles) : coordinatorStartRefusal(ap, task, counted, runs, now, false, { engine: true }) ?? `${task.id} starts after ${task.after}`)
   const on = 'machine' in placed ? machines.find(m => m.key === placed.machine)?.label ?? placed.machine : undefined
   return { strategy, machines, next: showIds(projects, { task: task.id, title: task.title, weight, ...(on !== undefined ? { on } : { hold: 'hold' in placed ? placed.hold : '' }), ...(why ? { why } : {}) }) }
 }
 
 // Which tasks of these projects take a tasks-at-once slot (holdsSlot), by their plan.
+// The autopilot a project's automatic starts hold to, with the tasks its
+// limits count: its own, or a member's workspace's, over all the projects it
+// handles (held), and which of their tasks hold a slot. A workspace's own
+// tasks (features, no agent) are never started, so left out.
+export async function pilotOf(store: PmStore, projects: Project[], key: string) {
+  const pk = coordinatorKey(key, projects), held = handledBy(pk, projects)
+  const all = (await store.tasks()).filter(t => held.some(x => x.key === t.project && !isWorkspace(x)))
+  return { ap: (await store.coordinator(pk))?.autopilot, all, held, holds: await slotsOf(store, held) }
+}
+
 export async function slotsOf(store: PmStore, projects: Project[]): Promise<SlotOf> {
   const tpl = new Map(await Promise.all(projects.map(async p => [p.key, { p, t: await store.workflow(p.key).catch(() => null) }] as const)))
   return (task) => {

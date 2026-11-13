@@ -579,7 +579,8 @@ export const commandList = (t?: Template | null) => [...COMMANDS.filter(c => !c.
 // files: OWN_ROLE_FILES). Nothing outside it.
 // docs: wherdr's docs folder, when the coordinator runs on wherdr's machine.
 // shown: a project's shown key from its fixed one, for the other projects it may act on.
-export function roleFiles(p: Project, t: Template | null, examples: Template[], docs?: string, shown?: (key: string) => string | undefined): Record<string, string> {
+// members: a workspace's member projects (shown keys), whose tasks are its coordinator's.
+export function roleFiles(p: Project, t: Template | null, examples: Template[], docs?: string, shown?: (key: string) => string | undefined, members: string[] = []): Record<string, string> {
   // A folder without git: no task worktree, the coordinator does the work there itself.
   const plain = p.git === false
   const plans = t ? Object.entries(t.taskTypes).flatMap(([type]) => [`### ${type}`, ...planSteps(t, { type }, p.base).map(stepLine), '']) : ['(no template yet)']
@@ -608,8 +609,9 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     ...firstTalk,
     '## Your memory', '',
     `\`memory.md\` in your folder is yours: wherdr creates it once and never rewrites it, so it outlives a restart and a change of program. Read it first, at each start, and follow it: the user's decisions and preferences there come before your defaults. Note there, as you go, each decision or preference the user gives you, one fact per line; nothing a command or the board already says. Keep it clean: merge duplicates, drop stale lines, stay under ${MEMORY_CAP} characters.`, '',
+    ...(members.length ? ['## Members', '', `This workspace's member projects: ${members.join(', ')}. They have no coordinator: you act on each (Act level: \`--project <KEY>\`), their tasks count in your autopilot's limits, and their wakes come to you.`, ''] : []),
     ...reachLines(p.reach, shown ?? (k => k)),
-    `## Commands (your token: ${p.reach?.length ? 'this project, and the other projects above' : 'this project only'})`, '', ...commandList(t), '',
+    `## Commands (your token: ${p.reach?.length || members.length ? 'this project, and the other projects above' : 'this project only'})`, '', ...commandList(t), '',
     'When the user changes direction mid-task, record it as a spec change (`task edit`, `task note`, or `tell --spec`), not only a `tell`: the reviewer reviews against the spec.',
     'Every change you make is written to the task\'s or the workflow\'s log with your name.',
     `Quote a file as inline code with its absolute path (\`${p.path.replace(/\/$/, '')}/README.md\`): the user's interface makes it a link.`, '',

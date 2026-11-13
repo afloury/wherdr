@@ -23,6 +23,7 @@ import { noteTurn } from './pmCoordinator'
 import { pushSend } from './push'
 import { HerdrError } from './herdr'
 import { projectOf, shownKey, showIds } from '../../shared/pm/projectKey'
+import { coordinatorKey, handledBy } from '../../shared/pm/workspace'
 
 export interface WakeDeps extends CoreAdminDeps { store: PmStore, notify?: (title: string, body: string, project: string) => Promise<unknown> }
 const newId = () => randomUUID().replace(/-/g, '').slice(0, 8)
@@ -71,7 +72,8 @@ async function gather(deps: WakeDeps, now: number) {
     const run = runs.filter(r => r.task === task.id && r.state !== 'ended').sort((a, b) => b.startedAt - a.startedAt)[0]
     const m = run && deps.machines().find(x => x.key === run.machine)
     // News on the task (its log, its CI, the user's message to the coordinator) resets the recheck's backoff.
-    const coord = await store.coordinator(task.project)
+    // A member's task: its workspace's coordinator.
+    const ck = coordinatorKey(task.project, projects), coord = await store.coordinator(ck)
     const user = Math.max(task.log?.findLast(e => e.by === 'user')?.at ?? 0, coord?.userAt ?? 0)
     const news = { at: Math.max(task.log?.at(-1)?.at ?? 0, user), user, ...(task.ci ? { ci: `${task.ci.head}:${task.ci.red}:${!!task.ci.running}` } : {}) }
     const stepped = recheckNews(plan, pauseClock(task.step, clockStops(task, !!m && !m.local && m.status !== 'online'), now), news, now)
@@ -81,7 +83,7 @@ async function gather(deps: WakeDeps, now: number) {
     const has = !!coord?.terminal
     await store.saveTask({ ...task, step: has ? w.state : { ...w.state, told: task.step.told } })
     const step = currentStep(plan, task.step)
-    if (has) add(task.project, w.texts.map(x => `${task.id} (${task.title}): ${x}`), { kind: 'step', about: `${task.id} (${step?.id ?? 'step'})` })
+    if (has) add(ck, w.texts.map(x => `${task.id} (${task.title}): ${x}`), { kind: 'step', about: `${task.id} (${step?.id ?? 'step'})` })
   }
   // The main coordinator (Alfred) has no autopilot: one saved before is turned off.
   const main = await store.coordinator(MAIN)
@@ -92,7 +94,8 @@ async function gather(deps: WakeDeps, now: number) {
     if (!c) continue
     // Routine events off by default: an autopilot saved with the old default events drops them, once.
     if (!c.quiet) await store.saveCoordinator(c = { ...c, quiet: true, ...(c.autopilot ? { autopilot: quietEvents(c.autopilot) } : {}) })
-    const ap = c.autopilot, mine = tasks.filter(x => x.project === p.key)
+    // A workspace's: its members' tasks too (their events, health check and limits).
+    const held = handledBy(p.key, projects), ap = c.autopilot, mine = tasks.filter(x => held.some(y => y.key === x.project))
     const ev = autopilotEvents(ap ?? { on: false, goal: '', events: [], perDay: 0, atOnce: 0 }, mine, c.seen ?? {}, { key: p.key, by: coordinatorBy(p.key) })
     const on = !!ap?.on && !!c.terminal && inHours(ap.hours, new Date(now))
     // The first look only notes where tasks stand. Each wake not sent is noted (autopilot show).
@@ -184,10 +187,13 @@ export async function wakeTick(deps: WakeDeps, now = Date.now()) {
 }
 
 // The task's coordinators whose autopilot wakes them for stuck tasks, woken with why; who was woken.
-export async function wakeCoordinators(deps: { store: PmStore }, task: Pick<Task, 'project'>, why: string, now: number) {
-  const { store } = deps
-  const coords = new Map([[task.project, await store.coordinator(task.project)], [MAIN, await store.coordinator(MAIN)]])
-  const keys = wakesFor([task.project, MAIN], k => coords.get(k) ?? undefined, now)
-  for (const key of keys) await store.saveWakes([enqueue(await store.wakes(), key, [why], now, randomUUID().replace(/-/g, '').slice(0, 8), false, { kind: 'engine' })])
-  return keys.map(k => (k === MAIN ? 'the main coordinator' : 'the project\'s coordinator'))
+// A member's task: its workspace's coordinator, the wake's first line naming the task.
+export async function wakeCoordinators(deps: { store: PmStore }, task: Pick<Task, 'project' | 'id'>, why: string, now: number) {
+  const { store } = deps, projects = await store.projects()
+  const own = coordinatorKey(task.project, projects), member = own !== task.project
+  const shownId = showIds(projects, task.id), text = member && !showIds(projects, why).startsWith(shownId) ? `${task.id}: ${why}` : why
+  const coords = new Map([[own, await store.coordinator(own)], [MAIN, await store.coordinator(MAIN)]])
+  const keys = wakesFor([own, MAIN], k => coords.get(k) ?? undefined, now)
+  for (const key of keys) await store.saveWakes([enqueue(await store.wakes(), key, [text], now, randomUUID().replace(/-/g, '').slice(0, 8), false, { kind: 'engine' })])
+  return keys.map(k => (k === MAIN ? 'the main coordinator' : member ? 'the workspace\'s coordinator' : 'the project\'s coordinator'))
 }

@@ -8,7 +8,7 @@ import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
 import { notesStore, runNotes, type NotesStore } from './notesStore'
 import { MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, PROPOSAL_ANSWERS } from '../../shared/pm/coordinator'
-import { ownWorkflow } from '../../shared/pm/workspace'
+import { coordinatorKey, handledBy, membersOf, ownWorkflow } from '../../shared/pm/workspace'
 import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
@@ -50,7 +50,7 @@ import { readQuotas } from './quotas'
 import { quotaByKey, reviewAccount, reviewQueueLines, runningReviews } from '../../shared/pm/reviewQueue'
 import { forgetMemory } from './pmMemory'
 import { projectEstimates } from './pmPeaks'
-import { goesTo, machineLines, paceOf, placeFor, slotsOf } from './pmPlace'
+import { goesTo, machineLines, paceOf, pilotOf, placeFor, slotsOf } from './pmPlace'
 import { STRATEGY_LABELS } from '../../shared/pm/placement'
 import { projectPace } from './pmPace'
 import { sameFilesText } from '../../shared/pm/files'
@@ -158,7 +158,7 @@ const unb64 = (v: unknown) => (typeof v === 'string' ? Buffer.from(v, 'base64').
 
 // POST /api/pm/cli: { argv, input? } with the coordinator's token, or
 // { argv64, input64 } from the folder's `wherdr` script. A project's token
-// acts on its project only; the main coordinator's on every project.
+// acts on its project only (a workspace's: its members too); the main coordinator's on every project.
 // The output and a refusal name tasks by their shown key (CMP-9, not CP-9).
 type CliBody = { argv?: unknown, input?: unknown, argv64?: unknown, input64?: unknown }
 export async function runCommand(deps: Deps, token: unknown, body: CliBody) {
@@ -175,6 +175,11 @@ export async function runCommand(deps: Deps, token: unknown, body: CliBody) {
     throw e
   }
 }
+
+// A token's own scope: its project and, for a workspace, each member, at the
+// Act level of reach.ts (members have no coordinator of their own).
+export const inScope = (projects: Project[], scope: string, project: string) =>
+  project === scope || membersOf(scope, projects).some(m => m.key === project)
 
 async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: string, by?: string, what?: string } = {}) {
   const { store } = deps
@@ -194,7 +199,8 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
   const self = projects.find(x => x.key === scope)
   const shown = (k: string) => shownKey(projects.find(x => x.key === k) ?? { key: k })
   const reach = (k: string) => {
-    const why = main || k === scope ? undefined : reachRefusal(self, k, cmd.name, { self: shown(scope), other: shown(k) })
+    const level = inScope(projects, scope, k) ? { key: scope, reach: [{ project: k, level: 'act' as const }] } : self
+    const why = main || k === scope ? undefined : reachRefusal(level, k, cmd.name, { self: shown(scope), other: shown(k) })
     if (why) throw new HerdrError('refused', why)
   }
   if (named && projects.some(x => x.key === named)) reach(named)
@@ -214,14 +220,15 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
   // A turn the server saw start over an hour ago is not trusted any more.
   const turn: Turn = rec?.turn && Date.now() - rec.turn.at < TURN_MS ? rec.turn.kind : 'none'
   const by = coordinatorBy(scope)
-  if (!main && key && key !== scope && !READ_COMMANDS.includes(cmd.name)) Object.assign(visit, { on: key, by, what: [cmd.name, 'task' in cmd ? cmd.task : 'title' in cmd ? `"${cmd.title}"` : ''].join(' ').trim() })
+  if (!main && key && !inScope(projects, scope, key) && !READ_COMMANDS.includes(cmd.name)) Object.assign(visit, { on: key, by, what: [cmd.name, 'task' in cmd ? cmd.task : 'title' in cmd ? `"${cmd.title}"` : ''].join(' ').trim() })
   const needProject = () => { if (!p) throw new HerdrError('bad_input', `Name the project: --project <KEY> (${projects.map(shownKey).join(', ')})`); return p }
   const needPlan = () => { needProject(); if (!t) throw new HerdrError('not_found', 'The project has no template'); return t }
-  // The tasks the limits count: the project's (every task for the main coordinator with no project named).
-  const mineOf = async () => (await store.tasks()).filter(x => (main && !key) || x.project === key)
-  // The autopilot that holds the command: the project's own, also for Alfred (which has none).
-  // Another project's tasks: that project's autopilot and limits.
-  const pilotRec = main || key !== scope ? (key ? await store.coordinator(key) : null) : rec, pilot = pilotRec?.autopilot
+  // The autopilot that holds the command: the project's own, also for Alfred (which has none);
+  // a member's: its workspace's. Another project's tasks: that project's autopilot and limits.
+  const pk = key && coordinatorKey(key, projects), held = pk ? handledBy(pk, projects) : projects
+  // The tasks the limits count: all those of the autopilot's projects (every task for the main coordinator with no project named).
+  const mineOf = async () => (await store.tasks()).filter(x => (main && !key) || held.some(y => y.key === x.project))
+  const pilotRec = main || pk !== scope ? (pk ? await store.coordinator(pk) : null) : rec, pilot = pilotRec?.autopilot
 
   // Alfred has no autopilot: it starts or adds tasks in the user's turns only.
   if (main && turn !== 'user' && (cmd.name === 'task start' || cmd.name === 'task add')) throw new HerdrError('refused', `Alfred runs ${cmd.name} only on a request from the user, sent from wherdr: each project's coordinator runs its own autopilot`)
@@ -315,9 +322,9 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       const lines = (x: Project) => machineLines(deps, x).catch(() => ['machines unknown'])
       // Keep the board busy: on or off, and what the engine starts next (or why nothing).
       const busy = async (x: Project) => {
-        const xap = (await store.coordinator(x.key))?.autopilot, tasks = (await store.tasks()).filter(y => y.project === x.key)
-        const head = busyQueue(tasks)[0], pace = head ? await paceOf(store, x, head, now).catch(() => undefined) : undefined
-        const n = busyNext(xap, tasks, await store.runs(), now, { pace: pace?.verdict, holds: await slotsOf(store, [x]) })
+        const { ap: xap, all: tasks, held: xs, holds } = await pilotOf(store, projects, x.key)
+        const head = busyQueue(tasks)[0], pace = head ? await paceOf(store, xs.find(z => z.key === head.project)!, head, now).catch(() => undefined) : undefined
+        const n = busyNext(xap, tasks, await store.runs(), now, { pace: pace?.verdict, holds })
         return { on: keepsBusy(xap), next: 'task' in n ? `${n.task.id} (${n.task.title}), once a machine has room` : n.why }
       }
       // Each reviewer account with reviews running or waiting: its use and its queue.
@@ -338,7 +345,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
         weights: key ? await weights(p!, t) : Object.fromEntries(await Promise.all(projects.map(async x => [x.key, weights(x, await store.workflow(x.key))]))),
         // Wakes not sent, newest first: what and why.
         skippedWakes: [...(pilotRec?.skips ?? [])].slice(-20).reverse().map(x => ({ at: new Date(x.at).toISOString(), what: x.what, why: x.why })),
-        today: { ...limitsLeft(ap, mine, await store.runs(), now, await slotsOf(store, p ? [p] : projects)), skippedWakes: today(pilotRec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(pilotRec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
+        today: { ...limitsLeft(ap, mine, await store.runs(), now, await slotsOf(store, held)), skippedWakes: today(pilotRec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(pilotRec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
         note: 'Only the user changes these, in wherdr. keepBusy: with it on, the engine itself starts the next to-do task in board order (oldest first) while a machine has room, within the limits, hours and pace; next says which, or why none. With nothing to do and lookForWork off, scheduled wakes are skipped, and so are they while nothing you could act on changed since your last wake (no task startable now, no new block, no answer); a health check repeating the last one\'s lines (within 12 h), a question you already answered with tell, and an engine wake for a block that is only an offline or paused machine (the incident covers it; the engine resumes the task itself and wakes you if that fails) are skipped too. skippedWakes lists the last ones, what and why; today.skippedWakes counts today\'s skipped scheduled wakes. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines by its placement strategy (Heavy to the strongest: heavy work on the strongest, light and standard work at home when it fits; Balance the load: each task on the machine with most room; Home first: home until it is full; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. perDay, atOnce and hours hold automatic work only: a start the user asks for goes past them, and still counts in them. perDay null: no daily limit; atOnce null is Auto: as many tasks as the machines take (both the defaults of a new project). Whatever the counts, pacing and machine room still hold automatic work. machines: each allowed machine, its agents at work by weight, its available hours (automatic starts skip it outside them, heavy work in its last 2 hours) and the heaviest weight it takes now (or why none: offline, away, full…); weights: what placement counts per weight (learned from the measured peaks of the project after 3 runs of that weight, else the default), and the weight each task type gets. lastOpenIncident: the last time agents were gone and why, from facts (wherdr pm incidents lists them all); null when none is open. reviews: each reviewer account with reviews running or waiting, its 5-hour and weekly use, and how many it runs at once; the others wait their turn, oldest first',
       }
     }
@@ -378,7 +385,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       const { role, run, released, review } = tellTarget(await store.runs(), task.id, holder, cmd.to, !!cmd.fix, !task.cleanup?.done)
       // A failed step action handed over with a fix: the worker reports it done, then the engine tries it again.
       const fixesAction = !!(cmd.fix && t && handFix(planOf(t, task, p), task.step, cmd.fix, Date.now()))
-      const said = `From the ${main ? 'main' : key === scope ? 'project' : `${shown(scope)} project`} coordinator: ${cmd.text}${fixesAction ? `\n\nWhen done: ${DONE_CMD}` : ''}`
+      const said = `From the ${main ? 'main' : inScope(projects, scope, key) ? 'project' : `${shown(scope)} project`} coordinator: ${cmd.text}${fixesAction ? `\n\nWhen done: ${DONE_CMD}` : ''}`
       const wake = turn !== 'user', fix = cmd.fix && { autopilot: rec?.autopilot, main }
       // A wake's fix counts against the step's; the log keeps its kind and reason.
       const fixed = (x: Task) => (cmd.fix && wake ? { ...x, fixes: countFix(task) } : x)
@@ -436,7 +443,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       const mine = await mineOf()
       const wake = turn !== 'user', who = { who: 'coordinator' as const, wake }, now = Date.now()
       const pace = pacedStart(task, wake ? 'wake' : 'user') ? await paceOf(store, p!, task, now) : undefined
-      const runs = await store.runs(), holds = await slotsOf(store, p ? [p] : projects)
+      const runs = await store.runs(), holds = await slotsOf(store, held)
       const why = (task.stopped ? resumeRefusal(task, 'continue', who, undefined) : undefined)
         ?? coordinatorStartRefusal(pilot, task, mine, runs, now, wake, { pace: pace?.verdict, holds })
       if (why) throw new HerdrError('refused', why)
@@ -497,7 +504,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
     case 'task add': {
       const look = turn === 'wake' && !!rec?.turn?.look
       // Another project's: its own new-work limit and count hold too, beside the acting coordinator's.
-      const cross = !main && key !== scope && pilotRec ? pilotRec : undefined
+      const cross = !main && pk !== scope && pilotRec ? pilotRec : undefined
       const why = addRefusal(pilot, turn !== 'user') ?? (look ? lookAddRefusal(pilot, today((cross ?? rec)?.lookAdded, Date.now())) ?? (cross ? lookAddRefusal(rec?.autopilot, today(rec?.lookAdded, Date.now())) : undefined) : undefined)
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
@@ -655,11 +662,13 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
   const byOf = (k: string) => (k === MAIN ? 'main' : k)
   const autoProps = (await Promise.all(projects.map(async x => (await store.automations(x.key)).proposals ?? []))).flat()
   // The main coordinator first; it has no autopilot (each project's coordinator runs its own).
-  return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...projects].map(async (p) => {
+  // A workspace's member has none: its workspace's coordinator handles its tasks.
+  const own = projects.filter(p => coordinatorKey(p.key, projects) === p.key)
+  return Promise.all([{ key: MAIN, name: await readAlfredName({}) }, ...own].map(async (p) => {
     const c = await store.coordinator(p.key)
     const current = c?.proposal ? await store.workflow(p.key) : null
     const changes = c?.proposal ? c.proposal.changes ?? workflowChanges(current, c.proposal.template) : undefined
-    const autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => t.project === p.key)
+    const held = handledBy(p.key, projects), autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => held.some(x => x.key === t.project))
     const next = nextWakeAt(c?.autopilot, c?.ranAt, c?.atRan, now)
     const paused = 'paused' in p ? p.paused ?? [] : []
     const busy = paused.filter(m => runs.some(r => r.state !== 'ended' && r.machine === m && mine.some(t => t.id === r.task)))
@@ -701,7 +710,7 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   const home = await homeOf(deps, on)
   if (!home) throw new HerdrError('core', 'Home folder not found on the project\'s machine')
   const folder = `${home}/.wherdr/pm/coordinators/${key}`
-  for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES, m.local ? docsDir() : undefined, k => { const x = projects.find(y => y.key === k); return x && shownKey(x) })))
+  for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES, m.local ? docsDir() : undefined, k => { const x = projects.find(y => y.key === k); return x && shownKey(x) }, membersOf(key, projects).map(shownKey))))
     if ((await exec(deps, on, WRITE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not write ${file}`)
   for (const [file, text] of Object.entries(OWN_ROLE_FILES))
     if ((await exec(deps, on, CREATE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not create ${file}`)
@@ -819,6 +828,8 @@ export async function prepareCoordinator(deps: Deps, key: string, program: Coord
 // the agent that ran it, instead of a new one.
 export async function startCoordinator(deps: Deps, key: unknown, agent: { program?: unknown, model?: unknown, resume?: unknown }, urls: CoordinatorUrls, first: string[] = []) {
   if (typeof key !== 'string') throw new HerdrError('not_found', 'Unknown project')
+  const ws = coordinatorKey(key, await deps.store.projects())
+  if (ws !== key) throw new HerdrError('refused', `${key} is a member of workspace ${ws}, whose coordinator handles its tasks: it has none of its own`)
   const before = await deps.store.coordinator(key)
   const resume = agent.resume === true
   if (resume && !before?.ran) throw new HerdrError('bad_input', 'No conversation to resume: start a new one')
