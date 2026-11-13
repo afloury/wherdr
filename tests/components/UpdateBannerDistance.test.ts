@@ -10,7 +10,7 @@ it('shows release distance without replacing the installation-specific action', 
   try {
     expect(w.text()).toContain('Newer releases: 3')
     expect(w.text()).toContain('Other newer releases: 1.2.0, 1.1.0')
-    expect(w.findAll('button').some(b => b.text() === 'Copy command')).toBe(true)
+    expect(w.findAll('button').some(b => b.text() === 'Update with Alfred')).toBe(true)
     await w.setProps({ info: { ...info, behindAtLeast: true } })
     expect(w.text()).toContain('At least 3 newer releases')
     await w.setProps({ info: { ...info, behind: undefined, missed: undefined } })
