@@ -22,8 +22,11 @@ watch(open, (v, old) => { if (old && !v) emit('closed') })
 // the page. The bars pinned over the body hide (`.typing` on the body or the
 // footer, main.css), so nothing covers the field; its form (the field and its
 // own send button) is kept in view while it fits. Back on blur, or when the
-// keyboard closes with the field still focused (Android; the composer's rule).
+// keyboard closes with the field still focused (Android; the composer's rule),
+// and on again when the keyboard reopens on that same field (no new focusin).
 const typing = ref(false)
+const bodyEl = ref<HTMLElement>()
+const footEl = ref<HTMLElement>()
 const isField = (el: EventTarget | null) => el instanceof HTMLElement
   && (el.isContentEditable || el instanceof HTMLTextAreaElement || (el instanceof HTMLInputElement && !/^(button|submit|reset|checkbox|radio|file|range|color)$/.test(el.type)))
 function focusIn(e: FocusEvent) { typing.value = isField(e.target) && matchMedia(PHONE_QUERY).matches }
@@ -33,7 +36,14 @@ function showForm() {
   const body = form?.closest<HTMLElement>('.hw-sheet-body')
   if (form && body && form.offsetHeight <= body.clientHeight) requestAnimationFrame(() => form.scrollIntoView({ block: 'nearest' }))
 }
-watch(kbOpen, (v) => { if (!v) typing.value = false; else showForm() })
+function fieldInSheet() {
+  const el = document.activeElement
+  return isField(el) && !!(bodyEl.value?.contains(el) || footEl.value?.contains(el)) && matchMedia(PHONE_QUERY).matches
+}
+watch(kbOpen, (v) => {
+  typing.value = v && fieldInSheet()
+  if (v) showForm()
+})
 const scrolledDown = ref(false)
 const fullTitle = ref(false)
 function bodyScroll(e: Event) { scrolledDown.value = (e.currentTarget as HTMLElement).scrollTop > 8 }
@@ -120,13 +130,13 @@ function dragEnd(e: TouchEvent) {
         <UButton v-if="!hideClose" icon="i-lucide-x" color="neutral" variant="ghost" data-slot="close" class="hw-sheet-close" :aria-label="tl('Close', 'Fermer')" @click="open = false" />
       </div>
       <div
-        data-slot="body" class="hw-sheet-body" :class="{ typing }"
+        ref="bodyEl" data-slot="body" class="hw-sheet-body" :class="{ typing }"
         @focusin="focusIn" @focusout="focusOut" @input="showForm" @scroll.passive="bodyScroll"
         @touchstart.passive="dragStart($event, false)" @touchmove="dragMove" @touchend="dragEnd" @touchcancel="dragEnd"
       >
         <slot />
       </div>
-      <div v-if="slots.footer" data-slot="footer" class="hw-sheet-foot" :class="{ typing }" @focusin="focusIn" @focusout="focusOut">
+      <div v-if="slots.footer" data-slot="footer" ref="footEl" class="hw-sheet-foot" :class="{ typing }" @focusin="focusIn" @focusout="focusOut">
         <slot name="footer" />
       </div>
     </template>

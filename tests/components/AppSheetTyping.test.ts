@@ -3,6 +3,7 @@ import { h } from 'vue'
 import { expect, it, vi } from 'vitest'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import AppSheet from '~/components/AppSheet.vue'
+import { kbOpen } from '~/composables/useViewport'
 
 // On a phone, typing in a sheet's field hides the bars pinned over its body
 // (a task's To do buttons), so the keyboard never pushes the caret under them;
@@ -28,9 +29,20 @@ it('hides the pinned bar while a field is typed in on a phone, and clamps the ti
   expect(part('body').classList).toContain('typing')
   expect(part('header').classList).toContain('compact') // the header down to one line
   expect(title.classList.contains('open')).toBe(false)
+  // The keyboard dismissed with the field still focused (Android Back), then
+  // reopened by a tap on that same field: no new focusin, typing again.
+  kbOpen.value = true
+  await nextTick()
+  kbOpen.value = false
+  await nextTick()
+  expect(part('body').classList).not.toContain('typing')
+  kbOpen.value = true
+  await nextTick()
+  expect(part('body').classList).toContain('typing')
   note.blur()
   await nextTick()
   expect(part('body').classList).not.toContain('typing')
+  kbOpen.value = false
   // What the classes do on the phone: the To do bar hides, the title is cut.
   expect(fs.readFileSync('app/components/TaskTodo.vue', 'utf8')).toMatch(/:global\(\.hw-sheet:has\(> \.typing\) \.todo-actions[^{]*\{ display: none; \}/)
   expect(fs.readFileSync('app/assets/css/main.css', 'utf8')).toMatch(/\.hw-sheet-title\.clamp \{[^}]*-webkit-line-clamp: 2/)
