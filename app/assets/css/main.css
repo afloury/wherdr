@@ -2899,6 +2899,16 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   /* A task's sheet: wider, and one height whatever its open tab (TaskSheet.vue);
      the sheet's body is its only scroll. */
   .hw-sheet:has(.task-sheet) { width: min(920px, 92vw); height: min(820px, 86vh); }
+  /* Tasks to review (ReviewSheet.vue): wide, one height whatever the task (no
+     jump as the next one slides in); the filter, the task's title and the footer
+     stay, the task's content scrolls; screenshots two per row. */
+  .hw-sheet:has(.review-sheet) { width: min(960px, 90vw); height: min(900px, 90vh); max-height: 90vh; }
+  .hw-sheet > [data-slot="body"]:has(> .review-sheet) { display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+  .hw-sheet > [data-slot="body"] > .review-sheet { flex: 1 1 auto; min-height: 0; }
+  .hw-sheet .review-sheet .review-stage { flex: 1; min-height: 0; overflow: clip; }
+  .hw-sheet .review-sheet .review-item { min-height: 0; }
+  .hw-sheet .review-sheet .review-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding-bottom: 16px; }
+  .hw-sheet .review-sheet .shots-grid { grid-template-columns: 1fr 1fr; }
   /* A project's sheet: as wide, its height from its tab (ProjectSheet.vue). */
   .hw-sheet:has(.project-sheet) { width: min(920px, 92vw); }
   /* New › Project: room for folder paths and the repository list (NewProjectForm.vue). */
