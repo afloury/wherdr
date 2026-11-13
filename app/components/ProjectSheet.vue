@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // A project's sheet (Settings › Projects › a row): tabs, the one shown in the
-// URL (`tab=`). General: name, key and color, base branch, branch name, when done tasks are archived, repository visibility, the agents
+// URL (`tab=`). General: name, key and color, the other projects its coordinator may act on (ProjectReach), base branch, branch name, when done tasks are archived, repository visibility, the agents
 // its tasks start with (the workflow's prefs), its worktree setup (the
 // workflow's `worktree`: files copied, folders shared, a setup command), where its workflow came from,
 // the machines its tasks may run on (ProjectMachines) and the home tab that
@@ -25,7 +25,8 @@ import { PROJECT_TABS, PROJECT_TAB_LABEL as TAB_LABEL, type ProjectTab } from '~
 import { projectTarget, uiTarget } from '#shared/uiTargets'
 import { showHalo, waitForElement } from '~/utils/uiHalo'
 
-const props = defineProps<{ project: Project, tab: ProjectTab, templates: TemplateInfo[], review?: boolean }>()
+// projects: every project, for the other projects its coordinator may act on (ProjectReach).
+const props = defineProps<{ project: Project, tab: ProjectTab, templates: TemplateInfo[], review?: boolean, projects?: Project[] }>()
 const emit = defineEmits<{ tab: [tab: ProjectTab], close: [], changed: [] }>()
 const open = ref(true)
 const p = computed(() => props.project)
@@ -36,7 +37,8 @@ const ready = ref<Record<string, string>>({}) // each other machine's last readi
 const loaded = ref(false)
 const error = ref('')
 const busy = ref('')
-const form = reactive({ name: '', coordinatorName: '', key: '', color: '', base: '', branchName: '', archiveAfter: '', deleteBranch: true, agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' })
+const form = reactive({ name: '', coordinatorName: '', key: '', color: '', base: '', branchName: '', archiveAfter: '', deleteBranch: true, agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '', reach: {} as Record<string, string> })
+const others = computed(() => (props.projects ?? []).filter(x => x.key !== p.value.key))
 async function load() {
   const r = await api<{ workflow: Template | null, log: LogEntry[], ready?: Record<string, string> }>(`/api/pm/project?key=${encodeURIComponent(p.value.key)}`)
   workflow.value = r.workflow
@@ -51,7 +53,7 @@ async function load() {
 const snapshot = () => JSON.stringify([form, setup])
 const saved = ref('')
 const dirty = computed(() => loaded.value && snapshot() !== saved.value)
-const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '' })
+const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
 // The worktree setup: paths one per line (or comma separated). Folders to
 // share: empty is node_modules (no `share`), noShare is none (`share: []`).
 const setup = reactive({ copy: '', share: '', noShare: false, lockfile: '', command: '', timeout: '' })
@@ -69,8 +71,8 @@ async function run(what: string, fn: () => Promise<unknown>) {
   finally { busy.value = '' }
 }
 const save = () => run('save', async () => {
-  const { name, coordinatorName, key, color, base, branchName, archiveAfter, deleteBranch, ...prefs } = form
-  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, coordinatorName, base, branchName, archiveAfter: Number(archiveAfter), deleteBranch, ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}) })
+  const { name, coordinatorName, key, color, base, branchName, archiveAfter, deleteBranch, reach, ...prefs } = form
+  const r = await api<{ project: Project }>('/api/pm/project-update', { key: p.value.key, name, coordinatorName, base, branchName, archiveAfter: Number(archiveAfter), deleteBranch, reach: Object.entries(reach).map(([project, level]) => ({ project, level })), ...(color && color !== p.value.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(p.value) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}) })
   // The prop is refreshed only after `changed`: the form takes the saved
   // project, and the shared lists that show its key and color are read again.
   await load()
@@ -195,6 +197,14 @@ async function remove() {
             <UInput id="pmCoordName" v-model="form.coordinatorName" size="lg" class="w-full" maxlength="80" :placeholder="form.name" data-testid="pm-coordinator-name" />
             <small class="muted">{{ tl('Shown after the key badge in the sidebar and its conversation. Empty: the project’s name.') }}</small>
           </span>
+
+          <template v-if="others.length">
+            <span class="field-label">{{ tl('Other projects this coordinator may act on') }}</span>
+            <span class="pm-field">
+              <ProjectReach v-model="form.reach" :projects="others" />
+              <small class="muted">{{ tl('Read: it lists and reads their tasks. Act: it also adds, starts, stops and edits them, and tells their agents. Their guards, merges, approvals, settings and autopilot stay with their own coordinator and you. Each action is in their log, and their coordinator is told.') }}</small>
+            </span>
+          </template>
 
           <span class="field-label">{{ tl('Base branch') }}</span>
           <span class="pm-field">

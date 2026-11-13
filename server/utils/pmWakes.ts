@@ -166,7 +166,14 @@ export async function wakeTick(deps: WakeDeps, now = Date.now()) {
     const r = tickWakes(queue, key, { status, lastUserAt: c?.userAt, now })
     if (r.deliver) {
       await noteTurn(store, key, 'wake', undefined, r.deliver.reasons.some(x => x.includes(LOOK_REASON)))
-      try { await deps.call('terminal.send', { terminal: c!.terminal, text: showIds(projects, wakeText(r.deliver, key !== MAIN && !!c?.autopilot?.on)) }, 30000) }
+      // Other coordinators' actions on this project since its last wake (reach.ts), said once.
+      const visits = c?.visits ?? [], last = visits.at(-1)?.at ?? 0
+      const told = visits.length ? { ...r.deliver, reasons: [...r.deliver.reasons, `Other coordinators acted on your project since your last wake (each action is in its task's or the project's log): ${visits.map(v => `${v.by}: ${v.what}`).join('; ')}.`] } : r.deliver
+      try {
+        await deps.call('terminal.send', { terminal: c!.terminal, text: showIds(projects, wakeText(told, key !== MAIN && !!c?.autopilot?.on)) }, 30000)
+        const fresh = last && await store.coordinator(key)
+        if (fresh) await store.saveCoordinator({ ...fresh, visits: fresh.visits?.filter(v => v.at > last) })
+      }
       catch { r.changed.splice(r.changed.indexOf(r.deliver), 1, { ...r.deliver, deliveredAt: undefined, tries: r.deliver.tries - 1 }) }
     }
     await store.saveWakes(r.changed)

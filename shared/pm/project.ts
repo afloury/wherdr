@@ -7,6 +7,7 @@ import { isProjectColor, type ProjectColor } from './projectKey'
 import { PAUSED, isStrategy, type Strategy } from './placement'
 import { branchNameError } from './branchName'
 import { ARCHIVE_DAYS } from './archive'
+import { cleanReach, type Reach } from './reach'
 
 export interface Project {
   key: string // the fixed id (see projectKey.ts): task ids are <key>-<n>: WHR-344
@@ -36,6 +37,7 @@ export interface Project {
   visibility?: RepoVisibility // public repository: guardrails for its coordinator and tasks
   archiveAfter?: number // days a done task stays in Done before it is archived, 0 never; missing: 7 (archive.ts)
   deleteBranch?: false // keep each task's remote branch after its merge; missing: deleted when safe (pmActions.ts)
+  reach?: Reach[] // other projects its coordinator may read or act on (reach.ts); missing: none
   addedAt: number
 }
 
@@ -58,7 +60,7 @@ export const isGitBranch = (b: string) => b !== '' && b !== '@' && !/[\x00-\x20\
 export const isTemplateId = (id: unknown): id is string => typeof id === 'string' && ID_RE.test(id)
 
 const KEY_HINT = '2 to 10 letters or digits, starting with a letter'
-export interface ProjectUpdate { name?: string, coordinatorName?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, paused?: string[], placement?: Strategy, branchName?: string, archiveAfter?: number, deleteBranch?: boolean }
+export interface ProjectUpdate { name?: string, coordinatorName?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, paused?: string[], placement?: Strategy, branchName?: string, archiveAfter?: number, deleteBranch?: boolean, reach?: Reach[] }
 
 // A project's coordinator is named after the project unless the user named it.
 export const projectCoordinatorName = (p: { name: string, coordinatorName?: string }) => p.coordinatorName || p.name
@@ -175,6 +177,11 @@ export function cleanProjectUpdate(raw: unknown): { update?: ProjectUpdate, erro
   if (o.deleteBranch !== undefined) {
     if (typeof o.deleteBranch !== 'boolean') errors.push({ path: 'deleteBranch', message: 'true or false' })
     else update.deleteBranch = o.deleteBranch
+  }
+  if (o.reach !== undefined) {
+    const r = cleanReach(o.reach)
+    if (r.error) errors.push({ path: 'reach', message: r.error })
+    else update.reach = r.reach
   }
   if (o.clones !== undefined) {
     const entries = o.clones && typeof o.clones === 'object' && !Array.isArray(o.clones) ? Object.entries(o.clones) : null

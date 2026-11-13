@@ -70,8 +70,8 @@ it('the projects.setup target opens the setup window', async () => {
   await vi.waitFor(() => expect(inSheet('setup-wizard')).toBeTruthy())
 })
 
-it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name, base and worktree setup, and the visibility', async () => {
-  state = { ...state, enabled: true, projects: [web()] }
+it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name, base, worktree setup, other projects its coordinator may act on, and the visibility', async () => {
+  state = { ...state, enabled: true, projects: [web(), { ...web(), key: 'DOC', name: 'Docs', visibility: undefined }] }
   const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=guards' })
   mounted = w
   await vi.waitFor(() => expect(inSheet('guard-chip')?.textContent).toContain('main'))
@@ -93,9 +93,10 @@ it('opens the project sheet on the URL\'s tab; Guards saves a branch added; Gene
   const copy = inSheet('pm-setup-copy')!.querySelector('textarea') ?? inSheet('pm-setup-copy') as HTMLTextAreaElement
   ;(copy as HTMLTextAreaElement).value = '.env\n config/local.json '
   copy.dispatchEvent(new Event('input'))
+  await pick(w, 'pm-reach-DOC', 'act')
   inSheet('pm-save')!.closest('form')!.dispatchEvent(new Event('submit'))
   await vi.waitFor(() => expect(calls[0]).toEqual({ url: '/api/pm/project-update', body: {
-    key: 'WEB', name: 'Website', coordinatorName: '', base: '', branchName: '', archiveAfter: 7, deleteBranch: true, prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' },
+    key: 'WEB', name: 'Website', coordinatorName: '', base: '', branchName: '', archiveAfter: 7, deleteBranch: true, reach: [{ project: 'DOC', level: 'act' }], prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' },
     worktree: { copy: ['.env', 'config/local.json'], share: [], lockfile: '', command: '', timeout: '' }, // share none kept
   } }))
 

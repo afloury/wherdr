@@ -60,7 +60,7 @@ afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 describe('the token', () => {
   it('works for its own project only, and a new one replaces it', async () => {
     const other = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
-    await refused(cli(['show', other.id]), 'Unknown task')
+    await refused(cli(['show', other.id]), 'project CO only')
     await refused(cli(['list'], undefined, 'f'.repeat(64)), 'Unknown coordinator token')
     const mine = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
     expect((await cli(['list']) as { tasks: { id: string }[] }).tasks.map(t => t.id)).toEqual([mine.id])
@@ -79,6 +79,62 @@ describe('the token', () => {
     const saved = (await store.task(task.id))!
     expect(saved).toMatchObject({ tags: ['CTP-264'], links: [{ label: 'PR', url: 'https://example.com/pr/7' }] })
     expect(saved.log!.map(l => [l.by, l.text])).toEqual([['coordinator CO', 'tag CTP-264'], ['coordinator CO', 'link PR https://example.com/pr/7']])
+  })
+})
+
+describe('other projects (WHR-311)', () => {
+  const reach = (level: 'read' | 'act') => store.updateProject('CO', { reach: [{ project: 'ST', level }] })
+
+  it('no setting: its own project only, the refusal names the setting and where it is', async () => {
+    const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
+    await refused(cli(['show', st.id]), /project CO only: show on project ST needs Read or Act for ST in "Other projects this coordinator may act on".*Settings › Projects › CO › General/)
+    await refused(cli(['list', '--project', 'ST']), 'project CO only')
+  })
+
+  it('Read: list, show and plan on the other project; writes refused', async () => {
+    const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
+    await reach('read')
+    expect((await cli(['list', '--project', 'ST']) as { tasks: { id: string }[] }).tasks.map(t => t.id)).toEqual([st.id])
+    expect((await cli(['show', st.id]) as { task: { id: string } }).task.id).toBe(st.id)
+    await expect(cli(['plan', '--project', 'ST'])).resolves.toBeTruthy()
+    await noteTurn(store, 'CO', 'user', 'tag it')
+    await refused(cli(['task', 'tag', st.id, 'X']), 'task tag on project ST needs Act')
+    await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST']), 'needs Act')
+  })
+
+  it('Act: writes logged with the acting coordinator\'s name, its coordinator told at its next wake; guards, merges and settings stay out', async () => {
+    const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
+    await issueToken(store, 'ST')
+    await reach('act')
+    await noteTurn(store, 'CO', 'user', 'add a study there')
+    await cli(['task', 'tag', st.id, 'X-1'])
+    const added = await cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST']) as { task: { id: string, project: string, log: { by: string }[] } }
+    expect(added.task).toMatchObject({ project: 'ST', log: [{ by: 'coordinator CO' }] })
+    expect((await store.task(st.id))!.log!.at(-1)).toMatchObject({ by: 'coordinator CO', text: 'tag X-1' })
+    for (const argv of [['step', 'done', st.id, '--user-said', 'ok'], ['task', 'decide', st.id, 'pass', '--reason', 'x'], ['autopilot', 'show', '--project', 'ST'], ['template', 'show', '--project', 'ST'], ['automation', 'list', '--project', 'ST']])
+      await refused(cli(argv), 'stays with its own coordinator and the user')
+    // A look-for-work wake: the other project's new-work limit and count hold too.
+    for (const k of ['CO', 'ST']) { const c = (await store.coordinator(k))!; await store.saveCoordinator({ ...c, autopilot: { ...DEFAULT_AUTOPILOT, on: true, lookForWork: true, lookPerDay: 2 } }) }
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, turn: { kind: 'wake', at: Date.now(), look: true } })
+    await cli(['task', 'add', 'Look', '--type', 'study', '--project', 'ST'])
+    expect([(await store.coordinator('CO'))!.lookAdded, (await store.coordinator('ST'))!.lookAdded].map(d => d?.n)).toEqual([1, 1])
+    await store.saveCoordinator({ ...(await store.coordinator('ST'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true, lookForWork: true, lookPerDay: 1 } })
+    await refused(cli(['task', 'add', 'Again', '--type', 'study', '--project', 'ST']), 'limit of new work is reached (1 tasks')
+    expect((await store.tasks()).filter(x => x.title === 'Again')).toEqual([])
+    await store.saveCoordinator({ ...(await store.coordinator('ST'))!, visits: (await store.coordinator('ST'))!.visits!.slice(0, 2) })
+    expect((await store.coordinator('ST'))!.visits!.map(v => [v.by, v.what])).toEqual([['coordinator CO', `task tag ${st.id}`], ['coordinator CO', 'task add "More"']])
+    // Its next wake says so, once.
+    await store.saveCoordinator({ ...(await store.coordinator('ST'))!, terminal: 'host/t2' })
+    const sent: string[] = []
+    const call = async (method: string, params: Record<string, string>) => (method === 'terminal.get' ? { status: 'idle' } : (sent.push(params.text!), {}))
+    const d = { store, call, notify: async () => {}, machines: () => [] } as unknown as Parameters<typeof runNow>[0]
+    await runNow(d, 'ST', 5000)
+    expect(sent[0]).toContain(`Other coordinators acted on your project since your last wake (each action is in its task's or the project's log): coordinator CO: task tag ${st.id}; coordinator CO: task add "More".`)
+    expect((await store.coordinator('ST'))!.visits).toEqual([])
+    // Its instructions list them.
+    const agents = roleFiles((await store.projects()).find(x => x.key === 'CO')!, company, [])['AGENTS.md']!
+    expect(agents).toContain('## Other projects')
+    expect(agents).toContain('- ST: Act')
   })
 })
 
@@ -132,7 +188,7 @@ describe('the main coordinator (WHR-398)', () => {
     // The project's token: its project only, whatever it names.
     await refused(cli(['list', '--project', 'ST']), 'project CO only')
     await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST']), 'project CO only')
-    await refused(cli(['task', 'tag', st.id, 'Y']), 'Unknown task')
+    await refused(cli(['task', 'tag', st.id, 'Y']), 'project CO only')
     expect(ids(await cli(['list']))).toEqual([co.id])
     expect(parseCommand(['show', 'CO-1', '--project', 'CO'])).toEqual({ error: expect.stringContaining('--project is for') })
   })
@@ -1132,8 +1188,8 @@ describe('commands of lot 10', () => {
     // The reviewer has no readable conversation: the bottom of its screen.
     expect(await read(['read', task.id, '--to', 'reviewer'])).toMatchObject({ agent: 'reviewer', from: 'screen', text: 'screen line 1\nscreen line 2' })
     expect(reads).toEqual([['terminal.read', { terminal: 'm2/t5', lines: 40 }]])
-    // Another project's task reads as unknown.
+    // Another project's task: refused without the setting.
     await store.addTask({ project: 'ST', title: 'Other', type: 'study' })
-    await refused(read(['read', 'ST-1']), 'Unknown task')
+    await refused(read(['read', 'ST-1']), 'project CO only')
   })
 })
