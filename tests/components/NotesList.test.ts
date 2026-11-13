@@ -12,7 +12,7 @@ import { pick } from '../helpers/select'
 const note = (id: string, scope: string, body: string): Note => ({ id, title: id, scope, body, created: '', updated: '' })
 afterEach(() => { notes.value = null; noteFiles.value = null; notesFilter.value = NOTES_FOLLOW; machineGroups.value = []; machineBarSaved.value = null })
 
-it('follows the group tab, renders badges and keeps checkboxes read-only', async () => {
+it('follows the tab, renders badges and keeps checkboxes read-only', async () => {
   machineGroups.value = [{ id: 'g1', name: 'Work', machines: ['host-a'] }, { id: 'g2', name: 'Home', machines: ['host-b'] }]
   machineBarSaved.value = 'g1'
   notes.value = [
@@ -40,6 +40,20 @@ it('follows the group tab, renders badges and keeps checkboxes read-only', async
   expect(titles()).toEqual(['everywhere', 'home'])
   await pick(w, 'notes-filter', 'all')
   expect(titles()).toEqual(['everywhere', 'work', 'home'])
+  w.unmount()
+})
+
+it('says which machine tab it follows, and when that tab has no note of its own', async () => {
+  machineBarSaved.value = '' // the only machine, shown as its own tab
+  notes.value = [note('everywhere', 'all', 'x')]
+  const w = await mountSuspended(NotesList)
+  await nextTick()
+  expect(w.find('[data-testid=notes-following]').text()).toBe('This machine · following the tab')
+  expect(w.find('[data-testid=notes-tab-empty]').text()).toBe('No notes for This machine yet')
+  notes.value = [...notes.value, note('mine', 'machine:', 'y')]
+  await nextTick()
+  expect(w.find('[data-testid=notes-tab-empty]').exists()).toBe(false)
+  expect(w.findAll('[data-testid=note]').length).toBe(2)
   w.unmount()
 })
 

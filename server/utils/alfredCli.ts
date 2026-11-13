@@ -131,7 +131,7 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       return { link: `${deps.urls.remote ?? deps.urls.local}/#/a/${encodeURIComponent(pane.id)}`, note: 'Give the user this link; the sidebar shows it too' }
     }
     case 'ui targets': return uiTargetsList()
-    case 'notes': return runNotes(deps.notes ?? notesStore(path.join(deps.dataDir ?? DATA_DIR, 'notes')), cmd.notes, input, { by: ALFRED }, deps.settingsFile)
+    case 'notes': return runNotes(deps.notes ?? notesStore(path.join(deps.dataDir ?? DATA_DIR, 'notes')), cmd.notes, input, { by: ALFRED }, deps.settingsFile, machines)
     case 'ui open': return openUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope: MAIN, main: true, raw: cmd.link, turn: (await alfredTurn())?.kind ?? 'none', by: ALFRED })
     case 'settings': return { settings: await readSettings(deps.settingsFile), values: SETTING_VALUES, note: 'Alfred changes only the settings listed in values, to one of their values (1 = on, 0 = off)' }
     case 'setting set': {

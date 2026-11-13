@@ -11,6 +11,10 @@
 // useTaskActions), Try again for a failed action, and Open the task. "3 of 12"
 // with previous and next (a task passed over stays in the list); on a computer
 // → next, ← previous, A approve, R reject. After the last one: All done.
+// Approve and Send back say so on their button for a moment (DONE_MS), then the
+// next task slides in from the right (the arrows slide too, in their direction;
+// a fade under prefers-reduced-motion, and into All done). A failure stays put.
+// On a computer: one fixed size, only the task's content scrolls.
 import { linkLabel, mayAccept, prLink, taskRow, type Board, type Card, type ToHandle } from '#shared/pm/board'
 import { reviewLine, reviewNote, workerNote } from '#shared/pm/report'
 import { shotMode } from '#shared/pm/shots'
@@ -41,10 +45,23 @@ const items = computed(() => (data.value?.cards ?? []).filter(c => c.yourTurn &&
 // items.length: past the last one, All done.
 const at = ref(0)
 const index = computed(() => Math.min(at.value, items.value.length))
-const card = computed<Card | undefined>(() => items.value[index.value])
+// Approved or sent back: kept on screen with its confirmation, whatever the board reads meanwhile.
+const held = ref<Card>()
+const done = ref<'' | 'approved' | 'sent'>('')
+const heldAt = ref('')
+const card = computed<Card | undefined>(() => held.value ?? items.value[index.value])
 // Another filter, or another home tab followed: back to the first one.
 watch([filter, machineBarPick], () => { at.value = 0 })
-const go = (step: number) => { at.value = Math.max(0, Math.min(index.value + step, items.value.length)) }
+const dir = ref(1)
+const go = (step: number) => {
+  if (done.value) return
+  dir.value = step
+  at.value = Math.max(0, Math.min(index.value + step, items.value.length))
+}
+const progress = computed(() => (held.value ? heldAt.value : tl(`${index.value + 1} of ${items.value.length}`)))
+const still = ref(false)
+onMounted(() => { still.value = matchMedia('(prefers-reduced-motion: reduce)').matches })
+const motion = computed(() => (still.value || !card.value ? 'review-fade' : dir.value > 0 ? 'review-slide-next' : 'review-slide-prev'))
 
 const kind = computed(() => (card.value ? taskTodo(card.value) : undefined))
 // Only a merge to accept: another step of the user's (Create these tasks…) keeps its own button, in the task's sheet.
@@ -61,19 +78,31 @@ const pane = computed(() => (card.value?.terminal ? herdrState.value?.panes.find
 const { busy, error, pressing, refused, press, start, resume, decide, sendBack, restartReview, startWorker } = useTaskActions(() => card.value, taskChanged)
 const rejecting = ref(false)
 watch(() => card.value?.id, () => { error.value = ''; rejecting.value = false })
-// Done with the current one: off the list, the next one shows.
-const leave = (id: string) => { if (!error.value && !refused.value) handled.value = [...handled.value, id] }
+const DONE_MS = 400
+// Done with the current one: its confirmation, then off the list, the next one shows.
+async function leave(c: Card, how: 'approved' | 'sent') {
+  if (error.value || refused.value) return
+  heldAt.value = progress.value
+  held.value = c
+  done.value = how
+  await new Promise(r => setTimeout(r, DONE_MS))
+  dir.value = 1
+  handled.value = [...handled.value, c.id]
+  held.value = undefined
+  done.value = ''
+}
 async function approve() {
   const c = card.value
-  if (!c || !approves.value || busy.value) return
+  if (!c || !approves.value || busy.value || done.value) return
   await press()
-  leave(c.id)
+  await leave(c, 'approved')
 }
 async function reject(note: string, shots: string[]) {
   const c = card.value
-  if (!c) return
+  if (!c || done.value) return
   await sendBack(note, shots)
-  leave(c.id)
+  if (!error.value) rejecting.value = false
+  await leave(c, 'sent')
 }
 
 // Where the user answers anything else: the asking agent's conversation when it is on screen here, else the task's sheet.
@@ -93,7 +122,7 @@ function onKey(e: KeyboardEvent) {
   if (k === 'arrowright') go(1)
   else if (k === 'arrowleft') go(-1)
   else if (k === 'a') approve()
-  else if (k === 'r' && approves.value) rejecting.value = true
+  else if (k === 'r' && approves.value && !done.value) rejecting.value = true
   else return
   e.preventDefault()
 }
@@ -101,14 +130,17 @@ function onKey(e: KeyboardEvent) {
 
 <template>
   <AppSheet v-model:open="open" :title="tl('Tasks to review')" tall @closed="emit('closed')">
-    <div class="review" data-testid="review-sheet">
+    <div class="review review-sheet" data-testid="review-sheet">
       <ProjectSelect v-model="filter" :items="filterItems" size="lg" class="review-filter" :aria-label="tl('Tasks shown')" data-testid="review-filter" />
 
-      <article v-if="card && row" class="review-item" :data-task="card.id" :data-kind="approves ? 'approve' : 'answer'" data-testid="review-item">
+      <div class="review-stage" :data-motion="still ? 'fade' : 'slide'" data-testid="review-stage">
+        <Transition :name="motion">
+      <article v-if="card && row" :key="card.id" class="review-item" :data-task="card.id" :data-kind="approves ? 'approve' : 'answer'" data-testid="review-item">
         <header class="review-head">
           <ProjectBadge :text="card.shown" :color="card.color" />
           <h3>{{ card.title }}</h3>
         </header>
+        <div class="review-scroll">
         <template v-if="approves">
           <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="answer('sheet')">
             <TaskShots v-if="shots.length && shotStep" :task="card.id" :shots="shots" :mode="shotMode(shotStep)" />
@@ -123,22 +155,25 @@ function onKey(e: KeyboardEvent) {
         <ReviewReject v-if="approves && rejecting" :card="card" :busy="busy" @send="reject" @cancel="rejecting = false" />
         <p v-if="error" class="error" role="alert" data-testid="review-error">{{ error }}</p>
         <p v-if="approves && refused" class="error" role="alert" data-testid="review-refused">{{ stepRefusalText(refused) }}</p>
+        </div>
       </article>
 
-      <div v-else-if="data" class="review-done" data-testid="review-done">
+      <div v-else-if="data" key="done" class="review-done" data-testid="review-done">
         <UIcon name="i-lucide-check-check" class="review-done-icon" />
         <p><b>{{ tl('All done') }}</b></p>
         <p class="muted">{{ items.length ? tl(`${items.length} passed over, still in the list.`) : tl('The engine takes over: approved tasks merge in their own order.') }}</p>
         <UButton v-if="items.length" color="neutral" variant="outline" size="xl" icon="i-lucide-rotate-ccw" data-testid="review-restart" @click="at = 0">{{ tl('Back to the first') }}</UButton>
       </div>
+        </Transition>
+      </div>
     </div>
 
     <template #footer>
       <div v-if="card" class="review-foot">
-        <div class="review-choices">
+        <div class="review-choices" aria-live="polite">
           <template v-if="approves">
-            <UButton color="primary" size="xl" icon="i-lucide-check" :loading="busy && !rejecting" :disabled="rejecting" data-testid="review-approve" @click="approve">{{ tl('Approve') }}</UButton>
-            <UButton color="error" variant="outline" size="xl" icon="i-lucide-undo-2" :disabled="busy || rejecting" data-testid="review-reject-open" @click="rejecting = true">{{ tl('Reject') }}</UButton>
+            <UButton color="primary" size="xl" :icon="done === 'approved' ? 'i-lucide-check-check' : 'i-lucide-check'" :class="{ confirmed: done === 'approved' }" :loading="busy && !rejecting" :disabled="rejecting || done === 'sent'" data-testid="review-approve" @click="approve">{{ done === 'approved' ? tl('Approved') : tl('Approve') }}</UButton>
+            <UButton color="error" variant="outline" size="xl" :icon="done === 'sent' ? 'i-lucide-check' : 'i-lucide-undo-2'" :class="{ confirmed: done === 'sent' }" :disabled="busy || rejecting || done === 'approved'" data-testid="review-reject-open" @click="!done && (rejecting = true)">{{ done === 'sent' ? tl('Sent back') : tl('Reject') }}</UButton>
           </template>
           <template v-else>
             <UButton v-if="kind === 'refused'" color="primary" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="review-retry" @click="press">{{ tl('Try again') }}</UButton>
@@ -146,9 +181,9 @@ function onKey(e: KeyboardEvent) {
           </template>
         </div>
         <nav class="review-nav" :aria-label="tl('Progress')">
-          <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :disabled="index === 0" :aria-label="tl('Previous')" data-testid="review-prev" @click="go(-1)" />
-          <span class="mono-label" data-testid="review-progress">{{ tl(`${index + 1} of ${items.length}`) }}</span>
-          <UButton icon="i-lucide-chevron-right" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Next')" data-testid="review-next" @click="go(1)" />
+          <UButton icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn" :disabled="index === 0 || !!done" :aria-label="tl('Previous')" data-testid="review-prev" @click="go(-1)" />
+          <span class="mono-label" data-testid="review-progress">{{ progress }}</span>
+          <UButton icon="i-lucide-chevron-right" color="neutral" variant="ghost" size="lg" class="icon-btn" :disabled="!!done" :aria-label="tl('Next')" data-testid="review-next" @click="go(1)" />
         </nav>
       </div>
     </template>
@@ -159,7 +194,18 @@ function onKey(e: KeyboardEvent) {
 .review { display: flex; flex-direction: column; gap: 12px; flex: 1 0 auto; min-width: 0; padding: 0 16px; }
 .review p { margin: 0; }
 .review-filter { width: 100%; }
-.review-item { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.review-stage { display: grid; min-width: 0; overflow-x: clip; }
+.review-stage > * { grid-area: 1 / 1; min-width: 0; }
+.review-item, .review-scroll { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.review-scroll > * { flex: none; }
+/* The next task slides in, the current one out (prev: the other way). */
+.review-slide-next-enter-active, .review-slide-next-leave-active, .review-slide-prev-enter-active, .review-slide-prev-leave-active { transition: transform .25s cubic-bezier(.2, .8, .2, 1); }
+.review-fade-enter-active, .review-fade-leave-active { transition: opacity .15s ease-out; }
+.review-slide-next-leave-active, .review-slide-prev-leave-active, .review-fade-leave-active { pointer-events: none; }
+.review-slide-next-enter-from, .review-slide-prev-leave-to { transform: translateX(100%); }
+.review-slide-next-leave-to, .review-slide-prev-enter-from { transform: translateX(-100%); }
+.review-fade-enter-from, .review-fade-leave-to { opacity: 0; }
+.review-choices .confirmed { pointer-events: none; border-color: var(--done); background: var(--done); color: var(--bg); }
 .review-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .review-head h3 { flex: 1; min-width: 0; margin: 0; font: 600 16px/1.3 var(--display); overflow-wrap: anywhere; }
 .review-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font: 12px/1.4 var(--mono); }

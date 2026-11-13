@@ -6,24 +6,28 @@
 // its place with a back arrow. A link that leads nowhere, or out of the
 // notes folder, is muted and does nothing.
 import { h, render } from 'vue'
-import { NOTES_FOLLOW, noteBadges, noteTarget, notesShown, scopeName, type Note } from '#shared/notes'
+import { NOTES_FOLLOW, filterTab, noteBadges, noteTarget, notesShown, scopeName, type Note } from '#shared/notes'
 import { appRoute, isAppLink } from '#shared/appLinks'
 import NoteBadge from './NoteBadge.vue'
 
 const emit = defineEmits<{ leave: [] }>()
 const router = useRouter()
 const items = computed(() => [
-  { label: tl('Follow group tab'), value: NOTES_FOLLOW },
+  { label: tl('Follow tab'), value: NOTES_FOLLOW },
   { label: tl('All'), value: 'all' },
-  ...machineGroups.value.map(g => ({ label: g.name, value: g.id })),
+  ...notesTabs.value.map(t => ({ label: t.name, value: t.scope })),
 ])
-// A group removed since it was picked: back to following the tab.
+// A tab removed since it was picked: back to following the tab.
 const filter = computed({
   get: () => (items.value.some(i => i.value === notesFilter.value) ? notesFilter.value : NOTES_FOLLOW),
   set: (v: string) => { notesFilter.value = v },
 })
-const shown = computed(() => notesShown(notes.value ?? [], filter.value, notesTabGroups.value))
-const scopeOf = (n: Note) => (n.scope === 'all' ? tl('All') : scopeName(n.scope, machineGroups.value))
+const shown = computed(() => notesShown(notes.value ?? [], filter.value, notesTab.value, machineGroups.value))
+const scopeOf = (n: Note) => (n.scope === 'all' ? tl('All') : scopeName(n.scope, notesTabs.value, notesMachineName))
+// The tab the list shows (followed or picked) and whether it has notes of its own.
+const tab = computed(() => filterTab(filter.value, notesTab.value))
+const tabName = computed(() => (tab.value ? scopeName(tab.value, notesTabs.value, notesMachineName) : ''))
+const tabEmpty = computed(() => Boolean(tab.value && notes.value && !shown.value.some(n => n.scope === tab.value)))
 
 // Each badge leaves a mark in the text, a slot in the HTML, then mounts there.
 const rendered = computed(() => shown.value.map((n) => {
@@ -133,13 +137,15 @@ async function onClick(e: MouseEvent) {
     </article>
     <div v-show="!file" class="notes-index">
       <USelect v-model="filter" :items="items" size="lg" class="notes-filter" :aria-label="tl('Notes shown')" data-testid="notes-filter" />
+      <p v-if="filter === NOTES_FOLLOW && tab" class="muted notes-following" data-testid="notes-following">{{ tl(`${tabName} · following the tab`) }}</p>
       <div ref="list" class="notes-list">
+        <p v-if="tabEmpty" class="muted notes-empty notes-tab-empty" data-testid="notes-tab-empty">{{ tl(`No notes for ${tabName} yet`) }}</p>
         <article v-for="r in rendered" :id="`note-${r.note.id}`" :key="r.note.id" class="note" data-testid="note">
           <h3><span>{{ r.note.title }}</span><small class="mono-label">{{ scopeOf(r.note) }}</small></h3>
           <!-- eslint-disable-next-line vue/no-v-html -- sanitized by md() (utils/markdown.ts) -->
           <div class="note-body md" v-html="r.html" />
         </article>
-        <p v-if="notes && !shown.length" class="muted notes-empty">{{ tl('No notes here. Agents write them: ask Alfred to add a reminder.') }}</p>
+        <p v-if="notes && !shown.length && !tab" class="muted notes-empty">{{ tl('No notes here. Agents write them: ask Alfred to add a reminder.') }}</p>
       </div>
     </div>
   </div>

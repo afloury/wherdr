@@ -695,8 +695,8 @@ acts.
 ### Coordinators' notes
 
 A coordinator writes [notes](alfred.md#notes) with `wherdr pm notes list|show|add|edit|remove|file put|file remove`,
-the same commands as Alfred's, in the tab groups its project shows in only (`--scope <group>`;
-`all` only when the project shows in every group). Each change is logged with the coordinator's name.
+the same commands as Alfred's, in the home tabs its project shows in only (`--scope <tab>`, a group or a machine shown as
+its own tab, by name; `all` only when the project shows in every tab). Each change is logged with the coordinator's name.
 
 ## Board
 
@@ -938,8 +938,13 @@ Anything else that waits (an agent's question, a failure, a decision, another
 step of yours such as *Create these tasks*) shows the answers of its To do tab
 (its choices, *Try again* for a failed action, *Open the agent*), and *Open the
 task*. *3 of 12* with previous and next: a task you pass over stays in the list.
-On a computer, → next, ← previous, A approve, R reject. After the last one:
-*All done*. The filter at the top picks *Follow group tab* (the projects of the
+On a computer, → next, ← previous, A approve, R reject. Approve and Send back
+say so on their button (*Approved*, *Sent back*) for a moment, then the next
+task slides in (the arrows slide too, without it; a fade if your system reduces
+motion); a failed action keeps the task with its error. After the last one:
+*All done*. On a computer it is a large window (960 px wide, up to 90 % of the
+screen's height, screenshots two per row): only the task's content scrolls, the
+filter, its title and the buttons stay. The filter at the top picks *Follow group tab* (the projects of the
 home tab), *All*, a group or a project (its key badge, then its name); it follows you across devices like the
 Board's picker.
 

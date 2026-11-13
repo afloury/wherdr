@@ -3,11 +3,27 @@
 // the paths and links that stay inside the notes folder, and who writes which
 // scope. The server (server/utils/notesStore.ts) reads and writes the files.
 import { projectOnTab, projectTabMachines } from '../app/utils/projectTabs'
-import type { MachineGroup } from '../app/utils/machineBar'
+import { BAR_ALL, type MachineGroup } from '../app/utils/machineBar'
 import { PROJECT_COLORS, isProjectColor } from './pm/projectKey'
 
-// all: every tab; else a tab group's id (*group:…), from the machineGroups setting.
+// A home tab: all (every tab), a tab group's id (*group:…, from the
+// machineGroups setting), or a machine shown as its own tab (machine:<base key>).
 export type NoteScope = string
+export const machineScope = (key: string): NoteScope => `machine:${key}`
+export const scopeMachine = (scope: NoteScope) => (scope.startsWith('machine:') ? scope.slice(8) : null)
+// A home tab a note may be scoped to: its scope, its name and its machines.
+export interface NoteTab { scope: NoteScope, name: string, machines: string[] }
+// The home tabs, in the bar's order (bar: its item ids), All left out. label:
+// a machine's name from its base key.
+export function noteTabs(bar: readonly string[], groups: readonly MachineGroup[], label: (key: string) => string): NoteTab[] {
+  return bar.filter(id => id !== BAR_ALL).map((id) => {
+    const g = groups.find(x => x.id === id)
+    return g ? { scope: g.id, name: g.name, machines: g.machines } : { scope: machineScope(id), name: label(id), machines: [id] }
+  })
+}
+// The home tab a bar pick stands for, null for every machine.
+export const tabScope = (pick: string | null, groups: readonly MachineGroup[]): NoteScope | null =>
+  (pick === null || pick === BAR_ALL ? null : groups.some(g => g.id === pick) ? pick : machineScope(pick))
 export interface Note { id: string, title: string, scope: NoteScope, body: string, created: string, updated: string }
 
 export type NotesCommand =
@@ -19,10 +35,10 @@ export type NotesCommand =
   | { verb: 'file put' | 'file remove', path: string } // put: the file's text on input
 
 export const NOTES_COMMANDS: { usage: string, does: string }[] = [
-  { usage: 'notes list [--scope all|<group>]', does: 'the notes you may write (id, title, scope, dates) and the linked files' },
+  { usage: 'notes list [--scope all|<tab>]', does: 'the notes you may write (id, title, scope, dates) and the linked files' },
   { usage: 'notes show <id|path>', does: 'one note, or one linked file' },
-  { usage: 'notes add "<title>" [--scope all|<group>] < lines.md', does: 'add a note: a title and a few short Markdown lines on stdin (checkboxes, links to another note `other-note.md`, a file `plans/x.md` or an in-app place `#/board?task=ID`); scope all (every tab) or one tab group, by name' },
-  { usage: 'notes edit <id> [--title "<title>"] [--scope all|<group>] < lines.md', does: 'change a note: new lines on stdin replace its own (empty stdin keeps them)' },
+  { usage: 'notes add "<title>" [--scope all|<tab>] < lines.md', does: 'add a note: a title and a few short Markdown lines on stdin (checkboxes, links to another note `other-note.md`, a file `plans/x.md` or an in-app place `#/board?task=ID`); scope all (every tab) or one home tab (a tab group or a machine shown as its own tab), by name' },
+  { usage: 'notes edit <id> [--title "<title>"] [--scope all|<tab>] < lines.md', does: 'change a note: new lines on stdin replace its own (empty stdin keeps them)' },
   { usage: 'notes remove <id>', does: 'remove a note once its subject is decided or done' },
   { usage: 'notes file put <folder/name.md> < file.md', does: 'write a Markdown file under a folder of the notes (plans/x.md), for content too long for a note: link it from a note' },
   { usage: 'notes file remove <folder/name.md>', does: 'remove a linked file no note needs any more' },
@@ -59,14 +75,18 @@ export function noteBadges(body: string, mark: (i: number) => string): { text: s
   return { text, badges }
 }
 
-// The Notes panel's filter: follow the home tab, every note, or one group.
+// The Notes panel's filter: follow the home tab, every note, or one tab.
 export const NOTES_FOLLOW = 'follow'
-// The notes it shows. tabGroups: the groups of the home tab picked (follow),
-// null for every machine. A note scoped all shows in every group.
-export function notesShown(notes: readonly Note[], filter: string, tabGroups: readonly string[] | null): Note[] {
-  if (filter === 'all' || (filter === NOTES_FOLLOW && !tabGroups)) return [...notes]
-  const groups = filter === NOTES_FOLLOW ? tabGroups! : [filter]
-  return notes.filter(n => n.scope === 'all' || groups.includes(n.scope))
+// The home tab a filter shows, null for every note. followed: the home tab
+// picked (tabScope).
+export const filterTab = (filter: string, followed: NoteScope | null) => (filter === NOTES_FOLLOW ? followed : filter === 'all' ? null : filter)
+// The notes it shows: that tab's own and the all ones. A group's tab also
+// shows the notes of its machines (a machine that joined it keeps its notes).
+export function notesShown(notes: readonly Note[], filter: string, followed: NoteScope | null, groups: readonly MachineGroup[]): Note[] {
+  const tab = filterTab(filter, followed)
+  if (!tab) return [...notes]
+  const members = groups.find(g => g.id === tab)?.machines ?? []
+  return notes.filter(n => n.scope === 'all' || n.scope === tab || members.includes(scopeMachine(n.scope) ?? '\0'))
 }
 
 export const MAX_LINES = 12
@@ -157,21 +177,23 @@ export function readNote(id: string, text: string): Note | null {
   return { id, title: f.title, scope: f.scope, body: m[2]!.replace(/\n+$/, ''), created: f.created ?? '', updated: f.updated ?? f.created ?? '' }
 }
 
-// A scope as an agent names it (all, a group's name or id) → its stored value.
-export function resolveScope(raw: string, groups: readonly MachineGroup[]): NoteScope | { error: string } {
+// A scope as an agent names it (all, a home tab's name or scope) → its stored value.
+export function resolveScope(raw: string, tabs: readonly NoteTab[]): NoteScope | { error: string } {
   if (raw.toLowerCase() === 'all') return 'all'
-  const g = groups.find(x => x.id === raw) ?? groups.find(x => x.name.toLowerCase() === raw.trim().toLowerCase())
-  return g ? g.id : { error: `Unknown scope ${raw}: all, or a tab group (${groups.map(x => x.name).join(', ') || 'none yet'})` }
+  const t = tabs.find(x => x.scope === raw) ?? tabs.find(x => x.name.toLowerCase() === raw.trim().toLowerCase())
+  return t ? t.scope : { error: `Unknown scope ${raw}: all, or a home tab (${tabs.map(x => x.name).join(', ') || 'none yet'})` }
 }
-export const scopeName = (scope: NoteScope, groups: readonly MachineGroup[]) => (scope === 'all' ? 'all' : groups.find(g => g.id === scope)?.name ?? scope)
+// A scope's name: all, its tab's, else a machine's (label) or the scope itself.
+export const scopeName = (scope: NoteScope, tabs: readonly NoteTab[], label: (key: string) => string = k => k) =>
+  (scope === 'all' ? 'all' : tabs.find(t => t.scope === scope)?.name ?? (scopeMachine(scope) !== null ? label(scopeMachine(scope)!) : scope))
 
-// The scopes a project's coordinator writes: the tab groups its project shows
-// in, and all (every tab) only when it shows in every group. override: its
+// The scopes a project's coordinator writes: the home tabs its project shows
+// in, and all (every tab) only when it shows in every one. override: its
 // projectTabs entry. Alfred writes every scope.
-export function writableScopes(project: { machine: string, machines?: string[], paused?: string[] }, override: string | undefined, groups: readonly MachineGroup[]): NoteScope[] {
+export function writableScopes(project: { machine: string, machines?: string[], paused?: string[] }, override: string | undefined, groups: readonly MachineGroup[], tabs: readonly NoteTab[]): NoteScope[] {
   const tab = projectTabMachines({ machines: [project.machine, ...(project.machines ?? []).filter(m => m !== project.machine)], paused: project.paused }, override, groups)
-  const mine = groups.filter(g => projectOnTab(tab, g.machines)).map(g => g.id)
-  return mine.length === groups.length ? ['all', ...mine] : mine
+  const mine = tabs.filter(t => projectOnTab(tab, t.machines)).map(t => t.scope)
+  return mine.length === tabs.length ? ['all', ...mine] : mine
 }
 
 // A link in a note (from: '') or in a linked file (from: its path) → what it
