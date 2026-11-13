@@ -97,7 +97,7 @@ const startedElsewhere = (e: Error) => e instanceof HerdrError && e.code === 'bu
 
 export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
-  const tasks = await store.tasks(), runs = await store.runs(), started: string[] = []
+  const tasks = await store.tasks(), started: string[] = []
   for (const t of tasks.filter(x => x.after && !x.step?.started)) {
     const c = chainState(t, tasks)
     const held = c && c !== 'go' && 'wait' in c ? c.wait : undefined
@@ -113,7 +113,8 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
   const projects = await store.projects()
   for (const p of projects) {
     // A member's: its workspace's autopilot, whose limits count all its projects' tasks.
-    const { ap, all, holds } = await pilotOf(store, projects, p.key)
+    // Runs read again: a member started above counts in its workspace's limits.
+    const { ap, all, holds } = await pilotOf(store, projects, p.key), runs = await store.runs()
     const mine = all.filter(t => t.project === p.key)
     // A chain the coordinator or an automation made is automatic work: held by the pace.
     let next: typeof mine[number] | undefined, pace: Awaited<ReturnType<typeof paceOf>> | undefined
@@ -143,9 +144,9 @@ export async function startChained(deps: PmLaunchDeps, now = Date.now()) {
 // the pace: over a limit it waits, with why; the autopilot off drops the hold.
 export async function startHeld(deps: PmLaunchDeps, now = Date.now()) {
   const { store } = deps
-  const projects = await store.projects(), runs = await store.runs(), started: string[] = [], machines = new Set<string>()
+  const projects = await store.projects(), started: string[] = [], machines = new Set<string>()
   for (const t of (await store.tasks()).filter(x => x.held && x.state === 'todo' && !x.after && !x.sameFiles)) {
-    const p = projects.find(x => x.key === t.project)
+    const p = projects.find(x => x.key === t.project), runs = await store.runs() // a start above counts in the limits
     if (!p) continue
     const pace = pacedStart(t, 'wake') ? await paceOf(store, p, t, now) : undefined
     // An engine start its machine was out of reach for: already decided, it only waits for a machine.
