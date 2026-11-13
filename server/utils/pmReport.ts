@@ -2,12 +2,13 @@
 // kept on the task and its log, and sent to the project's coordinator as the
 // user's own message (started first when it does not run), never to the agent.
 import { REPORT_MAX, reportMessage, reviewLine } from '../../shared/pm/report'
-import { cardOf, mainLink } from '../../shared/pm/board'
+import { ASKED_COORDINATOR, cardOf, coordinatorWait, mainLink } from '../../shared/pm/board'
 import { taskPlan } from '../../shared/pm/run'
-import { currentStep, initialState } from '../../shared/pm/steps'
+import { currentStep, durationMs, initialState } from '../../shared/pm/steps'
 import { shotUrl } from '../../shared/pm/shots'
 import { shownTaskId } from '../../shared/pm/projectKey'
 import { noteTurn, startCoordinator, type CoordinatorUrls } from './pmCoordinator'
+import { noteBack } from './pmStall'
 import type { CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
 import { HerdrError } from './herdr'
@@ -38,6 +39,33 @@ export async function userReport(deps: Deps, body: { id?: unknown, text?: unknow
   })
   await toCoordinator(deps, task.project, msg, text, urls)
   return store.logTask({ ...task, report }, 'user', `reported a problem${report.block ? ', merge blocked' : ''}: ${text.slice(0, 300)}`)
+}
+
+// Ask the coordinator (POST /api/pm/ask-coordinator): a step it holds, past its
+// time limit or waiting until the user writes, gets the user's short message,
+// as if typed in its chat. It counts as the user writing: the rechecks start
+// over from the step's own, and a time limit passed is back to work (noteBack).
+export async function askCoordinator(deps: Deps, id: unknown, urls: CoordinatorUrls) {
+  const { store } = deps
+  const task = await store.task(id)
+  if (!task) throw new HerdrError('not_found', 'Unknown task')
+  const projects = await store.projects()
+  const p = projects.find(x => x.key === task.project)
+  const t = p ? await store.workflow(p.key) : null
+  if (!t) throw new HerdrError('not_found', 'The project has no template')
+  const plan = taskPlan(t, task, p), now = Date.now()
+  const wait = coordinatorWait(cardOf(task, plan, await store.runs(), now))
+  if (!wait || wait.asked !== undefined) throw new HerdrError('refused', 'The coordinator does not wait for you on this task')
+  const step = plan[task.step!.at]!
+  const msg = `Check where ${shownTaskId(projects, task.id)} (${task.title}) stands at its ${step.id} step and end the step or tell me what blocks it.`
+  await toCoordinator(deps, task.project, msg, msg, urls)
+  // Read again after delivery: the coordinator or the engine may have moved the
+  // step meanwhile. Only the same run of the same step is reset; else the ask is just logged.
+  const fresh = (await store.task(task.id))!, cur = fresh.step
+  const same = !!cur?.started && !cur.done && cur.at === task.step!.at && cur.since === task.step!.since
+  const s = same ? { ...cur, rechecks: 0, waitUser: undefined, ...(step.recheck ? { recheckAt: now + durationMs(step.recheck) } : {}) } : cur
+  const logged = await store.logTask({ ...fresh, ...(s ? { step: s } : {}) }, 'user', `${ASKED_COORDINATOR}${step.id} step`)
+  return same ? noteBack(store, logged, plan, 'user', 'the user asked the coordinator', now) : logged
 }
 
 export async function withdrawReport(store: PmStore, id: unknown) {

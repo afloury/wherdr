@@ -40,5 +40,6 @@ export function useTaskActions(card: () => Card | undefined, changed: () => void
     sendBack: (note: string, shots?: string[]) => run(() => api('/api/pm/step-back', { id: id(), note, ...(shots?.length ? { shots } : {}) })),
     restartReview: () => run(() => api('/api/pm/review-restart', { id: id() })),
     startWorker: () => run(() => api('/api/pm/worker-start', { id: id() })),
+    askCoordinator: () => run(() => api('/api/pm/ask-coordinator', { id: id() })),
   }
 }

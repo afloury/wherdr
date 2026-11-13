@@ -170,5 +170,8 @@ function onKey(e: KeyboardEvent) {
 .review-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 @media (max-width: 699px) {
   .review-choices > * { flex: 1 1 auto; justify-content: center; }
+  /* A field typed in (Reject's note, AppSheet `.typing`): the pinned choices
+     hide, so they never cover the text; Send back stays under its field. */
+  :global(.hw-sheet:has(> .typing) > [data-slot="footer"]:has(.review-foot)) { display: none; }
 }
 </style>
