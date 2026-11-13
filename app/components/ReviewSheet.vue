@@ -12,7 +12,7 @@
 // question (ReviewQuestion) is answered here: its choices or another answer go
 // to the agent (POST /api/pm/answer), it leaves the list like an approved one;
 // Open the agent and Open the task stay. Answered elsewhere (a coordinator's
-// tell, the agent's conversation): the board is read again as the agent works. "3 of 12"
+// tell, the agent's conversation): read again as the agent works (watchTaskAgents). "3 of 12"
 // with previous and next (a task passed over stays in the list); on a computer
 // → next, ← previous, A approve, R reject. After the last one: All done.
 // Approve and Send back say so on their button for a moment (DONE_MS), then the
@@ -128,8 +128,6 @@ async function reply(text: string) {
   await leave(c, 'answered')
   answered.value = undefined
 }
-// An asking agent at work again (answered in its conversation, or by a coordinator): read the board at once.
-watch(() => items.value.map(c => (c.asks && c.terminal ? herdrState.value?.panes.find(p => p.coreAddress === c.terminal)?.status : '')).join(), load)
 
 // Where the user answers anything else: the asking agent's conversation when it is on screen here, else the task's sheet.
 function answer(where: 'agent' | 'sheet' = 'agent') {

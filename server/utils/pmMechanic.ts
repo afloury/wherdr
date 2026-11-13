@@ -77,7 +77,9 @@ export async function syncWaits(deps: PmLaunchDeps) {
     // What herdr-core says is asked ("approve Bash: npm test"), else the kind.
     const msg = typeof term.status === 'object' ? term.status?.msg?.trim().slice(0, 300) : undefined
     // A question carries its text, for the board and the coordinator's wake.
-    const asked = kind === 'question' && task.state === 'working' ? await askedQuestion(deps, run!.terminal!) : undefined
+    // A question waiting from before its whole message was kept: read once more.
+    const asked = kind === 'question' && (task.state === 'working' || (task.waitKind === 'question' && !task.question)) ? await askedQuestion(deps, run!.terminal!) : undefined
+    if (task.state === 'waiting' && task.waitKind === 'question' && kind === 'question' && asked && !task.question) { await store.saveTask({ ...task, question: asked.full }); continue }
     if (task.state === 'working' && kind) await store.saveTask({ ...task, state: 'waiting', waiting: (kind === 'permission' && msg) || (asked ? `${WAITS.question}: ${asked.line}` : WAITS[kind]), waitKind: kind, question: asked?.full })
     else if (task.state === 'waiting' && (task.waitKind === 'question' || task.waitKind === 'permission') && !kind)
       await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, answered: undefined, question: undefined })

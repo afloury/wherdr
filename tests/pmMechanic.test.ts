@@ -286,7 +286,11 @@ describe('what a task waits for', () => {
       expect((await store.task(t.id))!.state).toBe('working')
       term = { address: 'host/t3', labels: { 'wherdr.report': 'blocked:question' }, status: { state: 'idle' } }
       await syncWaits(deps)
-      expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'question', waiting: 'The agent asks a question: Two options. Postgres or SQLite?' })
+      expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'question', waiting: 'The agent asks a question: Two options. Postgres or SQLite?', question: 'Two options.\nPostgres or SQLite?' })
+      // A question waiting from before the whole message was kept: read once more.
+      await store.saveTask({ ...(await store.task(t.id))!, question: undefined })
+      await syncWaits(deps)
+      expect((await store.task(t.id))!.question).toBe('Two options.\nPostgres or SQLite?')
       // A permission says what is asked, as herdr-core reads it.
       await store.saveTask({ ...(await store.task(t.id))!, state: 'working', waitKind: undefined, waiting: undefined })
       term = { address: 'host/t3', status: { state: 'blocked', msg: 'approve Bash: npm test' } }
@@ -327,4 +331,14 @@ describe('what a task waits for', () => {
       expect((await store.task(t.id))!.log?.at(-1)?.text).toBe('trusted the task\'s worktree for the worker (/home/u/.wherdr/pm/worktrees/CO-1)')
     } finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
+})
+
+it('keeps an agent\'s whole question; a huge one cut in its middle, its question and choices kept', async () => {
+  const { askedQuestion, QUESTION_MAX } = await import('../server/utils/pmRead')
+  const ask = (text: string) => askedQuestion({ panes: () => [{ id: 'p', coreAddress: 't' }], chat: async () => [{ role: 'assistant', text, ts: null }] } as never, 't')
+  const end = 'Should I continue?\n\n```wherdr\nchoices "Yes" | "No"\n```'
+  const long = `${'context line\n'.repeat(1200)}${end}`
+  expect((await ask(long))!.full).toBe(long)
+  const huge = (await ask(`Start.\n${'x'.repeat(QUESTION_MAX)}\n${end}`))!.full
+  expect([huge.startsWith('Start.'), huge.endsWith(end), huge.includes('[…]'), huge.length < QUESTION_MAX + 20]).toEqual([true, true, true, true])
 })

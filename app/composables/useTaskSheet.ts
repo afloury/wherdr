@@ -8,6 +8,21 @@ import type { LocationQuery } from 'vue-router'
 export const taskSheetTick = ref(0)
 export const taskChanged = () => { taskSheetTick.value++ }
 
+// A task's agent at work again (its question answered here, in its
+// conversation, by a coordinator's tell or on another device): every task list
+// (Tasks to review, Tasks to handle, the board) reads again at once, and once
+// more a moment later, after the server saved the answer. TaskSheetHost.vue, always mounted.
+export function watchTaskAgents() {
+  let again: ReturnType<typeof setTimeout> | undefined
+  const working = () => new Set((herdrState.value?.panes ?? []).filter(p => p.task && p.status === 'working').map(p => p.id))
+  watch(working, (now, before) => {
+    if (![...now].some(id => !before.has(id))) return
+    taskChanged()
+    clearTimeout(again)
+    again = setTimeout(taskChanged, 2000)
+  })
+}
+
 const without = (q: LocationQuery) => Object.fromEntries(Object.entries(q).filter(([k]) => k !== 'task'))
 
 export function openTaskSheet(id: string) {
