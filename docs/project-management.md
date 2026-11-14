@@ -1046,7 +1046,11 @@ takes the board's order.
 
 Anything else that waits (a failure, a decision, another
 step of yours such as *Create these tasks*) shows the answers of its To do tab
-(its choices, *Try again* for a failed action), and *Open the task*. Every
+(its choices, *Try again* for a failed action), and *Open the task*. A block its
+worker could fix has **Ask the agent to fix it** first (*Try again* then
+secondary): *The agent is fixing it* for a moment, then it leaves the list, back
+at its end only with the agent's question or the fix's new failure; *Open the
+agent* works again once its worker runs. Every
 task, whatever its step, also has *Open the agent*, as on the [task
 sheet](#task-sheet): its agent's conversation, *Worker* or *Reviewer* when both
 run, disabled with *Agent is terminated* once it ended. *3 of 12* with previous and next: a task you pass over stays in the list.
@@ -1119,6 +1123,17 @@ Board's picker.
   same way. PR details that come back unreadable are read again (1, 2, 4 and
   8 minutes later), then the error ends with the last lines of the output,
   private parts masked.
+- **Ask the agent to fix it**: on a block the task's worker could fix (a
+  failed step action such as a conflict, red checks or an unreadable PR, a
+  stalled or ended worker, a step past its time limit), this is the first
+  button; *Try again* stays, secondary. The worker gets the block's exact
+  reason (started again in its worktree if it ended, as a coordinator's
+  `tell --fix` does): fix it if it can (merge the base and solve the conflict,
+  fix the CI, push), then say it is done; if it needs a decision or access only
+  you have, ask you one clear question with choices. The task leaves *Your turn*
+  at once (*the agent is fixing it*) and comes back only with its question, or
+  with the new reason if the fix fails. It is your own action, not limited like
+  a coordinator's wake, written to History as *asked the agent to fix: <reason>*.
 
 On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
 *Start*, *Open the agent*) stay pinned at the bottom of the sheet while its

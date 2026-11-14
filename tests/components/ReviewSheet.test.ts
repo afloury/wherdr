@@ -198,3 +198,26 @@ it('keeps its order while open: a new task goes at the end, the one on screen st
   expect(progress()).toBe('1 of 2')
   again.unmount()
 })
+
+it('asks the agent to fix a blocked merge: it leaves at once, and comes back on the agent\'s question', async () => {
+  const conflict = 'Merge: The PR conflicts with its target branch'
+  const blocked = (badge: string) => card('HO-F', 'home', { yourTurn: badge, state: { at: 2, started: true, proofs: {}, rounds: {}, yourTurn: { reason: 'action', badge, error: badge } } })
+  cards = [blocked(conflict), card('HO-2', 'home')]
+  const asked: string[] = []
+  registerEndpoint('/api/pm/agent-fix', { method: 'POST', handler: async (e) => { asked.push((await readBody(e) as { id: string }).id); return { task: {} } } })
+  reviewOpen.value = true
+  const w = await mountSuspended(ReviewCard)
+  await expect.poll(shown).toBe('HO-F')
+  // Ask the agent to fix it first; Try again stays, secondary.
+  expect(q('todo-fix')?.textContent).toBe('Ask the agent to fix it')
+  expect(q('review-retry')?.className).not.toContain('bg-primary')
+  q('todo-fix')!.click()
+  await expect.poll(() => q('review-fixing')?.textContent).toBe('The agent is fixing it')
+  await expect.poll(shown, { timeout: 3000 }).toBe('HO-2') // off the list, even before the board says so
+  expect([asked, progress()]).toEqual([['HO-F'], '1 of 1'])
+  // The agent asks a question: its badge changed, back at the end of the list.
+  cards = [{ ...blocked(conflict), yourTurn: 'Its agent asks a question' }, cards[1]!]
+  taskSheetTick.value++
+  await expect.poll(progress).toBe('1 of 2')
+  w.unmount()
+})
