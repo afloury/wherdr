@@ -7,6 +7,11 @@ describe('nextWakeAt', () => {
   it('the interval after the last wake, or the next fixed time, whichever comes first', () => {
     expect(nextWakeAt({ ...ap, every: '2h' }, now - 30 * 60_000, {}, now)).toBe(now + 90 * 60_000)
     expect(nextWakeAt({ ...ap, every: '2h', routines: [{ id: 'a', when: 'daily 10:30', goal: '', on: true }, { id: 'b', when: 'daily 10:10', goal: '', on: false }] }, now, { a: now }, now)).toBe(new Date(2026, 0, 5, 10, 30).getTime())
+    // A routine slot outside the hours is skipped: its next one within them, never the opening.
+    const daily = (when: string) => ({ ...ap, hours: { from: 9, to: 18 }, routines: [{ id: 'a', when, goal: '', on: true }] })
+    expect(nextWakeAt(daily('daily 08:00'), undefined, { a: now }, now)).toBeUndefined()
+    expect(nextWakeAt({ ...daily('daily 08:00'), routines: [...daily('daily 08:00').routines, { id: 'b', when: 'daily 12:00', goal: '', on: true }] }, undefined, { a: now, b: now }, now)).toBe(new Date(2026, 0, 5, 12, 0).getTime())
+    expect(nextWakeAt(daily('0 8,17 * * *'), undefined, { a: now }, now)).toBe(new Date(2026, 0, 5, 17, 0).getTime())
     // A wake overdue goes now, never in the past.
     expect(nextWakeAt({ ...ap, every: '30m' }, now - 3_600_000, {}, now)).toBe(now)
   })
