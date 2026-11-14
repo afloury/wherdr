@@ -66,15 +66,17 @@ export function majorOf(v: string): number | null {
 export const releaseBranch = (current: string) => `${majorOf(current) ?? 0}.x`
 
 // v3 installs beside v2 (never over it): its release notes, migration guide
-// and the installer command (a dry run until `--yes`).
+// and the installer command (a dry run until `--yes`). Both point to the
+// release's own tag, never a branch: this text is frozen in every installed
+// 2.x, and branches move or disappear.
 export interface MajorMove { version: string, url: string, guide: string, command: string }
 export function majorMove(repo: string, version: string, url?: string): MajorMove {
   const major = majorOf(version)
   return {
     version,
     url: url || `https://github.com/${repo}/releases/tag/v${version}`,
-    guide: `https://github.com/${repo}/blob/v${major}/docs/migrate-from-v2.md`,
-    command: `git clone -b v${major} https://github.com/${repo}.git /tmp/wherdr-setup && sh /tmp/wherdr-setup/scripts/install-v${major}-beside-v2.sh`,
+    guide: `https://github.com/${repo}/blob/v${version}/docs/migrate-from-v2.md`,
+    command: `git clone -b v${version} https://github.com/${repo}.git /tmp/wherdr-setup && sh /tmp/wherdr-setup/scripts/install-v${major}-beside-v2.sh`,
   }
 }
 
