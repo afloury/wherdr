@@ -729,6 +729,9 @@ describe('role files', () => {
     await startCoordinator(deps, 'NW', { program: 'claude' }, urls)
     expect(runs[0]!.line).toContain(FIRST_REPLY)
     await expect.poll(async () => (await store.coordinator('NW'))?.undelivered).toBeUndefined()
+    // Its delivery logs in the background: wait for it, or it writes into the
+    // project log while afterEach removes the folder (ENOTEMPTY).
+    await expect.poll(async () => (await store.projectLog('NW')).map(e => e.text)).toContain('first message given at its start, its session is up')
   })
 
   it('on another machine, the coordinator gets wherdr\'s published address, never loopback', async () => {
