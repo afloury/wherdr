@@ -79,6 +79,13 @@ describe('v2 detection', () => {
     expect(detectV2({ home, env: {}, run: fakeRun().run, platform: 'linux', v2Dir: path.join(home, 'wherdr') })).toMatchObject({ found: true, dataOnly: false })
   })
 
+  it('expands %h in v2\'s unit, as systemd does, for the herdr-projects board', () => {
+    const home = tmp()
+    const unit = path.join(home, 'wherdr.service')
+    fs.writeFileSync(unit, '[Service]\nEnvironment="HERDR_PROJECTS_HOME=%h/board" HERDR_PROJECTS_DATA_DIR=%h/b%%d\n')
+    expect(detectV2({ home: '/home/user', env: {}, unit, run: fakeRun().run }).herdrProjects).toEqual({ home: '/home/user/board', dataDir: '/home/user/b%d' })
+  })
+
   it('says when herdr is missing and nothing is found', () => {
     const v = detectV2({ home: tmp(), env: {}, run: fakeRun({ herdr: fail(127) }).run, platform: 'linux' })
     expect(v.found).toBe(false)

@@ -43,18 +43,20 @@ export function parseEnvFile(text) {
   return out
 }
 
-const unquote = s => s.replace(/\\(["\\])/g, '$1').replace(/%%/g, '%')
-const words = s => [...String(s).matchAll(/"((?:[^"\\]|\\.)*)"|(\S+)/g)].map(m => (m[1] !== undefined ? unquote(m[1]) : m[2].replace(/%%/g, '%')))
+// systemd specifiers: %% → %, and those of `spec` (a user unit's %h); others kept as written.
+const specifiers = (s, spec) => s.replace(/%(.)/g, (m, c) => (c === '%' ? '%' : spec[c] ?? m))
+const words = (s, spec = {}) => [...String(s).matchAll(/"((?:[^"\\]|\\.)*)"|(\S+)/g)].map(m => specifiers(m[1] !== undefined ? m[1].replace(/\\(["\\])/g, '$1') : m[2], spec))
 
 // A systemd unit: its Environment= variables, ExecStart words, WorkingDirectory.
-export function parseUnit(text) {
+// spec: the specifiers systemd expands for this user ({ h: home }).
+export function parseUnit(text, spec = {}) {
   const env = {}
   let exec = [], workingDirectory = null
   for (const line of String(text || '').split(/\r?\n/)) {
     const m = /^\s*(Environment|ExecStart|WorkingDirectory)\s*=\s*(.*)$/.exec(line)
     if (!m) continue
-    if (m[1] === 'Environment') for (const w of words(m[2])) { const i = w.indexOf('='); if (i > 0) env[w.slice(0, i)] = w.slice(i + 1) }
-    else if (m[1] === 'ExecStart') exec = words(m[2])
+    if (m[1] === 'Environment') for (const w of words(m[2], spec)) { const i = w.indexOf('='); if (i > 0) env[w.slice(0, i)] = w.slice(i + 1) }
+    else if (m[1] === 'ExecStart') exec = words(m[2], spec)
     else workingDirectory = m[2].trim()
   }
   return { env, exec, workingDirectory }
@@ -122,7 +124,7 @@ export function detectV2(o = {}) {
   const run = o.run || defaultRun
   const notes = []
   const unitFile = findV2Unit({ home, env, unit: o.unit, platform: o.platform })
-  const unit = unitFile ? (unitFile.endsWith('.plist') ? parsePlist(readText(unitFile)) : parseUnit(readText(unitFile))) : { env: {}, exec: [] }
+  const unit = unitFile ? (unitFile.endsWith('.plist') ? parsePlist(readText(unitFile)) : parseUnit(readText(unitFile), { h: home })) : { env: {}, exec: [] }
   const dir = path.resolve(expand(o.v2Dir || unit.env.WHERDR_DIR || env.WHERDR_DIR || path.join(home, 'wherdr'), home))
   const envFile = path.join(dir, 'wherdr.env')
   const saved = parseEnvFile(readText(envFile))
