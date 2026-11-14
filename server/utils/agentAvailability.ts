@@ -1,36 +1,25 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { HERDR_AGENT_KINDS, availableAgentKinds } from '../../shared/launchableAgents'
-import { AGENT_KINDS } from './env'
-import type { Machine } from './machines'
+// The PATH the user expects agent programs on: the usual user install folders,
+// then the bin/ of the nvm version the default alias names (or of the newest
+// installed version when there is no usable alias — NVM_DIR, or ~/.nvm), then
+// the PATH the machine gave. nvm comes after the user folders so it only fills
+// in: a native install in ~/.local/bin wins over an older npm copy under nvm.
+// Started as a service, the core's own PATH has only the system folders:
+// without this, agents installed under nvm (claude, codex…) or as OpenCode are
+// neither listed nor found at launch.
+// One snippet for both the availability probe below and the launch line
+// (PATH_SETUP in coreCreate.ts), so detection and launch can never disagree.
+// Plain POSIX sh: no login or interactive shell, whose banners would pollute
+// the probe's stdout.
+export const USER_PATH_SETUP =
+  `wd=; wv=; nvm="\${NVM_DIR:-$HOME/.nvm}"; ` +
+  `[ -r "$nvm/alias/default" ] && read -r wv < "$nvm/alias/default"; ` +
+  `case "$wv" in v[0-9.]*) ;; [0-9.]*) wv="v$wv" ;; *) wv= ;; esac; ` +
+  `[ -n "$wv" ] && [ -d "$nvm/versions/node/$wv/bin" ] && wd="$nvm/versions/node/$wv/bin"; ` +
+  `if [ -z "$wd" ]; then wv=$(ls -1 "$nvm/versions/node" 2>/dev/null | sed -n 's/^v\\([0-9][0-9.]*\\)$/\\1/p' | LC_ALL=C sort -t. -k1,1n -k2,2n -k3,3n | tail -n 1); ` +
+  `[ -n "$wv" ] && wd="$nvm/versions/node/v$wv/bin"; fi; ` +
+  `PATH="$HOME/.local/bin:$HOME/.opencode/bin:$HOME/.kimi-code/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:\${wd:+$wd:}$PATH"; ` +
+  `export PATH; unset wd wv nvm`
 
-const TTL = 30_000
-const cache = new Map<string, { at: number, kinds: string[] }>()
-const extraDirs = (home: string) => [
-  path.join(home, '.local/bin'), path.join(home, '.kimi-code/bin'),
-  path.join(home, '.bun/bin'), '/opt/homebrew/bin', '/usr/local/bin', '/usr/bin', '/bin',
-]
-
-export async function installedAgentKinds(m: Machine): Promise<string[]> {
-  const old = cache.get(m.key)
-  if (old && Date.now() - old.at < TTL) return old.kinds
-  const candidates = HERDR_AGENT_KINDS.filter(k => AGENT_KINDS.includes(k))
-  let found: string[] = []
-  if (m.local) {
-    const dirs = [...extraDirs(m.home), ...(process.env.PATH || '').split(path.delimiter)]
-    found = candidates.filter(k => dirs.some(d => {
-      try { fs.accessSync(path.join(d, k), fs.constants.X_OK); return true }
-      catch { return false }
-    }))
-  } else if (m.exec && m.status === 'online') {
-    const script = `PATH="$HOME/.local/bin:$HOME/.kimi-code/bin:$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+// Prints each given command found on the machine (shell script, commands as arguments).
+export const KIND_PROBE_SCRIPT = USER_PATH_SETUP + `
 for cmd do command -v "$cmd" >/dev/null 2>&1 && printf '%s\\n' "$cmd"; done; exit 0`
-    const result = await m.exec(script, candidates, { timeoutMs: 10000 })
-    if (result.code !== 0) return []
-    const installed = new Set(result.stdout.toString('utf8').split('\n').filter(Boolean))
-    found = candidates.filter(k => installed.has(k))
-  }
-  const kinds = availableAgentKinds(found, AGENT_KINDS)
-  cache.set(m.key, { at: Date.now(), kinds })
-  return kinds
-}

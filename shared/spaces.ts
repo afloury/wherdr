@@ -9,12 +9,13 @@ type State = Pick<HerdrState, 'workspaces' | 'panes'> & Partial<Pick<HerdrState,
 
 // Urgency of a pane (smaller = more urgent): your turn, working,
 // finished unread, ready, unknown; a terminal without an agent comes after.
+// Core status is authoritative even when no agent identity is known.
 const RANK: Record<string, number> = { blocked: 0, working: 1, done: 2, idle: 3, unknown: 4 }
-export const urgency = (p: Pick<Pane, 'agent' | 'status'>) => (p.agent ? RANK[p.status || 'unknown'] ?? 4 : 9)
+export const urgency = (p: Pick<Pane, 'agent' | 'status' | 'coreAddress'>) => ((p.coreAddress || p.agent) ? RANK[p.status || 'unknown'] ?? 4 : 9)
 
 // Pane representing the space: the most urgent, the first in reading
 // order on a tie (tabs in order, then panes of each tab).
-export function leadPane<P extends Pick<Pane, 'agent' | 'status'>>(panes: P[]): P | null {
+export function leadPane<P extends Pick<Pane, 'agent' | 'status' | 'coreAddress'>>(panes: P[]): P | null {
   let best: P | null = null
   for (const p of panes) if (!best || urgency(p) < urgency(best)) best = p
   return best
@@ -41,7 +42,7 @@ export function spaceRows(s: State, machine?: string): Row[] {
     const panes = tabs.flatMap(e => e.panes)
     const lead = leadPane(panes)!
     if (tabs.length === 1 && panes.length === 1) return { kind: 'pane', key: lead.id, pane: lead, lead }
-    const n = (st: string) => panes.filter(p => p.agent && p.status === st).length
+    const n = (st: string) => panes.filter(p => (p.coreAddress || p.agent) && p.status === st).length
     return {
       kind: 'space',
       key: w.workspace.id,
@@ -55,14 +56,39 @@ export function spaceRows(s: State, machine?: string): Row[] {
   })
 }
 
+// Rows rebuilt on each push: a row equal to the one of the same key handed
+// earlier is handed again, so a card whose row did not change does not
+// re-render. Panes are compared by identity (kept across pushes when
+// unchanged), the workspace and tabs by content.
+export function createRowReuse() {
+  const seen = new Map<string, { sig: string, row: Row }>()
+  const sigOf = (r: Row) => r.kind === 'pane'
+    ? ('individual' in r ? 'pi' : 'p')
+    : JSON.stringify([r.workspace, r.tabs.map(e => [e.tab, e.layout]), r.sum])
+  const same = (a: Row, b: Row) => {
+    if (a.kind !== b.kind || a.lead !== b.lead) return false
+    if (a.kind === 'pane' || b.kind === 'pane') return a.kind === 'pane' && b.kind === 'pane' && a.pane === b.pane
+    return a.panes.length === b.panes.length && a.panes.every((p, i) => p === b.panes[i])
+      && a.tabs.length === b.tabs.length && a.tabs.every((e, i) => e.panes.length === b.tabs[i]!.panes.length && e.panes.every((p, j) => p === b.tabs[i]!.panes[j]))
+  }
+  return (rows: Row[]): Row[] => rows.map((r) => {
+    const prev = seen.get(r.key)
+    const sig = sigOf(r)
+    if (prev && prev.sig === sig && same(prev.row, r)) return prev.row
+    if (seen.size > 500) seen.clear()
+    seen.set(r.key, { sig, row: r })
+    return r
+  })
+}
+
 // Group in the list: that of its representative pane. A shell space
 // (no agent) is sorted as an idle space, in Ready, as in Herdr's
 // first list.
-export type RowGroup = 'blocked' | 'working' | 'ready'
-export const isShellRow = (r: Row) => !r.lead.agent
-export function paneGroup(p: Pick<Pane, 'agent' | 'status'>): RowGroup {
-  if (p.agent && p.status === 'blocked') return 'blocked'
-  if (p.agent && p.status === 'working') return 'working'
+export type RowGroup = 'blocked' | 'working' | 'ready' | 'unknown'
+export function paneGroup(p: Pick<Pane, 'agent' | 'status' | 'coreAddress'>): RowGroup {
+  if (p.coreAddress && (!p.status || p.status === 'unknown')) return 'unknown'
+  if ((p.coreAddress || p.agent) && p.status === 'blocked') return 'blocked'
+  if ((p.coreAddress || p.agent) && p.status === 'working') return 'working'
   return 'ready'
 }
 export const rowGroup = (r: Row): RowGroup => paneGroup(r.lead)
@@ -169,56 +195,12 @@ export function rememberTab(memory: TabMemory, workspace: string, tab: string, o
   return Object.fromEntries(Object.entries(next).filter(([w]) => keep.has(w)))
 }
 
-// ------------------------------------------------------------ reorder
-// Drag and drop of a card within its group (same machine, same
-// state): a group's order is Herdr's, so dropping a card between
-// two neighbours places it, in Herdr, just before the lower neighbour; at the
-// bottom of the group, just after the last one (before the space that follows it in
-// Herdr, or at the end). The other spaces do not move.
-
-// Herdr order after placing `moving` before `before` (null: at the end).
-export function applyMove(order: string[], moving: string, before: string | null): string[] {
-  const rest = order.filter(id => id !== moving)
-  const i = before === null ? -1 : rest.indexOf(before)
-  if (i < 0) return [...rest, moving]
-  return [...rest.slice(0, i), moving, ...rest.slice(i)]
-}
-
-// `order`: the machine's spaces in Herdr's order; `group`: those of the
-// group, in displayed order; `slot`: targeted gap (0 = before the
-// first card, group.length = after the last). null: nothing changes.
-export function reorderTarget(order: string[], group: string[], moving: string, slot: number): { before: string | null } | null {
-  const from = group.indexOf(moving)
-  if (from < 0 || !order.includes(moving)) return null
-  const rest = group.filter(id => id !== moving)
-  const k = Math.max(0, Math.min(rest.length, slot > from ? slot - 1 : slot))
-  if (!rest.length) return null
-  let before: string | null
-  if (k < rest.length) before = rest[k]!
-  else {
-    const others = order.filter(id => id !== moving)
-    before = others[others.indexOf(rest[rest.length - 1]!) + 1] ?? null
-  }
-  const next = applyMove(order, moving, before)
-  return next.every((id, i) => id === order[i]) ? null : { before }
-}
-
-// Spaces renumbered as Herdr will do (immediate feedback while waiting for its state).
-export function reorderWorkspaces<W extends Pick<Workspace, 'id' | 'number'> & { machine?: string }>(list: W[], moving: string, before: string | null): W[] {
-  const m = list.find(w => w.id === moving)
-  if (!m) return list
-  const machine = m.machine || ''
-  const order = list.filter(w => (w.machine || '') === machine).sort((a, b) => a.number - b.number).map(w => w.id)
-  const rank = new Map(applyMove(order, moving, before).map((id, i) => [id, i + 1]))
-  return list.map(w => (rank.has(w.id) ? { ...w, number: rank.get(w.id)! } : w))
-}
-
 // State key of each tab of a space, in order (its most urgent pane;
 // 'shell' for a tab without an agent).
 export function tabStates(row: Row): string[] {
   if (row.kind !== 'space') return []
   return row.tabs.map((e) => {
     const p = leadPane(e.panes)
-    return p?.agent ? p.status || 'unknown' : 'shell'
+    return (p?.coreAddress || p?.agent) ? p.status || 'unknown' : 'shell'
   })
 }
