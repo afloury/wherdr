@@ -628,11 +628,17 @@ body.short-bottom { --safe-bottom: 0px; }
   background: var(--bg-2);
   transition: background .12s ease;
 }
-.card, .card :where(*) {
+/* Home list rows and cards (agent cards, Alfred, coordinators, Tasks to
+   review): a long press opens their menu, without iOS's text selection,
+   callout or icon drag. */
+.card, .press-row, :is(.card, .press-row) :where(*) {
   -webkit-user-select: none;
   user-select: none;
   -webkit-touch-callout: none;
 }
+:is(.card, .press-row) :where(img, svg) { -webkit-user-drag: none; }
+/* The inline rename field stays editable. */
+:is(.card, .press-row) :where(input, textarea) { -webkit-user-select: text; user-select: text; }
 .card + .card { border-top: 1px solid var(--line-soft); }
 .card::before { content: ''; position: absolute; left: -1px; top: -1px; bottom: -1px; width: 2px; background: transparent; }
 .card:active { background: var(--surface-2); }

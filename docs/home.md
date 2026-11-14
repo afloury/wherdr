@@ -49,6 +49,9 @@
   each card carries its machine's name. There is no section per machine. The list never scrolls
   sideways: long titles and badges are cut with an ellipsis, and its scrollbar stays thin, shown
   while the pointer is over the list.
+- **Long press**: on a phone, a long press on a row or card of the list (Alfred, Tasks to review,
+  a coordinator, an agent) opens its menu only: no text selection, no iOS callout, no icon drag.
+  Conversations, notes and fields keep their text selectable.
 - **First load**: until the quotas, Alfred, the coordinators, the tasks to review and the task
   agents have all been read once, the list shows the shapes of its sections (headings and rows at their real
   size) and the counters show no number, then everything appears at once in its final order.

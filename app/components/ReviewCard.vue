@@ -22,7 +22,7 @@ const show = (v: boolean) => { reviewOpen.value = v }
 
 <template>
   <section v-if="tasks.length" class="agent-group review-group" data-testid="tasks-to-review">
-    <button type="button" class="review-card" data-testid="review-open" @click="show(true)">
+    <button type="button" class="review-card press-row" data-testid="review-open" @click="show(true)">
       <span class="review-count" data-testid="review-count">{{ tasks.length }}</span>
       <span class="review-text">
         <b>{{ tl('Tasks to review') }}</b>
