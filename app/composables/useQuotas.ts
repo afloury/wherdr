@@ -15,10 +15,10 @@ export async function reloadQuotas() {
     // Unchanged quotas keep the same object: the tables do not re-render.
     homeQuotas.value = keepIfSame(homeQuotas.value ?? undefined, q)
     if (mayReadOffline(readOfflineAccess())) saveQuotas(q)
+    markHomeLoad('quotas', true)
   }
-  catch { /* retry on the next round */ }
+  catch { markHomeLoad('quotas', false) /* retry on the next round */ }
   quotaNow.value = Date.now()
-  homeFirstLoad.quotas = true
 }
 
 export function useQuotaLoader() {
@@ -26,7 +26,7 @@ export function useQuotaLoader() {
   onMounted(() => {
     if (mayReadOffline(readOfflineAccess())) readQuotas().then((q) => { if (!homeQuotas.value) homeQuotas.value = q })
     if (showQuotas.value) reloadQuotas()
-    else homeFirstLoad.quotas = true
+    else markHomeLoad('quotas', true)
     timer = setInterval(() => { if (pageVisible.value && showQuotas.value) reloadQuotas() }, 60000)
   })
   onUnmounted(() => { if (timer) clearInterval(timer) })

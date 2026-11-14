@@ -29,8 +29,8 @@ export function loadCoordinators() {
   // A deadline: a read lost while the phone slept would otherwise hold
   // `loading`, and every later call would wait on it forever.
   return (loading ??= api<CoordinatorView[]>('/api/pm/coordinators', undefined, AbortSignal.timeout(8000))
-    .then((v) => { coordinators.value = Array.isArray(v) ? v : []; coordinatorsLoaded.value = true }, () => {})
-    .finally(() => { loading = null; homeFirstLoad.coordinators = true }))
+    .then((v) => { coordinators.value = Array.isArray(v) ? v : []; coordinatorsLoaded.value = true; markHomeLoad('coordinators', true) }, () => markHomeLoad('coordinators', false))
+    .finally(() => { loading = null }))
 }
 
 // Alfred, wherdr's assistant (GET /api/alfred, with projects on or off): its
@@ -38,7 +38,7 @@ export function loadCoordinators() {
 // running, its conversation. No model: each harness runs its own default.
 export interface AlfredView { name: string, program?: AlfredProgram, ran?: AlfredProgram, terminal?: string }
 export const alfred = ref<AlfredView | null>(null)
-export const loadAlfred = () => api<AlfredView>('/api/alfred').then((v) => { alfred.value = v }, () => {}).finally(() => { homeFirstLoad.alfred = true })
+export const loadAlfred = () => api<AlfredView>('/api/alfred').then((v) => { alfred.value = v; markHomeLoad('alfred', true) }, () => markHomeLoad('alfred', false))
 export const alfredPane = computed(() => (alfred.value?.terminal ? herdrState.value?.panes.find(p => p.coreAddress === alfred.value!.terminal) : undefined))
 
 // The coordinator a pane is, by its herdr-core address.

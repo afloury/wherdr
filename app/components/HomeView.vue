@@ -58,10 +58,30 @@ useNotificationRekey()
 const baseOfPane = (p: Pane) => { const m = machineInfo(p.machine); return m ? m.baseKey ?? m.key : p.machine || '' }
 // First load (WHR-329, useHomeLoad): skeletons until every section's first read
 // is in, then the whole list in one paint; never back to skeletons after. A
-// short load shows none (useDelayedFlag); herdr-core down shows its notice.
-watchEffect(() => { if (!homeListReady.value && (offlineView.value || (st.value.ok && homeSectionsLoaded()))) homeListReady.value = true })
-onMounted(() => setTimeout(() => { homeListReady.value = true }, HOME_LOAD_DEADLINE))
-const homeSkeleton = useDelayedFlag(computed(() => !homeListReady.value && !(linkShown.value && !st.value.ok && !!st.value.error)))
+// short load shows none (useDelayedFlag); herdr-core down shows its notice. A
+// failed read, or one pending past the deadline, shows an error and Try again.
+// The state kept on this device lacks those sections: shown alone only while
+// the network is down, without opening the gate.
+watchEffect(() => { if (!homeListReady.value && st.value.ok && !offlineView.value && homeSectionsLoaded()) homeListReady.value = true })
+const homeLate = ref(false)
+let homeDeadline: ReturnType<typeof setTimeout> | undefined
+const armHomeDeadline = () => { clearTimeout(homeDeadline); homeLate.value = false; homeDeadline = setTimeout(() => { homeLate.value = true }, HOME_LOAD_DEADLINE) }
+// Counted from when the sections can read: herdr-core in, the list shown (its pollers mounted).
+watch([() => st.value.ok, homeShown], ([ok, shown]) => { if (ok && shown && !homeListReady.value) armHomeDeadline() }, { immediate: true })
+onBeforeUnmount(() => clearTimeout(homeDeadline))
+const listShown = computed(() => homeListReady.value || (offlineView.value && netDown.value))
+const homeLoadError = computed(() => !listShown.value && st.value.ok && (homeLoadFailed() || homeLate.value))
+function retryHomeLoad() {
+  resetHomeLoad()
+  armHomeDeadline()
+  const p = homeFirstLoad
+  if (p.alfred !== 'ok') loadAlfred()
+  if (p.coordinators !== 'ok') loadCoordinators()
+  if (p.agents !== 'ok') loadTaskAgents()
+  if (p.quotas !== 'ok') reloadQuotas()
+  homeRetryTick.value++
+}
+const homeSkeleton = useDelayedFlag(computed(() => !listShown.value && !homeLoadError.value && !(linkShown.value && !st.value.ok && !!st.value.error)))
 const counts = computed(() => tabCounts(countedRows.value, countedCoordinators.value, machineBarSelection.value))
 
 const conn = computed(() => {
@@ -509,18 +529,19 @@ function resetListWidth() {
       </div>
       <div v-if="showCounters && agents.length" class="stats">
         <div v-for="c in stats" :key="c.s" class="stat" :class="[c.s, { zero: !c.n }]">
-          <b v-if="homeListReady">{{ c.n }}</b><b v-else class="skel stat-skel" />
+          <b v-if="listShown">{{ c.n }}</b><b v-else class="skel stat-skel" />
           <span><i />{{ c.label }}</span>
         </div>
       </div>
-      <template v-if="homeListReady">
+      <template v-if="listShown">
       <QuotaStrip :rows="listQuotas" :api="listApi" :class="{ 'after-stats': showCounters && agents.length }" />
       <MachineQuotaBlocks v-if="!oneMachine" :blocks="machineQuotaBlocks" />
       </template>
 
-      <HomeSkeleton v-if="homeSkeleton" />
+      <SettingsSkeleton v-if="homeLoadError" error="Part of the list did not load." @retry="retryHomeLoad" />
+      <HomeSkeleton v-else-if="homeSkeleton" />
       <!-- Mounted while hidden: each section reads its data, shown once all have. -->
-      <div v-show="homeListReady && !homeSkeleton" data-testid="home-sections">
+      <div v-show="listShown && !homeSkeleton" data-testid="home-sections">
       <AlfredRow v-if="st.ok" />
       <CoordinatorsSection v-if="st.ok" />
       <ReviewCard v-if="st.ok" />
