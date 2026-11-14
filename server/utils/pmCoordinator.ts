@@ -137,11 +137,12 @@ export async function noteTurn(store: PmStore, key: string, kind: 'user' | 'wake
 const TURN_MS = 3_600_000
 
 // The user's message sent from the interface to a terminal: when that
-// terminal is a project coordinator, its turn now comes from the user.
+// terminal is a coordinator, its turn now comes from the user. Alfred's too
+// with project management off (it then helps the user switch it on).
 export async function userMessageTo(store: PmStore, terminal: string | undefined, text: string) {
-  if (!terminal || !(await store.enabled())) return
+  if (!terminal) return
   const c = (await store.coordinators()).find(x => x.terminal === terminal)
-  if (c) await noteTurn(store, c.project, 'user', text)
+  if (c && (c.project === MAIN || await store.enabled())) await noteTurn(store, c.project, 'user', text)
 }
 
 // The branch tasks start from, open their PR to and merge into when a step names none.
@@ -843,9 +844,12 @@ export async function writeAlfredHome(deps: Deps) {
 
 // The sidebar's Alfred row: its name (identity.md), the program the user chose
 // (none yet: the sheet asks before its first start), the one running, and its conversation.
-export async function alfredView(deps: { store: PmStore, alfredHome?: string }) {
+// withV2: also the number of wherdr v2 projects not set up in v3 yet (Home says so).
+export async function alfredView(deps: { store: PmStore, alfredHome?: string, herdrProjects?: string }, withV2 = false) {
   const c = await deps.store.coordinator(MAIN)
-  return { name: await readAlfredName(deps), ...(c?.agent ? { program: c.agent.program } : {}), ...(c?.ran ? { ran: c.ran.program } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}) }
+  const made = withV2 ? await deps.store.projects() : []
+  const v2 = withV2 ? (await v2Projects(deps.store, deps.herdrProjects).catch(() => [])).filter(x => !made.some(p => p.path === x.path || p.name === x.name)).length : 0
+  return { name: await readAlfredName(deps), ...(c?.agent ? { program: c.agent.program } : {}), ...(c?.ran ? { ran: c.ran.program } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}), ...(v2 ? { v2 } : {}) }
 }
 
 // Where the coordinator reaches wherdr: loopback on the wherdr host; from

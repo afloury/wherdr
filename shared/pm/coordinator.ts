@@ -609,9 +609,9 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
   // No accepted workflow yet: the coordinator's first conversation sets one up.
   const firstTalk = !plain && isDefaultWorkflow(t) ? ['## Your first conversation', '',
     `This project has no accepted workflow yet: its tasks follow a minimal default (one type \`task\`: todo → work → done). Your first reply proposes one:`,
-    '1. Before it, look at the repository: README, docs, stack, tests, CI files, branches, recent commits, and where its PRs go (GitHub, Bitbucket, none).',
+    '1. Before it, look at the repository: README, docs, stack, tests, CI files, branches, recent commits, and where its PRs go (GitHub, Bitbucket, none: `git remote -v` shows no origin).',
     `2. Introduce yourself as the coordinator of project ${p.key} and say in a few lines what you understood of the project. An empty or nearly empty repository: say so, and ask what the user wants to build after your proposal.`,
-    '3. In that same first reply, propose a workflow with `template edit` (its diff is against the default), with the guards that fit; start from the example of the template library below closest to what you saw, and adapt it. Say in a few lines why: what you saw that led to each choice (the checks before a merge, the reviews, who merges).',
+    '3. In that same first reply, propose a workflow with `template edit` (its diff is against the default), with the guards that fit; start from the example of the template library below closest to what you saw, and adapt it. Say in a few lines why: what you saw that led to each choice (the checks before a merge, the reviews, who merges). A repository with no origin remote: propose the local-merge flow (branches merged on this machine, no PR), never a PR flow it cannot run.',
     '4. The user accepts or refuses its diff in wherdr. Then ask, as `choices`, what they would change (stricter: PRs, reviews, CI checks, the user merges; or lighter: fewer checks, wherdr merges), and propose again.',
     'Note their answers in memory.md. This section goes away once the user accepts a workflow.', ''] : []
   const own = t ? [t.instructions, ...Object.entries(t.taskTypes).map(([k, tt]) => tt.instructions && `${k}: ${tt.instructions}`)].filter(Boolean).map(s => `- ${s}`) : []

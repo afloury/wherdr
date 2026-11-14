@@ -377,7 +377,7 @@ const V2_ONLY = [
   ['Devices and push notifications', 'not moved (push keys belong to v2\'s address): open v3 on each device, install the app again and turn notifications on'],
   ['Phone address', 'v3 has its own HTTPS address (see the installer\'s summary)'],
   ['Per-device settings', 'kept in each browser, not on the server: set them again in v3 on each device'],
-  ['herdr-projects board settings', 'limits, reviewer, worker, merge and coordinator settings have no v3 equivalent as such: set them in each project\'s template'],
+  ['herdr-projects board settings', 'limits, reviewer, worker, merge and coordinator settings have no v3 equivalent as such: redo them in each project\'s workflow, which its coordinator proposes'],
   ['Herdr sessions, plugins, worktrees, one-tap update', 'v2 only'],
 ]
 
@@ -385,7 +385,7 @@ export function renderReport(r) {
   const L = []
   const row = (...c) => L.push(`| ${c.map(x => String(x ?? '').replace(/\|/g, '\\|').replace(/\n/g, ' ')).join(' | ')} |`)
   L.push('# wherdr v2 → v3 migration report', '', `${r.dryRun ? 'Dry run (nothing written), ' : ''}${r.at}. v2 was only read: ${r.v2.dir} (data ${r.v2.dataDir}, port ${r.v2.port}). v3 data: ${r.dataDir}.`, '')
-  L.push('## Projects', '', 'Not imported: Alfred offers to set up your v2 projects with you (machine, template, coordinator, open tasks), reading the herdr-projects board then.', '')
+  L.push('## Projects', '', 'Not imported: Alfred offers to set up your v2 projects with you (machine, coordinator, open tasks), reading the herdr-projects board then.', '')
   L.push('## Machines', '')
   if (!r.machines.added.length && !r.machines.missing.length && !r.machines.have.length && !r.machines.local?.length) L.push('No SSH machine in Herdr.')
   // hc names are 1-32 of a-z 0-9 - _ . : say when the v2 name was changed.

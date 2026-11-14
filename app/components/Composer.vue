@@ -152,6 +152,7 @@ const placeholder = computed(() => {
   if (!p) return t('Message to agent…')
   if (p.status === 'blocked') return t('Type a reply…')
   if (suggestion.value) return suggestion.value
+  if (isAlfredPane(p)) return tl(`Message to ${alfred.value?.name || 'Alfred'}…`)
   if (p.agent) return tl(`Message to ${kindLabel(p.agent)}…`, `Message à ${kindLabel(p.agent)}…`)
   return t('Command…')
 })

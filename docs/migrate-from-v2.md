@@ -96,18 +96,21 @@ message, [Alfred](home.md#alfred) sees that this machine has a herdr-projects bo
 to bring them all over in one go. It reads the board then (`wherdr alfred v2`, read
 only): each project's suggested key, folder (and whether it is on this machine), `workspace.from`
 as the base branch, its open tasks with their stage, branch and PR (done and archived ones are left out), and the board settings
-to redo in its workflow (reviewer, merge, worker…). Alfred asks you to switch Projects on first when they are off.
+to redo in its workflow (reviewer, merge, worker…). Your message to Alfred from wherdr's message field
+is your turn, with project management on or off.
 
 Its reply carries **one card for all the projects** (`wherdr alfred v2 import --propose`): one line
 each, with its key, name, machine and folder, and a checkbox, on by default; a project whose folder
 cannot be added (not found, not a git repository) says why and has none. Below them, **Start their
-coordinators**, on by default. *Apply* adds every checked project on this machine, with its v2 base
+coordinators**, on by default. With project management off, the card also has **Turn on project
+management**, on by default, which *Apply* needs and switches on first. *Apply* adds every checked project on this machine, with its v2 base
 branch, then starts their coordinators; one that fails does not stop the others, and the card then
 lists each project: added, coordinator started, or the error.
 
 No workflow is needed first: each project starts with the minimal default workflow, and its new
 coordinator's first message looks at the repository and proposes a workflow, saying why, which
-you accept or refuse (its v2 settings to redo in mind). Then, per project, by its
+you accept or refuse (its v2 settings to redo in mind, which Alfred passes on to it; a repository with
+no origin remote gets the local-merge flow, with no PR). Alfred alone offers to carry over the v2 tasks. Then, per project, by its
 coordinator or by Alfred (for all projects at once, if you like):
 
 - its folder on another machine, when the repository is not on the machine v2 ran on (`project add` there);
