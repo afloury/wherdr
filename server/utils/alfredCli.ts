@@ -19,7 +19,7 @@ import { lastWords } from './pmRead'
 import type { FolderCheck, PmStore } from './pmStore'
 import { readSettings } from './settings'
 import { addChangeCard, addSettingCard } from './uiActions'
-import { CHANGE_PLACES } from '../../shared/uiActions'
+import { CHANGE_PLACES, choiceArgv, type CardChoice } from '../../shared/uiActions'
 import { UI_TARGETS } from '../../shared/uiTargets'
 import { saveProjectGuards } from './pmProject'
 import { checkMachine } from './pmReady'
@@ -30,6 +30,20 @@ import { openUi, uiTargetsList, type UiOpenDeps } from './uiOpen'
 import { notesStore, runNotes, type NotesStore } from './notesStore'
 
 type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, dataDir?: string, notes?: NotesStore, herdrProjects?: string, clients?: UiOpenDeps['clients'] }
+
+// A coordinator started by a v2 import speaks first: its workflow questions.
+const FIRST_TALK = 'You were just started for a project brought over from wherdr v2. Follow "Your first conversation" in AGENTS.md now: look at the repository, introduce yourself, and ask the user your first question on how they work.'
+
+// The command a card keeps: without --propose; a card with checkboxes, without --only and --start too.
+function cardArgv(argv: string[], picks: boolean) {
+  const out: string[] = []
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--propose') continue
+    if (picks && (argv[i] === '--only' || argv[i] === '--start')) { i++; continue }
+    out.push(argv[i]!)
+  }
+  return out
+}
 
 // A turn the server saw start over an hour ago is not trusted any more (as a coordinator's).
 const TURN_MS = 3_600_000
@@ -44,10 +58,11 @@ export async function runAlfredCommand(deps: Deps, token: unknown, body: { argv?
 }
 
 // The user's Apply on a change Alfred proposed (POST /api/ui/act): the same
-// command, made only while its dry run still shows the card's lines.
-export async function applyProposedChange(deps: Deps, argv: string[], lines: string[]): Promise<boolean> {
-  const out = await alfredCommand(deps, argv, undefined, lines) as { applied?: boolean }
-  return out.applied === true
+// command, made only while its dry run still shows the card's lines (null:
+// it no longer does); its outcome's lines, one per project of a `v2 import`.
+export async function applyProposedChange(deps: Deps, argv: string[], lines: string[], choice?: CardChoice): Promise<string[] | null> {
+  const out = await alfredCommand(deps, choiceArgv(argv, choice), undefined, lines) as { applied?: boolean, result?: { outcome?: string[] } }
+  return out.applied === true ? out.result?.outcome ?? [] : null
 }
 
 // card: the lines of the proposal the user applies (no token: their click).
@@ -91,13 +106,15 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
   }
   // A change: its plan, then (with --apply, or the user's Apply on its card
   // while the plan is the same) the change itself; --propose: the card.
-  const change = async (plan: AlfredPlan, make: () => Promise<unknown>) => {
+  // picks, on, start: a card with a checkbox per line (v2 import); the click
+  // gives --only and --start again, so the card's argv leaves them out.
+  const change = async (plan: AlfredPlan & { picks?: (string | null)[], on?: string[], start?: boolean }, make: () => Promise<unknown>) => {
     if (card) return plan.change.join('\n') === card.join('\n') ? { applied: true, change: plan.change, result: await make() } : { stale: true }
     if ('apply' in cmd && cmd.apply) return { applied: true, change: plan.change, result: await make() }
     if (!('propose' in cmd && cmd.propose)) return dryRun(argv as string[], plan)
-    const key = 'input' in cmd ? cmd.input.key : cmd.key, place = CHANGE_PLACES[cmd.name]!, turn = await alfredTurn()
+    const key = 'input' in cmd ? cmd.input.key : 'key' in cmd ? cmd.key : '', place = CHANGE_PLACES[cmd.name]!, turn = await alfredTurn()
     const target = cmd.name === 'project add' ? undefined : place.target
-    return addChangeCard(store, { turn: turn?.kind ?? 'none', by: ALFRED, label: place.label(key), change: { argv: (argv as string[]).filter(a => a !== '--propose'), lines: plan.change, project: key, ...(turn?.said ? { said: turn.said } : {}), ...(target ? { target } : {}) } })
+    return addChangeCard(store, { turn: turn?.kind ?? 'none', by: ALFRED, label: place.label(key), change: { argv: cardArgv(argv as string[], !!plan.picks), lines: plan.change, project: key, ...(plan.picks ? { picks: plan.picks, ...(plan.on ? { on: plan.on } : {}), start: plan.start } : {}), ...(turn?.said ? { said: turn.said } : {}), ...(target ? { target } : {}) } })
   }
 
   switch (cmd.name) {
@@ -119,8 +136,34 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       return {
         fromV2: true, report: path.join(deps.dataDir ?? DATA_DIR, 'migration-report.md'),
         projects: candidates.map(c => ({ ...c, project: made(c) })),
-        note: 'Read now from the herdr-projects board of this machine (read only). Folders are those of the machine v2 ran on (this one). Add tasks again with wherdr pm task add once the project has a template',
+        note: 'Read now from the herdr-projects board of this machine (read only). Folders are those of the machine v2 ran on (this one). Bring them over with wherdr alfred v2 import --propose (one card); add tasks again with wherdr pm task add once the project is added',
       }
+    }
+    case 'v2 import': {
+      await needPm()
+      // Each v2 project not made yet, on this machine (where v2 ran), its folder checked now (read only).
+      const rows = await Promise.all((await v2Projects(store, deps.herdrProjects))
+        .filter(c => !projects.some(p => p.path === c.path || p.name === c.name))
+        .map(async (c) => {
+          const why = await deps.check('', c.path).then(() => '', (e: Error) => e.message)
+          return { c, why, line: `${c.key} "${c.name}" on this machine, folder ${c.path}${why ? `: cannot be added: ${why}` : ''}` }
+        }))
+      if (!rows.length) throw new HerdrError('not_found', 'No v2 project left to bring over (see wherdr alfred v2)')
+      const only = cmd.only && new Set(cmd.only)
+      return change({ change: rows.map(r => r.line), picks: rows.map(r => (r.why ? null : r.c.key)), ...(cmd.only ? { on: cmd.only } : {}), start: cmd.start }, async () => {
+        // One project failing does not stop the others: each line says what happened.
+        const outcome: string[] = []
+        for (const { c, why } of rows) {
+          if (why || (only && !only.has(c.key))) continue
+          try { await store.addProject({ key: c.key, name: c.name, machine: '', path: c.path, ...(c.base ? { base: c.base } : {}) }, deps.check) }
+          catch (e) { outcome.push(`${c.key}: not added: ${(e as Error).message}`); continue }
+          if (!cmd.start) { outcome.push(`${c.key}: added`); continue }
+          // No workflow needed: the minimal default; its first message asks the user how they work.
+          try { await startCoordinator(deps, c.key, await projectAgent(c.key), deps.urls, [FIRST_TALK]); outcome.push(`${c.key}: added, coordinator started`) }
+          catch (e) { outcome.push(`${c.key}: added; coordinator not started: ${(e as Error).message}`) }
+        }
+        return { outcome }
+      })
     }
     case 'machines': return { machines: machines.map(m => ({ key: m.key, label: m.label, local: m.local, status: m.status })) }
     case 'coordinators': return { coordinators: await Promise.all((await coordinatorsView(store)).map(async c => ({ project: c.project, name: c.name, agent: c.main ? c.agent?.program : (await projectAgent(c.project)).program, ...runState(c.terminal) }))) }

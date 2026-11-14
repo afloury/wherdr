@@ -56,6 +56,8 @@ export type AlfredCommand =
   // the call's input, so no card: the parser refuses --propose).
   | { name: 'project memory', apply: boolean, propose?: true, key: string }
   | { name: 'coordinator start', apply: boolean, propose?: true, key: string, program?: 'claude' | 'codex', resume?: true }
+  // Every v2 project not made yet, in one change: only: the keys to add (none: all); start: their coordinators too.
+  | { name: 'v2 import', apply: boolean, propose?: true, only?: string[], start: boolean }
   // No change given: the project's guards are shown.
   | { name: 'project guards', apply: boolean, propose?: true, key: string, change: { protect?: string[], mergeProtected?: MergeBy, mergeOthers?: MergeBy, contributorPrs?: 'off' | 'others' | 'all' } }
   // Proposal only: --propose puts a card in the reply, the user clicks Apply.
@@ -76,6 +78,7 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'tell <KEY> "<text>"', does: 'send a message to the project\'s coordinator, as from Alfred (started first when it does not run); written to the project\'s log' },
   { usage: 'last <KEY>', does: 'the last reply of the project\'s coordinator, and whether it is still working' },
   { usage: 'v2', does: 'when the user comes from wherdr v2: its projects, read now from the herdr-projects board of this machine (suggested key, name, folder on this machine and whether it is there: here, base branch, v2 settings to redo, open tasks), each with the v3 project made from it, if any, and the migration report' },
+  { usage: 'v2 import [--only <KEY,KEY>] [--start no]', does: 'bring over every v2 project not made yet, in one change: each added on this machine with its v2 folder (one whose folder cannot be added is listed with why), then its coordinator started (no workflow needed: it starts with the minimal default and its first message asks the user how they work). With --propose, one card: a checkbox per project and one for starting their coordinators; --only: the keys to add; --start no: add only. The outcome lists each project' },
   { usage: 'settings', does: 'the synced settings, their values, and the values each one Alfred may change accepts (1 = on, 0 = off)' },
   { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]', does: 'add a project: a git folder on a machine' },
   { usage: 'project template <KEY> <id|none>', does: 'replace the project\'s workflow with a copy of a template or example:<id> (its guards come with it), or none' },
@@ -85,7 +88,7 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'project machine add <KEY> <machine> --clone <folder>', does: 'let the project\'s tasks run on another machine (its key or label), in its clone of the repo there; once applied, the machine\'s readiness check runs and its result is in the answer' },
   { usage: 'project machine remove <KEY> <machine>', does: 'the project\'s tasks no longer start on that machine (tasks already there stay)' },
   { usage: 'coordinator start <KEY> [--program claude|codex] [--resume]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one); --resume takes up its last conversation again, with the agent that ran it' },
-  { usage: '<change> --propose', does: 'instead of --apply, any change above (project add, template, guards, machine, coordinator start): a card in your reply (the change, Show me, Cancel, Apply) the user applies with one click. Only in a turn that comes from the user' },
+  { usage: '<change> --propose', does: 'instead of --apply, any change above (project add, template, guards, machine, coordinator start, v2 import): a card in your reply (the change, Show me, Cancel, Apply) the user applies with one click. Only in a turn that comes from the user' },
   { usage: 'setting set <key> <value> [--propose]', does: 'propose a setting change, to one of the values `settings` lists for it: without --propose it only shows the change; with it, a card in your reply (before → after, Show me, Cancel, Apply) the user applies. Only in a turn that comes from the user; you never apply it yourself' },
 ]
 
@@ -97,9 +100,10 @@ const FLAGS: Record<string, string[]> = {
   'project guards': ['protect', 'merge-protected', 'merge-others', 'contributor-prs'],
   'project machine': ['clone'],
   'ui open': ['target', 'project'],
+  'v2 import': ['only', 'start'],
 }
 
-export const CHANGES = ['project add', 'project template', 'project memory', 'project guards', 'project machine', 'coordinator start']
+export const CHANGES = ['project add', 'project template', 'project memory', 'project guards', 'project machine', 'coordinator start', 'v2 import']
 const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMANDS.filter(c => c.usage.startsWith(verb)).map(c => c.usage).join(' | ')}${CHANGES.some(v => verb.startsWith(v)) ? ' [--apply]' : ''}` })
 
 // argv after `wherdr alfred` → a command, or the reason it is not one.
@@ -193,6 +197,13 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
     if (program !== undefined && program !== 'claude' && program !== 'codex') return { error: '--program is claude or codex' }
     if (program && resume) return { error: '--resume takes up the conversation with the agent that ran it: no --program' }
     return { name: verb, apply, key: key(w2), ...(program ? { program: program as 'claude' | 'codex' } : {}), ...(resume ? { resume: true as const } : {}) }
+  }
+  if (verb === 'v2 import') {
+    const { only, start } = flags
+    if (w2) return usage(verb)
+    if (start !== undefined && start !== 'yes' && start !== 'no') return { error: '--start is yes or no' }
+    const keys = only?.split(',').map(k => k.trim().toUpperCase()).filter(Boolean)
+    return { name: verb, apply, ...(keys ? { only: keys } : {}), start: start !== 'no' }
   }
   if (verb === 'setting set') {
     if (!w2 || w3 === undefined || rest.length) return usage(verb)

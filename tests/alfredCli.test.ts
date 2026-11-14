@@ -16,6 +16,12 @@ import { cliTokenCall } from '../server/utils/network'
 import { common } from '../shared/pm/examples'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 
+// A coordinator's start is not run here: APP's fails, the others start.
+const started = vi.hoisted(() => [] as { key: string, first?: string[] }[])
+vi.mock('../server/utils/pmCoordinator', async orig => ({
+  ...(await orig<object>()),
+  startCoordinator: vi.fn(async (_d: unknown, key: string, _a: unknown, _u: unknown, first?: string[]) => { if (key === 'APP') throw new Error('agent missing'); started.push({ key, first }); return { terminal: `t-${key}` } }),
+}))
 vi.mock('../server/utils/pmReady', () => ({ checkMachine: vi.fn(async () => ({ items: [], at: 1, refused: 'gh login: not logged in' })) }))
 
 describe('parseAlfredCommand', () => {
@@ -89,7 +95,7 @@ describe('runAlfredCommand', () => {
   let herdrProjects = ''
   const deps = () => ({
     store, machines: () => machines, panes: () => [], urls: { local: 'http://127.0.0.1:7690' }, settingsFile: path.join(dir, 'settings.json'), dataDir: dir, herdrProjects,
-    check: async (m: string, f: string) => { if (failCheck) throw new Error('path: a folder inside the home folder'); checked.push(`${m}:${f}`); return { path: f.replace(/^~/, '/home/user'), git: true } },
+    check: async (m: string, f: string) => { if (failCheck) throw new Error('path: a folder inside the home folder'); if (f.endsWith('/gone')) throw new Error('This folder does not exist'); checked.push(`${m}:${f}`); return { path: f.replace(/^~/, '/home/user'), git: true } },
   }) as unknown as Parameters<typeof runAlfredCommand>[0]
   const run = (...argv: string[]) => runAlfredCommand(deps(), token, { argv })
 
@@ -137,6 +143,32 @@ describe('runAlfredCommand', () => {
     expect(r).toMatchObject({ fromV2: true, report: path.join(dir, 'migration-report.md') })
     // APP keeps its own key; the others get free ones.
     expect(r.projects.map(p => [p.key, p.project, p.tasks.length])).toEqual([['APP', 'APP', 2], ['GONE', null, 0], ['MYDOCS', null, 0], ['SITE', null, 1]])
+  })
+
+  it('brings every v2 project over in one card: the checked ones added, their coordinators started, no workflow needed', async () => {
+    herdrProjects = path.resolve(__dirname, 'fixtures/v2-install/herdr-projects')
+    await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind: 'user', at: Date.now() } })
+    expect(parseAlfredCommand(['v2', 'import', '--only', 'app,site', '--start', 'no'])).toEqual({ name: 'v2 import', apply: false, only: ['APP', 'SITE'], start: false })
+    await run('v2', 'import', '--propose')
+    const card = (await store.coordinator(MAIN))!.cards![0]!
+    // One line per project; GONE's folder is missing: no checkbox.
+    expect(card).toMatchObject({ label: 'Projects from wherdr v2', change: { argv: ['v2', 'import'], picks: ['APP', null, 'MYDOCS', 'SITE'], start: true } })
+    expect(card.change!.lines[1]).toBe('GONE "gone" on this machine, folder /home/user/code/gone: cannot be added: This folder does not exist')
+    // MYDOCS unchecked: skipped. APP's coordinator fails to start: SITE still goes on.
+    const choice = { picks: ['APP', 'SITE'], start: true }
+    const done = await actOnCard({ store, applyChange: (argv: string[], lines: string[], c?: typeof choice) => applyProposedChange(deps(), argv, lines, c) } as never, card.id, undefined, false, choice)
+    expect(done).toMatchObject({ state: 'done', outcome: { lines: ['APP: added; coordinator not started: agent missing', 'SITE: added, coordinator started'] } })
+    expect((await store.projects()).map(p => [p.key, p.from])).toEqual([['APP', undefined], ['SITE', undefined]])
+    expect(started).toEqual([{ key: 'SITE', first: [expect.stringContaining('Your first conversation')] }])
+    // --only and --start no are the card's defaults; an Apply without a choice keeps them.
+    await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind: 'user', at: Date.now() } })
+    await run('v2', 'import', '--only', 'mydocs', '--start', 'no', '--propose')
+    const narrow = (await store.coordinator(MAIN))!.cards![0]!
+    expect(narrow.change).toMatchObject({ argv: ['v2', 'import'], picks: [null, 'MYDOCS'], on: ['MYDOCS'], start: false })
+    expect(await actOnCard({ store, applyChange: (argv: string[], lines: string[], c?: typeof choice) => applyProposedChange(deps(), argv, lines, c) } as never, narrow.id, undefined)).toMatchObject({ outcome: { lines: ['MYDOCS: added'] } })
+    expect(started).toHaveLength(1)
+    // A project without a template: its coordinator starts all the same.
+    expect(await run('coordinator', 'start', 'APP')).toMatchObject({ dryRun: true, change: ['start the coordinator of APP with claude on this machine'] })
   })
 
   it('adds a note to the coordinator\'s memory.md after a yes only', async () => {
