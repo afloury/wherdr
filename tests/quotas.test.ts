@@ -7,7 +7,7 @@ import { machineQuotaRows, quotaRows, tabQuotaRows } from '../app/utils/quotas'
 import type { Quota } from '../shared/types'
 import { type CodexScreenWeekly, weekFromScreen } from '../shared/codexStatus'
 import { createShellFs, localFs } from '../server/utils/fsx'
-import { applyCodexKnown, claudeQuota, claudeSetupState, codexAccount, codexMemo, codexQuota, codexSessionStart, machineCodexQuota, readCodexMachine, lastCodexLimits, latestCodexQuota, mergeQuotas, readClaude, readCodex, sameAccount } from '../server/utils/quotas'
+import { applyCodexKnown, claudeQuota, claudeSetupState, codexAccount, codexMemo, codexQuota, codexSessionStart, machineCodexQuota, readCodexMachine, lastCodexLimits, lastGoodRead, latestCodexQuota, mergeQuotas, readClaude, readCodex, sameAccount } from '../server/utils/quotas'
 
 describe('quotas', () => {
   it('reads the quotas from Claude Code\'s status line', () => {
@@ -364,6 +364,22 @@ describe('quotas Codex par compte', () => {
       expect(machineQuotaRows(out, 'host-c')).toEqual([])
       expect(machineQuotaRows(out, 'host-a').map(x => x.q.five!.used)).toEqual([92])
     }
+  })
+
+  // WHR-337: a refused remote listing used to read as "no Codex here", so another
+  // machine's old reading showed for one refresh, then the fresh one came back.
+  it('a failed listing is a failed read, never a machine without Codex', async () => {
+    const down = { ...localFs, readdir: () => Promise.reject(Object.assign(new Error('timeout'), { code: 'unreachable' })) }
+    await expect(readCodexMachine(down, '/nowhere')).rejects.toThrow('timeout')
+  })
+
+  it('a failed read keeps the machine\'s last good reading for a while, then lets it go', () => {
+    const memo = new Map()
+    const good = { q: null, seen: true }
+    expect(lastGoodRead(memo, 'host-a', good, 1000)).toBe(good)
+    expect(lastGoodRead(memo, 'host-a', null, 1000 + 14 * 60000)).toBe(good)
+    expect(lastGoodRead(memo, 'host-b', null, 1000)).toBeNull()
+    expect(lastGoodRead(memo, 'host-a', null, 1000 + 16 * 60000)).toBeNull()
   })
 
   it('tells a machine without Codex conversations from one waiting for its first limits', async () => {

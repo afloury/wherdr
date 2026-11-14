@@ -439,11 +439,17 @@ body.short-bottom { --safe-bottom: 0px; }
 .quota-who { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; border-right: 1px solid var(--line); min-width: 0; }
 .quota-who small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; font: 400 8.5px/1 var(--mono); color: var(--dim); white-space: nowrap; }
 .quota-who small .iconify { width: 9px; height: 9px; margin-right: 2px; vertical-align: -1px; }
-/* Reading older than an hour: age in ochre, numbers dimmed. Window
-   reset since the reading (100 % assumed): hatched bar. */
+/* Reading older than an hour: age in ochre, numbers dimmed. Window whose value
+   is no longer known (reset since the reading, or read longer ago than it
+   lasts): `?` and a dashed bar in muted tones, same height as a known one. */
 .quota-row.stale .quota-who small { color: var(--ochre); }
 .quota-row.stale .quota-top b { color: var(--muted); }
-.quota.guessed .quota-bar i { background: repeating-linear-gradient(90deg, var(--teal) 0 4px, transparent 4px 7px); }
+.quota.guessed { position: relative; cursor: help; outline: 0; }
+/* Its tooltip: over the row (nothing moves), on hover, keyboard focus or a tap. */
+.quota-tip { display: none; position: absolute; z-index: 5; top: calc(100% + 4px); left: 4px; right: 4px; padding: 5px 8px; border: 1px solid var(--line); background: var(--bg-2); color: var(--text-2); font: 400 10px/1.35 var(--mono); }
+.quota.guessed:hover .quota-tip, .quota.guessed:focus-visible .quota-tip, .quota.guessed.open .quota-tip { display: block; }
+.quota.guessed .quota-top b { color: var(--muted); }
+.quota.guessed .quota-bar i { background: repeating-linear-gradient(90deg, var(--dim) 0 4px, transparent 4px 7px); }
 .quota-who .avatar { width: 18px; height: 18px; border: 0; background: none; }
 .quota-who .avatar .iconify { width: 14px; height: 14px; }
 .quota-who .avatar.codex .iconify { width: 17px; height: 17px; }
@@ -465,9 +471,8 @@ body.short-bottom { --safe-bottom: 0px; }
 .quota-row.quota-api { grid-template-columns: 44px 1fr; min-height: 34px; }
 .quota-api-label { margin: 0; padding: 4px 10px; align-self: center; min-width: 0; font: 400 10px/1.3 var(--mono); letter-spacing: .04em; color: var(--dim); overflow-wrap: anywhere; }
 .quota-limited { color: var(--danger); }
-/* Credits, and how to refresh an old reading: one line across the row. */
+/* Credits: one line across the row. */
 .quota-note { grid-column: 1 / -1; margin: 0; padding: 3px 8px; border-top: 1px solid var(--line); font: 400 9.5px/1.3 var(--mono); color: var(--dim); overflow-wrap: anywhere; }
-.quota-row.stale .quota-note { color: var(--ochre); }
 
 .agent-group { margin-bottom: 26px; }
 .group-title {
@@ -580,9 +585,10 @@ body.short-bottom { --safe-bottom: 0px; }
 .state-machine-dot { width: 6px; height: 6px; flex: none; background: var(--green); }
 .state-machine-name { min-width: 0; max-width: 18ch; overflow: hidden; text-overflow: ellipsis; }
 .state-machine-quotas { margin: -6px 0 18px; }
-.state-machine-quotas-label { margin: 0 0 6px; font: 500 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+.state-machine-quotas-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 6px; }
+.state-machine-quotas-label { margin: 0; font: 500 10px/1 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
 .state-machine-quotas .quotas { margin: 0; }
-.state-machine-quotas-machines { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; padding: 0; list-style: none; }
+.state-machine-quotas-machines { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
 .state-machine-quotas-machines li { padding: 2px 6px; border: 1px solid var(--line); font: 500 10px/1.3 var(--mono); color: var(--text-2); }
 .machine-empty.state-empty { margin-left: 0; }
 .state-away {

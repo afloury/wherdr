@@ -169,9 +169,14 @@ function lastLimits(lines: string[]): CodexLimits | null {
   return null
 }
 
+// A missing folder is empty; any other failure (refused session, timeout)
+// throws: a machine that could not be read must never look "without Codex".
 async function ls(fs: MachineFs, d: string) {
   try { return await fs.readdir(d) }
-  catch { return [] }
+  catch (e) {
+    if ((e as { code?: string } | null)?.code === 'ENOENT') return []
+    throw e
+  }
 }
 
 // Claude reading of a machine, with its account fingerprint if known.
@@ -555,8 +560,8 @@ async function canInstall(m: QuotaMachine): Promise<boolean> {
 // A legacy Claude read spans separate SSH requests (status, fingerprint, setup).
 // Even after reading a new status file, a later request can fail. Retrying once
 // recovers a refused multiplexed session without hiding the machine's gauge.
-// Never substitute the last successful reading: that cache had no expiry and
-// could mask a newer file indefinitely, independently of the 30-second TTL.
+// Both failing: null, and readQuotas falls back on the last good reading for a
+// bounded time (lastGoodRead), never indefinitely.
 async function readMachineClaude(m: QuotaMachine): Promise<ClaudeMachineReading | null> {
   for (let attempt = 1; attempt <= 2; attempt++) {
     try { return await readClaude(m.fs, m.home) }
@@ -573,17 +578,37 @@ async function readMachineClaude(m: QuotaMachine): Promise<ClaudeMachineReading 
   return null
 }
 
+// A remote read sometimes fails (core `machine.exec` timeout or refusal):
+// dropping that machine's reading for one refresh let another machine's old
+// reading show instead, or split a shared account into per-machine blocks, and
+// the next refresh flipped back (WHR-337). A failed read (null) reuses the
+// machine's last good one, with its own reading time (the app marks it stale
+// once past its window), for KEEP_MS at most after that good read: a machine
+// that keeps failing ends up without a gauge rather than a masked one.
+const KEEP_MS = 15 * 60000
+export type LastGood<T> = Map<string, { v: T, at: number }>
+export function lastGoodRead<T>(memo: LastGood<T>, key: string, read: T | null, now = Date.now()): T | null {
+  if (read !== null) { memo.set(key, { v: read, at: now }); return read }
+  const m = memo.get(key)
+  return m && now - m.at <= KEEP_MS ? m.v : null
+}
+const claudeGood: LastGood<ClaudeMachineReading> = new Map()
+const codexGood: LastGood<{ q: CodexAccountReading | null, seen: boolean }> = new Map()
+
 export async function readQuotas(force = false): Promise<Quotas> {
   if (!force && cache && Date.now() - cache.at < TTL) return cache.q
   const version = ++readVersion
   const all: QuotaMachine[] = await coreMachines()
-  const online = all.filter(m => m.home && (m.local || m.status === 'online'))
+  // An online machine whose home could not be read counts as a failed read.
+  const online = all.filter(m => m.local || m.status === 'online')
   const dismissed = readDismissed()
   const readings = await Promise.all(online.map(async (m) => {
-    const [claude, { q: rolled, seen: codexSeen }] = await Promise.all([
-      readMachineClaude(m),
-      readCodexMachine(m.fs, m.home, codexMemo(m.key)).catch(() => ({ q: null, seen: true })),
+    const [claudeRead, codexRead] = await Promise.all([
+      m.home ? readMachineClaude(m) : null,
+      m.home ? readCodexMachine(m.fs, m.home, codexMemo(m.key)).catch(() => null) : null,
     ])
+    const claude = lastGoodRead(claudeGood, m.key, claudeRead)
+    const { q: rolled, seen: codexSeen } = lastGoodRead(codexGood, m.key, codexRead) ?? { q: null, seen: true }
     const week = rolled?.week ? { used: rolled.week.used, resetsAt: rolled.week.resetsAt, at: rolled.at, account: rolled.account } : null
     const known = knownWeek ? await knownWeek(m.key, week).catch(() => null) : null
     const codex = rolled && applyCodexKnown(rolled, known, Date.now())
