@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { compareVersions, installMode, oneTapMode, parseVersion, updateCommand } from '../shared/updates'
+import { compareVersions, installMode, majorMove, oneTapMode, parseVersion, updateCommand } from '../shared/updates'
 import { RELEASES_URL, createUpdateChecker, fetchUpdateResource } from '../server/utils/updates'
 
 describe('versions', () => {
@@ -132,7 +132,12 @@ describe('a newer major (v3) is announced, never offered', () => {
   it.each(['plugin', 'npm-global', 'brew'])('3.0.0 on GitHub, with its package attached (%s): no update, the card instead', async (mode) => {
     const u = await check([{ tag_name: 'v3.0.0' }], mode)
     expect(u).toMatchObject({ latest: null, checked: true, nextMajor: { version: '3.0.0', url: expect.stringContaining('/releases/tag/v3.0.0'),
-      guide: expect.stringContaining('/blob/v3/docs/migrate-from-v2.md'), command: expect.stringContaining('install-v3-beside-v2.sh') } })
+      guide: expect.stringContaining('/blob/v3.0.0/docs/migrate-from-v2.md'), command: expect.stringContaining('git clone -b v3.0.0 ') } })
+  })
+  it('the card names the found release tag, not the v3 branch', () => {
+    expect(majorMove('owner/wherdr', '3.1.2')).toMatchObject({
+      guide: 'https://github.com/owner/wherdr/blob/v3.1.2/docs/migrate-from-v2.md',
+      command: 'git clone -b v3.1.2 https://github.com/owner/wherdr.git /tmp/wherdr-setup && sh /tmp/wherdr-setup/scripts/install-v3-beside-v2.sh' })
   })
   it('2.6.0 then 3.0.0: 2.6.0 is still offered', async () => {
     for (const mode of ['plugin', 'npm-global', 'brew', 'native']) {

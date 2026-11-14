@@ -10,7 +10,7 @@ it('announces a newer major with its notes, guide and install-beside command, wi
     expect(w.text()).toContain('install-v3-beside-v2.sh')
     const links = w.findAll('a').map(a => a.attributes('href'))
     expect(links).toContain('https://github.com/owner/wherdr/releases/tag/v3.0.0')
-    expect(links).toContain('https://github.com/owner/wherdr/blob/v3/docs/migrate-from-v2.md')
+    expect(links).toContain('https://github.com/owner/wherdr/blob/v3.0.0/docs/migrate-from-v2.md')
     expect(w.findAll('button').map(b => b.text())).toEqual(['Copy command'])
   } finally { w.unmount() }
 }, 60_000)
