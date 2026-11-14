@@ -87,7 +87,7 @@ it('a project without a workflow: its agent and model picked in step 2, then ste
   await click('setup-meet')
   await vi.waitFor(() => expect(useRouter().currentRoute.value.path).toBe('/a/w1:p1'))
   // Kept as its default, then started with it.
-  expect(sent).toEqual([{ agent: { project: 'WEB', program: 'codex', model: 'gpt-5-codex' } }, { start: { project: 'WEB', program: 'codex', model: 'gpt-5-codex' } }, { message: expect.stringContaining('ask me a few questions') }])
+  expect(sent).toEqual([{ agent: { project: 'WEB', program: 'codex', model: 'gpt-5-codex' } }, { start: { project: 'WEB', program: 'codex', model: 'gpt-5-codex' } }])
 })
 
 it('a project without a workflow is set up once its coordinator runs; the board button is then gone', async () => {
@@ -122,7 +122,7 @@ it('adding: opens at step 2 on a new project, with no Back, added in place with 
   await vi.waitFor(() => expect($('setup-add-project')!.hasAttribute('disabled')).toBe(false))
   await click('setup-add-project')
   await vi.waitFor(() => expect($('setup-visibility')).toBeTruthy())
-  expect(added).toMatchObject({ key: 'WEB2', name: 'web', path: '/home/u/web', template: '', color: expect.any(String) })
+  expect(added).toMatchObject({ key: 'WEB2', name: 'web', path: '/home/u/web', color: expect.any(String) })
   expect($('setup-next')!.hasAttribute('disabled')).toBe(false)
   expect($('setup-public-note')).toBeTruthy() // checked: public
 })

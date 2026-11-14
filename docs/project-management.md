@@ -41,10 +41,10 @@ in the project's [Workflow](#workflow) tab for advanced use.
    that lands locally, like `vibe`.
 3. **Meet your coordinator.** The coordinator is the agent you talk to about
    the project: it adds tasks and follows them on the board. *Start with…*
-   starts it, asks it to look at the project and set up how you work with you
-   (the checks before a merge, the reviews, the pace), and opens its
-   conversation. It asks you a few questions, one at a time, then proposes the
-   project's first workflow; your yes saves it, guards included
+   starts it and opens its conversation. Its first message looks at the
+   project and proposes how you work on it (the checks before a merge, the
+   reviews, who merges) as the project's first workflow, saying why; your yes
+   saves it, guards included
    ([Guards](#guards)); see [its first
    conversation](#the-coordinators-first-conversation). Until then its tasks
    follow a minimal default: one task type, `task`, *to do → work → done*.
@@ -62,39 +62,47 @@ in the project's [Workflow](#workflow) tab for advanced use.
 Projects imported from v2 ([Migrate from v2](migrate-from-v2.md)) have no
 workflow either: ask their coordinator, or open the project, then
 *Workflow › Start from a template*. There, an example that needs a remote
-warns when the repository has none; **New › Project** warns the same way.
+warns when the repository has none.
 
-**New › Project** also opens a project's coordinator, or adds a new or empty
-folder (created at start, `git init` offered), or any folder without git (a
-folder of several projects, for instance). A folder without git needs no
-workflow: it has no tasks (a task needs git for its own worktree), and its
-coordinator does the work in it directly. A folder typed, chosen with
-**Browse** or picked in the repository list fills the name and key the same
-way, and one under the machine's home shows as `~/…`. On a computer the sheet
-is wider, with a taller repository list.
+**New › Project** opens straight on adding a project: the machine tabs (with
+several machines), that machine's git repositories with a search, then *Or
+any folder* with **Browse**: a new or empty folder (created at start, `git
+init` offered), or any folder without git (a folder of several projects, for
+instance). Picking one fills the name and key, which you can change; a folder
+under the machine's home shows as `~/…`. There is no template to pick: the
+project gets the minimal default workflow, its coordinator starts at once
+with the agent you chose (*Start with Claude*, *Codex*…), and its first
+message proposes a workflow ([its first
+conversation](#the-coordinators-first-conversation)). A folder without git
+needs no workflow: it has no tasks (a task needs git for its own worktree),
+and its coordinator does the work in it directly. Below, *Existing projects*
+lists the projects whose coordinator does not run, to start it again; those
+running are in the sidebar, and with none stopped the heading is hidden. On a
+computer the sheet is wider, with a taller repository list.
 
 Then ask the coordinator for tasks, and answer what shows under *Your turn* and
 *Decisions*.
 
 ### The coordinator's first conversation
 
-On a project with no accepted workflow, the coordinator's instructions say its
-first conversation with you sets one up:
+On a project with no accepted workflow, the coordinator's first start sends it
+a first message, and its instructions say its first reply proposes one:
 
-1. It looks at the repository: README, docs, CI files, branches, recent
-   commits and PRs.
-2. It introduces itself as the project's coordinator.
-3. On existing code, it says in a few lines what it understood of the project;
-   on an empty or nearly empty repository, it asks what you want to build.
-4. It asks a few short questions on how you work, as choices where it can:
-   strict, like a company or open-source project (protected branches, PRs,
-   reviews, CI checks before merge, you merge), or fast and light, like a
-   personal project (fewer checks, wherdr merges); and what you prefer to
-   approve yourself.
-5. It proposes a workflow (`wherdr pm template edit`), its diff against the
-   minimal default, with the [guards](#guards) that fit, and explains it in a
-   few lines. You accept or refuse it in the [Workflow](#workflow) tab, as any
-   proposal. This first proposal may set guards; later ones never do.
+1. It looks at the repository: README, docs, stack, tests, CI files,
+   branches, recent commits, and where its PRs go (GitHub, Bitbucket, none).
+2. It introduces itself as the project's coordinator and says in a few lines
+   what it understood of the project; on an empty or nearly empty repository,
+   it says so and asks what you want to build.
+3. In that same reply, it proposes a workflow (`wherdr pm template edit`),
+   often from the closest example of the template library, its diff against
+   the minimal default, with the [guards](#guards) that fit, and says in a few
+   lines why (what it saw). Starting the coordinator counts as your request,
+   so it needs no message from you first. You accept or refuse it in the
+   [Workflow](#workflow) tab, as any proposal. This first proposal may set
+   guards; later ones never do.
+4. It then asks, as choices, what you would change: stricter (PRs, reviews,
+   CI checks, you merge) or lighter (fewer checks, wherdr merges), and
+   proposes again.
 
 Until you accept one, tasks follow the minimal default. Once accepted, the
 section leaves the coordinator's instructions.

@@ -45,11 +45,10 @@ describe('folder kinds', () => {
     expect(folderKind({ ...probe, exists: false })).toBe('new')
     expect(folderKind({ ...probe, empty: true })).toBe('empty')
     expect(folderKind(probe)).toBe('plain')
-    const d: ProjectDraft = { machine: '', path: '~/x', name: ' X ', key: 'x', template: 'vibe', gitInit: true, probe }
-    expect(draftBody(d, 'vibe')).toEqual({ key: 'x', name: 'X', machine: '', path: '/home/user/x', template: '', plain: true, create: false, gitInit: false })
-    expect(draftBody(d, 'vibe').template).toBe('') // no git: no template
-    expect(draftBody({ ...d, probe: { ...probe, exists: false } }, 'vibe')).toMatchObject({ create: true, gitInit: true, template: 'vibe' })
-    expect(draftBody({ ...d, gitInit: false, probe: { ...probe, empty: true } }, 'vibe')).toMatchObject({ gitInit: false, template: '' })
+    const d: ProjectDraft = { machine: '', path: '~/x', name: ' X ', key: 'x', gitInit: true, probe }
+    expect(draftBody(d)).toEqual({ key: 'x', name: 'X', machine: '', path: '/home/user/x', plain: true, create: false, gitInit: false })
+    expect(draftBody({ ...d, probe: { ...probe, exists: false } })).toMatchObject({ create: true, gitInit: true })
+    expect(draftBody({ ...d, gitInit: false, probe: { ...probe, empty: true } })).toMatchObject({ gitInit: false })
   })
 
   it('tells the examples that need a remote from those that land locally', () => {
