@@ -571,11 +571,17 @@ the window with unsaved changes asks once whether to discard them. The groups:
   interval wake; stalls then show only through engine wakes) and *At*, each
   wake bringing the goal and the health summary (see
   [Who sends a wake](#who-sends-a-wake)), the routine events it also wakes on,
-  all off by default since the engine handles them (*Task added*: by someone
-  else than this coordinator, such as you, another coordinator or an
-  automation; *Task done*, *Task stuck*, *Ready for you*; an autopilot saved
-  earlier with the old default, *Task done* and *Task stuck*, has them turned
-  off once), and *Look for new work* (scheduled wakes even with nothing to do,
+  a list with a switch per event and one line on what the coordinator does
+  with it: *Task done* (start what follows, tell you, update the notes),
+  *Task stuck* (unblock it before the engine's two failed fixes), *Ready for
+  you* (usually not needed: you already get the notification and the *Tasks
+  to review* card), *Task added* (by someone else than this coordinator, such
+  as you, another coordinator or an automation). A new project starts with
+  *Task done* and *Task stuck* on and the other two off; an existing project
+  keeps its choice (one saved before an earlier version with only these two,
+  then the default, had them turned off once). A question, a choice after
+  review rounds and a block the engine gave up on always wake it. Then
+  *Look for new work* (scheduled wakes even with nothing to do,
   with its own *New tasks / day*); **Limits**: *Tasks / day* (up to 1000,
   empty for no daily limit), *At once* (empty is *Auto*, as many as the
   project's machines have room for; both empty for a new project, while a
@@ -1270,7 +1276,9 @@ the mechanical blocks itself and wakes it only when that fails:
   that, its late result is only noted in History (*its result is dropped*),
   never undoing what a later run did;
 
-These blocks do not wake the coordinator. After 2 failed tries on the same
+With the autopilot's *Task stuck* event on (a new project's default), the
+coordinator is woken once as such a block begins, so it can act before the
+engine's fixes run out; with it off, these blocks do not wake it. After 2 failed tries on the same
 step (or 15 minutes with nothing left to try), wherdr wakes it once (an
 *Engine* wake, whatever the autopilot's events) and says what it tried. Every try, and giving
 up, is written to the task's **History**. Any other failure (a refused merge, a

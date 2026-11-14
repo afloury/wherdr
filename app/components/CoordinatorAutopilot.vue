@@ -11,7 +11,7 @@
 // Slots: `activity` and `settings`, the coordinator window's parts at the top of each tab.
 // `withAgent` (the coordinator window): the answering agent heads Settings, saved
 // and discarded with the rest.
-import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, MAX_PER_DAY, oldDefaults, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, MAX_PER_DAY, oldDefaults, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
 import type { CoordinatorProgram, CoordinatorView } from '#shared/pm/coordinator'
 import { uiTarget } from '#shared/uiTargets'
 
@@ -50,8 +50,13 @@ const dirty = computed(() => agentEdited.value || KEYS.some(edited))
 const saved = ref(false)
 watch(dirty, d => { if (d) saved.value = false })
 
-const EVENT_LABEL: Record<AutopilotEvent, [string, string]> = {
-  added: ['Task added', 'Tâche ajoutée'], done: ['Task done', 'Tâche finie'], stuck: ['Task stuck', 'Tâche bloquée'], ready: ['Ready for you', 'Prête pour toi'],
+// Each routine event: its name, and what the coordinator does with it; listed
+// in this order, the ones a new project starts with first.
+const EVENT_LINE: Record<AutopilotEvent, [string, string]> = {
+  done: ['Task done', 'Start what follows, tell you, update the notes.'],
+  stuck: ['Task stuck', 'Unblock it before the engine\'s two failed fixes.'],
+  ready: ['Ready for you', 'Usually not needed: you already get the notification and the Tasks to review card.'],
+  added: ['Task added', 'Place and plan a task someone else added (you, another coordinator, an automation).'],
 }
 type Tab = 'activity' | 'settings'
 const TABS: [Tab, string][] = [['settings', 'Settings'], ['activity', 'Activity']]
@@ -73,6 +78,7 @@ async function pickTab(k: Tab) {
   tab.value = k
   try { localStorage.setItem(TAB_KEY, k) } catch { /* Storage may be disabled: kept for this visit. */ }
 }
+const EVENT_ORDER = Object.keys(EVENT_LINE) as AutopilotEvent[]
 const toggleEvent = (e: AutopilotEvent) => { form.events = form.events.includes(e) ? form.events.filter(x => x !== e) : [...form.events, e] }
 
 async function act(fn: () => Promise<unknown>) {
@@ -182,14 +188,12 @@ const counters = computed(() => props.c.limits
         </div>
         <p class="muted" data-testid="autopilot-every-hint">{{ tl('Each wake brings the goal and a health summary; skipped when nothing is new.') }}</p>
         <p v-if="!form.every.trim() || form.every.trim() === 'off'" class="muted" data-testid="autopilot-every-off">{{ tl('Every off: stalls then show only through engine wakes.') }}</p>
-        <span class="field-label">{{ tl('Also on', 'Aussi quand') }}</span>
-        <div class="ap-events" role="group">
-          <UButton v-for="e in AUTOPILOT_EVENTS" :key="e" type="button" size="lg" :color="form.events.includes(e) ? 'primary' : 'neutral'" :variant="form.events.includes(e) ? 'solid' : 'outline'"
-            :aria-pressed="form.events.includes(e)" :data-testid="`autopilot-event-${e}`" @click="toggleEvent(e)">
-            {{ tl(...EVENT_LABEL[e]) }}
-          </UButton>
+        <span :id="`ap-events-${c.project}`" class="field-label">{{ tl('Also on', 'Aussi quand') }}</span>
+        <div class="ap-events" role="group" :aria-labelledby="`ap-events-${c.project}`">
+          <USwitch v-for="e in EVENT_ORDER" :key="e" :model-value="form.events.includes(e)" size="lg" :label="tl(EVENT_LINE[e][0])" :description="tl(EVENT_LINE[e][1])"
+            :data-testid="`autopilot-event-${e}`" @update:model-value="toggleEvent(e)" />
         </div>
-        <p class="muted" data-testid="autopilot-events-hint">{{ tl('Off by default: the engine handles them. A question, a choice after review rounds and a block the engine gave up on always wake it. Task added: by someone else than this coordinator.') }}</p>
+        <p class="muted" data-testid="autopilot-events-hint">{{ tl('A question, a choice after review rounds and a block the engine gave up on always wake it.') }}</p>
         <p v-if="fieldError('events')" class="error" role="alert" data-testid="autopilot-error-events">{{ fieldError('events') }}</p>
         <USwitch v-model="form.lookForWork" size="lg" :label="tl('Look for new work', 'Chercher du travail')" data-testid="autopilot-look-for-work"
           :description="tl('Keep the scheduled wakes when there is nothing to do, for a goal that adds its own tasks.', 'Garder les réveils programmés quand il n’y a rien à faire, pour un objectif qui crée ses propres tâches.')" />
@@ -270,5 +274,5 @@ const counters = computed(() => props.c.limits
 .ap-group { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 10px 0 0; border: 0; border-top: 1px solid var(--line); }
 .ap-group > legend { padding: 0 8px 0 0; color: var(--text); }
 .ap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.ap-events { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ap-events { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 10px 16px; padding: 4px 0; }
 </style>

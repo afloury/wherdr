@@ -39,6 +39,7 @@ it('shows today\'s counters against the limits, and the switch saves the autopil
   expect(b.text()).toContain('Autopilot · Off')
   expect(b.find('[data-testid="autopilot-old-defaults"]').text()).toBe('Older defaults: clear the fields for unlimited and Auto')
   expect((b.find('textarea#ap-goal-CO').element as HTMLTextAreaElement).value).toBe('Ship 2.1')
+  expect(b.find('.ap-events').text()).toContain('Task doneStart what follows, tell you, update the notes.')
   await b.find('[data-testid="autopilot-on"]').trigger('click')
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, on: true } }]))
 })

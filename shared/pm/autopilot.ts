@@ -10,9 +10,10 @@ import { escalated, recovering } from './incident'
 import { parseSchedule } from './schedule'
 import type { PaceVerdict } from './pacing'
 import { pacedStart, paceRefusal } from './pace'
-import { engineOwns } from './selfFix'
 
-// Routine events: off by default, the user turns them on in the Autopilot tab.
+// Routine events, each switched in the Autopilot tab: a new project starts
+// with done and stuck on (NEW_AUTOPILOT), so the coordinator chains the next
+// work and acts on a block before the engine gives up.
 export const AUTOPILOT_EVENTS = ['added', 'done', 'stuck', 'ready'] as const
 export type AutopilotEvent = typeof AUTOPILOT_EVENTS[number]
 // What needs judgment wakes the coordinator whatever its events: an agent's
@@ -40,9 +41,10 @@ export const MAX_PER_DAY = 1000
 // 2 at once; a new one is saved with no daily limit and Auto: the account's pace
 // and the machines' room still hold its automatic work.
 export const DEFAULT_AUTOPILOT: Autopilot = { on: false, goal: '', events: [], perDay: 10, atOnce: 2 }
-export const NEW_AUTOPILOT: Autopilot = { ...DEFAULT_AUTOPILOT, perDay: null, atOnce: null }
+export const NEW_AUTOPILOT: Autopilot = { ...DEFAULT_AUTOPILOT, events: ['done', 'stuck'], perDay: null, atOnce: null }
 // Saved before routine events went off by default (WHR-161): the old default
-// events, done and stuck, are dropped once (CoordinatorRecord.quiet marks it).
+// events, done and stuck, are dropped once (CoordinatorRecord.quiet marks it;
+// a new project's record is saved with it, keeping NEW_AUTOPILOT's).
 export const OLD_DEFAULT_EVENTS: AutopilotEvent[] = ['done', 'stuck']
 export const quietEvents = (ap: Autopilot): Autopilot =>
   ap.events.length === OLD_DEFAULT_EVENTS.length && OLD_DEFAULT_EVENTS.every(e => ap.events.includes(e)) ? { ...ap, events: [] } : ap
@@ -259,7 +261,8 @@ export const addedBySelf = (t: Pick<Task, 'addedBy' | 'log'>, key: string, by: s
 // failing) or ready, among those the autopilot wakes for; and, always, an
 // agent's question or a choice after N send-backs (JudgmentEvent).
 // `seen`: each task's last status. A stopped task is not stuck: someone chose to stop it.
-// Nor is a block the engine fixes itself (selfFix.ts): it wakes the coordinator once it gives up;
+// A block the engine fixes itself (selfFix.ts) is stuck too, once, as it starts: with the
+// event on, the coordinator acts before the engine's failed fixes (its give-up still wakes it, as Engine);
 // nor a task stopped again right after the engine resumed it: the engine woke the coordinator for it (recovery.ts).
 // skipped: questions not woken for, already answered by a tell (Task.answered).
 export function autopilotEvents(ap: Autopilot, tasks: Task[], seen: Record<string, TaskStatus>, self?: { key: string, by: string }) {
@@ -274,7 +277,7 @@ export function autopilotEvents(ap: Autopilot, tasks: Task[], seen: Record<strin
     const judgment: JudgmentEvent | undefined = !moved || t.stopped || again ? undefined
       : s === 'waiting' && t.waitKind === 'question' ? 'question' : s === 'ready' && t.step?.yourTurn?.reason === 'rounds' ? 'decide' : undefined
     const ev: AutopilotEvent | undefined = !(t.id in seen) ? (self && addedBySelf(t, self.key, self.by) ? undefined : 'added') : !moved || judgment ? undefined
-      : s === 'waiting' || s === 'stalled' || failed ? (t.stopped || engineOwns(t) || escalated(t) ? undefined : 'stuck') : s === 'done' || s === 'ready' ? s : undefined
+      : s === 'waiting' || s === 'stalled' || failed ? (t.stopped || escalated(t) ? undefined : 'stuck') : s === 'done' || s === 'ready' ? s : undefined
     const why = s === 'stalled' ? t.stall?.reason : failed || judgment === 'decide' ? t.step?.yourTurn?.badge : t.waiting
     const kind = judgment ?? (ev && ap.events.includes(ev) ? ev : undefined)
     if (kind) reasons.push(`${t.id} (${t.title}): ${kind}${kind !== 'added' && kind !== 'done' && kind !== 'ready' && why ? `: ${why.split('\n')[0]}` : ''}`)

@@ -519,9 +519,10 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       if (source) added = { ...added, from: (await copyTemplate(added.key, source, 'user')).from }
       await saveProjects([...list, added])
       if (added.workspace) return added // no coordinator of its own: the workspace's runs it
-      // A new project's tasks at once: Auto, from its machines (an existing project keeps its number).
+      // A new project's tasks at once: Auto, from its machines (an existing project keeps its number);
+      // quiet: its default events (done, stuck) are not the old ones quietEvents drops.
       const coordinator = path.join(files.coordinators, `${added.key}.json`)
-      if (!(await readJson(coordinator))) await writeJson(coordinator, { project: added.key, tokenHash: '', autopilot: NEW_AUTOPILOT } satisfies CoordinatorRecord)
+      if (!(await readJson(coordinator))) await writeJson(coordinator, { project: added.key, tokenHash: '', autopilot: NEW_AUTOPILOT, quiet: true } satisfies CoordinatorRecord)
       return added
     }),
 
