@@ -5,6 +5,7 @@ import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { cleanProjectInput } from '../shared/pm/project'
 import { detectV2, keptDirs, v3AppDir, mapMachines, mapSettings, parseArgs as importArgs, parseEnvFile, parseUnit, remapMachineSettings, runImport, sshProblem, v3MachineKey } from '../scripts/v2-import.mjs'
@@ -304,7 +305,7 @@ describe('installer', () => {
     expect(buildTuning(574 * 1048576)).toEqual({ heapMb: 574, nodeOptions: '--max-old-space-size=1536', prefix: 'nice -n 19 ionice -c3' })
     expect(buildTuning(574 * 1048576, false)?.prefix).toBe('nice -n 19')
     expect(buildTuning(2048 * 1048576)).toBeNull()
-    expect(buildCommand('/d/src', buildTuning(574 * 1048576))).toContain('export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=1536"; { nice -n 19 ionice -c3 npm ci')
+    expect(buildCommand('/d/src', buildTuning(574 * 1048576))).toContain('export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=1536"; rm -rf .output.next && { nice -n 19 ionice -c3 npm ci')
     expect(buildCommand('/d/src', null)).not.toContain('NODE_OPTIONS')
     const up = updateScript({ branch: 'v3', name: 'wherdr-v3', port: '7684' })
     expect(up).toContain(`-lt ${1536 * 1048576} ]`)
@@ -312,6 +313,38 @@ describe('installer', () => {
     expect(up).toContain('$run npm run build')
     expect(hcTarget('linux', 'arm64')).toBe('linux-aarch64')
     expect(hcTarget('linux', 'x64')).toBe('linux-x86_64')
+  })
+
+  it.runIf(process.platform === 'linux')('update.sh builds aside: a failed build keeps .output, a good one swaps it in and keeps .output.prev', () => {
+    const dir = tmp(), bin = path.join(dir, 'bin'), src = path.join(dir, 'src'), log = path.join(dir, 'calls')
+    fs.mkdirSync(bin); fs.mkdirSync(path.join(src, '.output/server'), { recursive: true })
+    fs.writeFileSync(path.join(src, '.output/server/index.mjs'), 'old')
+    const fake = (name: string, body: string) => fs.writeFileSync(path.join(bin, name), `#!/bin/sh\necho "${name} $*" >> ${JSON.stringify(log)}\n${body}\n`, { mode: 0o755 })
+    fake('git', '[ "$1" = rev-parse ] && echo abc1234; exit 0'); fake('systemctl', 'exit 0'); fake('curl', 'exit 0')
+    // The build writes where Nitro is told to, and fails half way when asked to.
+    fake('npm', '[ "$1" = ci ] && exit 0; mkdir -p "$NITRO_OUTPUT_DIR/server"; [ -n "$FAIL" ] && exit 1; echo new > "$NITRO_OUTPUT_DIR/server/index.mjs"')
+    fs.writeFileSync(path.join(dir, 'update.sh'), updateScript({ branch: 'v3', name: 'wherdr-v3', port: '7684' }))
+    const update = (args: string[], env = {}) => spawnSync('bash', [path.join(dir, 'update.sh'), ...args], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, ...env }, encoding: 'utf8' })
+    const read = (p: string) => fs.readFileSync(path.join(src, p, 'server/index.mjs'), 'utf8').trim()
+
+    const bad = update(['3.0.1'], { FAIL: '1' })
+    expect(bad.status).toBe(5)
+    expect(bad.stdout).toContain('ERROR build-failed: the running build (.output) is unchanged')
+    expect(read('.output')).toBe('old')
+    expect(fs.readdirSync(src).sort()).toEqual(['.output'])
+    expect(fs.readFileSync(log, 'utf8')).toContain('git checkout -q -f --detach v3.0.1')
+    expect(fs.readFileSync(log, 'utf8')).not.toContain('systemctl')
+
+    const good = update([])
+    expect(good.status).toBe(0)
+    expect([read('.output'), read('.output.prev')]).toEqual(['new', 'old'])
+    expect(fs.existsSync(path.join(src, '.output.next'))).toBe(false)
+    expect(fs.readFileSync(log, 'utf8')).toContain('git checkout -q -f --detach origin/v3')
+    expect(update(['1.0; rm']).status).toBe(2)
+    // The installer's build (first install and re-run) swaps the same way.
+    fs.writeFileSync(path.join(src, '.output/server/index.mjs'), 'newer')
+    execFileSync('sh', ['-c', buildCommand(src, null)], { env: { ...process.env, PATH: `${bin}:${process.env.PATH}` } })
+    expect([read('.output'), read('.output.prev')]).toEqual(['new', 'newer'])
   })
 
   const io = (home: string, over: Record<string, Res> = {}) => fakeRun({ ...over, 'sh -c command -v': ok('/usr/bin/x'), 'systemctl --user show-environment': ok(), 'systemctl --user is-active': ok('inactive'), '/usr/bin/x --version': ok('hc 0.1.16') })
