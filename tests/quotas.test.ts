@@ -7,7 +7,7 @@ import { machineQuotaRows, quotaRows, tabQuotaRows } from '../app/utils/quotas'
 import type { Quota } from '../shared/types'
 import { type CodexScreenWeekly, weekFromScreen } from '../shared/codexStatus'
 import { createShellFs, localFs } from '../server/utils/fsx'
-import { applyCodexKnown, claudeQuota, claudeSetupState, codexAccount, codexQuota, machineCodexQuota, lastCodexLimits, latestCodexQuota, mergeQuotas, readClaude, readCodex, sameAccount } from '../server/utils/quotas'
+import { applyCodexKnown, claudeQuota, claudeSetupState, codexAccount, codexMemo, codexQuota, codexSessionStart, machineCodexQuota, readCodexMachine, lastCodexLimits, lastGoodRead, latestCodexQuota, mergeQuotas, readClaude, readCodex, sameAccount } from '../server/utils/quotas'
 
 describe('quotas', () => {
   it('reads the quotas from Claude Code\'s status line', () => {
@@ -329,6 +329,241 @@ describe('quotas Codex par compte', () => {
     expect(quotaRows(out)).toEqual([])
     expect(machineQuotaRows(out, 'host-b')).toEqual([])
     expect(machineQuotaRows(out, 'host-a').map(r => r.q.five!.used)).toEqual([8])
+  })
+
+  // Same account on two machines whose Codex writes no fingerprint: same
+  // 5-hour and weekly windows (absolute resets from OpenAI).
+  const FIVE = 1790395200000
+  const WEEK = 1790800000000
+  const win = (at: number, account: string | null, five: number, week: number, fiveReset = FIVE, weekReset = WEEK) =>
+    ({ five: { used: five, resetsAt: fiveReset, minutes: 300 }, week: { used: week, resetsAt: weekReset, minutes: 10080 }, at, account })
+
+  it('same account without fingerprints, same windows: one row at the top', () => {
+    const out = mergeQuotas([r('host-a', 'Host A', win(1, null, 92, 5)), r('host-b', 'Host B', win(2, null, 92, 5, FIVE + 2000, WEEK - 1000))])
+    expect(out.codexAccounts).toBeUndefined()
+    expect(quotaRows(out).map(x => [x.key, x.q.five!.used, x.q.week!.used])).toEqual([['codex', 92, 5]])
+    for (const key of ['host-a', 'host-b']) expect(machineQuotaRows(out, key)).toEqual([])
+  })
+
+  it('same windows: the most recent reading of the account, whatever the machine order', () => {
+    for (const readings of [
+      [r('host-a', 'Host A', win(5, null, 92, 6)), r('host-b', 'Host B', win(2, null, 80, 5))],
+      [r('host-b', 'Host B', win(2, null, 80, 5)), r('host-a', 'Host A', win(5, null, 92, 6))],
+    ]) expect(quotaRows(mergeQuotas(readings)).map(x => x.q.five!.used)).toEqual([92])
+  })
+
+  it('a machine without Codex does not split the shared row; one with Codex but no reading does', () => {
+    const a = r('host-a', 'Host A', win(1, null, 92, 5))
+    const b = r('host-b', 'Host B', win(2, null, 92, 5))
+    const none = { ...r('host-c', 'Host C', null), codexSeen: false }
+    expect(quotaRows(mergeQuotas([a, b, none])).map(x => x.key)).toEqual(['codex'])
+    expect(quotaRows(mergeQuotas([r('host-a', 'Host A', win(1, 'aaaaaaaaaaaaaaaa', 92, 5)), none])).map(x => x.key)).toEqual(['codex'])
+    for (const waiting of [{ ...r('host-c', 'Host C', null), codexSeen: true }, r('host-c', 'Host C', null)]) {
+      const out = mergeQuotas([a, b, waiting])
+      expect(quotaRows(out)).toEqual([])
+      expect(machineQuotaRows(out, 'host-c')).toEqual([])
+      expect(machineQuotaRows(out, 'host-a').map(x => x.q.five!.used)).toEqual([92])
+    }
+  })
+
+  // WHR-337: a refused remote listing used to read as "no Codex here", so another
+  // machine's old reading showed for one refresh, then the fresh one came back.
+  it('a failed listing is a failed read, never a machine without Codex', async () => {
+    const down = { ...localFs, readdir: () => Promise.reject(Object.assign(new Error('timeout'), { code: 'unreachable' })) }
+    await expect(readCodexMachine(down, '/nowhere')).rejects.toThrow('timeout')
+  })
+
+  it('a failed read keeps the machine\'s last good reading for as long as it fails', () => {
+    const memo = new Map()
+    const good = { q: null, seen: true }
+    const late = { q: null, seen: false }
+    expect(lastGoodRead(memo, 'host-a', good, 2)).toBe(good)
+    expect(lastGoodRead(memo, 'host-a', null, 3)).toBe(good)
+    // A slower older poll finishing late does not replace it.
+    expect(lastGoodRead(memo, 'host-a', late, 1)).toBe(late)
+    expect(lastGoodRead(memo, 'host-a', null, 4)).toBe(good)
+    expect(lastGoodRead(memo, 'host-b', null, 4)).toBeNull()
+  })
+
+  it('a file read failed by the session fails the machine read instead of emptying it', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-file-down-'))
+    const now = new Date()
+    const dir = path.join(home, '.codex/sessions', String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0'))
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'rollout-a.jsonl'), JSON.stringify({ timestamp: now.toISOString(), payload: { rate_limits: { primary: { used_percent: 8, window_minutes: 300 } } } }) + '\n')
+    const down = { ...localFs, read: () => Promise.reject(Object.assign(new Error('timeout'), { code: 'unreachable' })) }
+    try { await expect(readCodexMachine(down, home)).rejects.toThrow('timeout') }
+    finally { fs.rmSync(home, { recursive: true, force: true }) }
+  })
+
+  it('tells a machine without Codex conversations from one waiting for its first limits', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-seen-'))
+    try {
+      expect(await readCodexMachine(localFs, home)).toEqual({ q: null, seen: false })
+      const now = new Date()
+      const dir = path.join(home, '.codex/sessions', String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0'))
+      fs.mkdirSync(dir, { recursive: true })
+      fs.writeFileSync(path.join(dir, 'rollout-new.jsonl'), JSON.stringify({ timestamp: now.toISOString(), type: 'session_meta', payload: { id: 'x' } }) + '\n')
+      expect(await readCodexMachine(localFs, home)).toEqual({ q: null, seen: true })
+    } finally { fs.rmSync(home, { recursive: true, force: true }) }
+  })
+
+  it('a fingerprinted and an unidentified reading of the same windows share the top row', () => {
+    const out = mergeQuotas([r('host-a', 'Host A', win(1, 'aaaaaaaaaaaaaaaa', 92, 5)), r('host-b', 'Host B', win(2, null, 92, 5))])
+    expect(out.codexAccounts).toBeUndefined()
+    expect(quotaRows(out).map(x => x.key)).toEqual(['codex'])
+  })
+
+  it.each([
+    ['different 5-hour reset', win(2, null, 92, 5, FIVE + 3600000)],
+    ['different weekly reset', win(2, null, 92, 5, FIVE, WEEK + 86400000)],
+    ['resets just over a minute apart', win(2, null, 92, 5, FIVE + 61000, WEEK + 61000)],
+    ['no weekly window', { ...win(2, null, 92, 5), week: null }],
+    ['week not started (unused windows may report "now + length")', win(2, null, 92, 0)],
+    ['another known fingerprint on the same windows', win(2, 'bbbbbbbbbbbbbbbb', 92, 5)],
+  ])('two accounts: one row per machine (%s)', (_, other) => {
+    const first = win(1, other.account ? 'aaaaaaaaaaaaaaaa' : null, 92, other.week?.used === 0 ? 0 : 5)
+    const out = mergeQuotas([r('host-a', 'Host A', first), r('host-b', 'Host B', other)])
+    expect(quotaRows(out)).toEqual([])
+    expect(out.codexAccounts!.map(a => a.machines.map(m => m.key))).toEqual([['host-a'], ['host-b']])
+    expect(machineQuotaRows(out, 'host-b').map(x => x.q.five!.resetsAt)).toEqual([other.five.resetsAt])
+  })
+
+  it('an unidentified machine never bridges two known accounts', () => {
+    const out = mergeQuotas([
+      r('host-a', 'Host A', win(1, 'aaaaaaaaaaaaaaaa', 92, 5)),
+      r('host-b', 'Host B', win(2, null, 92, 5)),
+      r('host-c', 'Host C', win(3, 'bbbbbbbbbbbbbbbb', 40, 70, FIVE + 7200000, WEEK + 172800000)),
+    ])
+    expect(out.codexAccounts!.map(a => [a.machines.map(m => m.key), a.five!.used])).toEqual([[['host-a', 'host-b'], 92], [['host-c'], 40]])
+  })
+
+  it('account switch on one unidentified machine: no numbers inherited from the other account', async () => {
+    // Host B switched from account A (shared with host A) to another account,
+    // no fingerprint anywhere: its new conversation has other windows.
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-switch-nofp-'))
+    const now = new Date()
+    const dir = path.join(home, '.codex/sessions', String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0'))
+    fs.mkdirSync(dir, { recursive: true })
+    const at = (ms: number) => new Date(now.getTime() + ms).toISOString()
+    const limits = (ts: string, five: number, week: number, fiveReset: number, weekReset: number) => JSON.stringify({ timestamp: ts, type: 'event_msg', payload: { rate_limits: {
+      primary: { used_percent: five, window_minutes: 300, resets_at: Math.round(fiveReset / 1000) },
+      secondary: { used_percent: week, window_minutes: 10080, resets_at: Math.round(weekReset / 1000) },
+    } } })
+    const fiveA = now.getTime() + 3600000
+    const weekA = now.getTime() + 3 * 86400000
+    fs.writeFileSync(path.join(dir, 'rollout-old.jsonl'), [
+      JSON.stringify({ timestamp: at(-120000), type: 'session_meta', payload: { id: 'old' } }),
+      limits(at(-120000), 92, 5, fiveA, weekA),
+    ].join('\n'))
+    const current = path.join(dir, 'rollout-new.jsonl')
+    fs.writeFileSync(current, JSON.stringify({ timestamp: at(-1000), type: 'session_meta', payload: { id: 'new' } }) + '\n')
+    const hostA = { ...win(now.getTime(), null, 92, 5, Math.round(fiveA / 1000) * 1000, Math.round(weekA / 1000) * 1000) }
+    try {
+      // New conversation, no limits yet: nothing for host B, host A alone.
+      let out = mergeQuotas([r('host-a', 'Host A', hostA), r('host-b', 'Host B', await readCodex(localFs, home))])
+      expect(tabQuotaRows(quotaRows(out), machineQuotaRows(out, 'host-b')).map(x => x.q.five!.used)).toEqual([])
+      // First limits of the other account: its own row, never 92 % / 5 %.
+      fs.appendFileSync(current, limits(at(0), 8, 40, now.getTime() + 4 * 3600000, now.getTime() + 6 * 86400000) + '\n')
+      out = mergeQuotas([r('host-a', 'Host A', hostA), r('host-b', 'Host B', await readCodex(localFs, home))])
+      expect(tabQuotaRows(quotaRows(out), machineQuotaRows(out, 'host-b')).map(x => [x.q.five!.used, x.q.week!.used])).toEqual([[8, 40]])
+      expect(tabQuotaRows(quotaRows(out), machineQuotaRows(out, 'host-a')).map(x => [x.q.five!.used, x.q.week!.used])).toEqual([[92, 5]])
+    } finally { fs.rmSync(home, { recursive: true, force: true }) }
+  })
+
+  it('reads the fingerprint and start of a session_meta line longer than 512 KiB', async () => {
+    const meta = JSON.stringify({ timestamp: '2026-01-02T03:04:05.000Z', type: 'session_meta', payload: { creator_account_id: 'acct-test-1', id: 'x', base_instructions: { text: 'x'.repeat(600 * 1024) } } })
+    const cut = meta.slice(0, 512 * 1024)
+    expect(codexAccount(cut)).toBe(codexAccount(meta))
+    expect(codexAccount(cut)).toMatch(/^[0-9a-f]{16}$/)
+    expect(codexSessionStart(cut)).toBe(Date.parse('2026-01-02T03:04:05.000Z'))
+    expect(codexSessionStart(meta)).toBe(Date.parse('2026-01-02T03:04:05.000Z'))
+    expect(codexSessionStart('{"timestamp":"2026-01-02T03:04:05.000Z","type":"event_msg"')).toBe(0)
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-long-meta-'))
+    const now = new Date()
+    const dir = path.join(home, '.codex/sessions', String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0'))
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'rollout-long.jsonl'), meta + '\n' + JSON.stringify({ timestamp: now.toISOString(), payload: { rate_limits: { primary: { used_percent: 8, window_minutes: 300 } } } }) + '\n')
+    try {
+      expect(await readCodex(localFs, home)).toMatchObject({ account: codexAccount(meta), five: { used: 8 } })
+    } finally { fs.rmSync(home, { recursive: true, force: true }) }
+  })
+
+  it('a failed head read keeps the machine in its fingerprint group', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-head-error-'))
+    const now = new Date()
+    const dir = path.join(home, '.codex/sessions', String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0'))
+    fs.mkdirSync(dir, { recursive: true })
+    const meta = JSON.stringify({ timestamp: now.toISOString(), type: 'session_meta', payload: { creator_account_id: 'acct-test-1' } })
+    // Past 64 KiB: the limits are read from the end, the head from the start.
+    fs.writeFileSync(path.join(dir, 'rollout-a.jsonl'), meta + '\n' + JSON.stringify({ type: 'pad', text: 'x'.repeat(70 * 1024) }) + '\n' + JSON.stringify({ timestamp: now.toISOString(), payload: { rate_limits: { primary: { used_percent: 8, window_minutes: 300 } } } }) + '\n')
+    let failHead = false
+    const flaky = { ...localFs, read: (p: string, start: number, len: number) => (failHead && start === 0 ? Promise.reject(new Error('ssh')) : localFs.read(p, start, len)) }
+    const memo = codexMemo(`test-${home}`)
+    const fp = codexAccount(meta)!
+    try {
+      for (failHead of [false, true]) {
+        const q = (await readCodexMachine(flaky, home, memo)).q!
+        expect(q.account).toBe(fp)
+        const out = mergeQuotas([r('host-a', 'Host A', cx(1, fp)), r('host-b', 'Host B', q)])
+        expect(out.codexAccounts).toBeUndefined()
+        expect(out.accounts!.map(a => a.key)).toEqual([`codex:${fp.slice(0, 8)}`])
+      }
+    } finally { fs.rmSync(home, { recursive: true, force: true }) }
+  })
+
+  it('an account switch is remembered before its first limits: a later unidentified read never joins the old account', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-switch-memo-'))
+    const now = Date.now()
+    const dir = path.join(home, '.codex/sessions', ...((d: Date) => [String(d.getFullYear()), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')])(new Date(now)))
+    fs.mkdirSync(dir, { recursive: true })
+    const week = now + 3 * 86400000
+    const ts = (ms: number) => new Date(now + ms).toISOString()
+    const meta = (ms: number, id: string) => JSON.stringify({ timestamp: ts(ms), type: 'session_meta', payload: { creator_account_id: id } })
+    const limits = (ms: number) => JSON.stringify({ timestamp: ts(ms), payload: { rate_limits: {
+      primary: { used_percent: 5, window_minutes: 300, resets_at: Math.round((now + 4 * 3600000) / 1000) },
+      secondary: { used_percent: 31, window_minutes: 10080, resets_at: Math.round(week / 1000) },
+    } } })
+    const pad = JSON.stringify({ type: 'pad', text: 'x'.repeat(70 * 1024) })
+    const file = (n: string, ...lines: string[]) => fs.writeFileSync(path.join(dir, n), lines.join('\n') + '\n')
+    const memo = codexMemo(`test-${home}`)
+    const flaky = { ...localFs, read: (p: string, start: number, len: number) => (p.endsWith('rollout-c.jsonl') && start === 0 ? Promise.reject(new Error('ssh')) : localFs.read(p, start, len)) }
+    try {
+      file('rollout-a.jsonl', meta(-3000, 'acct-test-1'), limits(-3000))
+      expect((await readCodexMachine(flaky, home, memo)).q!.lastAccount).toBe(codexAccount(meta(0, 'acct-test-1')))
+      file('rollout-b.jsonl', meta(-2000, 'acct-test-2'))
+      expect((await readCodexMachine(flaky, home, memo)).q).toBeNull()
+      file('rollout-c.jsonl', meta(-1000, 'acct-test-2'), pad, limits(-1000))
+      const q = (await readCodexMachine(flaky, home, memo)).q!
+      expect([q.account, q.lastAccount]).toEqual([null, codexAccount(meta(0, 'acct-test-2'))])
+      const a = { ...win(now - 14 * 3600000, codexAccount(meta(0, 'acct-test-1')), 40, 30, now - 9 * 3600000, Math.round(week / 1000) * 1000) }
+      const out = mergeQuotas([r('host-a', 'Host A', a), r('host-b', 'Host B', q)])
+      expect(out.codexAccounts!.map(x => x.machines.map(m => m.key))).toEqual([['host-a'], ['host-b']])
+    } finally { fs.rmSync(home, { recursive: true, force: true }) }
+  })
+
+  // Same account on three machines, two of them idle: their 5-hour window ended
+  // hours ago; the third, unidentified this refresh, read the fresh one.
+  it.each([
+    ['same week, same last known fingerprint: one row', 'aaaaaaaaaaaaaaaa', 0, true],
+    ['another last known fingerprint: apart', 'bbbbbbbbbbbbbbbb', 0, false],
+    ['no last known fingerprint: apart', null, 0, false],
+    ['different week resets: apart', 'aaaaaaaaaaaaaaaa', 86400000, false],
+  ])('a stale 5-hour window elsewhere (%s)', (_, last, weekShift, merged) => {
+    const now = Date.now()
+    const week = now + 3 * 86400000
+    const idle = (at: number) => ({ ...win(at, 'aaaaaaaaaaaaaaaa', 40, 30, now - 9 * 3600000, week), at })
+    const fresh = { ...win(now, null, 5, 31, now + 4 * 3600000, week + weekShift), lastAccount: last }
+    const out = mergeQuotas([r('host-a', 'Host A', idle(now - 14 * 3600000)), r('host-b', 'Host B', idle(now - 13 * 3600000)), r('host-c', 'Host C', fresh)])
+    if (merged) {
+      expect(out.codexAccounts).toBeUndefined()
+      expect(quotaRows(out).map(x => [x.q.five!.used, x.q.week!.used])).toEqual([[5, 31]])
+      expect(out.accounts!.map(a => [a.key, a.machines])).toEqual([['codex:aaaaaaaa', ['host-a', 'host-b', 'host-c']]])
+    } else {
+      expect(out.codexAccounts!.map(a => a.machines.map(m => m.key))).toEqual([['host-a', 'host-b'], ['host-c']])
+    }
+    expect(JSON.stringify(out)).not.toContain('lastAccount')
+    expect(out.codex).not.toHaveProperty('lastAccount')
   })
 
   it('one machine: the account of the most recent conversation', () => {
