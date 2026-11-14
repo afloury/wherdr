@@ -553,7 +553,7 @@ time); a link to the autopilot setting (`project.autopilot`) opens Settings.
   *now* and the next wake (dashed; outside the hours, their next start); the worker's account
   [pace](quotas.md#pace) as a gauge (the week used against its line or limit,
   then *go* or what it waits for); then the same events listed, newest first:
-  *Next wake*, *Now*, each wake sent (*Scheduled*, *Health check*, *Step check*,
+  *Next wake*, *Now*, each wake sent (*Scheduled*, *Step check*,
   *Engine*, *Incident*, *Run now*: its first reason and *handled* or how it
   ended, a wake not handled highlighted), each wake skipped and why (nothing to
   do, the account ahead of its pace, nothing changed since the last wake…), each
@@ -566,8 +566,9 @@ groups the form saves together. A bar pinned at the bottom of the tab, visible
 while you scroll, says *Unsaved changes* and holds *Cancel* (back to the saved
 values) and *Save* (enabled once something changed). Leaving the tab or closing
 the window with unsaved changes asks once whether to discard them. The groups:
-**Goal**; **When it wakes**: *Every*, *At*, the
-  **Health check** interval (empty: every 3h; `off`: never; see
+**Goal**; **When it wakes**: one schedule, *Every* (empty or `off`: no
+  interval wake; stalls then show only through engine wakes) and *At*, each
+  wake bringing the goal and the health summary (see
   [Who sends a wake](#who-sends-a-wake)), the routine events it also wakes on,
   all off by default since the engine handles them (*Task added*: by someone
   else than this coordinator, such as you, another coordinator or an
@@ -633,9 +634,17 @@ it, that opens on tap. The fold holds only the wakes and their own turns. An inc
 something, keeps its row (in its stronger colour); an answer that asks you
 stays a full reply, with its answer buttons:
 
-- **Autopilot**: the autopilot's scheduled wakes, what needs judgment (an
-  agent's question that is not a permission request, the choice after N review
-  rounds), the routine events you turned on and *Run now*;
+- **Autopilot**: what needs judgment (an agent's question that is not a
+  permission request, the choice after N review rounds), the routine events you
+  turned on, *Run now*, and the **scheduled wake** (`Autopilot: scheduled
+  wake`), on the autopilot's *Every* and *At* schedule: the goal, then a short
+  summary of the project: tasks done since the last one, tasks waiting for you,
+  tasks stalled for over an hour, and machines idle while to-do tasks wait.
+  When nothing in it needs the coordinator, it acks at once with no further
+  work. With the autopilot off, no scheduled wake comes (step checks and
+  incidents still do). A *Health check* field set in an earlier version joined *Every*
+  once: the shorter of the two was kept (3h when it was empty), `off` left
+  *Every* as it was;
 - **Step check** (`Step check: CO-1 (deploy)`): a step the coordinator holds,
   such as *watch the deploy*, at its start, each `recheck` and its timeout. It
   comes even with the autopilot off. Each recheck with no news on the task
@@ -656,17 +665,12 @@ stays a full reply, with its answer buttons:
   engine (`pipeline.watch`, above), which costs no model turn;
 - **Engine**: wherdr gave up on a block after failed fixes
   ([What wherdr fixes on its own](#what-wherdr-fixes-on-its-own));
-- **Health check**: every 3 hours by default (the autopilot's *Health check*
-  field), a short summary of the project: tasks done since the last check,
-  tasks waiting for you, tasks stalled for over an hour, and machines idle
-  while to-do tasks wait. When nothing is wrong the coordinator acks it with no
-  further work; with nothing at all to report, no wake is sent.
 - **Incident**: [the incident wake](#the-incident-wake).
 
 Waking the coordinator costs a turn with its whole context, so with the
 autopilot on and its events left off, it wakes only for these: an agent's
 question, a choice after review rounds, a block the engine gave up on, a step
-it holds, its schedule and the health check. A task done, ready or started, or
+it holds, and its scheduled wake. A task done, ready or started, or
 a block the engine fixed itself, wakes nobody. A permission request is yours,
 in *Tasks to review*.
 
@@ -678,15 +682,14 @@ Each kind is its own wake, sent one after the other. Every wake ends with
 - a **scheduled wake** while nothing the coordinator could act on changed since
   its last wake: every task where it stood then, no task it could start now
   (each to-do one waits for its *after* tasks, its files, room or a machine),
-  no new block, no answer, no message of yours. It counts in the day's skipped
-  wakes, as one with nothing to do;
+  no new block, no answer, no message of yours, and its health summary says
+  nothing new (empty, or all its lines in the last one sent within 12 hours).
+  It counts in the day's skipped wakes, as one with nothing to do;
 - an **Engine** wake for a block whose only cause is an offline or paused
   machine: the incident already said so, and the engine goes on once the machine
   is back. It wakes the coordinator only if that resume fails;
 - a second wake for an agent's **question** the coordinator already answered
-  with `tell`, while the agent's question is still showing;
-- a **health check** whose lines are all in the last one sent; it comes again
-  after 12 hours at most.
+  with `tell`, while the agent's question is still showing.
 
 Each one skipped is listed by `wherdr pm autopilot show` (*skippedWakes*: when,
 what and why), never in the conversation.
@@ -1323,7 +1326,7 @@ open one, so it tells you the cause the engine found.
 
 A task an incident stopped waits for wherdr, not for you: it is not in Your
 turn, the coordinator sees it as working (never stuck, nor waiting for you in
-its health check), its card says why it waits (*… wherdr resumes it once host-b is back*).
+its health summary), its card says why it waits (*… wherdr resumes it once host-b is back*).
 Once the cause is gone, the engine resumes it by itself, every minute:
 
 - **when**: a restart, a crash or an unknown cause at once; a machine offline

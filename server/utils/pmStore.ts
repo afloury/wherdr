@@ -55,7 +55,8 @@ export interface CoordinatorRecord {
   atRan?: number // the last scheduled wake at fixed times (autopilot.at), or when it was set
   woke?: LastWake // the last wake the engine queued, and where tasks stood then
   quiet?: true // its saved autopilot's old default events dropped, once (quietEvents)
-  health?: { at: number, seen: Record<string, TaskStatus>, sent?: HealthSent } // the last health check (health.ts), where tasks stood then, the last one sent
+  health?: { at: number, seen: Record<string, TaskStatus>, sent?: HealthSent } // the last scheduled slot's health lines (health.ts): where tasks stood then, the last ones sent
+  oneWake?: true // its saved health check interval joined Every, once (oneSchedule)
   skips?: WakeSkip[] // wakes not sent, and why (autopilot show)
   skipped?: DayCount // scheduled wakes skipped that day: nothing to do (or the new work limit reached)
   lookAdded?: DayCount // tasks added that day in the turns of look-for-new-work wakes

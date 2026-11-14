@@ -973,7 +973,7 @@ describe('wakes', () => {
 
   it('wakes at its fixed times, once for slots missed while down', async () => {
     const day = (d: number, h: number) => new Date(2026, 10, d, h).getTime()
-    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9', atRan: day(1, 9), autopilot: { on: true, goal: 'Triage', at: 'daily 08:00', events: [], perDay: 3, atOnce: 1 } })
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9', atRan: day(1, 9), oneWake: true, autopilot: { on: true, goal: 'Triage', at: 'daily 08:00', events: [], perDay: 3, atOnce: 1 } })
     expect(await deliver('idle', day(2, 7)).run()).toEqual([])
     const late = deliver('idle', day(5, 10))
     expect(await late.run()).toEqual(['CO'])
@@ -1057,7 +1057,7 @@ describe('wakes', () => {
       const added = (await store.tasks()).find(t => t.title === 'More tests')!
       await store.saveTask({ ...added, step: state(5, { done: true }) })
       const seen = { 'CO-1': 'done', [added.id]: 'done' } as const
-      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, seen: { ...seen }, woke: { at: day(2, 8, 2), seen: { ...seen } } })
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, seen: { ...seen }, woke: { at: day(2, 8, 2), seen: { ...seen } }, health: { at: day(2, 8, 2), seen: { ...seen } } })
       expect(await deliver('idle', day(2, 8, 40)).run()).toEqual([])
       expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: day(2, 8, 40), skipped: { n: 1 } })
       expect((await coordinatorsView(store)).find(v => v.project === 'CO')!.asleep).toBe('limit')
@@ -1070,6 +1070,23 @@ describe('wakes', () => {
       await asleep({ lookForWork: true, lookPerDay: 1 })
       await store.saveCoordinator({ ...(await store.coordinator('CO'))!, lookAdded: { day: new Date(day(1, 12)).toDateString(), n: 1 } })
       expect(await deliver('idle', day(2, 8, 1)).run()).toEqual(['CO'])
+    })
+
+    it('one scheduled wake carries the goal and the health lines; skipped with nothing new to report; none with the autopilot off', async () => {
+      await asleep()
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, health: { at: day(2, 6), seen: { 'CO-1': 'working' } } })
+      const r = deliver('idle', day(2, 8, 1))
+      expect(await r.run()).toEqual(['CO'])
+      expect(r.sent[0]!.text).toMatch(/^Autopilot: scheduled wake [0-9a-f]{8}\n\nScheduled wake \(every 30m\)\. Your goal: Triage\.[^\n]*\n\nDone since the last check: CO-1 \(Fix\)\.\n\nIf none of this needs you, ack at once/)
+      expect(await store.wakes()).toHaveLength(1)
+      await cli(['ack', wakeId(r.sent[0]!.text)])
+      // Nothing new since: the next slot is skipped.
+      expect(await deliver('idle', day(2, 8, 40)).run()).toEqual([])
+      expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: day(2, 8, 40), skipped: { n: 1 } })
+      // Autopilot off: no health lines on their own, and they start over once back on.
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...(await store.coordinator('CO'))!.autopilot!, on: false }, health: { at: 0, seen: {} } })
+      expect(await deliver('idle', day(2, 10)).run()).toEqual([])
+      expect((await store.coordinator('CO'))!.health).toBeUndefined()
     })
 
     it('event wakes are unaffected', async () => {

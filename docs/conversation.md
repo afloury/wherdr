@@ -120,7 +120,7 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   `show file|shots …` lines), and a tap shows it again. Showing approves nothing: the agent adds
   the step's button (*Approve screenshots*) with `ui action step`. Only in a turn that follows
   your message, and a coordinator shows its own project's tasks only.
-- **Wakes**: in a coordinator's conversation, a wake (Autopilot, Health check, Engine, Incident,
+- **Wakes**: in a coordinator's conversation, a wake (Autopilot, Engine, Incident,
   Step check) is a compact muted row, not one of your bubbles, with the coordinator's answer under
   it; routine runs fold into one row. See
   [Who sends a wake](project-management.md#who-sends-a-wake).
