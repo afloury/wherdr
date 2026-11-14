@@ -48,8 +48,9 @@ const filter = computed({ get: () => reviewPick(known), set: (v: string) => { re
 
 // Approved or rejected here: off the list at once, before the board says so.
 const handled = ref<string[]>([])
-// Answered here from its To do (Try again, a choice): it leaves as the board says, not as handled elsewhere.
-const acted: string[] = []
+// Answered here from its To do (Try again, a choice): it leaves as the board says, not as handled
+// elsewhere. Only the task on screen, after an action that went through (a refusal clears it).
+let acted = ''
 const live = computed(() => (data.value?.cards ?? []).filter(c => c.yourTurn && !c.state?.done && !handled.value.includes(c.id) && reviewShows(filter.value, c.project)))
 // The list while the sheet is open, in a stable order (the board's again once
 // closed): a task that arrives goes at the end, one that leaves drops out, but
@@ -64,7 +65,7 @@ const index = computed(() => Math.min(at.value, items.value.length))
 function sync() {
   const cur = items.value[index.value]?.id
   const ids = new Set(live.value.map(c => c.id))
-  const next = order.value.filter(id => !handled.value.includes(id) && (ids.has(id) || (id === cur && !acted.includes(id))))
+  const next = order.value.filter(id => !handled.value.includes(id) && (ids.has(id) || (id === cur && id !== acted)))
   for (const c of live.value) if (!next.includes(c.id)) next.push(c.id)
   seen.value = { ...seen.value, ...Object.fromEntries(live.value.map(c => [c.id, c])) }
   order.value = next
@@ -106,9 +107,9 @@ const verdict = computed(() => (card.value && state.value ? reviewLine(card.valu
 const notes = computed(() => (card.value && state.value ? { worker: workerNote(card.value.plan, state.value), review: reviewNote(card.value.plan, state.value) } : {}))
 
 const pane = computed(() => (card.value?.terminal ? herdrState.value?.panes.find(p => p.coreAddress === card.value!.terminal) : undefined))
-const { busy, error, pressing, refused, press, start, resume, decide, sendBack, restartReview, startWorker } = useTaskActions(() => card.value, () => { if (card.value) acted.push(card.value.id); taskChanged() })
+const { busy, error, pressing, refused, press, start, resume, decide, sendBack, restartReview, startWorker } = useTaskActions(() => card.value, () => { acted = card.value && !refused.value ? card.value.id : ''; taskChanged() })
 const rejecting = ref(false)
-watch(() => card.value?.id, () => { error.value = ''; rejecting.value = false })
+watch(() => card.value?.id, () => { error.value = ''; rejecting.value = false; acted = '' })
 const DONE_MS = 400
 // Done with the current one: its confirmation, then off the list, the next one shows.
 async function leave(c: Card, how: 'approved' | 'sent' | 'answered') {

@@ -28,6 +28,7 @@ registerEndpoint('/api/pm/handle', () => toHandle(cards))
 registerEndpoint('/api/pm/step-user', { method: 'POST', handler: async (e) => {
   const { id } = await readBody(e) as { id: string }
   if (id === 'HO-X') throw createError({ statusCode: 409, statusMessage: 'The PR has conflicts' })
+  if (id === 'HO-R') return { task: { id, step: { yourTurn: { reason: 'action', badge: 'Merge refused: conflict' } } } }
   accepted.push(id)
   cards = cards.filter(c => c.id !== id)
   return { task: { id } }
@@ -178,6 +179,18 @@ it('keeps its order while open: a new task goes at the end, the one on screen st
   q('review-next')!.click() // moved on: it leaves the list
   await expect.poll(shown).toBe('HO-0')
   expect([progress(), q('review-gone')]).toEqual(['2 of 2', null])
+  // A merge refused here, then handled elsewhere: still kept, with its line.
+  cards = [...cards, card('HO-R', 'home')]
+  taskSheetTick.value++
+  await expect.poll(progress).toBe('2 of 3')
+  q('review-next')!.click()
+  await expect.poll(shown).toBe('HO-R')
+  q('review-approve')!.click()
+  await expect.poll(() => !!q('review-refused')).toBe(true)
+  cards = cards.filter(c => c.id !== 'HO-R')
+  taskSheetTick.value++
+  await expect.poll(() => q('review-gone')?.textContent).toBe('Handled elsewhere: removed from the board')
+  expect(shown()).toBe('HO-R')
   w.unmount()
   // Closed and opened again: the board's order.
   const again = await mountSuspended(ReviewCard)
