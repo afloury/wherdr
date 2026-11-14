@@ -77,20 +77,23 @@ it('header button: a clock, the autopilot\'s state, and a tap opens the autopilo
   expect(document.querySelector('[data-testid="workflow-change"]')).toBeNull()
 })
 
-it('window: Activity and Settings tabs, a pinned Save enabled by a change, and closing with unsaved changes asks', async () => {
+it('window: Settings and Activity tabs, a pinned Save enabled by a change, and closing with unsaved changes asks', async () => {
   localStorage.removeItem('wherdr.autopilotTab')
   w = await mountSuspended(CoordinatorButton, { attachTo: document.body, props: { c: view({ autopilot: { on: true, goal: 'Ship', events: [], perDay: null, atOnce: null } }) } })
   await w.get('[data-testid="coordinator-button"]').trigger('click')
   const $ = <T extends HTMLElement>(id: string) => document.querySelector<T>(`[data-testid="${id}"]`)!
   await vi.waitFor(() => expect($('coordinator-autopilot')).not.toBeNull())
   const shown = (id: string) => $(id).style.display !== 'none'
-  // Activity first: the switch and the timeline; the agent and the goal are in Settings.
-  expect([shown('autopilot-activity'), shown('autopilot-settings')]).toEqual([true, false])
+  // Settings first: the agent and the goal; the switch and the timeline are in Activity.
+  expect([...document.querySelectorAll('[role="tab"]')].map(b => b.textContent!.trim())).toEqual(['Settings', 'Activity'])
+  expect([shown('autopilot-settings'), shown('autopilot-activity')]).toEqual([true, false])
   expect($('autopilot-activity').contains($('autopilot-run-now'))).toBe(true)
   expect($('autopilot-settings').contains($('coordinator-agent'))).toBe(true)
+  $('autopilot-tab-activity').click()
+  await vi.waitFor(() => expect(shown('autopilot-activity')).toBe(true))
+  expect(localStorage.getItem('wherdr.autopilotTab')).toBe('activity')
   $('autopilot-tab-settings').click()
   await vi.waitFor(() => expect(shown('autopilot-settings')).toBe(true))
-  expect(localStorage.getItem('wherdr.autopilotTab')).toBe('settings')
   expect($('autopilot-settings').querySelector('form')!.lastElementChild).toBe($('autopilot-bar')) // pinned: the scroll's last element
   const save = $<HTMLButtonElement>('autopilot-save')
   expect(save.disabled).toBe(true)

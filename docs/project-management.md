@@ -527,8 +527,8 @@ count when the kept conversation ran with another agent. It is only about the
 autopilot: a workflow change the coordinator proposed is a *Workflow change*
 card in its conversation (see [Workflow](#workflow)). A tap opens its window
 (880 px wide on a computer, up to 90 % of the screen's height; a full sheet on
-the phone) with two tabs under its title, **Activity** and **Settings**. The
-window opens on the tab you picked last (on this device; Activity the first
+the phone) with two tabs under its title, **Settings** and **Activity**. The
+window opens on the tab you picked last (on this device; Settings the first
 time); a link to the autopilot setting (`project.autopilot`) opens Settings.
 **Activity**, under the autopilot's line and a link to the project's Workflow tab:
 

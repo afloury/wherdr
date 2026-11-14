@@ -4,9 +4,9 @@
 // the limits, the day's timeline (AutopilotTimeline) and "run now", then its
 // settings, saved by the user only: goal, when it wakes, limits, hours.
 // In the coordinator window and the project sheet's Autopilot tab. Two tabs:
-// Activity (switch, run now, timeline, wake log) and Settings, whose Save bar is
-// pinned at the bottom of the scroll. The tab is remembered per viewer; a link to
-// `project.autopilot` opens Settings. Leaving Settings, or closing the window
+// Settings, first and the default, whose Save bar is pinned at the bottom of the
+// scroll, and Activity (switch, run now, timeline, wake log). The tab is
+// remembered per viewer; a link to `project.autopilot` opens Settings. Leaving Settings, or closing the window
 // (`leave`, CoordinatorButton), with unsaved changes asks once.
 // Slots: `activity` and `settings`, the coordinator window's parts at the top of each tab.
 // `withAgent` (the coordinator window): the answering agent heads Settings, saved
@@ -55,9 +55,9 @@ const EVENT_LABEL: Record<AutopilotEvent, [string, string]> = {
   added: ['Task added', 'Tâche ajoutée'], done: ['Task done', 'Tâche finie'], stuck: ['Task stuck', 'Tâche bloquée'], ready: ['Ready for you', 'Prête pour toi'],
 }
 type Tab = 'activity' | 'settings'
-const TABS: [Tab, string][] = [['activity', 'Activity'], ['settings', 'Settings']]
+const TABS: [Tab, string][] = [['settings', 'Settings'], ['activity', 'Activity']]
 const TAB_KEY = 'wherdr.autopilotTab'
-const storedTab = (): Tab => { try { return localStorage.getItem(TAB_KEY) === 'settings' ? 'settings' : 'activity' } catch { return 'activity' } }
+const storedTab = (): Tab => { try { return localStorage.getItem(TAB_KEY) === 'activity' ? 'activity' : 'settings' } catch { return 'settings' } }
 const tab = ref<Tab>(uiTarget(useRoute().query.target) === 'project.autopilot' ? 'settings' : storedTab())
 // Back to the saved values.
 const discard = () => { Object.assign(form, { ...base.value, events: [...base.value.events] }); program.value = savedProgram.value; saveError.value = '' }
