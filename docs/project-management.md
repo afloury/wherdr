@@ -1276,7 +1276,9 @@ the mechanical blocks itself and wakes it only when that fails:
   that, its late result is only noted in History (*its result is dropped*),
   never undoing what a later run did;
 
-These blocks do not wake the coordinator. After 2 failed tries on the same
+With the autopilot's *Task stuck* event on (a new project's default), the
+coordinator is woken once as such a block begins, so it can act before the
+engine's fixes run out; with it off, these blocks do not wake it. After 2 failed tries on the same
 step (or 15 minutes with nothing left to try), wherdr wakes it once (an
 *Engine* wake, whatever the autopilot's events) and says what it tried. Every try, and giving
 up, is written to the task's **History**. Any other failure (a refused merge, a
