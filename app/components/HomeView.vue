@@ -510,9 +510,10 @@ function resetListWidth() {
       <QuotaStrip :rows="listQuotas" :api="listApi" :class="{ 'after-stats': showCounters && agents.length }" />
       <MachineQuotaBlocks v-if="!oneMachine" :blocks="machineQuotaBlocks" />
 
+      <!-- Reviews first: right under Alfred, above a long Coordinators section. -->
       <AlfredRow v-if="st.ok" />
-      <CoordinatorsSection v-if="st.ok" />
       <ReviewCard v-if="st.ok" />
+      <CoordinatorsSection v-if="st.ok" />
 
       <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
