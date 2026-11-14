@@ -12,7 +12,9 @@ import type { PaceVerdict } from './pacing'
 import { pacedStart, paceRefusal } from './pace'
 import { engineOwns } from './selfFix'
 
-// Routine events: off by default, the user turns them on in the Autopilot tab.
+// Routine events, each switched in the Autopilot tab: a new project starts
+// with done and stuck on (NEW_AUTOPILOT), so the coordinator chains the next
+// work and acts on a block before the engine gives up.
 export const AUTOPILOT_EVENTS = ['added', 'done', 'stuck', 'ready'] as const
 export type AutopilotEvent = typeof AUTOPILOT_EVENTS[number]
 // What needs judgment wakes the coordinator whatever its events: an agent's
@@ -40,9 +42,10 @@ export const MAX_PER_DAY = 1000
 // 2 at once; a new one is saved with no daily limit and Auto: the account's pace
 // and the machines' room still hold its automatic work.
 export const DEFAULT_AUTOPILOT: Autopilot = { on: false, goal: '', events: [], perDay: 10, atOnce: 2 }
-export const NEW_AUTOPILOT: Autopilot = { ...DEFAULT_AUTOPILOT, perDay: null, atOnce: null }
+export const NEW_AUTOPILOT: Autopilot = { ...DEFAULT_AUTOPILOT, events: ['done', 'stuck'], perDay: null, atOnce: null }
 // Saved before routine events went off by default (WHR-161): the old default
-// events, done and stuck, are dropped once (CoordinatorRecord.quiet marks it).
+// events, done and stuck, are dropped once (CoordinatorRecord.quiet marks it;
+// a new project's record is saved with it, keeping NEW_AUTOPILOT's).
 export const OLD_DEFAULT_EVENTS: AutopilotEvent[] = ['done', 'stuck']
 export const quietEvents = (ap: Autopilot): Autopilot =>
   ap.events.length === OLD_DEFAULT_EVENTS.length && OLD_DEFAULT_EVENTS.every(e => ap.events.includes(e)) ? { ...ap, events: [] } : ap
