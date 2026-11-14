@@ -414,7 +414,22 @@ function coreMenuItems(p: Pane | undefined): MenuItem[] {
     close: p && !compactPhone.value ? closePaneItem(p, live.value ? shortcutKbds('close-pane') : undefined) : undefined,
   })
 }
-const agentMenu = computed<MenuItem[]>(() => coreMenuItems(pane.value))
+// Notes (WHR-345): a header button, or the first entry of the header's "…" menu
+// when the header is narrow (phone, side-by-side cell, narrow window).
+const NOTES_HEADER_MIN = 560
+const headerEl = ref<HTMLElement | null>(null)
+const headerWidth = ref(0)
+let headerObserver: ResizeObserver | null = null
+watch(headerEl, (el, old) => {
+  if (old) headerObserver?.unobserve(old)
+  if (!el) return
+  headerObserver ??= new ResizeObserver(([e]) => { headerWidth.value = e?.contentRect.width ?? 0 })
+  headerObserver.observe(el)
+})
+onBeforeUnmount(() => headerObserver?.disconnect())
+const notesInHeader = computed(() => !compactPhone.value && (!headerWidth.value || headerWidth.value >= NOTES_HEADER_MIN))
+const notesItem = computed<MenuItem>(() => ({ label: t('Notes'), icon: 'i-lucide-sticky-note', kbds: desk.value ? shortcutKbds('notes') : undefined, run: toggleNotes }))
+const agentMenu = computed<MenuItem[]>(() => [...(notesInHeader.value ? [] : [notesItem.value]), ...coreMenuItems(pane.value)])
 const dropdownItems = computed(() => toDropdown(agentMenu.value))
 function openAgentMenu() { openMenu(agentMenu.value) }
 
@@ -568,7 +583,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
     </div>
     <SpaceTabs v-if="!cell && pane && !compactPhone" :workspace="pane.workspace" :current="pane.tab" />
     <HeaderMenu v-if="!embedded" :items="() => agentMenu" :disabled="!pane">
-      <header class="top bar agent-top">
+      <header ref="headerEl" class="top bar agent-top">
         <UButton
           v-if="!cell" id="btnBack" icon="i-lucide-chevron-left" color="neutral" variant="ghost" size="lg" class="icon-btn back"
           :aria-label="t('Back')" @click="goBack"
@@ -614,6 +629,9 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
           />
           <UTooltip v-if="paneChat(pane) && (live || cell) && !compactPhone" :text="t('Search')" :kbds="mode === 'chat' ? shortcutKbds('search-chat') : undefined" :disabled="!desk">
             <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn cell-extra" :class="{ on: searchOpen }" :aria-label="t('Search')" @click="toggleSearch" />
+          </UTooltip>
+          <UTooltip v-if="notesInHeader" :text="t('Notes')" :kbds="shortcutKbds('notes')" :disabled="!desk">
+            <UButton icon="i-lucide-sticky-note" color="neutral" variant="ghost" size="lg" class="icon-btn" :class="{ on: notesOpen }" :aria-label="t('Notes')" :aria-pressed="notesOpen" data-testid="agent-notes" @click="toggleNotes" />
           </UTooltip>
           <UDropdownMenu v-if="!sheetMenus" :items="dropdownItems" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }">
             <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Options')" />

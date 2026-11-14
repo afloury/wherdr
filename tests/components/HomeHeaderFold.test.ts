@@ -24,12 +24,14 @@ describe('home header fold', () => {
   afterEach(() => vi.unstubAllGlobals())
 
   it('narrow: Settings stays a button, Search moves into the … menu', async () => {
-    const w = await mountAt(260)
+    const w = await mountAt(200)
     expect(w.find('[aria-label="Settings"]').exists()).toBe(true)
     expect(w.find('[aria-label="Search agents and conversations"]').exists()).toBe(false)
     const items = (w.getComponent(SpaceMenu).props('items') as () => MenuItem[])()
     expect(items.map(i => i.label)).toContain('Search')
     expect(items.map(i => i.label)).not.toContain('Settings')
+    // WHR-345: Notes moved to the conversation header.
+    expect(items.map(i => i.label)).not.toContain('Notes')
     w.unmount()
   })
 
@@ -38,6 +40,7 @@ describe('home header fold', () => {
     expect(w.find('[aria-label="Settings"]').exists()).toBe(true)
     expect(w.find('[aria-label="Search agents and conversations"]').exists()).toBe(true)
     expect(w.findComponent(SpaceMenu).exists()).toBe(false)
+    expect(w.find('[aria-label="Notes"]').exists()).toBe(false)
     w.unmount()
   })
 })

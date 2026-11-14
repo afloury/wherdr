@@ -315,7 +315,7 @@ const onQuietVisible = () => readQuiet()
 watch(homeShown, readQuiet)
 onMounted(() => { if (homeShown.value) { quietRead.mark(); refreshQuiet() } document.addEventListener('visibilitychange', onQuietVisible) })
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onQuietVisible))
-// Header buttons: when the list is too narrow, Search, then Notes, then the Board
+// Header buttons: when the list is too narrow, Search, then the Board
 // move into a "…" menu; Settings always stays a button.
 const titleRow = ref<HTMLElement | null>(null)
 const titleRowWidth = ref(0)
@@ -326,7 +326,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => titleRowObserver?.disconnect())
 // First to fold first.
-const headerFoldable = ['search', 'notes', 'board']
+const headerFoldable = ['search', 'board']
 const headerFolded = computed(() => {
   if (!titleRowWidth.value) return new Set<string>()
   const total = headerFoldable.length + 1 + (desk.value ? 1 : 0)
@@ -338,7 +338,6 @@ function headerMenuItems(): MenuItem[] {
     ...(f.has('search') ? [{ label: tl('Search'), icon: 'i-lucide-search', kbds: desk.value ? shortcutKbds('search-all') : undefined, run: openSearch }] : []),
     ...(quietCurrent.value ? [{ label: quietLabel.value, icon: 'i-lucide-bell-off', run: () => navigateTo(quietSettings) }] : []),
     ...(f.has('board') ? [{ label: tl('Board', 'Tableau'), icon: 'i-lucide-square-kanban', run: openBoard }] : []),
-    ...(f.has('notes') ? [{ label: tl('Notes'), icon: 'i-lucide-sticky-note', run: toggleNotes }] : []),
   ]
 }
 // Board: read whether project management is on and has a project at click time
@@ -451,9 +450,6 @@ function resetListWidth() {
       <UTooltip :text="tl('Board', 'Tableau')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Board', 'Tableau')" @click="openBoard" />
       </UTooltip>
-      <UTooltip :text="tl('Notes')" :kbds="shortcutKbds('notes')" :content="{ side: 'right' }">
-        <UButton icon="i-lucide-sticky-note" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Notes')" :aria-pressed="notesOpen" @click="toggleNotes" />
-      </UTooltip>
       <UTooltip :text="t('Settings')" :kbds="shortcutKbds('settings')" :content="{ side: 'right' }">
         <UButton icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="t('Settings')" to="/settings" />
       </UTooltip>
@@ -482,9 +478,6 @@ function resetListWidth() {
           </UTooltip>
           <UTooltip v-if="!headerFolded.has('board')" :text="tl('Board', 'Tableau')" :disabled="!desk">
             <UButton icon="i-lucide-square-kanban" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Board', 'Tableau')" data-testid="home-board" @click="openBoard" />
-          </UTooltip>
-          <UTooltip v-if="!headerFolded.has('notes')" :text="tl('Notes')" :kbds="shortcutKbds('notes')" :disabled="!desk">
-            <UButton icon="i-lucide-sticky-note" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Notes')" :aria-pressed="notesOpen" data-testid="home-notes" @click="toggleNotes" />
           </UTooltip>
           <UTooltip :text="t('Settings')" :kbds="shortcutKbds('settings')" :disabled="!desk">
             <UButton
