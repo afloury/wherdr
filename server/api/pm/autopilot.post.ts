@@ -20,6 +20,7 @@ export default defineApi(async (_event, body) => {
   const c = await store.coordinator(key)
   // New fixed times count from now: no wake for a slot before they were set.
   const atRan = r.autopilot.at && r.autopilot.at !== c?.autopilot?.at ? Date.now() : c?.atRan
-  await store.saveCoordinator({ project: key, tokenHash: '', ...c, autopilot: r.autopilot, ...(atRan ? { atRan } : {}) })
+  // Saved by the user: already one schedule, never migrated again (Every off stays off).
+  await store.saveCoordinator({ project: key, tokenHash: '', ...c, autopilot: r.autopilot, oneWake: true, ...(atRan ? { atRan } : {}) })
   return r
 })

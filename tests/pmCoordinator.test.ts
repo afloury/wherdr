@@ -255,6 +255,19 @@ describe('the main coordinator (WHR-398)', () => {
     const route = (await import('../server/api/pm/autopilot.post')).default as unknown as (e: unknown, b: unknown) => Promise<unknown>
     await refused(route({}, { project: MAIN, autopilot: { on: true } }), 'Alfred has no autopilot')
     await refused(route({}, { project: MAIN, runNow: true }), 'Alfred has no autopilot')
+    // Every off saved before the engine's first look: kept off, not migrated to 3h.
+    vi.stubEnv('DATA_DIR', dir)
+    vi.resetModules()
+    const fresh = (await import('../server/api/pm/autopilot.post')).default as unknown as (e: unknown, b: unknown) => Promise<unknown>
+    const own = (await import('../server/utils/pmStore')).pmStore()
+    await own.setEnabled(true)
+    await fs.mkdir(path.dirname(own.files.projects), { recursive: true })
+    await fs.writeFile(own.files.projects, await fs.readFile(store.files.projects))
+    await fresh({}, { project: 'ST', autopilot: { ...DEFAULT_AUTOPILOT, on: true, every: 'off' } })
+    expect(await own.coordinator('ST')).toMatchObject({ oneWake: true, autopilot: { on: true } })
+    await wakeTick({ store: own, call: async () => ({}), machines: () => [] } as unknown as Parameters<typeof wakeTick>[0], 3_600_000)
+    expect((await own.coordinator('ST'))!.autopilot!.every).toBeUndefined()
+    vi.unstubAllEnvs()
     vi.unstubAllGlobals()
   })
 
