@@ -1,34 +1,20 @@
-# Checks: unit + component tests, type check, leak check (gitleaks only: the
-# forbidden patterns file is local and never committed), then the end-to-end tests
-# in Chromium and WebKit against a fake Herdr server.
-#
-# Light on PRs and branch pushes; full on nightly develop, manual and release runs.
-# Phone projects use six Chromium shards and two WebKit shards. Desktop projects
-# keep one job each. No test is removed by sharding.
-#
-# The branch protection requires the checks named `checks` and `e2e`: `e2e` is the
-# last job, green only when every browser job is. After a failure, "Re-run failed
-# jobs" runs the failed job again, then `e2e`.
+# v3 smoke checks: a few minutes, just to catch obvious breakage, plus the core smoke
+# on WebKit for iOS-only breakage. The v2 suite (fake Herdr, desktop projects, sharded
+# e2e, releases) lives on main and develop only.
+# Merging v3 into main must keep the v2 ci.yml (its `checks` and `e2e` jobs are required).
 name: ci
 
 on:
   push:
-    branches: [main, develop]
-    # Release tags get the full suite.
-    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+    branches: [v3]
   pull_request:
-    branches: [main, develop]
-  # Manual run: the full suite, on any branch.
+    branches: [v3]
   workflow_dispatch:
-  # GitHub schedules run from the default branch; check out develop explicitly.
-  schedule:
-    - cron: '17 18 * * *'
 
 permissions:
   contents: read
 
 concurrency:
-  # The event is part of the group: a push never cancels a manual run.
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
@@ -36,14 +22,11 @@ env:
   GITLEAKS_VERSION: 8.28.0
 
 jobs:
-  checks:
-    needs: changes
+  smoke:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.changes.outputs.sha }}
 
       - uses: actions/setup-node@v7
         with:
@@ -52,226 +35,36 @@ jobs:
 
       - run: npm ci
 
-      - name: Unit and component tests
-        run: npx vitest run
-
       - name: Type check
         run: npx nuxt typecheck
 
+      - name: Unit tests
+        run: npx vitest run
+
       - name: Install gitleaks
         run: |
-          curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+          curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
             | tar -xz -C /usr/local/bin gitleaks
           gitleaks version
 
       - name: Leak check
         run: npm run check:leaks
 
-  # Whether the browser tests are needed: not for a pull request that only
-  # touches files with no effect on the app or on its tests. When in doubt, run.
-  changes:
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    outputs:
-      e2e: ${{ steps.filter.outputs.e2e }}
-      engine: ${{ steps.engine.outputs.engine }}
-      sha: ${{ steps.plan.outputs.sha }}
-      scope: ${{ steps.plan.outputs.scope }}
-      matrix: ${{ steps.plan.outputs.matrix }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          # A pull request is checked out as its merge commit: the first
-          # parent is the base branch.
-          fetch-depth: 2
-          ref: ${{ github.event_name == 'schedule' && 'develop' || github.ref }}
+      - name: Build (herdr-core)
+        run: npm run build
 
-      - name: Select browser scope, shards and package version
-        id: plan
-        env:
-          EVENT: ${{ github.event_name }}
-          REF: ${{ github.ref }}
-        run: |
-          node scripts/ci-browser-plan.mjs >> "$GITHUB_OUTPUT"
-          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      # The runner image already has Chromium's libraries; --with-deps would only
+      # add fonts through apt, which can stall for minutes on an unreachable mirror.
+      - name: Install Chromium
+        run: npx playwright install chromium
 
-      - name: Look for an engine input change
-        id: engine
-        env:
-          EVENT: ${{ github.event_name }}
-          BEFORE: ${{ github.event.before }}
-        run: node scripts/engine-changes.mjs
+      - name: E2e (core, Chromium)
+        run: npx playwright test --project=chromium-phone
 
-      - name: Look for a change that needs the browser tests
-        id: filter
-        env:
-          EVENT: ${{ github.event_name }}
-        run: |
-          e2e=true
-          if [ "$EVENT" = pull_request ] && files=$(git diff --no-renames --name-only HEAD^1 HEAD) && [ -n "$files" ]; then
-            e2e=false
-            while IFS= read -r file; do
-              case "$file" in
-                README.md | CHANGELOG.md | CONTRIBUTING.md | SECURITY.md | LICENSE) ;;
-                docs/* | release-notes/* | website/*) ;;
-                # The README launch film and the tooling that renders it.
-                assets/* | tools/launch-video/*) ;;
-                .github/workflows/npm.yml | .github/workflows/release.yml) ;;
-                .github/workflows/release-ready.yml | .github/workflows/site.yml) ;;
-                *) echo "needs the browser tests: $file"; e2e=true ;;
-              esac
-            done <<< "$files"
-          fi
-          echo "e2e=$e2e" >> "$GITHUB_OUTPUT"
+      # Safari's engine: catches what iOS rejects and Chromium accepts (the /ws/events
+      # handshake). Only tests/e2e/core-smoke.spec.ts runs here (playwright.config.ts).
+      - name: Install WebKit
+        run: npx playwright install --with-deps webkit
 
-  # Each job builds the app itself: the build takes 10-20 s, less than a separate
-  # build job would add before the browser jobs (its own setup, upload, download).
-  e2e-project:
-    name: e2e-project (${{ matrix.project }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }})
-    needs: changes
-    if: needs.changes.outputs.e2e == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      E2E_SCOPE: ${{ needs.changes.outputs.scope }}
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.changes.outputs.matrix) }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.changes.outputs.sha }}
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 24
-          cache: npm
-
-      - run: npm ci
-
-      - name: Playwright version and browser
-        id: pw
-        env:
-          PROJECT: ${{ matrix.project }}
-        run: |
-          echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
-          echo "browser=${PROJECT%%-*}" >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
-        id: pw-cache
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}-${{ steps.pw.outputs.browser }}
-
-      # Cache downloaded packages, never /usr or an installed-package snapshot:
-      # apt still resolves dependencies and installs them on this fresh runner.
-      - name: Cache browser dependency packages
-        uses: actions/cache@v6
-        with:
-          path: ${{ runner.temp }}/playwright-apt/*.deb
-          key: playwright-apt-${{ runner.os }}-24.04-${{ steps.pw.outputs.version }}-${{ steps.pw.outputs.browser }}
-
-      - name: Reuse downloaded apt packages
-        env:
-          APT_ARCHIVES: ${{ runner.temp }}/playwright-apt
-        run: |
-          mkdir -p "$APT_ARCHIVES/partial"
-          echo "Dir::Cache::archives \"$APT_ARCHIVES\";" | sudo tee /etc/apt/apt.conf.d/99-playwright-cache
-
-      - name: Use Ubuntu's public mirror for browser dependencies
-        run: |
-          for source in /etc/apt/sources.list /etc/apt/sources.list.d/*.sources /etc/apt/sources.list.d/*.list /etc/apt/apt-mirrors*.txt; do
-            if [ -f "$source" ]; then sudo sed -i 's|azure.archive.ubuntu.com|archive.ubuntu.com|g' "$source"; fi
-          done
-
-      - name: Install the browser
-        if: steps.pw-cache.outputs.cache-hit != 'true'
-        run: npx playwright install --with-deps ${{ steps.pw.outputs.browser }}
-
-      - name: Install the browser's system dependencies
-        if: steps.pw-cache.outputs.cache-hit == 'true'
-        run: npx playwright install-deps ${{ steps.pw.outputs.browser }}
-
-      - name: Build and record duration
-        run: |
-          mkdir -p e2e-metrics
-          /usr/bin/time -f '%e' -o e2e-metrics/build-seconds.txt npm run build
-
-      # The timing reporter records startup/collection and test/teardown in ms;
-      # the JSON report includes collected tests and their final skip status.
-      - name: End-to-end tests
-        env:
-          PROJECT: ${{ matrix.project }}
-          SHARD: ${{ matrix.shard }}
-        run: |
-          echo "scope: $E2E_SCOPE, project: $PROJECT, shard: ${SHARD:-all}"
-          npm run test:e2e -- --project="$PROJECT" ${SHARD:+--shard="$SHARD"}
-
-      - name: Artifact name
-        id: artifact
-        if: always()
-        env:
-          SHARD: ${{ matrix.shard }}
-        run: echo "suffix=${SHARD:+-${SHARD%/*}}" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: playwright-report-${{ matrix.project }}${{ steps.artifact.outputs.suffix }}-${{ github.run_attempt }}
-          path: |
-            playwright-report/
-            test-results/
-            blob-report/
-            e2e-metrics/
-          retention-days: 7
-
-  # The required check. `always()`: a skipped job would count as a success, so
-  # this one runs whatever happened and reads the results itself. The matrix
-  # result is `success` only when all browser jobs passed: a failed,
-  # cancelled or skipped one turns it red.
-  e2e:
-    needs: [changes, e2e-project]
-    if: always()
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - name: Require every browser job to pass
-        env:
-          CHANGES: ${{ needs.changes.result }}
-          NEEDED: ${{ needs.changes.outputs.e2e }}
-          PROJECTS: ${{ needs.e2e-project.result }}
-        run: |
-          echo "changes: $CHANGES, browser tests needed: $NEEDED, browser jobs: $PROJECTS"
-          [ "$CHANGES" = success ] || exit 1
-          case "$NEEDED" in
-            false)
-              [ "$PROJECTS" = skipped ] && echo "No change needs the browser tests." && exit 0
-              exit 1 ;;
-            true) [ "$PROJECTS" = success ] ;;
-            *) echo "unexpected browser-test decision: '$NEEDED'"; exit 1 ;;
-          esac
-
-  engine:
-    needs: changes
-    if: needs.changes.outputs.engine == 'true'
-    uses: ./.github/workflows/engine-ci.yml
-    with:
-      ref: ${{ needs.changes.outputs.sha }}
-
-  # Always present, including when the conditional Rust workflow is skipped.
-  engine-checks:
-    needs: [changes, engine]
-    if: always()
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.changes.outputs.sha }}
-      - name: Require the selected engine checks
-        env:
-          CHANGES: ${{ needs.changes.result }}
-          NEEDED: ${{ needs.changes.outputs.engine }}
-          ENGINE: ${{ needs.engine.result }}
-        run: sh scripts/engine-result.sh
+      - name: E2e (core smoke, WebKit)
+        run: npx playwright test --project=webkit-phone
