@@ -42,7 +42,8 @@
   row keeps its task look after a restart of wherdr or herdr-core: an agent is found by its
   task and role, even when it was resumed or its terminal re-attached.
 - **Order**: the header (logo, version, Search, Board, Settings), the counters, the quotas (a
-  machine's own quotas under them), Alfred, the [coordinators](#coordinators), then the agents of
+  machine's own quotas under them), Alfred, the [Tasks to review](#tasks-to-review) card, the
+  [coordinators](#coordinators), then the agents of
   the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,
   each card carries its machine's name. There is no section per machine. The list never scrolls
   sideways: long titles and badges are cut with an ellipsis, and its scrollbar stays thin, shown
@@ -89,7 +90,7 @@ a project with Alfred* opens Alfred's conversation with the setup asked of it, a
 
 ### Coordinators
 
-Under Alfred, while project management is on, one row per running project coordinator, its
+Under Alfred and [Tasks to review](#tasks-to-review), while project management is on, one row per running project coordinator, its
 project's key badge in the project's color, then its name: the project's, unless you named it
 in the project's General tab (*[WHR] wherdr*; the tooltip reads *Coordinator of wherdr*)
 ([Project management](project-management.md)). A tap opens its conversation, shown as selected
@@ -105,6 +106,14 @@ current session stops), and *Stop the coordinator*, after a short confirm: its a
 starts again on the next message or wake. Mute and Stop show while it runs. Alfred's row keeps
 its own menu. A coordinator shows only in its own row, never again among the agents.
 
+Their order is yours and follows you to every device: drag a row by the ⠿ handle that shows on
+hover (or with the up and down arrows on it), or long press it on a phone, then drag. The menu's
+*Move to hidden* puts a coordinator in the **Hidden** group at the end of the section, as does
+dropping it there; the group stays collapsed behind a muted *Show hidden (3)* link, which opens
+it (*Hide* closes it again). Hidden rows look the same, a little muted; drag one back up, or
+pick *Move back* in its menu. A hidden coordinator still works as usual (wakes, tasks); when it
+needs you (a question, a block), its row comes back in the main list until you answer.
+
 Coordinators and **Tasks to review** follow the [machine tab](#machines-as-tabs): a tab shows the
 projects whose allowed machines it holds (a project on machines of several groups shows on each
 of those tabs), **All** shows every project, and Alfred shows on every tab. An open coordinator
@@ -114,7 +123,7 @@ global.
 
 ### Tasks to review
 
-Under the coordinators, while something waits for you on the tab's projects, one **Tasks to
+Right under Alfred, above the coordinators, while something waits for you on the tab's projects, one **Tasks to
 review** card with its count: tasks to approve, an agent's question, a failure to try again, a
 decision. Under its title, the ids of the first ones as their project's key badge, in its color, on
 one line (… when they do not all fit). A tap opens them one at a time (a sheet on the phone), with Approve, Reject and each

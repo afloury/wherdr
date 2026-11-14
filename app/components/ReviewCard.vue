@@ -2,8 +2,8 @@
 // Tasks to review: one card on Home with the count of what waits for the user
 // (the board's Your turn, GET /api/pm/handle: tasks to approve, an agent's
 // question, a failure to try again, a decision) on the projects the home tab
-// shows (useMachineBar.projectOnBar), between the coordinators and the agent
-// sessions; hidden when nothing waits. Under its title, the id badges of the
+// shows (useMachineBar.projectOnBar), right under Alfred, above the
+// coordinators; hidden when nothing waits. Under its title, the id badges of the
 // first ones in their projects' colors, on one line ending with … when they do
 // not all fit. A tap opens ReviewSheet, one at a time.
 import type { ToHandle } from '#shared/pm/board'

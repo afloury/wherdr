@@ -542,9 +542,10 @@ function resetListWidth() {
       <HomeSkeleton v-else-if="homeSkeleton" />
       <!-- Mounted while hidden: each section reads its data, shown once all have. -->
       <div v-show="listShown && !homeSkeleton" data-testid="home-sections">
+      <!-- Reviews first: right under Alfred, above a long Coordinators section. -->
       <AlfredRow v-if="st.ok" />
-      <CoordinatorsSection v-if="st.ok" />
       <ReviewCard v-if="st.ok" />
+      <CoordinatorsSection v-if="st.ok" />
 
       <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
