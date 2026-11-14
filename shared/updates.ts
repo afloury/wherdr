@@ -10,6 +10,8 @@ export interface UpdateInfo {
   // Latest published release, if newer than `current`; otherwise null.
   latest: string | null
   url: string | null
+  // Its release notes (Markdown, as on GitHub), shown by the banner's What's new.
+  notes?: string | null
   // The latest release could be read (check enabled, GitHub reachable).
   checked: boolean
   command: string
@@ -43,4 +45,10 @@ export function isNewerRelease(release: string, current: string): boolean {
   if (!r || !c || r[0] !== c[0]) return false
   const diff = compareVersions(release, current)
   return diff > 0 || (diff === 0 && /^v?\d+\.\d+\.\d+-/.test(current.trim()) && !/-/.test(release))
+}
+
+// What the banner's "Update with Alfred" sends, as the user, to Alfred, which
+// follows docs/update-with-an-agent.md from the installed checkout.
+export function alfredUpdateRequest(info: Pick<UpdateInfo, 'latest' | 'url'>): string {
+  return `Update wherdr to ${info.latest}${info.url ? `: ${info.url}` : ''}`
 }

@@ -114,6 +114,14 @@ request when the fit is clear. It shows you the draft first, with no private
 data (no paths, machine names, e-mail addresses, tokens or conversations), and
 posts it only on your yes.
 
+## Updating wherdr
+
+The home banner's **Update with Alfred** opens Alfred's conversation and sends, as you,
+`Update wherdr to <version>: <release URL>`. For this, or any update request, Alfred reads
+[Update with an agent](update-with-an-agent.md) from the installed checkout and the release's
+notes (with their *Upgrade notes*), never from memory, shows you the plan and waits for your yes.
+It lives in herdr-core, so it outlives wherdr's restart and checks the new version answers.
+
 ## After an update
 
 When wherdr starts (after an update too), it rewrites the instructions (`AGENTS.md` and the files
@@ -129,7 +137,7 @@ docs index) first, then only the sections that answer. These are the docs of the
 wherdr was started from (see `WHERDR_ROOT` in [Configuration](configuration.md#configuration)).
 
 Alfred answers with this server's own address and port (and its published address, if any),
-not the defaults the docs quote. Commands meant for the server itself (an update, a restart, a
+not the defaults the docs quote. Other commands meant for the server itself (a restart, a
 `git pull` of its install) come as text to copy, never with *Run*, which would run them in
 Alfred's own folder. `wherdr alfred help` and `wherdr pm help`
 list the commands of the wherdr that runs now.
