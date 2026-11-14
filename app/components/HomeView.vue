@@ -289,8 +289,8 @@ const onQuietVisible = () => readQuiet()
 watch(homeShown, readQuiet)
 onMounted(() => { if (homeShown.value) { quietRead.mark(); refreshQuiet() } document.addEventListener('visibilitychange', onQuietVisible) })
 onBeforeUnmount(() => document.removeEventListener('visibilitychange', onQuietVisible))
-// Header buttons: when the list is too narrow, Settings then the Board move
-// into a "…" menu.
+// Header buttons: when the list is too narrow, Search, then Notes, then the Board
+// move into a "…" menu; Settings always stays a button.
 const titleRow = ref<HTMLElement | null>(null)
 const titleRowWidth = ref(0)
 let titleRowObserver: ResizeObserver | null = null
@@ -300,7 +300,7 @@ onMounted(() => {
 })
 onBeforeUnmount(() => titleRowObserver?.disconnect())
 // First to fold first.
-const headerFoldable = ['settings', 'notes', 'board']
+const headerFoldable = ['search', 'notes', 'board']
 const headerFolded = computed(() => {
   if (!titleRowWidth.value) return new Set<string>()
   const total = headerFoldable.length + 1 + (desk.value ? 1 : 0)
@@ -309,10 +309,10 @@ const headerFolded = computed(() => {
 function headerMenuItems(): MenuItem[] {
   const f = headerFolded.value
   return [
+    ...(f.has('search') ? [{ label: tl('Search'), icon: 'i-lucide-search', kbds: desk.value ? shortcutKbds('search-all') : undefined, run: openSearch }] : []),
     ...(quietCurrent.value ? [{ label: quietLabel.value, icon: 'i-lucide-bell-off', run: () => navigateTo(quietSettings) }] : []),
     ...(f.has('board') ? [{ label: tl('Board', 'Tableau'), icon: 'i-lucide-square-kanban', run: openBoard }] : []),
     ...(f.has('notes') ? [{ label: tl('Notes'), icon: 'i-lucide-sticky-note', run: toggleNotes }] : []),
-    ...(f.has('settings') ? [{ label: t('Settings'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings') }] : []),
   ]
 }
 // Board: read whether project management is on and has a project at click time
@@ -451,7 +451,7 @@ function resetListWidth() {
         </p>
         <h1 class="sr-only">{{ t('Agents') }}</h1>
         <div class="home-actions">
-          <UTooltip :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :kbds="shortcutKbds('search-all')" :disabled="!desk">
+          <UTooltip v-if="!headerFolded.has('search')" :text="tl('Search agents and conversations', 'Rechercher agents et conversations')" :kbds="shortcutKbds('search-all')" :disabled="!desk">
             <UButton icon="i-lucide-search" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Search agents and conversations', 'Rechercher agents et conversations')" @click="openSearch" />
           </UTooltip>
           <UTooltip v-if="!headerFolded.has('board')" :text="tl('Board', 'Tableau')" :disabled="!desk">
@@ -460,7 +460,7 @@ function resetListWidth() {
           <UTooltip v-if="!headerFolded.has('notes')" :text="tl('Notes')" :kbds="shortcutKbds('notes')" :disabled="!desk">
             <UButton icon="i-lucide-sticky-note" color="neutral" variant="ghost" size="lg" class="icon-btn" :aria-label="tl('Notes')" :aria-pressed="notesOpen" data-testid="home-notes" @click="toggleNotes" />
           </UTooltip>
-          <UTooltip v-if="!headerFolded.has('settings')" :text="t('Settings')" :kbds="shortcutKbds('settings')" :disabled="!desk">
+          <UTooltip :text="t('Settings')" :kbds="shortcutKbds('settings')" :disabled="!desk">
             <UButton
               icon="i-lucide-settings-2" color="neutral" variant="ghost" size="lg" class="icon-btn"
               :aria-label="t('Settings')" to="/settings"
