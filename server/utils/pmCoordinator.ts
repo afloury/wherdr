@@ -7,12 +7,12 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
 import { notesStore, runNotes, type NotesStore } from './notesStore'
-import { MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, PROPOSAL_ANSWERS } from '../../shared/pm/coordinator'
+import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, PROPOSAL_ANSWERS } from '../../shared/pm/coordinator'
 import { FEATURE, coordinatorKey, handledBy, isWorkspace, membersOf, ownWorkflow } from '../../shared/pm/workspace'
 import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
-import { MODEL_RE, validateTemplate } from '../../shared/pm/workflow'
+import { MODEL_RE, isDefaultWorkflow, validateTemplate } from '../../shared/pm/workflow'
 import { weightOf, weightText, weightsLine } from '../../shared/pm/weight'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { AUTOPILOT_STARTED, UNCONFIRMED, DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, busyNext, busyQueue, keepsBusy, coordinatorStartRefusal, countFix, limitsLeft, pastLimit, lookAddRefusal, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
@@ -884,7 +884,8 @@ export async function prepareCoordinator(deps: Deps, key: string, program: Coord
 // the agent that ran it, instead of a new one.
 export async function startCoordinator(deps: Deps, key: unknown, agent: { program?: unknown, model?: unknown, resume?: unknown }, urls: CoordinatorUrls, first: string[] = []) {
   if (typeof key !== 'string') throw new HerdrError('not_found', 'Unknown project')
-  const ws = coordinatorKey(key, await deps.store.projects())
+  const projects = await deps.store.projects()
+  const ws = coordinatorKey(key, projects)
   if (ws !== key) throw new HerdrError('refused', `${key} is a member of workspace ${ws}, whose coordinator handles its tasks: it has none of its own`)
   const before = await deps.store.coordinator(key)
   const resume = agent.resume === true
@@ -899,7 +900,10 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const c = await prepareCoordinator(deps, key, program, urls, resume, a.model)
   // What the user applied on its cards while it did not run, said once (a resume too).
   const notes = cardNotesMessage(before)
-  const prompt = [...c.prompt, ...first, ...notes]
+  // Its very first start on a git project with no accepted workflow: its first reply proposes one.
+  const git = key !== MAIN && projects.find(x => x.key === key)?.git !== false
+  const proposes = git && !resume && !before?.ran && isDefaultWorkflow(await deps.store.workflow(key)) ? [FIRST_REPLY] : []
+  const prompt = [...c.prompt, ...first, ...proposes, ...notes]
   // A resumed Codex reads a word after `resume --last` as a session: its messages are typed.
   const asArg = promptAsArg(program) && !resume
   // Codex takes one [PROMPT] argument: its messages go as one.
@@ -919,7 +923,9 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const { told: _told, cardNotes: _said, ...rec } = (await deps.store.coordinator(key))!
   await deps.store.saveCoordinator({ ...rec, terminal: address, ran: a, version: wherdrVersion(), ...(key === MAIN ? { agent: a } : {}) })
   // Its turn follows the user's clicks (issueToken cleared it): it may propose the next card.
-  if (notes.length) await noteTurn(deps.store, key, 'user', notes[0])
+  // Its first reply's workflow proposal follows the user's start.
+  const said = [...proposes, ...notes]
+  if (said.length) await noteTurn(deps.store, key, 'user', said.join('\n\n'))
   // This conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
   return { terminal: address, folder: c.folder }
