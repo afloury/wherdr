@@ -32,6 +32,7 @@ All notable changes to this project are documented here. The format follows
 - **One Codex quota row per account (#291).** Two machines on the same Codex account share one quota row even when their conversations carry no account fingerprint.
 - **Conversations that stay put (#395, #435, #442).** Returning to the app re-reads the conversation without redrawing it when nothing changed; a conversation reopens at its reading position on the first paint; a sent message stays shown until the transcript is read again, even when reads fail for a while.
 - **No duplicate sends (#289).** A dictation app pressing Enter again while the page lags no longer sends the same message twice, and a stray Escape no longer stops the working agent.
+- **Phone setup on macOS when wherdr runs as a service (#724).** wherdr now uses the `tailscale` command the app installs before the app's own binary, so Settings › Phone no longer says *not connected* while Tailscale runs, and Web Push works.
 - **Reconnecting never hangs (#324).** After a suspend or a redeploy, reads that could hang now time out and recover, and independent reads run side by side.
 
 ## [2.5.0] — 2026-11-02

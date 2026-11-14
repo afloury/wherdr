@@ -20,6 +20,7 @@
 - A repeated Enter (from a dictation app, for example) no longer sends the same message twice, and a single stray Escape no longer stops the agent.
 - Home counters and badges agree on task states, the Board grouping appears right after a reload, and two machines on one Codex account share one quota row.
 - Reconnecting after a suspend or a redeploy no longer hangs on a stalled read.
+- On macOS, when wherdr runs as a service, Settings › Phone no longer says *not connected* while Tailscale runs, and Web Push works.
 
 ## Update
 
