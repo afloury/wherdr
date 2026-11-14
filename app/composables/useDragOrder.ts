@@ -9,7 +9,7 @@ type Drag = { id: string, ids: string[], from: number, dy: number, to: number, h
 const HOLD_MS = 300
 const SLOP = 8
 
-export function useDragOrder(list: Ref<HTMLElement | null>, drop: (ids: string[]) => void) {
+export function useDragOrder(list: Ref<HTMLElement | null>, drop: (ids: string[], moved: string) => void) {
   const drag = ref<Drag | null>(null)
   let droppedAt = 0
   const slots = () => [...(list.value?.querySelectorAll<HTMLElement>('[data-order-id]') || [])]
@@ -55,7 +55,7 @@ export function useDragOrder(list: Ref<HTMLElement | null>, drop: (ids: string[]
       release?.()
       if (!d) return
       droppedAt = Date.now()
-      if (save && d.to !== d.from) drop(moved(d.ids, d.id, d.to))
+      if (save && d.to !== d.from) drop(moved(d.ids, d.id, d.to), d.id)
     }
     const up = end(true)
     const cancel = end(false)
@@ -102,7 +102,7 @@ export function useDragOrder(list: Ref<HTMLElement | null>, drop: (ids: string[]
       const to = e.key === 'ArrowUp' ? at - 1 : e.key === 'ArrowDown' ? at + 1 : -1
       if (at < 0 || to < 0 || to >= ids.length) return
       e.preventDefault()
-      drop(moved(ids, id, to))
+      drop(moved(ids, id, to), id)
       nextTick(() => list.value?.querySelector<HTMLElement>(`[data-order-id="${CSS.escape(id)}"] [data-grip]`)?.focus())
     },
     // The click that ends a drag is not a tap.

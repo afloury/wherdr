@@ -36,8 +36,9 @@ const setHidden = (c: CoordinatorView, on: boolean) => {
   coordinatorsHidden.value = [...coordinatorsHidden.value.filter(k => k !== c.project), ...(on ? [c.project] : [])]
 }
 const list = ref<HTMLElement | null>(null)
-const dnd = useDragOrder(list, (slots) => {
-  const next = dropSlots(slots, hiddenOpen.value ? [] : hiddenRows.value.map(c => c.project), { order: coordinatorOrder.value, hidden: coordinatorsHidden.value })
+const dnd = useDragOrder(list, (slots, moved) => {
+  const shownHidden = sorted.value.filter(c => isHidden(c) && needsYou(c)).map(c => c.project)
+  const next = dropSlots(slots, hiddenOpen.value ? [] : hiddenRows.value.map(c => c.project), { order: coordinatorOrder.value, hidden: coordinatorsHidden.value }, shownHidden, moved)
   coordinatorOrder.value = next.order
   coordinatorsHidden.value = next.hidden
 })
