@@ -6,7 +6,9 @@
 // proposes a workflow change says so (reviewed on the sheet's Workflow tab).
 // Template library opens TemplateLibrary (`?library=1`). Set up a project opens
 // SetupWizard, at the first step left.
-// Off, the server refuses every change but the switch.
+// Off, the server refuses every change but the switch. Until the overview is
+// read: skeletons (SettingsSkeleton), not an off switch and no project; a failed
+// read shows its error and Try again.
 import type { PmOverview } from '#shared/pm/project'
 import { shownKey } from '#shared/pm/projectKey'
 import { EXAMPLES } from '#shared/pm/examples'
@@ -17,14 +19,16 @@ const route = useRoute()
 const router = useRouter()
 const data = ref<PmOverview | null>(null)
 const error = ref('')
+const loadError = ref('')
 const busy = ref(false)
 const setupOpen = ref(false)
 
 const machineName = (key: string) => key ? (appConfig.value.machines?.find(m => m.key === key)?.label || key) : (appConfig.value.hostLabel || t('This machine'))
 
 async function load() {
+  loadError.value = ''
   try { data.value = await api<PmOverview>('/api/pm/overview') }
-  catch (e) { error.value = (e as Error).message }
+  catch (e) { (data.value ? error : loadError).value = (e as Error).message }
 }
 watch(() => props.active, (on) => { if (on && !data.value) load(); if (on) loadCoordinators() }, { immediate: true })
 const proposes = (key: string) => projectCoordinators.value.some(c => c.project === key && c.proposal)
@@ -69,12 +73,21 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
         <b>{{ tl('Project management', 'Gestion de projet') }}</b>
         <small>{{ tl('Tasks follow the workflow of their project. Off, nothing is changed.') }}</small>
       </span>
-      <USwitch :model-value="data?.enabled ?? false" :disabled="!data || busy" color="success" size="xl" data-testid="pm-switch" @update:model-value="v => toggle(v)" />
+      <SettingsSkeleton v-if="!data" kind="switch" />
+      <USwitch v-else :model-value="data.enabled" :disabled="busy" color="success" size="xl" data-testid="pm-switch" @update:model-value="v => toggle(v)" />
     </label>
     <UButton color="neutral" variant="ghost" size="lg" icon="i-lucide-list-checks" class="pm-setup" data-testid="pm-setup" data-ui-target="projects.setup" @click="setupAdding = false; setupOpen = true">{{ tl('Set up a project') }}</UButton>
     <SetupWizard v-model:open="setupOpen" :adding="setupAdding" @changed="load" />
 
-    <template v-if="data?.enabled">
+    <template v-if="!data">
+      <h3>{{ tl('Projects') }}</h3>
+      <SettingsSkeleton :error="loadError" @retry="load" />
+      <div v-if="!loadError" class="pm-actions">
+        <UButton color="primary" variant="solid" size="xl" icon="i-lucide-plus" disabled data-testid="pm-add">{{ tl('Add project') }}</UButton>
+        <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" disabled data-testid="pm-board">{{ tl('Open the board') }}</UButton>
+      </div>
+    </template>
+    <template v-else-if="data.enabled">
       <h3>{{ tl('Projects', 'Projets') }}</h3>
       <div v-if="data.projects.length" class="settings-card">
         <button v-for="p in data.projects" :key="p.key" type="button" class="pm-row" data-testid="pm-project" @click="show(p.key)">
