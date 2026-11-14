@@ -28,7 +28,8 @@
   queue when it takes them, else held by wherdr and sent when the turn ends; never left
   half-typed in its field; a message pulled back out of Claude's queue before it read it, or not seen after an hour, is
   marked “Not sent” with Retry / Cancel, and “Not sent” clears once the message shows in its transcript), attach or paste
-  photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
+  photos (shown in the sent message at once from the device's own copy; an image that fails to load is tried
+  again once, then shows *Tap to reload*) and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), run slash commands (`/compact`, `/clear`, `/context`, `/usage`…) and see the output
   of local commands. Stop button while the agent works. When Claude Code suggests a reply
   (grayed-out in the empty field), `Tab` takes it on a computer and **Use**, inside the field on
