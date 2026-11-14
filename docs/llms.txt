@@ -8,6 +8,7 @@
 ## Start here
 
 - [Documentation home](docs/README.md): the list of pages, v3 and v2 only.
+- [Community](docs/README.md#community): the wherdr Discord (https://discord.gg/ky36WYmtVE) for questions and feedback; bugs go to GitHub issues.
 - [Overview](docs/overview.md#why-wherdr): what wherdr does for you.
 - [How it works](docs/overview.md#how-it-works): wherdr's server, the hc socket, transcripts and the data folder.
 - [herdr-core](docs/core.md): what v3 supports on hc, the reference for inventory, terminals and conversations.
