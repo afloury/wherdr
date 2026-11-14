@@ -41,8 +41,8 @@
   lists each agent's actions under its role. A reviewer kept between rounds shows dimmed. A
   row keeps its task look after a restart of wherdr or herdr-core: an agent is found by its
   task and role, even when it was resumed or its terminal re-attached.
-- **Order**: the header (logo, version, Search, Board, Notes, Settings; when the list is too
-  narrow, Search, then Notes, then Board move into a ⋯ menu, Settings always stays a button), the counters, the quotas (a
+- **Order**: the header (logo, version, Search, Board, Settings; when the list is too
+  narrow, Search, then Board move into a ⋯ menu, Settings always stays a button), the counters, the quotas (a
   machine's own quotas under them), Alfred, the [Tasks to review](#tasks-to-review) card, the
   [coordinators](#coordinators), then the agents of
   the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,
@@ -197,8 +197,11 @@ Codex agents of online machines. Choosing a result opens it.
 
 ### Notes
 
-The note button in the header (Mod+Alt+P on a computer) opens the [notes](alfred.md#notes)
-Alfred and the coordinators write for you: read-only, a short whiteboard. On a computer of
+The Notes button in a conversation's header, beside Search (Mod+Alt+P on a computer), opens
+and closes the [notes](alfred.md#notes); it shows as pressed while they are open. When the
+header is narrow (a phone, a side-by-side cell, a narrow window) Notes is the first entry of
+the header's ⋯ menu instead. Alfred and the coordinators write them for you:
+read-only, a short whiteboard. On a computer of
 at least 1280 px they open beside the conversation or Home's list, like Settings (drag the panel's left edge
 to resize it); otherwise in a sheet. They follow the home tab by default (**Follow
 tab**), with a muted line saying which (*Work · following the tab*); the menu at the top shows
