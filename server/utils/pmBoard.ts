@@ -11,7 +11,7 @@ import { weightOf, weightText } from '../../shared/pm/weight'
 import { allowedMachines, type Project } from '../../shared/pm/project'
 import type { MachineInfo } from '../../shared/types'
 import { lastReadiness } from './pmReady'
-import { shownTaskId } from '../../shared/pm/projectKey'
+import { showIds, shownTaskId } from '../../shared/pm/projectKey'
 import { taskAgents, type TaskAgent } from '../../shared/pm/taskAgents'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { tellTarget } from '../../shared/pm/coordinator'
@@ -228,7 +228,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
       worktree: run.worktree, branch: run.branch, guards: taskGuards(t, task.type), bases: [p.base, act.action.target, act.action.base], on: p.deleteBranch !== false,
     }).catch((e: Error) => `kept the remote branch ${run.branch}: ${e.message}`)
     // The approval dropped: the worker says why, with new screenshots.
-    if (result.unapproved && state.lookAgain) await askWhy(deps, task.id, state.lookAgain.why).catch(() => {})
+    if (result.unapproved && state.lookAgain) await askWhy(deps, p, task.id, askWhyText(state.lookAgain.why)).catch(() => {})
     return gone ? store.logTask(saved, 'engine', gone) : saved
   }
   return store.saveTask({ ...(await fresh()), step: state })
@@ -241,10 +241,10 @@ export const askWhyText = (why: string) => [
   'Take new screenshots of the change and upload each with the upload command of your instructions, adding `&reason=` to its URL with one line, URL-encoded:',
   '"Back to review because: <what changed on screen, and why>", naming the other task (such as ABC-12) when a conflict with it caused it. Change no code for this.',
 ].join('\n')
-async function askWhy(deps: CoreAdminDeps & { store: PmStore }, id: string, why: string) {
+async function askWhy(deps: CoreAdminDeps & { store: PmStore }, p: Project, id: string, text: string) {
   const { run, released } = tellTarget(await deps.store.runs(), id, 'worker')
-  if (run) return deps.call('terminal.send', { terminal: run.terminal, text: askWhyText(why) }, 30000)
-  if (released) await (await import('./pmRelease')).reviveWorker(deps, id, 'asked why the approval was dropped', askWhyText(why))
+  if (run) return deps.call('terminal.send', { terminal: run.terminal, text: showIds([p], text) }, 30000)
+  if (released) await (await import('./pmRelease')).reviveWorker(deps, id, 'asked why the approval was dropped', showIds([p], text))
 }
 
 const workerRun = async (store: PmStore, id: string) =>
