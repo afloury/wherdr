@@ -115,10 +115,15 @@ export function buildTuning(heapLimit = v8.getHeapStatistics().heap_size_limit, 
   if (heapLimit >= BUILD_HEAP_MB * 1024 * 1024) return null
   return { heapMb: Math.round(heapLimit / 1048576), nodeOptions: `--max-old-space-size=${BUILD_HEAP_MB}`, prefix: ionice ? 'nice -n 19 ionice -c3' : 'nice -n 19' }
 }
+// The build goes to .output.next; it replaces .output (kept as .output.prev for
+// one rollback) only once it succeeded: a failed build (out of memory…) leaves
+// the running .output whole. Run in the checkout; ok: what runs after the swap.
+export const NEXT_OUTPUT = '.output.next'
+export const swapBuild = ok => `[ -f ${NEXT_OUTPUT}/server/index.mjs ] && rm -rf .output.prev && { [ ! -e .output ] || mv .output .output.prev; } && mv ${NEXT_OUTPUT} .output${ok ? ` && ${ok}` : ''}`
 export function buildCommand(src, tuning) {
   const p = tuning ? `${tuning.prefix} ` : ''
   const env = tuning ? `export NODE_OPTIONS="${'$'}{NODE_OPTIONS:-} ${tuning.nodeOptions}"; ` : ''
-  return `cd ${JSON.stringify(src)} && ${env}{ ${p}npm ci --no-audit --no-fund --loglevel=error && ${p}npm run build; } > ../build.log 2>&1`
+  return `cd ${JSON.stringify(src)} && export NITRO_OUTPUT_DIR=${NEXT_OUTPUT}; ${env}rm -rf ${NEXT_OUTPUT} && { ${p}npm ci --no-audit --no-fund --loglevel=error && ${p}npm run build; } > ../build.log 2>&1 && ${swapBuild()} || { rm -rf ${NEXT_OUTPUT}; exit 1; }`
 }
 
 // The tailscale serve HTTPS port: the one asked for, else the one this v3 already
@@ -170,22 +175,32 @@ WantedBy=default.target
 
 export function updateScript({ branch, name, port }) {
   return `#!/usr/bin/env bash
-# Update wherdr v3 (installed beside v2): fetch ${branch}, rebuild, restart. Data in ./data is kept.
+# Update wherdr v3 (installed beside v2): fetch ${branch} (or the tag v<version>: update.sh <version>),
+# build aside, swap the build in, restart. A failed build leaves the running one. Data in ./data is kept.
 set -euo pipefail
 cd "$(dirname "$0")/src"
-git fetch -q origin ${branch}
-git checkout -q -f --detach origin/${branch}
+if [ $# -gt 0 ]; then
+  case "$1" in ''|*[!0-9A-Za-z.+-]*) echo "ERROR usage: update.sh [<version>]"; exit 2;; esac
+  ref="v${'$'}{1#v}"
+  git fetch -q origin "refs/tags/$ref:refs/tags/$ref"
+  git checkout -q -f --detach "$ref"
+else
+  git fetch -q origin ${branch}
+  git checkout -q -f --detach origin/${branch}
+fi
 # Small machines: Node's default heap is too small for the build (about ${BUILD_HEAP_MB} MB needed).
 run=""
 if [ "$(node -p 'require("v8").getHeapStatistics().heap_size_limit')" -lt ${BUILD_HEAP_MB * 1024 * 1024} ]; then
   export NODE_OPTIONS="${'$'}{NODE_OPTIONS:-} --max-old-space-size=${BUILD_HEAP_MB}"
   run="nice -n 19"; if command -v ionice >/dev/null 2>&1; then run="$run ionice -c3"; fi
 fi
-{ $run npm ci --no-audit --no-fund --loglevel=error && $run npm run build; } > ../build.log 2>&1 || { tail -20 ../build.log; echo "ERROR build-failed: see $(cd .. && pwd)/build.log"; exit 5; }
+export NITRO_OUTPUT_DIR=${NEXT_OUTPUT}
+rm -rf ${NEXT_OUTPUT}
+{ $run npm ci --no-audit --no-fund --loglevel=error && $run npm run build; } > ../build.log 2>&1 && ${swapBuild()} || { tail -20 ../build.log; rm -rf ${NEXT_OUTPUT}; echo "ERROR build-failed: the running build (.output) is unchanged; see $(cd .. && pwd)/build.log"; exit 5; }
 systemctl --user restart ${name}.service
 for i in $(seq 1 60); do curl -fsS http://127.0.0.1:${port}/api/health >/dev/null 2>&1 && break; sleep 1; done
-curl -fsS http://127.0.0.1:${port}/api/health >/dev/null || { echo "ERROR not-answering: ${name} does not answer; journalctl --user -u ${name}"; exit 5; }
-echo "OK wherdr v3 at $(git rev-parse --short HEAD) answers on http://127.0.0.1:${port}"
+curl -fsS http://127.0.0.1:${port}/api/health >/dev/null || { echo "ERROR not-answering: ${name} does not answer; journalctl --user -u ${name}; the previous build is in $(pwd)/.output.prev"; exit 5; }
+echo "OK wherdr v3 at $(git rev-parse --short HEAD) answers on http://127.0.0.1:${port} (previous build kept in .output.prev)"
 `
 }
 
@@ -372,7 +387,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
             : `keep ${src} at ${short(head)}${remote ? ` (= origin/${o.branch})` : ` (git ls-remote ${o.repo} failed)`}`,
       autoDeploy ? `install the latest prebuilt v3 from ${deploySource} into ${src}/.output (no build here)`
         : !needsBuild ? 'keep the existing build'
-        : `npm ci && npm run build (log: ${o.dir}/build.log)${tuning ? `; Node's heap is ${tuning.heapMb} MB, the build needs ~1.5 GB: NODE_OPTIONS=${tuning.nodeOptions}, ${tuning.prefix}` : ''}`,
+        : `npm ci && npm run build into ${NEXT_OUTPUT}, swapped in once built (log: ${o.dir}/build.log)${tuning ? `; Node's heap is ${tuning.heapMb} MB, the build needs ~1.5 GB: NODE_OPTIONS=${tuning.nodeOptions}, ${tuning.prefix}` : ''}`,
       o.skipImport || !v2.found ? 'no import' : `import from v2 into ${o.dir}/data (v2 is only read)`,
       `${running ? 'restart' : 'start'} ${name}.service on ${target} (DATA_DIR ${o.dir}/data${appUrl ? `, APP_URL ${appUrl}` : ''}; ${protectText} from ${protect.from})`,
       !ts ? 'no tailscale serve (tailscale not found or --no-tailscale)' : serveDone ? `keep tailscale serve https:${httpsPort}` : `tailscale serve --bg --https=${httpsPort} ${target} (added beside the existing entries${v2.tailscale.entries.length ? `, which use ${[...new Set(v2.tailscale.entries.map(e => e.https))].join(', ')}` : ''})`,
@@ -437,7 +452,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
       step('OK', `prebuilt ${short(fs.readFileSync(path.join(o.dir, 'deploy', 'commit'), 'utf8').trim())} in ${src}/.output`)
     } else if (!built || (m.builtCommit ? m.builtCommit !== now : now !== head)) {
       const r = run('sh', ['-c', buildCommand(src, tuning)], { timeout: 3600000 })
-      if (!r.ok) throw new Stop(EXIT.failed, 'build-failed', `the build failed: see ${o.dir}/build.log${tuning ? '' : " (out of memory? the build needs about 1.5 GB of Node heap: NODE_OPTIONS=--max-old-space-size=1536)"}`)
+      if (!r.ok) throw new Stop(EXIT.failed, 'build-failed', `the build failed, the running build (${src}/.output) is unchanged: see ${o.dir}/build.log${tuning ? '' : " (out of memory? the build needs about 1.5 GB of Node heap: NODE_OPTIONS=--max-old-space-size=1536)"}`)
       m.builtCommit = now; save(m)
       step('OK', `built ${short(now)}${tuning ? ` (NODE_OPTIONS=${tuning.nodeOptions}, ${tuning.prefix})` : ''}`)
     } else step('SKIP', `already built at ${short(now)}`)
