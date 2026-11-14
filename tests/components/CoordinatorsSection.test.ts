@@ -119,6 +119,8 @@ it('no ••• button: right click (computer) and long press (touch) open its 
     w = await mountSuspended(CoordinatorsSection, { attachTo: document.body })
     await vi.waitFor(() => expect(w!.findAll('[data-testid="coordinator-row"]')).toHaveLength(1))
     const row = w.find('[data-testid="coordinator-row"]')
+    // No iOS text selection or callout on the long press (WHR-354): the shared no-select class.
+    expect(row.element.closest('.press-row')).not.toBeNull()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
     try {
       await row.trigger('pointerdown', { pointerType: 'touch', button: 0, clientX: 0, clientY: 0 })

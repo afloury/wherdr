@@ -177,7 +177,7 @@ onUnmounted(() => clearInterval(timer))
         </template>
         <template #content>
           <div
-            v-for="c in g.list" :key="c.project" class="coord-item" :class="{ moving: dnd.drag.value?.id === c.project }" :data-order-id="c.project"
+            v-for="c in g.list" :key="c.project" class="coord-item press-row" :class="{ moving: dnd.drag.value?.id === c.project }" :data-order-id="c.project"
             :style="{ transform: dnd.shift(c.project) }" @pointerdown="dnd.hold(c.project, $event)"
           >
             <UContextMenu :disabled="sheetMenus" :items="rowMenu.dropdown(menu(c))" :press-open-delay="700" :ui="{ content: 'hw-dropdown' }" @update:open="rowMenu.opened">
