@@ -74,7 +74,7 @@ const selected = (c: CoordinatorView) => { const id = coordinatorPane(c)?.id; re
 const sub = (c: CoordinatorView) => {
   const p = coordinatorPane(c)
   const program = kindLabel((c.ran ?? coordinatorAgent(c))?.program)
-  if (p && c.undelivered) return tl('First message not delivered: Send again in its menu')
+  if (c.undelivered) return tl('First message not delivered: Send again in its menu')
   if (p) return `${program} · ${statusLabel(p)}`
   if (coordinatorStopped(c)) return `${program} · ${tl('Stopped')}`
   return tl(`Start with ${program}`, `Lancer avec ${program}`)
@@ -90,8 +90,9 @@ const menu = (c: CoordinatorView) => (): MenuItem[] => {
   const p = coordinatorPane(c)
   const pilot = !!c.autopilot?.on
   return [
-    // Its first message never reached its session (coordinatorFirst.ts): typed again once it is ready.
-    ...(p && c.undelivered ? [{ label: tl('Send again'), icon: 'i-lucide-send', run: () => run(c, async () => { await api('/api/pm/coordinator-start', { project: c.project, resend: true }); await loadCoordinators() }) }, { kind: 'separator' as const }] : []),
+    // Its first message never reached its session (coordinatorFirst.ts): typed again once it is
+    // ready; its session ended: a new conversation that gets it.
+    ...(c.undelivered ? [{ label: tl('Send again'), icon: 'i-lucide-send', run: () => run(c, async () => { await api('/api/pm/coordinator-start', { project: c.project, resend: true }); await loadCoordinators() }) }, { kind: 'separator' as const }] : []),
     { label: t('Open the board'), icon: 'i-lucide-kanban', run: () => navigateTo(`/board?project=${encodeURIComponent(c.project)}`) },
     { label: t('Project settings'), icon: 'i-lucide-settings-2', run: () => navigateTo(settingsPath(c, 'general')) },
     { label: t('Autopilot'), icon: pilot ? 'i-lucide-check' : 'i-lucide-plane', desc: pilot ? t('On') : t('Off'), run: () => navigateTo(settingsPath(c, 'autopilot')) },

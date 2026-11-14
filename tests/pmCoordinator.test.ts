@@ -591,7 +591,8 @@ it('tell goes to the step\'s agent, else the worker; --to picks one', () => {
 
 describe('role files', () => {
   // A fake herdr-core: the machine's home is /h; files written; terminals started.
-  const fakeCore = (local = true) => {
+  // ended: its terminals end at once (a session that never comes up).
+  const fakeCore = (local = true, ended = false) => {
     const written: string[] = [], runs: Record<string, unknown>[] = [], scripts = new Map<string, string>()
     const call = async (method: string, params: Record<string, unknown>) => {
       const argv = params.argv as string[] | undefined
@@ -599,7 +600,9 @@ describe('role files', () => {
       // The repository's remote and gh's answer: a public GitHub repository.
       if (method === 'machine.exec' && argv?.[2] === REMOTE_SCRIPT) return { code: 0, stdout: Buffer.from('git@github.com:o/co.git\n{"visibility":"PUBLIC"}').toString('base64') }
       if (method === 'machine.exec') return written.push(argv![4]!), scripts.set(argv![4]!, argv![2]!), { code: 0, stdout: '' }
-      if (method === 'terminal.get' || method === 'terminal.read') return {} // no terminal to watch for a trust dialog
+      // Up at once: no trust dialog to answer, the first message delivered.
+      if (method === 'terminal.get') return ended ? { state: 'finished' } : { state: 'live', status: 'idle' }
+      if (method === 'terminal.read') return { text: '> ' }
       runs.push({ method, ...params })
       return { address: `host/t${runs.length + 4}` }
     }
@@ -633,7 +636,7 @@ describe('role files', () => {
     let screen = (await fixture('claude-trust-folder')).replace('/home/user/projects/new-folder', folder)
     const keys: unknown[] = []
     const call = deps.call as (m: string, p: Record<string, unknown>) => Promise<unknown>
-    const d = { ...deps, pollMs: 1, call: async (m: string, p: Record<string, unknown>) => {
+    const d = { ...deps, pollMs: 1, queueWatchMs: 50, call: async (m: string, p: Record<string, unknown>) => {
       if (m === 'terminal.get') return { state: 'live', status: null }
       if (m === 'terminal.read') return { text: screen }
       if (m === 'terminal.keys') return keys.push(p.keys), {}
@@ -714,6 +717,18 @@ describe('role files', () => {
     expect(runs.filter(r => r.method === 'terminal.run')[1]!.line).not.toContain(FIRST_REPLY)
     await startCoordinator(deps, 'NW', { program: 'codex' }, urls)
     expect(runs.filter(r => r.method === 'terminal.run')[2]!.line).not.toContain(FIRST_REPLY)
+  })
+
+  it('a fresh start whose session never comes up: its first message is logged as not delivered, and the next start gives it again', async () => {
+    const projects = JSON.parse(await fs.readFile(store.files.projects, 'utf8'))
+    await fs.writeFile(store.files.projects, JSON.stringify({ ...projects, projects: [...projects.projects, { key: 'NW', name: 'New', machine: '', path: '/src/nw', addedAt: 1 }] }))
+    await startCoordinator(fakeCore(true, true).deps, 'NW', { program: 'claude' }, urls)
+    await expect.poll(async () => (await store.coordinator('NW'))?.undelivered).toMatchObject({ texts: [FIRST_REPLY], why: 'its session ended before it was ready' })
+    expect((await store.projectLog('NW')).map(e => e.text)).toContain('first message not delivered: its session ended before it was ready')
+    const { runs, deps } = fakeCore()
+    await startCoordinator(deps, 'NW', { program: 'claude' }, urls)
+    expect(runs[0]!.line).toContain(FIRST_REPLY)
+    await expect.poll(async () => (await store.coordinator('NW'))?.undelivered).toBeUndefined()
   })
 
   it('on another machine, the coordinator gets wherdr\'s published address, never loopback', async () => {

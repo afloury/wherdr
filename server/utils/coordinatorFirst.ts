@@ -25,30 +25,46 @@ async function mark(deps: FirstDeps, key: string, address: string, undelivered?:
   await deps.store.saveCoordinator({ ...rest, ...(undelivered ? { undelivered } : {}) })
 }
 
+const WHY = { dialog: 'a dialog waits for an answer', installing: 'it is installing an update', skipped: 'not ready yet', unreachable: 'its machine does not answer' }
+const statusOf = (t: { status?: string | { state?: string } | null }) => (typeof t.status === 'string' ? t.status : t.status?.state)
+
 // up: called once with the first outcome (the session is up, or gone).
-export async function deliverFirst(deps: FirstDeps, key: string, address: string, texts: string[], up: () => void = () => {}): Promise<'sent' | 'failed'> {
+// inArgv: the messages went on its command line (a fresh Claude or Codex): only watched
+// until its session is up (idle or working), so that a start that never comes up says so.
+// A terminal.get that fails (a timeout, the machine briefly unreachable) is retried.
+export async function deliverFirst(deps: FirstDeps, key: string, address: string, texts: string[], up: () => void = () => {}, inArgv = false): Promise<'sent' | 'failed'> {
   const limit = deps.queueWatchMs ?? 600_000, end = Date.now() + limit
   let i = 0, why = '', queued = false
-  while (i < texts.length) {
-    const t = await deps.call<{ state?: string }>('terminal.get', { terminal: address }, 3000).catch(() => null)
-    if (!t?.state || t.state === 'finished') { why = 'its session ended before it was ready'; break }
-    const r = await sendFirstMessage(deps, address, texts[i]!).catch(() => 'skipped' as const)
-    if (r === 'sent') { i++; up(); continue }
+  while (inArgv || i < texts.length) {
+    let r: keyof typeof WHY | 'sent' = 'unreachable'
+    const t = await deps.call<{ state?: string, status?: string | { state?: string } | null }>('terminal.get', { terminal: address }, 3000).catch(() => undefined)
+    if (t !== undefined) {
+      if (!t?.state || t.state === 'finished') { why = 'its session ended before it was ready'; break }
+      if (inArgv) {
+        const s = statusOf(t)
+        if (s === 'idle' || s === 'working') break
+        r = s === 'blocked' ? 'dialog' : 'skipped'
+      } else {
+        r = await sendFirstMessage(deps, address, texts[i]!).catch(() => 'skipped' as const)
+        if (r === 'sent') { i++; up(); continue }
+      }
+    }
     if (Date.now() >= end) { why = `it was not ready after ${Math.round(limit / 60_000)} min`; break }
-    if (!queued) {
+    if (!queued && texts.length) {
       queued = true
-      await log(deps, key, `first message queued (${r === 'dialog' ? 'a dialog waits for an answer' : r === 'installing' ? 'it is installing an update' : 'not ready yet'}): typed once it is ready`)
+      await log(deps, key, `first message queued (${WHY[r as keyof typeof WHY]}): ${inArgv ? 'given at its start, watched until its session is up' : 'typed once it is ready'}`)
     }
     await sleep((deps.pollMs ?? 500) * 2)
   }
   up()
   if (!why) {
-    if (texts.length) await log(deps, key, `first message sent${texts.length > 1 ? ` (${texts.length} messages)` : ''}`)
+    if (texts.length) await log(deps, key, `first message ${inArgv ? 'given at its start, its session is up' : 'sent'}${texts.length > 1 ? ` (${texts.length} messages)` : ''}`)
     await mark(deps, key, address)
     return 'sent'
   }
+  if (!texts.length) return 'failed'
   await log(deps, key, `first message not delivered: ${why}`)
-  await mark(deps, key, address, { texts: texts.slice(i), why, at: Date.now() })
+  await mark(deps, key, address, { texts: inArgv ? texts : texts.slice(i), why, at: Date.now() })
   return 'failed'
 }
 
@@ -65,12 +81,16 @@ export async function startTurn(deps: Pick<FirstDeps, 'startGapMs'>): Promise<()
   return done
 }
 
-// Send again: the messages not delivered to the running conversation, queued again.
-export async function resendFirst(deps: FirstDeps, key: string) {
+// Send again: the messages not delivered, queued again to its running conversation; its
+// session ended (or never came up): `restart` starts a new one, which takes them
+// (startCoordinator replays a record's undelivered messages at any start).
+export async function resendFirst(deps: FirstDeps, key: string, restart: () => Promise<unknown>) {
   const rec = await deps.store.coordinator(key)
-  if (!rec?.undelivered || !rec.terminal) throw new HerdrError('not_found', 'No first message waits to be sent again')
+  if (!rec?.undelivered) throw new HerdrError('not_found', 'No first message waits to be sent again')
+  const t = !rec.terminal ? null : await deps.call<{ state?: string }>('terminal.get', { terminal: rec.terminal }, 3000).catch(() => null)
+  if (!rec.terminal || !t?.state || t.state === 'finished') return restart().then(() => ({ restarted: true, queued: rec.undelivered!.texts.length }))
   const { undelivered, ...rest } = rec
   await deps.store.saveCoordinator(rest)
-  void deliverFirst(deps, key, rec.terminal, undelivered.texts)
+  void deliverFirst(deps, key, rec.terminal!, undelivered.texts)
   return { queued: undelivered.texts.length }
 }

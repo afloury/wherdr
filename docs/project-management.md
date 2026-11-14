@@ -112,8 +112,10 @@ it takes to start (up to 10 minutes), and the project's log says whether it was
 sent, queued or not delivered and why. Coordinators started together (the v2
 import card) start one after another, each once the one before is up. If the
 message still does not get through, the coordinator's row says *First message
-not delivered*, its menu offers *Send again*, and Alfred tells you
-(`wherdr alfred coordinator resend <KEY>`).
+not delivered* (a stopped one too), its menu offers *Send again* (a new
+conversation when its session ended), and Alfred tells you
+(`wherdr alfred coordinator resend <KEY>`). Its next start, whichever, gives
+it the message again.
 
 Along the way, the coordinator (and Alfred) may suggest a setting you may like,
 or one that solves a problem you mention: once, highlighted with

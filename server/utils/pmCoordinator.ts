@@ -905,7 +905,10 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   // Its very first start on a git project with no accepted workflow: its first reply proposes one.
   const git = key !== MAIN && projects.find(x => x.key === key)?.git !== false
   const proposes = git && !resume && !before?.ran && isDefaultWorkflow(await deps.store.workflow(key)) ? [FIRST_REPLY] : []
-  const prompt = [...c.prompt, ...first, ...proposes, ...notes]
+  // First messages its last session never got (coordinatorFirst.ts): given again, once.
+  // Alfred's start prompt is made anew at each start: an old one is not given again.
+  const pending = c.prompt.length ? [] : (before?.undelivered?.texts ?? []).filter(x => !c.prompt.includes(x) && !first.includes(x) && !proposes.includes(x))
+  const prompt = [...c.prompt, ...first, ...proposes, ...pending, ...notes]
   // A resumed Codex reads a word after `resume --last` as a session: its messages are typed.
   const asArg = promptAsArg(program) && !resume
   // Codex takes one [PROMPT] argument: its messages go as one.
@@ -925,15 +928,17 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   void answerOwnTrust(deps, address, c.folder).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
   // version: what this session knows (takeUpdateNotice tells it of an update).
-  const { told: _told, cardNotes: _said, ...rec } = (await deps.store.coordinator(key))!
+  const { told: _told, cardNotes: _said, undelivered: _lost, ...rec } = (await deps.store.coordinator(key))!
   await deps.store.saveCoordinator({ ...rec, terminal: address, ran: a, version: wherdrVersion(), ...(key === MAIN ? { agent: a } : {}) })
   // Its turn follows the user's clicks (issueToken cleared it): it may propose the next card.
   // Its first reply's workflow proposal follows the user's start.
-  const said = [...proposes, ...notes]
+  const said = [...proposes, ...pending, ...notes]
   if (said.length) await noteTurn(deps.store, key, 'user', said.join('\n\n'))
   // Typed one after another once the program is ready (in the background: it may wait
   // on a dialog), each outcome logged; saved first, so that a failure stays on its record.
-  void deliverFirst(deps, key, address, asArg ? [] : prompt, up).catch(() => up())
+  // The start queue (startTurn) moves on once its session is up.
+  // A fresh Claude or Codex has them on its command line: watched until its session is up.
+  void deliverFirst(deps, key, address, prompt, up, asArg).catch(() => up())
   // This conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
   return { terminal: address, folder: c.folder }

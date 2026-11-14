@@ -98,7 +98,8 @@ in the project's General tab (*[WHR] wherdr*; the tooltip reads *Coordinator of 
 while it is open. A coordinator whose terminal ended (its machine restarted, say) stays, marked
 *Stopped*: a tap offers *Resume the conversation* (its last one, with the agent that ran it and
 the same options) or *New conversation*. One whose first message never reached its session
-says *First message not delivered*, and its menu starts with *Send again*. Its menu (right click on a computer, long press on a
+(running or stopped) says *First message not delivered*, and its menu starts with *Send again*
+(a new conversation when its session ended). Its menu (right click on a computer, long press on a
 phone, where it opens as a sheet) offers, in order: *Open the board* (filtered on its project),
 *Project settings* (its General tab), *Autopilot* (its tab, with a check while autopilot is on),
 *Rename…* (an inline field; empty gives it its project's name back), *Mute notifications* /

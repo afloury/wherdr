@@ -165,7 +165,10 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
     }
     case 'machines': return { machines: machines.map(m => ({ key: m.key, label: m.label, local: m.local, status: m.status })) }
     case 'coordinators': return { coordinators: await Promise.all((await coordinatorsView(store)).map(async c => ({ project: c.project, name: c.name, agent: c.main ? c.agent?.program : (await projectAgent(c.project)).program, ...runState(c.terminal), ...(c.undelivered ? { firstMessage: `not delivered: ${c.undelivered.why}; tell the user, and send it again with wherdr alfred coordinator resend ${c.project}` } : {}) }))) }
-    case 'coordinator resend': return { ...await resendFirst(deps, findProject(projects, cmd.key)?.key ?? cmd.key), next: `wherdr alfred coordinators says whether it got it` }
+    case 'coordinator resend': {
+      const k = findProject(projects, cmd.key)?.key ?? cmd.key
+      return { ...await resendFirst(deps, k, async () => startCoordinator(deps, k, await projectAgent(k), deps.urls)), next: `wherdr alfred coordinators says whether it got it` }
+    }
     case 'coordinator open': {
       const c = (await coordinatorsView(store)).find(x => x.project === (findProject(projects, cmd.key)?.key ?? cmd.key))
       const pane = c?.terminal ? deps.panes().find(p => p.coreAddress === c.terminal) : undefined
