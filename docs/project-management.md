@@ -567,10 +567,19 @@ groups the form saves together. A bar pinned at the bottom of the tab, visible
 while you scroll, says *Unsaved changes* and holds *Cancel* (back to the saved
 values) and *Save* (enabled once something changed). Leaving the tab or closing
 the window with unsaved changes asks once whether to discard them. The groups:
-**Goal**; **When it wakes**: one schedule, *Every* (empty or `off`: no
-  interval wake; stalls then show only through engine wakes) and *At*, each
-  wake bringing the goal and the health summary (see
-  [Who sends a wake](#who-sends-a-wake)), the routine events it also wakes on,
+**Goal**; **When it wakes**: *Every* (empty or `off`: no interval wake;
+  stalls then show only through engine wakes), each wake bringing the goal and
+  the health summary (see [Who sends a wake](#who-sends-a-wake)); then
+  **Routines**, a list with *Add routine* under it. A routine is a row: when
+  (days of the week as chips, *Every day* or *Weekdays*, and a time; *Advanced*
+  takes a cron or a list such as `mon,thu 09:00`), its own goal (*Summarise
+  the night's work for me*), a switch and *Delete*; tap a row or its pencil to
+  edit it in place. At its time the coordinator gets a wake `Routine: <its
+  goal>` with the health summary, whatever is left to do, within the hours and
+  the pace; a slot that comes with the autopilot or the routine off, or
+  outside the hours, is skipped. A routine wakes the coordinator with a goal;
+  an [automation](#automations) adds a task. An *At* time set in an earlier
+  version became one routine with the autopilot's goal. Then the routine events it also wakes on,
   a list with a switch per event and one line on what the coordinator does
   with it: *Task done* (start what follows, tell you, update the notes),
   *Task stuck* (unblock it before the engine's two failed fixes), *Ready for
@@ -644,7 +653,8 @@ stays a full reply, with its answer buttons:
 - **Autopilot**: what needs judgment (an agent's question that is not a
   permission request, the choice after N review rounds), the routine events you
   turned on, *Run now*, and the **scheduled wake** (`Autopilot: scheduled
-  wake`), on the autopilot's *Every* and *At* schedule: the goal, then a short
+  wake`), on the autopilot's *Every* interval (and its routines, each with its
+  own goal: `Routine: <goal>`): the goal, then a short
   summary of the project: tasks done since the last one, tasks waiting for you,
   tasks stalled for over an hour, and machines idle while to-do tasks wait.
   When nothing in it needs the coordinator, it acks at once with no further

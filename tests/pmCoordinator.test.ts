@@ -984,15 +984,15 @@ describe('wakes', () => {
     expect(now.sent[0]!.text).toContain('CO-2 (New): added')
   })
 
-  it('wakes at its fixed times, once for slots missed while down', async () => {
+  it('wakes for a routine with its own goal, once for slots missed while down', async () => {
     const day = (d: number, h: number) => new Date(2026, 10, d, h).getTime()
-    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9', atRan: day(1, 9), oneWake: true, autopilot: { on: true, goal: 'Triage', at: 'daily 08:00', events: [], perDay: 3, atOnce: 1 } })
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9', routineRan: { r1: day(1, 9) }, oneWake: true, autopilot: { on: true, goal: 'Triage', routines: [{ id: 'r1', when: 'daily 08:00', goal: 'Summarise the night', on: true }], events: [], perDay: 3, atOnce: 1 } })
     expect(await deliver('idle', day(2, 7)).run()).toEqual([])
     const late = deliver('idle', day(5, 10))
     expect(await late.run()).toEqual(['CO'])
-    expect(late.sent[0]!.text).toContain('Scheduled wake (daily 08:00). Your goal: Triage.')
-    expect((await store.coordinator('CO'))!.atRan).toBe(day(5, 10))
-    expect((await store.wakes()).filter(w => w.reasons.some(r => r.startsWith('Scheduled')))).toHaveLength(1)
+    expect(late.sent[0]!.text).toContain('Routine: Summarise the night.')
+    expect((await store.coordinator('CO'))!.routineRan).toEqual({ r1: day(5, 10) })
+    expect((await store.wakes()).filter(w => w.reasons.some(r => r.startsWith('Routine')))).toHaveLength(1)
   })
 
   describe('nothing to do', () => {
@@ -1003,17 +1003,17 @@ describe('wakes', () => {
     const asleep = async (more: Partial<typeof DEFAULT_AUTOPILOT> = {}) => {
       const task = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
       await store.saveTask({ ...task, step: state(5, { done: true }) })
-      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9', atRan: day(1, 9), ranAt: day(2, 6), seen: { 'CO-1': 'done' }, woke: { at: day(2, 6), seen: { 'CO-1': 'done' } },
-        autopilot: { on: true, goal: 'Triage', every: '30m', at: 'daily 08:00', events: ['added', 'done', 'stuck'], perDay: 3, atOnce: 1, ...more } })
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, terminal: 'host/t9', ranAt: day(2, 6), seen: { 'CO-1': 'done' }, woke: { at: day(2, 6), seen: { 'CO-1': 'done' } },
+        autopilot: { on: true, goal: 'Triage', every: '30m', events: ['added', 'done', 'stuck'], perDay: 3, atOnce: 1, ...more } })
       return task
     }
 
-    it('skips the interval and fixed-time wakes, marks the slots run and counts them', async () => {
+    it('skips the interval wake, marks the slot run and counts them', async () => {
       await asleep()
       expect(await deliver('idle', day(2, 8, 1)).run()).toEqual([])
       expect(await scheduled()).toBe(0)
       const c = (await store.coordinator('CO'))!
-      expect(c).toMatchObject({ ranAt: day(2, 8, 1), atRan: day(2, 8, 1), skipped: { n: 1 } })
+      expect(c).toMatchObject({ ranAt: day(2, 8, 1), skipped: { n: 1 } })
       // Marked run: the slot does not fire again.
       expect(await deliver('idle', day(2, 8, 2)).run()).toEqual([])
       expect((await store.coordinator('CO'))!.skipped!.n).toBe(1)
@@ -1030,7 +1030,7 @@ describe('wakes', () => {
       quotas.q = { codex: null, claude: { at: now, limited: { resetsAt: now + 3_600_000 }, five: { used: 100, resetsAt: now + 3_600_000, minutes: 300 }, week: { used: 20, resetsAt: now + 3 * 86_400_000, minutes: 10080 } }, accounts: [{ key: 'claude:ab12cd34', program: 'claude', machines: [''] }] }
       expect(await deliver('idle', now).run()).toEqual([])
       expect(await scheduled()).toBe(0)
-      expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: now, atRan: now, skipped: { n: 1 } })
+      expect((await store.coordinator('CO'))!).toMatchObject({ ranAt: now, skipped: { n: 1 } })
       // Marked run: the next tick does not try again.
       expect(await deliver('idle', day(2, 8, 2)).run()).toEqual([])
       expect((await store.coordinator('CO'))!.skipped!.n).toBe(1)

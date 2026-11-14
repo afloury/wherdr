@@ -7,7 +7,7 @@ import type { PlannedStep } from './steps'
 import { chainState } from './advance'
 import { resumeWait } from './recovery'
 import { escalated, recovering } from './incident'
-import { parseSchedule } from './schedule'
+import { due, parseSchedule } from './schedule'
 import type { PaceVerdict } from './pacing'
 import { pacedStart, paceRefusal } from './pace'
 
@@ -24,7 +24,8 @@ export interface Autopilot {
   on: boolean
   goal: string
   every?: string // duration (30m, 2h): a wake with the goal and the health lines, in hours; unset: off
-  at?: string // fixed times (daily 08:00, mon,thu 09:00, a cron): a wake with the goal, too
+  at?: string // before routines: one fixed time with the goal, read as one routine (routinesOf)
+  routines?: Routine[] // fixed times, each a wake with its own goal
   events: AutopilotEvent[]
   perDay: number | null // tasks started per day; null: no daily limit
   atOnce: number | null // tasks working at once (waiting and ready ones take no slot); null: Auto, as many as the machines take
@@ -32,6 +33,30 @@ export interface Autopilot {
   lookForWork?: true // keep the scheduled wakes when there is nothing to do (goals that add their own tasks)
   lookPerDay?: number // with lookForWork: tasks those wakes may add a day (LOOK_PER_DAY when unset)
   keepBusy?: false // Keep the board busy, on unless turned off: the engine starts the next to-do task itself (busyQueue)
+}
+
+// A routine: at its fixed times (daily 08:00, mon,thu 09:00, a cron), a wake
+// `Routine: <goal>` with the health lines, within the hours and the pace.
+export interface Routine { id: string, when: string, goal: string, on: boolean }
+export const MAX_ROUTINES = 20
+
+// The routines, an older `at` read as one with the autopilot's goal (its last run: atRan, id 'at').
+export const routinesOf = (ap: Autopilot | undefined): Routine[] =>
+  ap?.routines ?? (ap?.at ? [{ id: 'at', when: ap.at, goal: ap.goal, on: true }] : [])
+
+// The routines whose time came since their last run (`ran`, by id; unknown:
+// from now): `wake` those to send, `ran` their new last runs. A slot that comes
+// with the autopilot or the routine off, or outside the hours, is skipped:
+// counted as run, it never fires later.
+export function routinesDue(ap: Autopilot | undefined, ran: Record<string, number>, now: number) {
+  const wake: Routine[] = [], next: Record<string, number> = {}
+  for (const r of routinesOf(ap)) {
+    const s = parseSchedule(r.when), last = ran[r.id] ?? now
+    const hit = !('error' in s) && !('every' in s) && due(s, last, now)
+    next[r.id] = hit ? now : last
+    if (hit && r.on && ap!.on && inHours(ap!.hours, new Date(now))) wake.push(r)
+  }
+  return { wake, ran: next }
 }
 
 export const LOOK_PER_DAY = 3
@@ -61,9 +86,19 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
   // Every off (or empty): no interval wake.
   const every = typeof o.every === 'string' && o.every.trim() !== 'off' ? o.every.trim() : ''
   if (o.every !== undefined && o.every !== '' && o.every !== 'off' && !duration(every)) return { error: 'every: a duration like 30m or 2h, or off' }
+  // Routines; an older `at` alone becomes one with the goal.
   const at = typeof o.at === 'string' ? o.at.trim() : ''
-  const s = at ? parseSchedule(at) : null
-  if (s && ('error' in s || 'every' in s)) return { error: 'at: fixed times like daily 08:00, mon,thu 09:00 or a cron' }
+  const list = Array.isArray(o.routines) ? o.routines as Record<string, unknown>[] : at ? [{ id: 'at', when: at, goal, on: true }] : []
+  if (list.length > MAX_ROUTINES) return { error: `routines: ${MAX_ROUTINES} at most` }
+  const routines: Routine[] = []
+  for (const r of list) {
+    const id = typeof r?.id === 'string' ? r.id : '', when = typeof r?.when === 'string' ? r.when.trim() : '', rg = typeof r?.goal === 'string' ? r.goal.trim() : ''
+    const s = parseSchedule(when)
+    if (!/^[\w-]{1,40}$/.test(id) || routines.some(x => x.id === id)) return { error: 'routines: each needs its own id' }
+    if ('error' in s || 'every' in s) return { error: `routines: ${when || 'a time'}: fixed times like daily 08:00, mon,thu 09:00 or a cron` }
+    if (rg.length > 500) return { error: 'routines: a goal of 500 characters at most' }
+    routines.push({ id, when, goal: rg, on: r.on !== false })
+  }
   const events = Array.isArray(o.events) ? o.events : []
   if (!events.every(e => (AUTOPILOT_EVENTS as readonly unknown[]).includes(e))) return { error: `events: ${AUTOPILOT_EVENTS.join(', ')}` }
   // Tasks / day left empty: no daily limit (null).
@@ -76,7 +111,7 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
   return { autopilot: {
     on: o.on === true, goal, events: [...new Set(events as AutopilotEvent[])], perDay, atOnce,
     ...(every ? { every } : {}),
-    ...(at ? { at } : {}),
+    ...(routines.length ? { routines } : {}),
     ...(h ? { hours: { from: h.from as number, to: h.to as number } } : {}),
     ...(o.lookForWork === true ? { lookForWork: true as const, lookPerDay: lookPerDay ?? LOOK_PER_DAY } : {}),
     ...(o.keepBusy === false ? { keepBusy: false as const } : {}),

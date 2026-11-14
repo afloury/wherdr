@@ -1,18 +1,19 @@
 // When the autopilot wakes next.
 import { durationMs } from './steps'
 import { nextRun, parseSchedule } from './schedule'
-import { inHours, type Autopilot } from './autopilot'
+import { inHours, routinesOf, type Autopilot } from './autopilot'
 
-// The next scheduled wake: its interval after the last one, or its next fixed
-// time, whichever comes first, moved to the start of its hours when it falls
+// The next scheduled wake: its interval after the last one, or a routine's next
+// time (ran: each one's last run), whichever comes first, moved to the start of its hours when it falls
 // outside them (the scheduler waits for them). Off or with neither: none.
-export function nextWakeAt(ap: Autopilot | undefined, ranAt: number | undefined, atRan: number | undefined, now: number): number | undefined {
+export function nextWakeAt(ap: Autopilot | undefined, ranAt: number | undefined, ran: Record<string, number>, now: number): number | undefined {
   if (!ap?.on) return undefined
   const times: number[] = []
   if (ap.every) times.push(Math.max(now, (ranAt ?? 0) + durationMs(ap.every)))
-  const at = ap.at ? parseSchedule(ap.at) : null
-  const slot = at && !('error' in at) ? nextRun(at, atRan ?? now) : null
-  if (slot !== null) times.push(Math.max(now, slot))
+  for (const r of routinesOf(ap).filter(x => x.on)) {
+    const s = parseSchedule(r.when), slot = 'error' in s ? null : nextRun(s, ran[r.id] ?? now)
+    if (slot !== null) times.push(Math.max(now, slot))
+  }
   return times.length ? intoHours(ap.hours, Math.min(...times)) : undefined
 }
 

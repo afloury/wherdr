@@ -52,7 +52,8 @@ export interface CoordinatorRecord {
   agent?: CoordinatorAgent, ran?: CoordinatorAgent, proposal?: Proposal, answers?: ProposalAnswer[], answered?: ProposalAnswer
   // userAt: the user's last message. seen: each task's status at the last tick; ranAt: the last interval wake.
   userAt?: number, autopilot?: Autopilot, seen?: Record<string, TaskStatus>, ranAt?: number
-  atRan?: number // the last scheduled wake at fixed times (autopilot.at), or when it was set
+  atRan?: number // before routines: the last wake at autopilot.at, read as routine 'at''s
+  routineRan?: Record<string, number> // each routine's last slot (run or skipped), or when its time was set
   woke?: LastWake // the last wake the engine queued, and where tasks stood then
   quiet?: true // its saved autopilot's old default events dropped, once (quietEvents)
   health?: { at: number, seen: Record<string, TaskStatus>, sent?: HealthSent } // the last scheduled slot's health lines (health.ts): where tasks stood then, the last ones sent
