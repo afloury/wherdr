@@ -42,7 +42,8 @@
   row keeps its task look after a restart of wherdr or herdr-core: an agent is found by its
   task and role, even when it was resumed or its terminal re-attached.
 - **Order**: the header (logo, version, Search, Board, Settings), the counters, the quotas (a
-  machine's own quotas under them), Alfred, the [coordinators](#coordinators), then the agents of
+  machine's own quotas under them), Alfred, the [Tasks to review](#tasks-to-review) card, the
+  [coordinators](#coordinators), then the agents of
   the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,
   each card carries its machine's name. There is no section per machine. The list never scrolls
   sideways: long titles and badges are cut with an ellipsis, and its scrollbar stays thin, shown
@@ -83,7 +84,7 @@ a project with Alfred* opens Alfred's conversation with the setup asked of it, a
 
 ### Coordinators
 
-Under Alfred, while project management is on, one row per running project coordinator, its
+Under Alfred and [Tasks to review](#tasks-to-review), while project management is on, one row per running project coordinator, its
 project's key badge in the project's color, then its name: the project's, unless you named it
 in the project's General tab (*[WHR] wherdr*; the tooltip reads *Coordinator of wherdr*)
 ([Project management](project-management.md)). A tap opens its conversation, shown as selected
@@ -108,7 +109,7 @@ global.
 
 ### Tasks to review
 
-Under the coordinators, while something waits for you on the tab's projects, one **Tasks to
+Right under Alfred, above the coordinators, while something waits for you on the tab's projects, one **Tasks to
 review** card with its count: tasks to approve, an agent's question, a failure to try again, a
 decision. Under its title, the ids of the first ones as their project's key badge, in its color, on
 one line (… when they do not all fit). A tap opens them one at a time (a sheet on the phone), with Approve, Reject and each
