@@ -763,6 +763,8 @@ until you pick, it is *Follow machine tab* once machine groups exist, else *All
 projects*. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects. A done
 or archived task is never under Your turn.
+Until the board is first read, its columns show the shapes of cards, never
+empty columns counting 0.
 
 A card shows the task's title, its id (a badge in the project's color: a tap
 copies it, *Copied*, without opening the task), the machine it runs on when its
@@ -1004,8 +1006,14 @@ Under them, *Full question*, folded: the agent's whole last message, drawn as in
 its conversation (Markdown, its `wherdr` blocks), scrolling inside the window
 when it is long (open when there is no summary). *Open the task* stays. A question answered anywhere (here, in the agent's conversation, a
 coordinator's `tell`) leaves *Tasks to review* and *Tasks to handle* at once,
-without waiting for the engine's next pass, and an open window moves on to the
-next task (or *All done*).
+without waiting for the engine's next pass.
+
+While the window is open, its list keeps its order and the task on screen never
+changes by itself: a task that becomes ready goes at the end (*2 of 6*), one
+handled elsewhere (approved, merged, answered) drops out, and if it is the one
+on screen it stays, under a muted *Handled elsewhere: done* line (or what
+happened), until you move on with the arrows. Closed and opened again, the list
+takes the board's order.
 
 Anything else that waits (a failure, a decision, another
 step of yours such as *Create these tasks*) shows the answers of its To do tab

@@ -5,10 +5,15 @@ import { MAIN, sameAgent, type CoordinatorAgent, type CoordinatorView } from '#s
 import type { AlfredProgram } from '#shared/pm/alfred'
 import { projectCoordinatorName } from '#shared/pm/project'
 import type { Pane } from '#shared/types'
+import { readKeys } from '#shared/pm/coordinatorOrder'
+import { syncedRef } from './useSyncedSettings'
 
 export const coordinators = ref<CoordinatorView[]>([])
 // The projects' own coordinators: Alfred (the main one) has its own row.
 export const projectCoordinators = computed(() => coordinators.value.filter(c => !c.main))
+// The Coordinators section's order and Hidden group, on every device.
+export const coordinatorOrder = syncedRef<string[]>('coordinatorOrder', readKeys, v => (v.length ? JSON.stringify(v) : null), { deep: true })
+export const coordinatorsHidden = syncedRef<string[]>('coordinatorsHidden', readKeys, v => (v.length ? JSON.stringify(v) : null), { deep: true })
 let loading: Promise<void> | null = null
 // Kept conversations of another agent the user chose to resume: no warning
 // any more, also after a reload (this browser only).
@@ -29,7 +34,7 @@ export function loadCoordinators() {
   // A deadline: a read lost while the phone slept would otherwise hold
   // `loading`, and every later call would wait on it forever.
   return (loading ??= api<CoordinatorView[]>('/api/pm/coordinators', undefined, AbortSignal.timeout(8000))
-    .then((v) => { coordinators.value = Array.isArray(v) ? v : []; coordinatorsLoaded.value = true }, () => {})
+    .then((v) => { coordinators.value = Array.isArray(v) ? v : []; coordinatorsLoaded.value = true; markHomeLoad('coordinators', true) }, () => markHomeLoad('coordinators', false))
     .finally(() => { loading = null }))
 }
 
@@ -38,7 +43,7 @@ export function loadCoordinators() {
 // running, its conversation. No model: each harness runs its own default.
 export interface AlfredView { name: string, program?: AlfredProgram, ran?: AlfredProgram, terminal?: string }
 export const alfred = ref<AlfredView | null>(null)
-export const loadAlfred = () => api<AlfredView>('/api/alfred').then((v) => { alfred.value = v }, () => {})
+export const loadAlfred = () => api<AlfredView>('/api/alfred').then((v) => { alfred.value = v; markHomeLoad('alfred', true) }, () => markHomeLoad('alfred', false))
 export const alfredPane = computed(() => (alfred.value?.terminal ? herdrState.value?.panes.find(p => p.coreAddress === alfred.value!.terminal) : undefined))
 
 // The coordinator a pane is, by its herdr-core address.
