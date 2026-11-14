@@ -11,7 +11,7 @@
 // Slots: `activity` and `settings`, the coordinator window's parts at the top of each tab.
 // `withAgent` (the coordinator window): the answering agent heads Settings, saved
 // and discarded with the rest.
-import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, MAX_PER_DAY, oldDefaults, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, LOOK_PER_DAY, MAX_PER_DAY, MAX_ROUTINES, oldDefaults, routinesOf, type Autopilot, type AutopilotEvent, type Routine } from '#shared/pm/autopilot'
 import type { CoordinatorProgram, CoordinatorView } from '#shared/pm/coordinator'
 import { uiTarget } from '#shared/uiTargets'
 
@@ -21,13 +21,13 @@ const busy = ref(false)
 const error = ref('')
 const sent = ref(false)
 // The form's fields, from a saved autopilot. Empty: Tasks / day has no limit, At once is Auto.
-type Form = { goal: string, every: string, at: string, events: AutopilotEvent[], perDay: string, atOnce: string, lookForWork: boolean, lookPerDay: number, keepBusy: boolean, from: string, to: string }
+type Form = { goal: string, every: string, routines: Routine[], events: AutopilotEvent[], perDay: string, atOnce: string, lookForWork: boolean, lookPerDay: number, keepBusy: boolean, from: string, to: string }
 const text = (n: number | null) => (n === null ? '' : String(n))
-const formOf = (a: Autopilot): Form => ({ goal: a.goal, every: a.every ?? '', at: a.at ?? '', events: [...a.events], perDay: text(a.perDay), atOnce: text(a.atOnce), lookForWork: !!a.lookForWork, lookPerDay: a.lookPerDay ?? LOOK_PER_DAY, keepBusy: a.keepBusy !== false, from: text(a.hours?.from ?? null), to: text(a.hours?.to ?? null) })
+const formOf = (a: Autopilot): Form => ({ goal: a.goal, every: a.every ?? '', routines: routinesOf(a).map(x => ({ ...x })), events: [...a.events], perDay: text(a.perDay), atOnce: text(a.atOnce), lookForWork: !!a.lookForWork, lookPerDay: a.lookPerDay ?? LOOK_PER_DAY, keepBusy: a.keepBusy !== false, from: text(a.hours?.from ?? null), to: text(a.hours?.to ?? null) })
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 // A field as it would be saved: numbers as numbers (empty: null), times trimmed.
 const orNull = (v: unknown) => (v === '' || v === null || v === undefined ? null : Number(v))
-const norm = (k: keyof Form, v: unknown) => (k === 'perDay' || k === 'atOnce' ? orNull(v) : typeof v === 'number' || k === 'lookPerDay' ? Number(v) : k === 'every' || k === 'at' || k === 'from' || k === 'to' ? String(v).trim() : v)
+const norm = (k: keyof Form, v: unknown) => (k === 'perDay' || k === 'atOnce' ? orNull(v) : typeof v === 'number' || k === 'lookPerDay' ? Number(v) : k === 'every' || k === 'from' || k === 'to' ? String(v).trim() : v)
 const KEYS = Object.keys(formOf(DEFAULT_AUTOPILOT)) as (keyof Form)[]
 const form = reactive<Form>(formOf(ap.value))
 // What the form was last filled with: the saved values it shows.
@@ -64,7 +64,7 @@ const TAB_KEY = 'wherdr.autopilotTab'
 const storedTab = (): Tab => { try { return localStorage.getItem(TAB_KEY) === 'activity' ? 'activity' : 'settings' } catch { return 'settings' } }
 const tab = ref<Tab>(uiTarget(useRoute().query.target) === 'project.autopilot' ? 'settings' : storedTab())
 // Back to the saved values.
-const discard = () => { Object.assign(form, { ...base.value, events: [...base.value.events] }); program.value = savedProgram.value; saveError.value = '' }
+const discard = () => { Object.assign(form, { ...base.value, events: [...base.value.events], routines: base.value.routines.map(x => ({ ...x })) }); opened.value = ''; program.value = savedProgram.value; saveError.value = '' }
 // Unsaved changes: asks once whether to drop them; false keeps them (and the tab, the window).
 async function leave() {
   if (!dirty.value) return true
@@ -79,6 +79,13 @@ async function pickTab(k: Tab) {
   try { localStorage.setItem(TAB_KEY, k) } catch { /* Storage may be disabled: kept for this visit. */ }
 }
 const EVENT_ORDER = Object.keys(EVENT_LINE) as AutopilotEvent[]
+// Routines: a new one opens for editing.
+const opened = ref('')
+function addRoutine() {
+  const id = Math.random().toString(36).slice(2, 10)
+  form.routines = [...form.routines, { id, when: 'daily 09:00', goal: '', on: true }]
+  opened.value = id
+}
 const toggleEvent = (e: AutopilotEvent) => { form.events = form.events.includes(e) ? form.events.filter(x => x !== e) : [...form.events, e] }
 
 async function act(fn: () => Promise<unknown>) {
@@ -89,7 +96,7 @@ async function act(fn: () => Promise<unknown>) {
   finally { busy.value = false }
 }
 // The server's refusal names its field ("every: a duration like 30m or 2h"): shown under it.
-const FIELD: Record<string, keyof Form> = { goal: 'goal', every: 'every', at: 'at', events: 'events', perDay: 'perDay', atOnce: 'atOnce', lookPerDay: 'lookPerDay', hours: 'from' }
+const FIELD: Record<string, keyof Form> = { goal: 'goal', every: 'every', routines: 'routines', events: 'events', perDay: 'perDay', atOnce: 'atOnce', lookPerDay: 'lookPerDay', hours: 'from' }
 const saveError = ref('')
 const errorField = computed(() => FIELD[/^(\w+)/.exec(saveError.value)?.[1] ?? ''])
 const fieldError = (k: keyof Form) => (errorField.value === k ? saveError.value : '')
@@ -97,14 +104,14 @@ const fieldError = (k: keyof Form) => (errorField.value === k ? saveError.value 
 async function save() {
   saveError.value = ''
   await act(async () => {
-    const { lookForWork: _, lookPerDay: __, keepBusy: ___, hours: ____, ...kept } = ap.value
+    const { lookForWork: _, lookPerDay: __, keepBusy: ___, hours: ____, at: _____, ...kept } = ap.value
     if (agentEdited.value) await api('/api/pm/coordinator-agent', { project: props.c.project, program: program.value })
     if (!KEYS.some(edited)) { saved.value = true; return }
     const hours = String(form.from).trim() !== '' && String(form.to).trim() !== '' ? { hours: { from: Number(form.from), to: Number(form.to) } } : {}
     try {
       const r = await api<{ autopilot: Autopilot }>('/api/pm/autopilot', {
         project: props.c.project,
-        autopilot: { ...kept, goal: form.goal, every: form.every.trim(), at: form.at.trim(), events: form.events, perDay: orNull(form.perDay), atOnce: orNull(form.atOnce), ...(form.lookForWork ? { lookForWork: true, lookPerDay: Number(form.lookPerDay) } : {}), ...(form.keepBusy ? {} : { keepBusy: false }), ...hours },
+        autopilot: { ...kept, goal: form.goal, every: form.every.trim(), routines: form.routines, events: form.events, perDay: orNull(form.perDay), atOnce: orNull(form.atOnce), ...(form.lookForWork ? { lookForWork: true, lookPerDay: Number(form.lookPerDay) } : {}), ...(form.keepBusy ? {} : { keepBusy: false }), ...hours },
       })
       // The form takes the saved values (the goal trimmed…).
       if (r?.autopilot) { base.value = formOf(r.autopilot); Object.assign(form, formOf(r.autopilot)) }
@@ -180,12 +187,14 @@ const counters = computed(() => props.c.limits
             <UInput :id="`ap-every-${c.project}`" v-model="form.every" size="xl" class="w-full mono" placeholder="off" maxlength="5" autocapitalize="none" autocorrect="off" :spellcheck="false" data-testid="autopilot-every" />
             <p v-if="fieldError('every')" class="error" role="alert" data-testid="autopilot-error-every">{{ fieldError('every') }}</p>
           </div>
-          <div>
-            <label class="field-label" :for="`ap-at-${c.project}`">{{ tl('At', 'À') }}</label>
-            <UInput :id="`ap-at-${c.project}`" v-model="form.at" size="xl" class="w-full mono" placeholder="daily 08:00" maxlength="60" autocapitalize="none" autocorrect="off" :spellcheck="false" data-testid="autopilot-at" />
-            <p v-if="fieldError('at')" class="error" role="alert" data-testid="autopilot-error-at">{{ fieldError('at') }}</p>
-          </div>
         </div>
+        <span :id="`ap-routines-${c.project}`" class="field-label">{{ tl('Routines') }}</span>
+        <div class="ap-routines" role="group" :aria-labelledby="`ap-routines-${c.project}`" data-testid="autopilot-routines">
+          <AutopilotRoutine v-for="(x, i) in form.routines" :key="x.id" v-model="form.routines[i]!" :open="opened === x.id" @remove="form.routines = form.routines.filter(y => y.id !== x.id)" />
+        </div>
+        <UButton type="button" color="neutral" variant="outline" size="lg" icon="i-lucide-plus" class="ap-add" :disabled="form.routines.length >= MAX_ROUTINES" data-testid="autopilot-add-routine" @click="addRoutine">{{ tl('Add routine') }}</UButton>
+        <p v-if="fieldError('routines')" class="error" role="alert" data-testid="autopilot-error-routines">{{ fieldError('routines') }}</p>
+        <p class="muted" data-testid="autopilot-routines-hint">{{ tl('A routine wakes the coordinator at its time with its own goal; an automation adds a task.') }}</p>
         <p class="muted" data-testid="autopilot-every-hint">{{ tl('Each wake brings the goal and a health summary; skipped when nothing is new.') }}</p>
         <p v-if="!form.every.trim() || form.every.trim() === 'off'" class="muted" data-testid="autopilot-every-off">{{ tl('Every off: stalls then show only through engine wakes.') }}</p>
         <span :id="`ap-events-${c.project}`" class="field-label">{{ tl('Also on', 'Aussi quand') }}</span>
@@ -263,6 +272,8 @@ const counters = computed(() => props.c.limits
 .ap-head > .mono-label:not(.ap-count) { color: var(--text); }
 .ap-count { flex: 1; color: var(--muted); white-space: nowrap; }
 .ap-look-note { align-self: end; }
+.ap-routines { display: grid; min-width: 0; }
+.ap-add { justify-self: start; }
 .ap-agent { display: grid; gap: 4px; min-width: 0; max-width: 420px; }
 /* Pinned at the bottom of the sheet's scroll, its last element: it carries the
    sheet's end padding (main.css drops the body's in the coordinator window). */

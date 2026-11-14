@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { DEFAULT_AUTOPILOT, quietEvents, holdsSlot, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, pastLimit, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
+import { DEFAULT_AUTOPILOT, quietEvents, holdsSlot, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, routinesDue, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, pastLimit, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
 import type { Run, Task } from '../shared/pm/run'
 import { HEALTH_ACK, healthSummary, oneSchedule } from '../shared/pm/health'
 import { accountQuota, pacedStart, paceLine } from '../shared/pm/pace'
@@ -10,13 +10,39 @@ const task = (n: number, more: Partial<Task> = {}): Task => ({ id: `CO-${n}`, pr
 const run = (n: number, startedAt: number): Run => ({ id: `r${n}`, task: `CO-${n}`, role: 'worker', program: 'claude', model: 'opus', machine: '', worktree: '', branch: '', instructions: '', attempt: 1, state: 'running', startedAt })
 const at = (h: number) => new Date(2026, 10, 5, h, 30).getTime()
 
+describe('routines', () => {
+  const day = (d: number, h: number, m = 0) => new Date(2026, 10, d, h, m).getTime()
+  const ap = { ...DEFAULT_AUTOPILOT, on: true, goal: 'Ship', routines: [
+    { id: 'night', when: 'daily 08:00', goal: 'Summarise the night', on: true },
+    { id: 'week', when: 'mon,thu 18:00', goal: 'Plan the week', on: true },
+  ] }
+  it('wakes each routine at its time with its own goal, once for missed slots', () => {
+    const ran = { night: day(2, 9), week: day(2, 19) } // 2 Nov 2026: a Monday, after its 18:00
+    expect(routinesDue(ap, ran, day(3, 7, 59)).wake).toEqual([])
+    expect(routinesDue(ap, ran, day(3, 8))).toEqual({ wake: [ap.routines[0]], ran: { night: day(3, 8), week: day(2, 19) } })
+    expect(routinesDue(ap, ran, day(5, 18)).wake.map(r => r.goal)).toEqual(['Summarise the night', 'Plan the week'])
+    // A new one counts from now.
+    expect(routinesDue(ap, {}, day(3, 8))).toEqual({ wake: [], ran: { night: day(3, 8), week: day(3, 8) } })
+  })
+  it('skips a slot with the autopilot or the routine off, or outside the hours: counted as run', () => {
+    const ran = { night: day(2, 9), week: day(2, 19) }
+    for (const off of [{ ...ap, on: false }, { ...ap, hours: { from: 9, to: 18 } }, { ...ap, routines: ap.routines.map(r => ({ ...r, on: false })) }])
+      expect(routinesDue(off, ran, day(3, 8))).toEqual({ wake: [], ran: { night: day(3, 8), week: day(2, 19) } })
+  })
+  it('reads an older At as one routine with the goal', () => {
+    const old = { ...DEFAULT_AUTOPILOT, on: true, goal: 'Triage', at: 'daily 08:00' }
+    expect(routinesDue(old, { at: day(2, 9) }, day(3, 8)).wake).toEqual([{ id: 'at', when: 'daily 08:00', goal: 'Triage', on: true }])
+    expect(cleanAutopilot(old)).toMatchObject({ autopilot: { routines: [{ id: 'at', when: 'daily 08:00', goal: 'Triage', on: true }] } })
+    expect((cleanAutopilot(old) as { autopilot: object }).autopilot).not.toHaveProperty('at')
+  })
+})
+
 describe('autopilot settings', () => {
   it('keeps what is valid and refuses the rest', () => {
     expect(cleanAutopilot({ on: true, goal: ' ship v3 ', every: '2h', events: ['done', 'done', 'stuck'], perDay: 5, atOnce: 2, hours: { from: 22, to: 6 }, extra: 1 }))
       .toEqual({ autopilot: { on: true, goal: 'ship v3', every: '2h', events: ['done', 'stuck'], perDay: 5, atOnce: 2, hours: { from: 22, to: 6 } } })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, every: '0m' })).toEqual({ error: expect.stringMatching(/every/) })
-    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, at: ' daily 08:00 ' })).toMatchObject({ autopilot: { at: 'daily 08:00' } })
-    for (const at of ['every 2h', 'soon']) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, at })).toEqual({ error: expect.stringMatching(/^at:/) })
+    for (const when of ['every 2h', 'soon']) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, routines: [{ id: 'a', when, goal: '', on: true }] })).toEqual({ error: expect.stringMatching(/^routines:/) })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, events: ['merged'] })).toEqual({ error: expect.stringMatching(/events/) })
     // Tasks / day: empty is no daily limit, up to 1000 otherwise.
     for (const perDay of ['', null]) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay })).toEqual({ autopilot: { on: false, goal: '', events: [], perDay: null, atOnce: 2 } })
