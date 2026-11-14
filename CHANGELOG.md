@@ -6,19 +6,33 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [2.6.0] — 2026-11-14
+
 ### Changed
 
-- **Updates stay on wherdr 2; a card announces wherdr 3.** The update check and the one-tap update only consider releases of the running major, so wherdr 3 is never installed over wherdr 2 and 2.x fixes stay visible. When a newer major is published, Home shows a "wherdr 3 is out" card with its release notes, its migration guide and the command that installs it beside this version. The plugin update command, the curl installer and git checkouts follow the `2.x` branch instead of `main`.
+- **Updates stay on wherdr 2; a card announces wherdr 3 (#673).** The update check and the one-tap update only consider releases of the running major, so wherdr 3 is never installed over wherdr 2 and 2.x fixes stay visible. When a newer major is published, Home shows a "wherdr 3 is out" card with its release notes, its migration guide and the command that installs it beside this version. The plugin update command (**U** in the panel), the curl installer and git checkouts follow the `2.x` branch instead of `main`, which will hold wherdr 3.
+
+### Security
+
+- **Nothing leaks before unlocking (#350).** A locked device learns only whether the lock is on: no passkey names or dates, no machine name, no server clock, and no credential ids in the unlock options. Unlock challenges and request bodies are bounded, and unlock attempts are rate limited.
+- **Only your own tailnet devices without a passkey (#338).** Without a passkey, wherdr accepts only the devices of the same Tailscale user as the machine. Another user's device in a team tailnet, a shared-in or a tagged node is refused until a passkey is set up, then reaches the lock screen.
+- **Lock all devices revokes everything (#339).** Lock all devices, and turning the lock off, invalidate every session cookie, drop every push subscription and close open connections at once. Previews never open wherdr's data folder, `~/.ssh` or Herdr's configuration.
+
+### Added and improved
+
+- **SVG diagrams in conversations (#416).** Static `svg` code fences now show an isolated theme-aware preview with source, Copy and enlargement; incomplete or unsafe content stays readable code without executing or loading external resources. Thanks to [@guileen](https://github.com/guileen) for the contribution.
+- **omp context at a glance (#424).** Agent rows show a thin usage line; the composer shows percentage and estimated tokens, with status details on demand. Unknown readings stay hidden, while resting or unreadable gauges remain clearly marked as last known.
+- **Lighter conversation reads (#443).** While an agent writes, wherdr reads only what was added to its transcript, and several devices on one conversation share a single read.
 
 ### Fixed
 
-- **Back to a conversation that stays put.** Returning to the app re-reads the conversation at once without redrawing it when nothing changed.
-
-- **SVG diagrams in conversations.** Static `svg` code fences now show an isolated theme-aware preview with source, Copy and enlargement; incomplete or unsafe content stays readable code without executing or loading external resources ([#416](https://github.com/afloury/wherdr/pull/416) by [@guileen](https://github.com/guileen)).
-- **A finished task shows its agent's conversation.** Once a task's agent has finished (Ready to approve, Done) and its process has exited, the Board panel's Agent tab shows the conversation the board recorded for it, read only, instead of the shell left in its terminal; the terminal is still one tap away. The tab's bar says the task's state (for example Ready to approve) rather than the pane's. The Reviewer tab does the same once the review is over.
-- **omp context at a glance.** Agent rows show a thin usage line; the composer shows
-  percentage and estimated tokens, with status details on demand. Unknown readings stay
-  hidden, while resting or unreadable gauges remain clearly marked as last known.
+- **A finished task shows its agent's conversation (#344).** Once a task's agent has finished (Ready to approve, Done) and its process has exited, the Board panel's Agent tab shows the conversation the board recorded for it, read only, instead of the shell left in its terminal; the terminal is still one tap away. The tab's bar says the task's state rather than the pane's. The Reviewer tab does the same once the review is over.
+- **Board grouping right after a reload (#447).** The home list groups a remote machine's agents by Board task at once, instead of staying flat for about a minute.
+- **Home counters and badges agree (#335).** A task ready to approve reads Your turn on its row too, each counter uses its own state colour, and a row standing for several terminals counts once.
+- **One Codex quota row per account (#291).** Two machines on the same Codex account share one quota row even when their conversations carry no account fingerprint.
+- **Conversations that stay put (#395, #435, #442).** Returning to the app re-reads the conversation without redrawing it when nothing changed; a conversation reopens at its reading position on the first paint; a sent message stays shown until the transcript is read again, even when reads fail for a while.
+- **No duplicate sends (#289).** A dictation app pressing Enter again while the page lags no longer sends the same message twice, and a stray Escape no longer stops the working agent.
+- **Reconnecting never hangs (#324).** After a suspend or a redeploy, reads that could hang now time out and recover, and independent reads run side by side.
 
 ## [2.5.0] — 2026-11-02
 

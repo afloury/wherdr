@@ -33,7 +33,7 @@ address and the phone steps instead. See [The one command](installation.md#the-o
 
 **wherdr 2.0 runs only natively**, as your user, so it can act on the
 [herdr-projects Board](board.md#works-great-with-herdr-projects) (Coordinator, reply, start, stop,
-approve). Other ways, after it: `herdr plugin install afloury/wherdr` (the same plugin, without
+approve). Other ways, after it: `herdr plugin install afloury/wherdr --ref 2.x` (the same plugin, without
 the checks), and [the `wherdr` command](command.md#the-wherdr-command) from npm or Homebrew (npm can hold a
 new release for up to two days; the installer gets it from GitHub at once).
 

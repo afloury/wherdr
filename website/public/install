@@ -12,7 +12,7 @@
 #   3. makes sure Node.js 22 (or Bun) is there; without it, it offers
 #      `brew install node` (macOS with Homebrew) or the official Node.js
 #      download into ~/wherdr/node (checksum checked, no sudo), asked first;
-#   4. installs the wherdr Herdr plugin (herdr plugin install afloury/wherdr),
+#   4. installs the wherdr Herdr plugin (herdr plugin install afloury/wherdr --ref 2.x),
 #      which downloads the verified GitHub release package into ~/wherdr/app,
 #      starts it, opens its setup guide in your browser and adds a Herdr key
 #      for its panel;
@@ -228,7 +228,7 @@ existing_wherdr() {
   ok "wherdr already runs on $URL"
   if [ -n "$PLUGIN_ROOT" ]; then
     say "  Installed as a Herdr plugin."
-    if confirm "Update it now (herdr plugin install $REPO)?"; then
+    if confirm "Update it now (herdr plugin install $REPO --ref $REF)?"; then
       step "Updating the wherdr Herdr plugin"
       RUNTIME="" BROWSER=0
       log="$(mktemp)"
