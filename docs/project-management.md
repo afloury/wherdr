@@ -107,6 +107,14 @@ a first message, and its instructions say its first reply proposes one:
 Until you accept one, tasks follow the minimal default. Once accepted, the
 section leaves the coordinator's instructions.
 
+The first message waits until the coordinator's session is ready, however long
+it takes to start (up to 10 minutes), and the project's log says whether it was
+sent, queued or not delivered and why. Coordinators started together (the v2
+import card) start one after another, each once the one before is up. If the
+message still does not get through, the coordinator's row says *First message
+not delivered*, its menu offers *Send again*, and Alfred tells you
+(`wherdr alfred coordinator resend <KEY>`).
+
 Along the way, the coordinator (and Alfred) may suggest a setting you may like,
 or one that solves a problem you mention: once, highlighted with
 `ui open --target`, and not again if you let it pass. When you need something
