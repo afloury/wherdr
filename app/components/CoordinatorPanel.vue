@@ -6,8 +6,8 @@
 // what it is. Not its proposed workflow change: a card in its conversation.
 // On the board (`open`), also the button that opens or starts it; a stopped
 // conversation (its terminal ended) can be resumed instead.
-// A project coordinator's window has the autopilot's tabs: its agent in Settings,
-// opening its conversation in Activity. Alfred's (Bare): its agent, then the rest.
+// A project coordinator's window has the autopilot's tabs: its agent in Settings
+// (saved with them, CoordinatorAutopilot), opening its conversation in Activity. Alfred's (Bare): its agent, then the rest.
 import type { FunctionalComponent } from 'vue'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import CoordinatorAutopilot from '~/components/CoordinatorAutopilot.vue'
@@ -31,7 +31,7 @@ async function act(fn: () => Promise<unknown>) {
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
-const agentItems = computed(() => (props.c.main ? alfredPrograms.value : offerCoordinators(undefined, props.c.project)).map(p => ({ label: kindLabel(p), value: p })))
+const agentItems = computed(() => alfredPrograms.value.map(p => ({ label: kindLabel(p), value: p })))
 // Alfred's program no longer offered on wherdr's machine: said, never replaced silently.
 const unoffered = computed(() => (props.c.main && agent.value && !alfredPrograms.value.includes(agent.value.program) ? agentName(agent.value) : ''))
 const setDefault = (program: string) => act(() => api('/api/pm/coordinator-agent', { project: props.c.project, program }))
@@ -46,22 +46,23 @@ const resume = () => {
 const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh())
 
 const Bare: FunctionalComponent<{ c: CoordinatorView }> = (_, { slots }) => [slots.settings?.(), slots.activity?.()]
-Bare.props = ['c']
+Bare.props = ['c', 'withAgent']
 const auto = ref<InstanceType<typeof CoordinatorAutopilot>>()
-// Unsaved autopilot settings: asked before the window closes.
-defineExpose({ leave: () => auto.value?.leave() ?? Promise.resolve(true) })
+// Unsaved autopilot settings: asked before the window closes (Alfred has none).
+defineExpose({ leave: () => (props.c.main || !auto.value ? Promise.resolve(true) : auto.value.leave()) })
 </script>
 
 <template>
   <div class="coord" data-testid="coordinator-panel">
-    <component :is="c.main ? Bare : CoordinatorAutopilot" ref="auto" :c="c">
+    <component :is="c.main ? Bare : CoordinatorAutopilot" ref="auto" :c="c" :with-agent="!c.main">
       <template #settings>
-        <div class="coord-field">
-          <span class="field-label">{{ c.main ? tl(`${coordinatorName(c)}’s agent`) : tl('Answering agent') }}</span>
-          <USelect :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent w-full" :disabled="busy" :aria-label="tl('Default agent')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
-        </div>
-        <p v-if="unoffered" class="coord-note muted" data-testid="coordinator-unoffered">{{ tl(`${unoffered} is no longer offered on this machine (Settings › Agents): pick another agent, or offer it again.`) }}</p>
-        <p v-if="error && !c.main" class="error coord-error">{{ error }}</p>
+        <template v-if="c.main">
+          <div class="coord-field">
+            <span class="field-label">{{ tl(`${coordinatorName(c)}’s agent`) }}</span>
+            <USelect :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent w-full" :disabled="busy" :aria-label="tl('Default agent')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
+          </div>
+          <p v-if="unoffered" class="coord-note muted" data-testid="coordinator-unoffered">{{ tl(`${unoffered} is no longer offered on this machine (Settings › Agents): pick another agent, or offer it again.`) }}</p>
+        </template>
       </template>
       <template #activity>
         <PartHead v-if="!c.main" part="autopilot" :project="c.project" />

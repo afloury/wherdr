@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { useRouter } from '#app'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
@@ -19,7 +19,7 @@ registerEndpoint('/api/pm/coordinators', () => views)
 post('/api/pm/coordinator-agent', () => ({}))
 post('/api/pm/coordinator-start', () => ({ terminal: 'host/t2' }))
 // As the server: the saved autopilot back (the same endpoint as CoordinatorAutopilot.test.ts).
-registerEndpoint('/api/pm/autopilot', { method: 'POST', handler: async (e) => { const body = await readBody(e); posts.push({ url: '/api/pm/autopilot', body }); return body.autopilot ? { autopilot: body.autopilot } : {} } })
+beforeAll(() => registerEndpoint('/api/pm/autopilot', { method: 'POST', handler: async (e) => { const body = await readBody(e); posts.push({ url: '/api/pm/autopilot', body }); return body.autopilot ? { autopilot: body.autopilot } : {} } }))
 herdrState.value = { ok: true, workspaces: [], panes: [{ id: 'w1:p1', coreAddress: 'host/t1', status: 'idle', agent: 'codex', workspace: 'w', tab: 't' } as Pane] }
 
 const view = (more: Partial<CoordinatorView> = {}): CoordinatorView => ({ project: 'CO', name: 'Company', agent: { program: 'claude' }, ...more })
@@ -27,11 +27,18 @@ let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
 const mount = async (c: CoordinatorView, open = false) => (w = await mountSuspended(CoordinatorPanel, { props: { c, open } }))
 afterEach(() => { w?.unmount(); w = null; posts.length = 0; coordinators.value = []; hiddenAgents.value = []; agentOrder.value = [] })
 
-it('says which agent answers, and changes the default in one gesture', async () => {
+it('says which agent answers; a new one is sent by Save, and Cancel takes it back', async () => {
   const b = await mount(view(), true)
   // No conversation yet: the button says which agent will answer.
   expect(b.find('[data-testid="coordinator-open"]').text()).toBe('Start with Claude')
+  const save = () => b.find('[data-testid="autopilot-save"]')
   await pick(b, 'coordinator-agent', 'codex')
+  expect(save().attributes('disabled')).toBeUndefined()
+  await b.find('[data-testid="autopilot-cancel"]').trigger('click')
+  expect(save().attributes('disabled')).toBeDefined()
+  await pick(b, 'coordinator-agent', 'codex')
+  expect(posts).toEqual([])
+  await save().trigger('submit')
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: 'CO', program: 'codex' } }]))
 })
 
@@ -41,6 +48,7 @@ it('Alfred: its agent picked in its window, and kept when no longer offered (sai
   const b = await mount(alfred())
   expect(b.text()).toContain('Alfred’s agent')
   expect(b.find('[data-testid="coordinator-autopilot"]').exists()).toBe(false) // Alfred has no autopilot
+  expect(await (b.vm as unknown as { leave: () => Promise<boolean> }).leave()).toBe(true) // its window closes
   await pick(b, 'coordinator-agent', 'codex')
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: '_main', program: 'codex' } }]))
   hiddenAgents.value = ['claude']

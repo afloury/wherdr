@@ -9,12 +9,14 @@
 // `project.autopilot` opens Settings. Leaving Settings, or closing the window
 // (`leave`, CoordinatorButton), with unsaved changes asks once.
 // Slots: `activity` and `settings`, the coordinator window's parts at the top of each tab.
+// `withAgent` (the coordinator window): the answering agent heads Settings, saved
+// and discarded with the rest.
 import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, MAX_PER_DAY, oldDefaults, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
-import type { CoordinatorView } from '#shared/pm/coordinator'
+import type { CoordinatorProgram, CoordinatorView } from '#shared/pm/coordinator'
 import { HEALTH_EVERY } from '#shared/pm/health'
 import { uiTarget } from '#shared/uiTargets'
 
-const props = defineProps<{ c: CoordinatorView }>()
+const props = defineProps<{ c: CoordinatorView, withAgent?: boolean }>()
 const ap = computed<Autopilot>(() => props.c.autopilot ?? DEFAULT_AUTOPILOT)
 const busy = ref(false)
 const error = ref('')
@@ -39,7 +41,13 @@ watch(() => JSON.stringify(formOf(ap.value)), () => {
   for (const k of KEYS) if (!edited(k)) (form as Record<string, unknown>)[k] = next[k]
   base.value = next
 })
-const dirty = computed(() => KEYS.some(edited))
+// The answering agent: picked here, sent by Save (its own endpoint).
+const savedProgram = computed<CoordinatorProgram | undefined>(() => coordinatorAgent(props.c)?.program)
+const program = ref<CoordinatorProgram | undefined>(savedProgram.value)
+const agentEdited = computed(() => !!props.withAgent && program.value !== savedProgram.value)
+watch(savedProgram, (p, old) => { if (program.value === old) program.value = p })
+const agentItems = computed(() => offerCoordinators(undefined, props.c.project).map(p => ({ label: kindLabel(p), value: p })))
+const dirty = computed(() => agentEdited.value || KEYS.some(edited))
 const saved = ref(false)
 watch(dirty, d => { if (d) saved.value = false })
 
@@ -52,7 +60,7 @@ const TAB_KEY = 'wherdr.autopilotTab'
 const storedTab = (): Tab => { try { return localStorage.getItem(TAB_KEY) === 'settings' ? 'settings' : 'activity' } catch { return 'activity' } }
 const tab = ref<Tab>(uiTarget(useRoute().query.target) === 'project.autopilot' ? 'settings' : storedTab())
 // Back to the saved values.
-const discard = () => { Object.assign(form, { ...base.value, events: [...base.value.events] }); saveError.value = '' }
+const discard = () => { Object.assign(form, { ...base.value, events: [...base.value.events] }); program.value = savedProgram.value; saveError.value = '' }
 // Unsaved changes: asks once whether to drop them; false keeps them (and the tab, the window).
 async function leave() {
   if (!dirty.value) return true
@@ -85,6 +93,8 @@ async function save() {
   saveError.value = ''
   await act(async () => {
     const { lookForWork: _, lookPerDay: __, keepBusy: ___, health: ____, hours: _____, ...kept } = ap.value
+    if (agentEdited.value) await api('/api/pm/coordinator-agent', { project: props.c.project, program: program.value })
+    if (!KEYS.some(edited)) { saved.value = true; return }
     const hours = String(form.from).trim() !== '' && String(form.to).trim() !== '' ? { hours: { from: Number(form.from), to: Number(form.to) } } : {}
     try {
       const r = await api<{ autopilot: Autopilot }>('/api/pm/autopilot', {
@@ -146,6 +156,10 @@ const counters = computed(() => props.c.limits
     <div v-show="tab === 'settings'" class="ap-panel" role="tabpanel" :aria-labelledby="`ap-tab-settings-${c.project}`" data-testid="autopilot-settings">
     <slot name="settings" />
     <form class="ap-form" @submit.prevent="save()">
+      <div v-if="withAgent" class="ap-agent">
+        <label class="field-label" :for="`ap-agent-${c.project}`">{{ tl('Answering agent') }}</label>
+        <USelect :id="`ap-agent-${c.project}`" v-model="program" :items="agentItems" size="lg" class="w-full" data-testid="coordinator-agent" />
+      </div>
       <fieldset class="ap-group">
         <legend class="mono-label">{{ tl('Goal', 'Objectif') }}</legend>
         <UTextarea :id="`ap-goal-${c.project}`" v-model="form.goal" :rows="2" autoresize :maxrows="6" size="xl" class="w-full" :maxlength="2000" :aria-label="tl('Goal')" data-testid="autopilot-goal"
@@ -250,6 +264,7 @@ const counters = computed(() => props.c.limits
 .ap-head > .mono-label:not(.ap-count) { color: var(--text); }
 .ap-count { flex: 1; color: var(--muted); white-space: nowrap; }
 .ap-look-note { align-self: end; }
+.ap-agent { display: grid; gap: 4px; min-width: 0; max-width: 420px; }
 /* Pinned at the bottom of the sheet's scroll, its last element: it carries the
    sheet's end padding (main.css drops the body's in the coordinator window). */
 .ap-bar { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 0 var(--sheet-end, 12px); background: var(--sheet-bg, var(--bg-2)); border-top: 1px solid var(--line-soft); }
