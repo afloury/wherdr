@@ -78,6 +78,10 @@ Buttons have square corners: no circular or pill-shaped buttons. Use existing
 Nuxt UI controls with the app's classes, such as `.mono-btn`, `.icon-btn` and
 `.task-sheet-actions > button`, rather than introducing a new button style.
 
+Switches (`USwitch`) are green when on, in every theme: `app/app.config.ts` makes
+`success` their default color, so give them no `color`. Size `xl` in Settings
+rows, `lg` in windows.
+
 Every touch target must be at least **44 × 44 px**. The drawn control can be
 smaller if its actual hit area reaches that minimum. Example: `.prompt-send` is
 32 px with `::after { inset: -8px }`, producing a 48 px hit area. Reserve space
