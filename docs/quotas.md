@@ -40,9 +40,10 @@ reading without an account key) keeps a block of its own, titled with the machin
   row; hovering it, or tapping it on a phone, says **Last read 2 d ago: send a message to a Codex
   agent to refresh** (Claude rows the same, with a Claude agent). Nothing is written under the row.
 - **A failed read** (a machine's files could not be read, a core machine slow to answer) keeps that
-  machine's last good reading, with its own age, for up to 15 minutes: a refresh never swaps a fresh
-  value for another machine's old one, nor splits a shared account into per-machine blocks. Past 15
-  minutes of failures the machine shows no gauge, so an old reading never masks a newer file.
+  machine's last good reading, with its own age, for as long as the reads fail: a refresh never
+  swaps a fresh value for another machine's old one, nor splits a shared account into per-machine
+  blocks. Each window turns to **?** once that reading is older than the window lasts, so an old
+  value never passes for a current one. Kept readings never count for the pace.
 - **Claude Code** only gives them to its status line. On each machine, install wherdr's
   invisible status line (it displays nothing, and chains to your existing status line if you
   have one):

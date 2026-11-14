@@ -373,13 +373,27 @@ describe('quotas Codex par compte', () => {
     await expect(readCodexMachine(down, '/nowhere')).rejects.toThrow('timeout')
   })
 
-  it('a failed read keeps the machine\'s last good reading for a while, then lets it go', () => {
+  it('a failed read keeps the machine\'s last good reading for as long as it fails', () => {
     const memo = new Map()
     const good = { q: null, seen: true }
-    expect(lastGoodRead(memo, 'host-a', good, 1000)).toBe(good)
-    expect(lastGoodRead(memo, 'host-a', null, 1000 + 14 * 60000)).toBe(good)
-    expect(lastGoodRead(memo, 'host-b', null, 1000)).toBeNull()
-    expect(lastGoodRead(memo, 'host-a', null, 1000 + 16 * 60000)).toBeNull()
+    const late = { q: null, seen: false }
+    expect(lastGoodRead(memo, 'host-a', good, 2)).toBe(good)
+    expect(lastGoodRead(memo, 'host-a', null, 3)).toBe(good)
+    // A slower older poll finishing late does not replace it.
+    expect(lastGoodRead(memo, 'host-a', late, 1)).toBe(late)
+    expect(lastGoodRead(memo, 'host-a', null, 4)).toBe(good)
+    expect(lastGoodRead(memo, 'host-b', null, 4)).toBeNull()
+  })
+
+  it('a file read failed by the session fails the machine read instead of emptying it', async () => {
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), 'quota-file-down-'))
+    const now = new Date()
+    const dir = path.join(home, '.codex/sessions', String(now.getFullYear()), String(now.getMonth() + 1).padStart(2, '0'), String(now.getDate()).padStart(2, '0'))
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(path.join(dir, 'rollout-a.jsonl'), JSON.stringify({ timestamp: now.toISOString(), payload: { rate_limits: { primary: { used_percent: 8, window_minutes: 300 } } } }) + '\n')
+    const down = { ...localFs, read: () => Promise.reject(Object.assign(new Error('timeout'), { code: 'unreachable' })) }
+    try { await expect(readCodexMachine(down, home)).rejects.toThrow('timeout') }
+    finally { fs.rmSync(home, { recursive: true, force: true }) }
   })
 
   it('tells a machine without Codex conversations from one waiting for its first limits', async () => {
