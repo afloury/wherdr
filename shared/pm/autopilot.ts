@@ -22,7 +22,7 @@ export type JudgmentEvent = 'question' | 'decide'
 export interface Autopilot {
   on: boolean
   goal: string
-  every?: string // duration (30m, 2h): a wake with the goal, in hours
+  every?: string // duration (30m, 2h): a wake with the goal and the health lines, in hours; unset: off
   at?: string // fixed times (daily 08:00, mon,thu 09:00, a cron): a wake with the goal, too
   events: AutopilotEvent[]
   perDay: number | null // tasks started per day; null: no daily limit
@@ -31,7 +31,6 @@ export interface Autopilot {
   lookForWork?: true // keep the scheduled wakes when there is nothing to do (goals that add their own tasks)
   lookPerDay?: number // with lookForWork: tasks those wakes may add a day (LOOK_PER_DAY when unset)
   keepBusy?: false // Keep the board busy, on unless turned off: the engine starts the next to-do task itself (busyQueue)
-  health?: string // the health check's interval (30m, 3h), or 'off'; HEALTH_EVERY when unset (health.ts)
 }
 
 export const LOOK_PER_DAY = 3
@@ -57,9 +56,9 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
   const goal = typeof o.goal === 'string' ? o.goal.trim() : ''
   if (goal.length > 2000) return { error: 'goal: 2000 characters at most' }
   const duration = (v: unknown) => typeof v === 'string' && /^\d{1,4}[mh]$/.test(v) && Number.parseInt(v) > 0
-  if (o.every !== undefined && o.every !== '' && !duration(o.every)) return { error: 'every: a duration like 30m or 2h' }
-  const health = typeof o.health === 'string' ? o.health.trim() : ''
-  if (o.health !== undefined && health !== '' && health !== 'off' && !duration(health)) return { error: 'health: a duration like 3h, or off' }
+  // Every off (or empty): no interval wake.
+  const every = typeof o.every === 'string' && o.every.trim() !== 'off' ? o.every.trim() : ''
+  if (o.every !== undefined && o.every !== '' && o.every !== 'off' && !duration(every)) return { error: 'every: a duration like 30m or 2h, or off' }
   const at = typeof o.at === 'string' ? o.at.trim() : ''
   const s = at ? parseSchedule(at) : null
   if (s && ('error' in s || 'every' in s)) return { error: 'at: fixed times like daily 08:00, mon,thu 09:00 or a cron' }
@@ -74,12 +73,11 @@ export function cleanAutopilot(raw: unknown): { autopilot: Autopilot } | { error
   if (h !== undefined && h !== null && (int(h.from, 23) === null || int(h.to, 24) === null || h.from === h.to)) return { error: 'hours: from 0-23, to 0-24, not equal' }
   return { autopilot: {
     on: o.on === true, goal, events: [...new Set(events as AutopilotEvent[])], perDay, atOnce,
-    ...(typeof o.every === 'string' && o.every ? { every: o.every } : {}),
+    ...(every ? { every } : {}),
     ...(at ? { at } : {}),
     ...(h ? { hours: { from: h.from as number, to: h.to as number } } : {}),
     ...(o.lookForWork === true ? { lookForWork: true as const, lookPerDay: lookPerDay ?? LOOK_PER_DAY } : {}),
     ...(o.keepBusy === false ? { keepBusy: false as const } : {}),
-    ...(health ? { health } : {}),
   } }
 }
 

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { DEFAULT_AUTOPILOT, quietEvents, holdsSlot, skippedWake, autopilotEvents, coordinatorStartRefusal, sentence, cleanAutopilot, inHours, LOOK_PER_DAY, bump, limitsLeft, lookAddRefusal, nothingToDo, pastLimit, scheduledWake, startRefusal, today, tellRefusal, countFix } from '../shared/pm/autopilot'
 import type { Run, Task } from '../shared/pm/run'
-import { HEALTH_ACK, healthEvery, healthSummary } from '../shared/pm/health'
+import { HEALTH_ACK, healthSummary, oneSchedule } from '../shared/pm/health'
 import { accountQuota, pacedStart, paceLine } from '../shared/pm/pace'
 import { DEFAULT_PACE, type PaceVerdict } from '../shared/pm/pacing'
 import type { Quotas } from '../shared/types'
@@ -20,9 +20,8 @@ describe('autopilot settings', () => {
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, events: ['merged'] })).toEqual({ error: expect.stringMatching(/events/) })
     // Tasks / day: empty is no daily limit, up to 1000 otherwise.
     for (const perDay of ['', null]) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay })).toEqual({ autopilot: { on: false, goal: '', events: [], perDay: null, atOnce: 2 } })
-    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, health: ' 6h ' })).toMatchObject({ autopilot: { health: '6h' } })
-    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, health: 'off' })).toMatchObject({ autopilot: { health: 'off' } })
-    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, health: 'soon' })).toEqual({ error: expect.stringMatching(/^health:/) })
+    // Every off: no interval wake; the old health field is dropped.
+    expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, every: 'off', health: '6h' })).toEqual({ autopilot: DEFAULT_AUTOPILOT })
     for (const perDay of [0, 250]) expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay })).toMatchObject({ autopilot: { perDay } })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, perDay: 2000 })).toEqual({ error: expect.stringMatching(/perDay/) })
     expect(cleanAutopilot({ ...DEFAULT_AUTOPILOT, hours: { from: 8, to: 8 } })).toEqual({ error: expect.stringMatching(/hours/) })
@@ -329,12 +328,13 @@ describe('the pace holds automatic starts only', () => {
   })
 })
 
-describe('the health check', () => {
+describe('the health lines', () => {
   const now = at(12), hour = 3_600_000
-  it('runs every 3h unless set or off', () => {
-    expect(healthEvery(DEFAULT_AUTOPILOT)).toBe('3h')
-    expect(healthEvery({ health: '6h' })).toBe('6h')
-    expect(healthEvery({ health: 'off' })).toBeNull()
+  it('migrate: the shorter of the health interval (3h when unset) and Every becomes Every; off keeps Every', () => {
+    expect(oneSchedule(DEFAULT_AUTOPILOT)).toEqual({ ...DEFAULT_AUTOPILOT, every: '3h' })
+    expect(oneSchedule({ ...DEFAULT_AUTOPILOT, every: '4h', health: '90m' })).toEqual({ ...DEFAULT_AUTOPILOT, every: '90m' })
+    expect(oneSchedule({ ...DEFAULT_AUTOPILOT, every: '30m', health: '6h' })).toEqual({ ...DEFAULT_AUTOPILOT, every: '30m' })
+    expect(oneSchedule({ ...DEFAULT_AUTOPILOT, health: 'off' })).toEqual(DEFAULT_AUTOPILOT)
   })
 
   it('sums up done, waiting for the user, stuck for long and idle machines', () => {
