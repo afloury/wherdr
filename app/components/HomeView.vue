@@ -56,6 +56,12 @@ const HomePollers = defineComponent({
 useNotificationRekey()
 // Counters follow the selected machine or group; unreachable machines stay out.
 const baseOfPane = (p: Pane) => { const m = machineInfo(p.machine); return m ? m.baseKey ?? m.key : p.machine || '' }
+// First load (WHR-329, useHomeLoad): skeletons until every section's first read
+// is in, then the whole list in one paint; never back to skeletons after. A
+// short load shows none (useDelayedFlag); herdr-core down shows its notice.
+watchEffect(() => { if (!homeListReady.value && (offlineView.value || (st.value.ok && homeSectionsLoaded()))) homeListReady.value = true })
+onMounted(() => setTimeout(() => { homeListReady.value = true }, HOME_LOAD_DEADLINE))
+const homeSkeleton = useDelayedFlag(computed(() => !homeListReady.value && !(linkShown.value && !st.value.ok && !!st.value.error)))
 const counts = computed(() => tabCounts(countedRows.value, countedCoordinators.value, machineBarSelection.value))
 
 const conn = computed(() => {
@@ -503,13 +509,18 @@ function resetListWidth() {
       </div>
       <div v-if="showCounters && agents.length" class="stats">
         <div v-for="c in stats" :key="c.s" class="stat" :class="[c.s, { zero: !c.n }]">
-          <b>{{ c.n }}</b>
+          <b v-if="homeListReady">{{ c.n }}</b><b v-else class="skel stat-skel" />
           <span><i />{{ c.label }}</span>
         </div>
       </div>
+      <template v-if="homeListReady">
       <QuotaStrip :rows="listQuotas" :api="listApi" :class="{ 'after-stats': showCounters && agents.length }" />
       <MachineQuotaBlocks v-if="!oneMachine" :blocks="machineQuotaBlocks" />
+      </template>
 
+      <HomeSkeleton v-if="homeSkeleton" />
+      <!-- Mounted while hidden: each section reads its data, shown once all have. -->
+      <div v-show="homeListReady && !homeSkeleton" data-testid="home-sections">
       <AlfredRow v-if="st.ok" />
       <CoordinatorsSection v-if="st.ok" />
       <ReviewCard v-if="st.ok" />
@@ -541,6 +552,7 @@ function resetListWidth() {
       <p v-else-if="onlineMachines.length && !stateGroups.length" class="machine-empty state-empty">{{ t('No agents yet.') }}</p>
       <!-- No agent row (Alfred and coordinators have their own): the first project's setup, while there is none. -->
       <HomeSetupHint v-if="st.ok && !stateGroups.length" />
+      </div>
       <div v-if="stateAway.length" class="state-away" role="group" :aria-label="tl('Machines not connected', 'Machines non connectées')">
         <div v-for="a in stateAway" :key="a.m.key" class="state-away-item" :class="a.m.status" :data-machine="a.m.key || 'local'"
           :title="[`${a.name} · ${a.state}`, a.known ? tl(`${a.known} known agents`, `${a.known} agents connus`) : '', a.m.error ? t(a.m.error) : ''].filter(Boolean).join(' — ')"

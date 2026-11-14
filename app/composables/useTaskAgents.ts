@@ -13,7 +13,7 @@ export const loadTaskAgents = () => api<Record<string, TaskAgent>>('/api/pm/agen
     const next = v && typeof v === 'object' && !Array.isArray(v) ? v : {}
     if (JSON.stringify(next) !== JSON.stringify(taskAgents.value)) taskAgents.value = next
   }, () => {})
-  .finally(() => { taskAgentsNow.value = Date.now() })
+  .finally(() => { taskAgentsNow.value = Date.now(); homeFirstLoad.agents = true })
 
 // By its address, else by its task and role labels (a re-attached or resumed terminal).
 export const taskAgentOf = (p?: Pane | null) => (p?.coreAddress && taskAgents.value[p.coreAddress])
