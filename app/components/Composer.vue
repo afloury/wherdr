@@ -21,7 +21,7 @@ import { isLongPaste, messageBody } from '#shared/pastedText'
 import { rememberPastes } from '~/utils/sentPastes'
 import { enterSends as enterSendsFor } from '~/utils/layoutMode'
 import { kbOpen } from '~/composables/useViewport'
-import { PromptHistory, historyDirection } from '~/utils/promptHistory'
+import { PromptHistory, caretOnVisualEdge, historyDirection } from '~/utils/promptHistory'
 import { createTouchTap } from '~/utils/touchTap'
 import { ESC_CONFIRM_MS, type EscapeArm, pressEscape } from '~/utils/escapeStop'
 import { pasteHtmlText } from '~/utils/pasteHtml'
@@ -188,7 +188,7 @@ function onHistoryKey(e: KeyboardEvent) {
   const el = ta.value
   if (!el || e.target !== el || sending.value) return
   const current = { text: el.value, start: el.selectionStart, end: el.selectionEnd }
-  const direction = historyDirection(e, current)
+  const direction = historyDirection(e, current, edge => caretOnVisualEdge(el, edge))
   if (direction === null) return
   const recalled = history.move(direction, current, promptHistoryFor(props.paneId))
   if (!recalled) return
