@@ -41,7 +41,8 @@
   lists each agent's actions under its role. A reviewer kept between rounds shows dimmed. A
   row keeps its task look after a restart of wherdr or herdr-core: an agent is found by its
   task and role, even when it was resumed or its terminal re-attached.
-- **Order**: the header (logo, version, Search, Board, Settings), the counters, the quotas (a
+- **Order**: the header (logo, version, Search, Board, Notes, Settings; when the list is too
+  narrow, Search, then Notes, then Board move into a ⋯ menu, Settings always stays a button), the counters, the quotas (a
   machine's own quotas under them), Alfred, the [Tasks to review](#tasks-to-review) card, the
   [coordinators](#coordinators), then the agents of
   the machines shown, by state (Your turn, Working, Ready). When the list mixes several machines,
@@ -177,7 +178,7 @@ not filtered by tab; the board is, when its picker follows the machine tab.
 
 ### Search
 
-The magnifier (⌘K / Ctrl+K) searches every agent and the conversations of the Claude Code and
+The magnifier (⌘K / Ctrl+K; in the header's ⋯ menu when the list is narrow) searches every agent and the conversations of the Claude Code and
 Codex agents of online machines. Choosing a result opens it.
 
 ### Notes
