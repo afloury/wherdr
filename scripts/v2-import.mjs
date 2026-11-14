@@ -130,7 +130,12 @@ export function detectV2(o = {}) {
   const dataDir = path.resolve(expand(pick('DATA_DIR') || path.join(dir, 'data'), home))
   const port = pick('PORT') || '7683'
   const files = (() => { try { return fs.readdirSync(dataDir).sort() } catch { return [] } })()
-  const found = !!unitFile || fs.existsSync(dataDir)
+  // A unit, or a folder given by hand, is a v2 install; data alone may be a leftover
+  // (dataOnly: the installer then asks whether a v2 server answers on its port).
+  const found = !!unitFile || !!o.v2Dir
+  const dataOnly = !found && fs.existsSync(dataDir)
+  // herdr-projects' board as v2 ran it: v3 must read the same one.
+  const hp = k => (pick(k) ? path.resolve(expand(pick(k), home)) : null)
   let active = null
   if (unitFile && !unitFile.endsWith('.plist')) {
     const r = run('systemctl', ['--user', 'is-active', path.basename(unitFile)])
@@ -146,7 +151,8 @@ export function detectV2(o = {}) {
   const self = [pick('HOST_LABEL'), o.hostname ?? os.hostname(), tsSelf?.HostName, tsSelf?.DNSName, ...String(pick('HERDR_WEB_SELF_HOSTS') || '').split(',')]
     .map(x => String(x || '').trim()).filter(Boolean)
   return {
-    found, unit: unitFile, active, session: pick('HERDR_WEB_SESSION') || null,
+    found, dataOnly, unit: unitFile, active,
+    herdrProjects: { home: hp('HERDR_PROJECTS_HOME'), dataDir: hp('HERDR_PROJECTS_DATA_DIR') }, session: pick('HERDR_WEB_SESSION') || null,
     dir, envFile: fs.existsSync(envFile) ? envFile : null, dataDir, port, files,
     machines, self,
     tailscale: { available: ts.ok, entries, v2Https: entries.filter(e => proxiesTo(e.proxy, port)).map(e => e.https) },
@@ -433,7 +439,7 @@ export function parseArgs(argv) {
 
 export function describeV2(v) {
   return [
-    `v2 install: ${v.found ? 'found' : 'NOT FOUND'}`,
+    `v2 install: ${v.found ? 'found' : v.dataOnly ? 'v2 data found, no running v2' : 'NOT FOUND'}`,
     `  service: ${v.unit || 'none'}${v.active === null ? '' : v.active ? ' (running)' : ' (not running)'}`,
     `  folder: ${v.dir}${v.envFile ? ' (wherdr.env)' : ''}`,
     `  data: ${v.dataDir} (${v.files.length} files), port ${v.port}${v.session ? `, Herdr session ${v.session}` : ''}`,
