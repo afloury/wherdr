@@ -251,6 +251,9 @@ describe('on a real repo', () => {
     expect(await ui2(put(wt, 'app/assets/main.css', '/* a */\n.a { color: blue; }\n'))).toBe('app/assets/main.css\nchanged')
     // Text the user sees is never a comment: in a string, or spaces in the markup.
     expect(await ui2(put(wt, 'app/components/c.ts', '/** c */\nexport const c = "/* new */"\n'))).toBe('app/assets/main.css\napp/components/c.ts\nchanged')
+    const tip = (title: string) => put(wt, 'app/components/B.vue', `<template>\n  <p title="<!-- ${title} -->">b</p>\n</template>\n`)
+    const before = tip('old')
+    expect((await localSh(SCRIPT.uiChanged, [wt, 'dev', before, tip('new')])).out).toBe('app/components/B.vue\nchanged')
   })
 
   it('lands a task on dev, refuses main, sends a conflict back and verifies the merge', async () => {

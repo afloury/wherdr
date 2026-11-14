@@ -54,9 +54,9 @@ const AFTER_MERGE = `a=$(git config --get wherdr.afterMerge) && { sh -c "$a" >/d
 const UI_FILES = ['components', 'assets', 'pages', 'layouts'].map(d => `':(glob)**/${d}/**'`).join(' ')
 
 // A file's text without its comments, for the types whose comments the
-// interface never shows; others as they are. Strings (and Markdown code) are
-// kept whole, and so is every space: only a comment goes, with its own line
-// when it had one. Without perl, as they are: a comment then counts as a change.
+// interface never shows; others as they are. Strings, tags with their
+// attributes, {{ }} and Markdown code are kept whole, and so is every space:
+// only a comment goes, with its own line when it had one. Without perl, as they are: a comment then counts as a change.
 // No single quote in it (\x27): it goes into the script between single quotes.
 const STRIP_PL = String.raw`my $m = shift; local $/; my $t = <STDIN>; $t = "" unless defined $t; my $Z = "\0";
 my $S = qr{"(?:\\.|[^"\\\n])*"|\x27(?:\\.|[^\x27\\\n])*\x27|\x60(?:\\.|[^\x60\\])*\x60};
@@ -64,7 +64,7 @@ sub code { my ($s, $line) = @_; my $c = $line ? qr{/\*.*?\*/|(?<![:\w\\])//[^\n]
   $s =~ s{($S)|[ \t]*(?<!\\)(?:$c)}{defined $1 ? $1 : $Z}gse; return $s }
 sub block { my ($o, $in, $c) = $_[0] =~ m{^(<[^>]*>)(.*)(</\w+>)$}s; return $o . code($in, $o =~ m{^<script|lang=["\x27]?(?:scss|less)}i ? 1 : 0) . $c }
 if ($m eq "css") { $t = code($t, 0) } elsif ($m eq "js") { $t = code($t, 1) }
-elsif ($m eq "html") { $t =~ s{(<(script|style)\b[^>]*>.*?</\2>)|[ \t]*<!--.*?-->}{defined $1 ? block($1) : $Z}gsei }
+elsif ($m eq "html") { $t =~ s{(<(script|style)\b[^>]*>.*?</\2>)|(\{\{.*?\}\}|<[A-Za-z][^>"\x27]*(?:(?:"[^"]*"|\x27[^\x27]*\x27)[^>"\x27]*)*>)|[ \t]*<!--.*?-->}{defined $1 ? block($1) : defined $3 ? $3 : $Z}gsei }
 elsif ($m eq "md") { $t =~ s{(\x60\x60\x60.*?\x60\x60\x60|\x60[^\x60\n]*\x60)|[ \t]*<!--.*?-->}{defined $1 ? $1 : $Z}gse }
 $t =~ s{^[ \t]*$Z[$Z \t]*\n}{}gm; $t =~ s{$Z}{}g; print $t;`
 const STRIP = `P='${STRIP_PL}'
