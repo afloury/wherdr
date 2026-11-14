@@ -341,6 +341,9 @@ describe('ask the agent to fix it', () => {
     expect(fixableBlock(refused)).toBe('The PR conflicts with v3')
     expect(fixableBlock(at({ yourTurn: { reason: 'timeout', badge: 'Check work: over 2h' } }))).toBe('Check work: over 2h')
     expect(fixableBlock(task({ state: 'waiting', waiting: 'claude stopped' }))).toBe('claude stopped')
+    // A stall (an idle worker, red CI with no new push): the board's own words.
+    expect(fixableBlock(task(), { cause: 'red:abc', reason: 'CI red, no new push for 10 min', since: 1 })).toBe('Stalled: CI red, no new push for 10 min')
+    expect(fixableBlock(task())).toBeUndefined()
     // Nothing for its agent: a question, a step of the user's, a stop.
     expect(fixableBlock(task({ state: 'waiting', waiting: 'A question', waitKind: 'question' }))).toBeUndefined()
     expect(fixableBlock(at({ yourTurn: { reason: 'user', badge: 'Merge' } }))).toBeUndefined()
@@ -385,5 +388,17 @@ describe('ask the agent to fix it', () => {
     expect(t.log!.at(-1)).toMatchObject({ by: 'user', text: 'asked the agent to fix: The PR conflicts with v3' })
     // Its agent at work on it: nothing left to fix.
     await expect(askAgentFix(deps, 'WH-1')).rejects.toThrow('nothing its agent can fix')
+
+    // A worker idle at its step (a stall, no Your turn of the step's): told, the stall's clock starts again.
+    const work = plan.findIndex(x => (typeof x === 'string' ? x : x.id) === 'work')
+    const stall = { cause: `idle:${work}:5`, reason: 'The worker stopped before saying it is done', since: 6 }
+    await store.saveRun({ ...(await store.runs()).at(-1)!, state: 'running' })
+    await store.saveTask({ ...(await store.task('WH-1'))!, state: 'working', idle: 1, stall, stalls: { [stall.cause]: { since: 6 } }, step: { ...task().step!, at: work, since: 5, told: 5 } })
+    const before = Date.now()
+    const idle = await askAgentFix(deps, 'WH-1')
+    expect(calls.filter(c => c === 'terminal.send')).toHaveLength(1)
+    expect(idle.stall!.since).toBeGreaterThanOrEqual(before)
+    expect(idle.stalls![stall.cause]!.back).toBeGreaterThanOrEqual(before)
+    expect(idle.log!.slice(-2).map(e => e.text)).toEqual(['asked the agent to fix: Stalled: The worker stopped before saying it is done', 'back to work: the user asked the agent to fix it'])
   })
 })

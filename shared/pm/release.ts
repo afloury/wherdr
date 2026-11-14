@@ -7,6 +7,7 @@
 import type { Run, Task } from './run'
 import { durationMs, type AgentWork, type PlannedStep, type StepState } from './steps'
 import { DONE_CMD } from './advance'
+import { stallTurn, type Stall } from './blocked'
 import { isRoomHold, roomShort } from './placement'
 
 export const RELEASE_IDLE_MS = 10 * 60_000
@@ -121,13 +122,15 @@ export function handFix(plan: PlannedStep[], s: StepState | undefined, kind: str
 
 // Ask the agent to fix it (the user's button): what blocks a started task that its
 // worker could fix, the block's exact reason; a failed step action, a step past its
-// time limit, a stalled or ended worker. Undefined: nothing for it (a question, a
-// step of the user's, a decision, a stop, work already handed to it).
-export function fixableBlock(t: Pick<Task, 'state' | 'waiting' | 'waitKind' | 'step' | 'stopped'>): string | undefined {
+// time limit, a stalled or ended worker, red CI with no new push (stall: stallOf,
+// as the board reads it). Undefined: nothing for it (a question, a step of the
+// user's, a decision, a stop, work already handed to it).
+export function fixableBlock(t: Pick<Task, 'state' | 'waiting' | 'waitKind' | 'step' | 'stopped'>, stall?: Stall): string | undefined {
   const s = t.step
   if (t.stopped || !s?.started || s.done || s.acting || s.agent) return
   if (s.yourTurn) return s.yourTurn.reason === 'action' ? s.yourTurn.error || s.yourTurn.badge : s.yourTurn.reason === 'timeout' ? s.yourTurn.badge : undefined
   if (t.state === 'waiting' && !t.waitKind) return t.waiting || 'Waiting'
+  if (stall) return stallTurn(stall)
 }
 
 // What the worker is told: the block's reason, fix it or ask the user one question.
