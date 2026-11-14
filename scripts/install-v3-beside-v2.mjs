@@ -16,7 +16,7 @@ import net from 'node:net'
 import path from 'node:path'
 import v8 from 'node:v8'
 import { fileURLToPath } from 'node:url'
-import { IGNORED_HP, defaultRun, describeV2, detectV2, runImport } from './v2-import.mjs'
+import { defaultRun, describeV2, detectV2, runImport } from './v2-import.mjs'
 
 export const EXIT = { ok: 0, usage: 2, missing: 3, conflict: 4, failed: 5, todo: 6 }
 const MANIFEST = 'install-manifest.json'
@@ -44,12 +44,13 @@ Without --yes, prints the plan and changes nothing (--dry-run says so explicitly
   --auto-deploy <url>   never build here: install prebuilt v3 builds from <url> (scripts/v3-builder.sh
                         on another machine) and keep up with them: <name>-deploy.timer, every 3 min
   v2 (default: found here): --v2-dir <dir> --v2-unit <file> --herdr-bin <path>
-  Nothing of herdr-projects is imported: Alfred sets up your v2 projects with you.`
+  --herdr-projects <dir> herdr-projects' folder (default: v2's HERDR_PROJECTS_HOME, else ~/.herdr-projects).
+                        v3's service gets it: Alfred offers the projects of that board at its first start.`
 
 export function parseArgs(argv, home = os.homedir()) {
   const o = { dir: path.join(home, 'wherdr-v3'), name: 'wherdr-v3', port: '7684', httpsPort: null, hcSession: 'default', repo: REPO, branch: BRANCH }
   const flags = { '--yes': 'yes', '--dry-run': 'dryRun', '--json': 'json', '--uninstall': 'uninstall', '--keep-data': 'keepData', '--no-tailscale': 'noTailscale', '--skip-import': 'skipImport', '--help': 'help', '-h': 'help' }
-  const values = { '--dir': 'dir', '--name': 'name', '--port': 'port', '--https-port': 'httpsPort', '--hc-session': 'hcSession', '--hc-bin': 'hcBin', '--repo': 'repo', '--branch': 'branch', '--v2-dir': 'v2Dir', '--v2-unit': 'unit', '--herdr-projects': 'ignoredHp', '--herdr-bin': 'herdrBin', '--auto-deploy': 'deploySource' }
+  const values = { '--dir': 'dir', '--name': 'name', '--port': 'port', '--https-port': 'httpsPort', '--hc-session': 'hcSession', '--hc-bin': 'hcBin', '--repo': 'repo', '--branch': 'branch', '--v2-dir': 'v2Dir', '--v2-unit': 'unit', '--herdr-projects': 'herdrProjects', '--herdr-bin': 'herdrBin', '--auto-deploy': 'deploySource' }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (flags[a]) o[flags[a]] = true
@@ -61,7 +62,7 @@ export function parseArgs(argv, home = os.homedir()) {
   if (!/^[\w.-]{1,40}$/.test(o.name)) throw new Error('--name: letters, digits, . _ -')
   if (!/^[\w.-]{1,32}$/.test(o.hcSession)) throw new Error('--hc-session: letters, digits, . _ -')
   if (o.deploySource !== undefined && !/^(https?|file):\/\/\S+$|^\/\S*$/.test(o.deploySource)) throw new Error('--auto-deploy: an http(s):// URL or a folder')
-  o.dir = path.resolve(o.dir.replace(/^~(?=\/|$)/, home))
+  for (const k of ['dir', 'herdrProjects']) if (o[k] !== undefined) o[k] = path.resolve(o[k].replace(/^~(?=\/|$)/, home))
   return o
 }
 
@@ -134,7 +135,19 @@ export function pickHttpsPort({ entries = [], port, wanted = null, previous = nu
   return { port: pick, free, done: !!entry }
 }
 
-export function v3Unit({ node, dir, socket, port, hcService, appUrl = null, protect = PROTECT_DEFAULTS }) {
+// The herdr-projects board v2 used: its folders and project names (null: no board there).
+// env: what v3's service needs to read that same board (nothing for the default).
+export function v2Board({ home, given = null, kept = null, v2 = {} }) {
+  if (kept && !Object.keys(kept).length) kept = null
+  const env = given ? { HERDR_PROJECTS_HOME: given } : kept || Object.fromEntries(Object.entries({ HERDR_PROJECTS_HOME: v2.home, HERDR_PROJECTS_DATA_DIR: v2.dataDir }).filter(([, v]) => v))
+  const dir = env.HERDR_PROJECTS_HOME || path.join(home, '.herdr-projects')
+  const dataDir = env.HERDR_PROJECTS_DATA_DIR || path.join(dir, 'data')
+  const repos = (() => { try { return JSON.parse(fs.readFileSync(path.join(dataDir, 'repos.json'), 'utf8')) } catch { return null } })()
+  const projects = repos && typeof repos === 'object' && !Array.isArray(repos) ? Object.keys(repos) : null
+  return { dir, dataDir, env, projects, from: given ? '--herdr-projects' : kept ? 'the previous run' : Object.keys(env).length ? "v2's service" : null }
+}
+
+export function v3Unit({ node, dir, socket, port, hcService, appUrl = null, protect = PROTECT_DEFAULTS, board = {} }) {
   return `# wherdr v3 beside v2 (install-v3-beside-v2). Remove with: install-v3-beside-v2.sh --uninstall --yes
 [Unit]
 Description=wherdr v3 (herdr-core), beside wherdr v2
@@ -143,7 +156,7 @@ ${hcService ? `Wants=${hcService}\n` : ''}
 [Service]
 Type=simple
 WorkingDirectory=${dir}/src
-${['NODE_ENV=production', `HC_SOCKET=${socket}`, 'HOST=127.0.0.1', `PORT=${port}`, `DATA_DIR=${dir}/data`, ...(appUrl ? [`APP_URL=${appUrl}`] : [])].map(e => `Environment=${sq(e)}`).join('\n')}
+${['NODE_ENV=production', `HC_SOCKET=${socket}`, 'HOST=127.0.0.1', `PORT=${port}`, `DATA_DIR=${dir}/data`, ...(appUrl ? [`APP_URL=${appUrl}`] : []), ...Object.entries(board).map(([k, v]) => `${k}=${v}`)].map(e => `Environment=${sq(e)}`).join('\n')}
 ${UNSET}
 ExecStart=${sq(node)} .output/server/index.mjs
 ${Object.keys(PROTECT_DEFAULTS).map(k => `${k}=${protect[k]}`).join('\n')}
@@ -268,15 +281,20 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     let leftForUser = false
     // 1. What is there.
     const v2 = detectV2({ ...o, home, env, run })
+    // Data with no unit: v2 only if a v2 server answers on its port, else a leftover we ask about.
+    if (v2.dataOnly && await (io.health || health)(`http://127.0.0.1:${v2.port}/api/health`)) Object.assign(v2, { found: true, dataOnly: false })
     say(describeV2(v2))
-    if (o.ignoredHp !== undefined) say(`note: ${IGNORED_HP}`)
-    summary.v2 = { found: v2.found, unit: v2.unit, dir: v2.dir, dataDir: v2.dataDir, port: v2.port, https: v2.tailscale.v2Https, machines: v2.machines.length }
-    if (!v2.found && !o.skipImport) next('no v2 install found: give --v2-dir / --v2-unit, or --skip-import for a plain v3 install')
+    summary.v2 = { found: v2.found, dataOnly: v2.dataOnly, unit: v2.unit, dir: v2.dir, dataDir: v2.dataDir, port: v2.port, https: v2.tailscale.v2Https, machines: v2.machines.length }
+    const unclear = v2.dataOnly && !o.skipImport
+      ? `v2 data found in ${v2.dataDir}, but no v2 service and no v2 answering on port ${v2.port}: is it your v2? To import from it, run again with --v2-dir ${v2.dir}; else --skip-import for a plain v3 install`
+      : null
+    if (!v2.found && !o.skipImport && !(unclear && o.yes)) next(unclear || 'no v2 install found: give --v2-dir / --v2-unit, or --skip-import for a plain v3 install')
 
     // 2. Prerequisites and 3. conflicts, all checked in one pass: every problem is one ERROR line.
     if (process.platform !== 'linux') throw new Stop(EXIT.missing, 'unsupported-os', 'this installer sets up systemd --user services (Linux); on macOS follow docs/installation.md')
     const errors = []
     const problem = (code, id, msg) => errors.push(new Stop(code, id, msg))
+    if (unclear && o.yes) problem(EXIT.conflict, 'v2-unclear', unclear)
     const major = Number(process.versions.node.split('.')[0])
     if (major < 22) problem(EXIT.missing, 'missing-node', `Node.js 22 or newer is required (this is ${process.version})`)
     for (const [bin, id] of [['git', 'missing-git'], ['npm', 'missing-npm']]) {
@@ -342,6 +360,8 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     const appUrl = self && httpsPort ? `https://${self}:${httpsPort}/` : null
     const protect = unitProtections(v2.unit && !v2.unit.endsWith('.plist') ? fs.readFileSync(v2.unit, 'utf8') : '')
     const protectText = Object.keys(PROTECT_DEFAULTS).map(k => `${k}=${protect[k]}`).join(' ')
+    const board = v2Board({ home, given: o.herdrProjects, kept: mine.board, v2: v2.herdrProjects })
+    summary.board = { dir: board.dir, dataDir: board.dataDir, env: board.env, projects: board.projects }
 
     // 4. The plan.
     const plan = [
@@ -359,9 +379,16 @@ export async function main(argv = process.argv.slice(2), io = {}) {
       `write ${o.dir}/update.sh`,
       ...(autoDeploy ? [`auto-deploy: ${name}-deploy.timer runs ${o.dir}/${DEPLOY_SCRIPT} every 3 min (log: ${o.dir}/deploy/deploy.log)`] : []),
     ]
+    const vars = Object.keys(board.env)
+    const boardLines = [
+      `herdr-projects board: ${board.dir}${board.dataDir !== path.join(board.dir, 'data') ? ` (data ${board.dataDir})` : ''}${vars.length ? `; ${vars.join(' and ')} from ${board.from}, set in ${name}.service` : ''}`,
+      board.projects?.length ? `  projects: ${board.projects.length} on the v2 board (${board.projects.join(', ')}): Alfred offers them at its first start`
+        : `  projects: ${board.projects ? 'none on the board' : 'no board there'}${o.herdrProjects ? '' : ' (--herdr-projects <dir> if yours is elsewhere)'}`,
+    ]
+    plan.splice(4, 0, ...boardLines)
     if (!o.skipImport && v2.found) {
       const r = runImport({ ...o, v2, run, home, env, appDir: o.dir, dataDir: path.join(o.dir, 'data'), hcSession: o.hcSession, hcBin: hc, dryRun: true, hcReachable: hcUp })
-      plan.splice(4, 0, `  settings: ${r.settings.carried.length}; projects: none (Alfred sets them up with you)`,
+      plan.splice(4, 0, `  settings: ${r.settings.carried.join(', ') || 'none to carry over'}${r.settings.files.length ? `; files: ${r.settings.files.join(', ')}` : ''}`,
         `  machines to add: ${r.machines.added.map(x => `${x.name} (${x.target})`).join(', ') || 'none'}${r.machines.missing.length ? `; not reachable: ${r.machines.missing.map(x => `${x.target} (${x.reason})`).join(', ')}` : ''}`)
     }
     summary.plan = plan
@@ -371,7 +398,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     if (!o.yes) { say('Dry run: nothing changed. Run again with --yes to apply.'); return EXIT.ok }
 
     // 5. Apply. The manifest is saved after each step, so --uninstall always knows what to remove.
-    const m = { v: 1, createdDir: mine.createdDir ?? !fs.existsSync(o.dir), name, port: o.port, units: mine.units || [], machines: mine.machines || [], hcSession: o.hcSession, ...mine }
+    const m = { v: 1, createdDir: mine.createdDir ?? !fs.existsSync(o.dir), name, port: o.port, units: mine.units || [], machines: mine.machines || [], hcSession: o.hcSession, ...mine, board: board.env }
     save(m)
     if (ownHc) {
       if (m.hcStateCreated === undefined) m.hcStateCreated = !fs.existsSync(hcState(o.hcSession))
@@ -426,7 +453,7 @@ export async function main(argv = process.argv.slice(2), io = {}) {
     }
 
     fs.mkdirSync(path.join(o.dir, 'data'), { recursive: true, mode: 0o700 })
-    fs.writeFileSync(path.join(unitDir, `${name}.service`), v3Unit({ node: process.execPath, dir: o.dir, socket, port: o.port, hcService: ownHc ? `${hcName}.service` : null, appUrl, protect }))
+    fs.writeFileSync(path.join(unitDir, `${name}.service`), v3Unit({ node: process.execPath, dir: o.dir, socket, port: o.port, hcService: ownHc ? `${hcName}.service` : null, appUrl, protect, board: board.env }))
     if (!m.units.includes(name)) m.units.push(name)
     save(m)
     sctl('daemon-reload')

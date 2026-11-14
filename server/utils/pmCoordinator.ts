@@ -59,7 +59,7 @@ import type { CoordinatorRecord, PmStore } from './pmStore'
 import { ALFRED, OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
 import { APP_URL_FILE, DATA_DIR, ENV_APP_URL, HOME } from './env'
 import { findDocsDir } from './wherdrDocs'
-import { projectsHome } from '../../bin/lib/userpath.mjs'
+import { projectsDataDir, projectsHome } from '../../bin/lib/userpath.mjs'
 import { readV2Projects, type V2Candidate } from './v2Board'
 import pkg from '../../package.json'
 import { openUi, showUi, uiTargetsList, type UiOpenDeps } from './uiOpen'
@@ -813,9 +813,10 @@ export async function takeUpdateNotice(store: PmStore, key: string | null) {
 const alfredAgent = (program: unknown): CoordinatorAgent | null => (isAlfredProgram(program) ? { program } : null)
 const readAlfredName = (deps: { alfredHome?: string }) => fs.readFile(path.join(homeOfAlfred(deps), 'identity.md'), 'utf8').then(alfredName, () => alfredName(''))
 
-// The v2 projects, read now from herdr-projects' board on this machine (read only).
-export async function v2Projects(store: PmStore, hpDir = projectsHome(process.env, HOME)): Promise<V2Candidate[]> {
-  return readV2Projects(hpDir, await store.projects())
+// The v2 projects, read now from herdr-projects' board on this machine (read
+// only): HERDR_PROJECTS_HOME and HERDR_PROJECTS_DATA_DIR, as herdr-projects finds them.
+export async function v2Projects(store: PmStore, hpDir?: string): Promise<V2Candidate[]> {
+  return readV2Projects(hpDir ?? projectsHome(process.env, HOME), await store.projects(), undefined, hpDir ? undefined : projectsDataDir(process.env, HOME))
 }
 
 // Alfred's home, on wherdr's own machine: wherdr's files rewritten at each
