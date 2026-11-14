@@ -10,6 +10,7 @@ import { load } from './pmStop'
 import type { PmLaunchDeps } from './pmLaunch'
 import { tellTarget } from '../../shared/pm/coordinator'
 import { fixAskText, fixAskedStep, fixableBlock } from '../../shared/pm/release'
+import { showIds } from '../../shared/pm/projectKey'
 import type { Task } from '../../shared/pm/run'
 
 export async function askAgentFix(deps: PmLaunchDeps, id: unknown, by = 'user'): Promise<Task> {
@@ -19,14 +20,15 @@ export async function askAgentFix(deps: PmLaunchDeps, id: unknown, by = 'user'):
   if (!reason) throw new HerdrError('refused', 'The task waits for nothing its agent can fix')
   if (plan[task.step!.at]?.holder === 'reviewer') throw new HerdrError('refused', 'The review is blocked: restart the review')
   const { run, released } = tellTarget(await store.runs(), task.id, 'worker', 'worker', true, !task.cleanup?.done)
-  const text = fixAskText(reason)
+  // The block's reason may name a task: with its project's shown key.
+  const projects = await store.projects(), text = fixAskText(reason)
   if (released) {
     let hold: string | undefined
-    const started = await reviveWorker(deps, task.id, `a fix the ${by} asked: ${reason}`, text, (h) => { hold = h })
+    const started = await reviveWorker(deps, task.id, `a fix the ${by} asked: ${reason}`, showIds(projects, text), (h) => { hold = h })
     if (hold) throw new HerdrError('refused', `The worker cannot start now: ${hold}`)
     if (started?.state !== 'working') throw new HerdrError('refused', `The worker could not start: ${started?.waiting ?? 'unknown reason'}`)
   }
-  else if (run?.terminal) await deps.call('terminal.send', { terminal: run.terminal, text }, 30000)
+  else if (run?.terminal) await deps.call('terminal.send', { terminal: run.terminal, text: showIds(projects, text) }, 30000)
   else throw new HerdrError('not_found', 'The task has no worker to fix it')
   const fresh = (await store.task(task.id))!
   const live = fresh.state === 'waiting' && !fresh.waitKind ? { state: 'working' as const, waiting: undefined } : {}
