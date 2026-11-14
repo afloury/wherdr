@@ -101,7 +101,7 @@ const TITLE: Record<SetupStepId, string> = {
 const BODY: Record<SetupStepId, string> = {
   enable: 'Tasks then follow the workflow of their project. Off, nothing is changed.',
   project: 'A git repository on one of your machines: each task gets its own worktree. Pushes and pull requests need a remote (origin). wherdr checks whether it is public.',
-  coordinator: 'Your coordinator looks at the project, then asks you a few questions to set up how you work: the checks before a merge, the reviews, the pace. Change any of it later, any time, by talking to it or to Alfred.',
+  coordinator: 'Your coordinator looks at the project, then its first message proposes how you work: the checks before a merge, the reviews, who merges. Accept it or refuse it, and change any of it later by talking to it or to Alfred.',
 }
 </script>
 

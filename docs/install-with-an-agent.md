@@ -60,6 +60,9 @@ Steps:
 
 ## Update v3
 
+The home banner's **Update with Alfred** does this with Alfred, following
+[Update with an agent](update-with-an-agent.md), which also reads the release's *Upgrade notes*.
+
 ```text
 Update the wherdr v3 that runs on this machine to the latest v3 branch, keeping its data.
 

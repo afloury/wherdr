@@ -27,7 +27,15 @@ const edit = (b: Record<string, unknown>, change: Partial<Project>) => {
   state = { ...state, projects: state.projects.map(p => p.key === b.key ? { ...p, ...change } : p) }
   return { project: state.projects.find(p => p.key === b.key) }
 }
-registerEndpoint('/api/pm/overview', () => state)
+// The overview's read: held by `gate` (loading), refused while `down`.
+let gate: Promise<void> = Promise.resolve()
+let down = false
+registerEndpoint('/api/pm/overview', async (event) => {
+  await gate
+  if (!down) return state
+  setResponseStatus(event, 503)
+  return { error: 'Overview unavailable' }
+})
 registerEndpoint('/api/pm/project', () => ({ project: state.projects[0], workflow: { id: 'web', steps: [], taskTypes: {}, guards: { protected: ['main'] }, prefs: { agent: 'claude', model: 'sonnet' }, worktree: { share: [] } }, log: [] }))
 post('/api/pm/enabled', (b) => { state = { ...state, enabled: b.enabled as boolean }; return state })
 post('/api/pm/project-update', b => edit(b, { name: b.name as string, base: b.base as string, ...(b.newKey ? { label: b.newKey as string } : {}) }))
@@ -47,7 +55,36 @@ post('/api/pm/project-visibility', b => edit(b, { visibility: { value: b.value a
 
 const inSheet = (id: string) => document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`)
 let mounted: { unmount: () => void } | null = null
-afterEach(() => { mounted?.unmount(); mounted = null; reset(); newAgentOpen.value = false })
+afterEach(() => { mounted?.unmount(); mounted = null; reset(); newAgentOpen.value = false; gate = Promise.resolve(); down = false })
+
+// WHR-328: while the overview loads, no off switch and no empty list: skeletons,
+// the buttons disabled; a failed read shows its error and Try again.
+it('loading shows skeletons, then the real values; a failed read shows Try again', async () => {
+  let open!: () => void
+  gate = new Promise((r) => { open = r })
+  state = { ...state, enabled: true, projects: [web()] }
+  const w = await mountSuspended(ProjectsSettings, { props: { active: true } })
+  mounted = w
+  expect(w.find('[data-testid="pm-switch"]').exists()).toBe(false)
+  expect(w.find('[data-testid="skeleton-switch"]').exists()).toBe(true)
+  expect(w.findAll('[data-testid="skeleton-row"]')).toHaveLength(3)
+  expect(w.get('[data-testid="pm-add"]').attributes('disabled')).toBeDefined()
+  expect(w.get('[data-testid="pm-board"]').attributes('disabled')).toBeDefined()
+  open()
+  await vi.waitFor(() => expect(w.findAll('[data-testid="pm-project"]')).toHaveLength(1))
+  expect(w.get('[data-testid="pm-switch"]').attributes('aria-checked')).toBe('true')
+  expect(w.find('[data-testid="skeleton-row"]').exists()).toBe(false)
+  w.unmount()
+
+  down = true
+  const v = await mountSuspended(ProjectsSettings, { props: { active: true } })
+  mounted = v
+  await vi.waitFor(() => expect(v.get('[data-testid="load-error"]').text()).toContain('Overview unavailable'))
+  expect(v.find('[data-testid="pm-switch"]').exists()).toBe(false)
+  down = false
+  await v.get('[data-testid="load-retry"]').trigger('click')
+  await vi.waitFor(() => expect(v.findAll('[data-testid="pm-project"]')).toHaveLength(1))
+})
 
 it('switches project management on; Add project opens the setup window on a new project', async () => {
   const w = await mountSuspended(ProjectsSettings, { props: { active: true } })

@@ -567,9 +567,11 @@ body.short-bottom { --safe-bottom: 0px; }
 .update-banner-body { flex: 1 1 220px; min-width: 0; display: grid; gap: 6px; }
 .update-banner-body p { margin: 0; color: var(--text); }
 .update-banner-body p small, .update-banner-body > small { display: block; margin-top: 2px; font-size: 11px; color: var(--dim); }
-.update-banner-body code { display: block; padding: 5px 7px; border: 1px solid var(--line); font: 400 11px/1.45 var(--mono); color: var(--text-2); overflow-wrap: anywhere; user-select: all; }
-.update-banner-actions { display: flex; gap: 6px; margin-left: auto; }
+.update-banner-actions { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; margin-left: -6px; } /* overflow-safe: inside the banner's 12px left padding */
+.update-banner-hide { flex: none; margin: -4px -2px 0 0; } /* overflow-safe: inside the banner's 10px right padding */
+.update-banner-actions > * { white-space: nowrap; }
 .update-banner-actions .iconify { width: 14px; height: 14px; }
+.update-notes-link { margin-top: 14px; }
 /* One-tap update: the Updating screen reuses the lock screen's frame. */
 .lock-screen.self-update { z-index: 61; }
 .machine-empty { margin: -2px 0 20px 24px; font: 400 12px/1.4 var(--mono); color: var(--dim); }

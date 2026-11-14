@@ -593,6 +593,10 @@ const stepLine = (s: PlannedStep) => `- ${s.id} (${s.column ?? s.id}): ${[
 export const commandList = (t?: Template | null) => [...COMMANDS.filter(c => !c.usage.startsWith(GUARDED_COMMAND) || t?.guards?.contributorPrs).map(c => `- \`wherdr pm ${c.usage}\`: ${c.does}`),
   ...NOTES_COMMANDS.map(c => `- \`wherdr pm ${c.usage}\`: ${c.does}`), `- ${NOTES_RULE}`]
 
+// The message a project coordinator gets at its first start while its project
+// has no accepted workflow: its first reply proposes one.
+export const FIRST_REPLY = 'You were just started on a project with no accepted workflow yet. Follow "Your first conversation" in AGENTS.md now: look at the repository, then propose its workflow with `template edit` in this first reply, saying in a few lines why.'
+
 // The files of the coordinator's folder wherdr rewrites, path → text (its own
 // files: OWN_ROLE_FILES). Nothing outside it.
 // docs: wherdr's docs folder, when the coordinator runs on wherdr's machine.
@@ -604,12 +608,11 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
   const plans = t ? Object.entries(t.taskTypes).flatMap(([type]) => [`### ${type}`, ...planSteps(t, { type }, p.base).map(stepLine), '']) : ['(no template yet)']
   // No accepted workflow yet: the coordinator's first conversation sets one up.
   const firstTalk = !plain && isDefaultWorkflow(t) ? ['## Your first conversation', '',
-    `This project has no accepted workflow yet: its tasks follow a minimal default (one type \`task\`: todo → work → done). Your first conversation with the user sets one up:`,
-    '1. Before your first answer, look at the repository: README, docs, CI files, branches, recent commits and PRs.',
-    `2. Introduce yourself as the coordinator of project ${p.key}.`,
-    '3. Existing code: say in a few lines what you understood of the project. An empty or nearly empty repository: ask what the user wants to build.',
-    '4. Ask a few short questions on how the user works, one at a time, as `choices` where you can: strict, like a company or open-source project (protected branches, PRs, reviews, CI checks before merge, the user merges), or fast and light, like a personal or vibe-coding project (fewer checks, wherdr merges); and what they prefer to approve themselves.',
-    '5. Then propose a workflow with `template edit` (its diff is against the default), with the guards that fit, and explain it in a few lines. The user accepts or refuses it in wherdr.',
+    `This project has no accepted workflow yet: its tasks follow a minimal default (one type \`task\`: todo → work → done). Your first reply proposes one:`,
+    '1. Before it, look at the repository: README, docs, stack, tests, CI files, branches, recent commits, and where its PRs go (GitHub, Bitbucket, none).',
+    `2. Introduce yourself as the coordinator of project ${p.key} and say in a few lines what you understood of the project. An empty or nearly empty repository: say so, and ask what the user wants to build after your proposal.`,
+    '3. In that same first reply, propose a workflow with `template edit` (its diff is against the default), with the guards that fit; start from the example of the template library below closest to what you saw, and adapt it. Say in a few lines why: what you saw that led to each choice (the checks before a merge, the reviews, who merges).',
+    '4. The user accepts or refuses its diff in wherdr. Then ask, as `choices`, what they would change (stricter: PRs, reviews, CI checks, the user merges; or lighter: fewer checks, wherdr merges), and propose again.',
     'Note their answers in memory.md. This section goes away once the user accepts a workflow.', ''] : []
   const own = t ? [t.instructions, ...Object.entries(t.taskTypes).map(([k, tt]) => tt.instructions && `${k}: ${tt.instructions}`)].filter(Boolean).map(s => `- ${s}`) : []
   const agents = [

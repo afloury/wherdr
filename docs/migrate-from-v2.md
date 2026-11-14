@@ -106,8 +106,8 @@ branch, then starts their coordinators; one that fails does not stop the others,
 lists each project: added, coordinator started, or the error.
 
 No workflow is needed first: each project starts with the minimal default workflow, and its new
-coordinator's first message looks at the repository and asks you how you work, then proposes a
-workflow you accept or refuse (its v2 settings to redo in mind). Then, per project, by its
+coordinator's first message looks at the repository and proposes a workflow, saying why, which
+you accept or refuse (its v2 settings to redo in mind). Then, per project, by its
 coordinator or by Alfred (for all projects at once, if you like):
 
 - its folder on another machine, when the repository is not on the machine v2 ran on (`project add` there);

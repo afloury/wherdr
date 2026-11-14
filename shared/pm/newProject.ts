@@ -52,12 +52,11 @@ function free(key: string, taken: readonly string[]) {
   return key
 }
 
-// The project being added. template: a saved template's id, or example:<id>
-// (an example, saved under its id at start).
-export interface ProjectDraft { machine: string, path: string, name: string, key: string, template: string, gitInit: boolean, probe: FolderProbe | null }
+// The project being added: no template, it gets the minimal default workflow.
+export interface ProjectDraft { machine: string, path: string, name: string, key: string, gitInit: boolean, probe: FolderProbe | null }
 
 // Whether the project will be a git repository: one already, or git init asked.
-// Without git, no template: its tasks never start, its coordinator does the work.
+// Without git, no workflow: its tasks never start, its coordinator does the work.
 export function draftGit(d: ProjectDraft) {
   const kind = d.probe ? folderKind(d.probe) : 'plain'
   return kind === 'git' || (canGitInit(kind) && d.gitInit)
@@ -71,10 +70,10 @@ export const needsRemote = (t: Pick<Template, 'steps' | 'taskTypes'>) =>
 
 // POST /api/pm/project for a draft whose folder was probed: git init only where
 // it is offered, the folder created when missing.
-export function draftBody(d: ProjectDraft, template: string) {
+export function draftBody(d: ProjectDraft) {
   const kind = d.probe ? folderKind(d.probe) : 'plain'
   return {
-    key: d.key.trim(), name: d.name.trim(), machine: d.machine, path: d.probe?.path || d.path.trim(), template: draftGit(d) ? template : '',
+    key: d.key.trim(), name: d.name.trim(), machine: d.machine, path: d.probe?.path || d.path.trim(),
     plain: true, create: kind === 'new', gitInit: canGitInit(kind) && d.gitInit,
   }
 }

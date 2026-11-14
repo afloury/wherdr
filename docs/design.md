@@ -46,6 +46,16 @@ are 9 px (10 px when blocked) under `.card.compact.home-lead`. The shape remains
 square. The color names above describe the default Titanium palette, not fixed
 colors to impose on other themes.
 
+## Loading states
+
+Never show a default as if it were the value: while a section's data loads, an
+off switch or an empty list would read as real. Show skeletons instead, with
+[SettingsSkeleton.vue](../app/components/SettingsSkeleton.vue): muted square
+blocks at the size of what comes (rows of a settings card, a switch), a gentle
+pulse that stops under `prefers-reduced-motion`, and the buttons that need the
+data disabled. A failed load shows its error and *Try again*, never the
+defaults. Example: [ProjectsSettings.vue](../app/components/ProjectsSettings.vue).
+
 ## Icons and buttons
 
 Use Lucide icons (`i-lucide-*`) for interface actions. Reuse the icon already used
