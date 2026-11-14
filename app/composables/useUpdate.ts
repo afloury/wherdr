@@ -7,22 +7,41 @@
 import { updateRunning, type UpdateInfo, type UpdateJob } from '#shared/updates'
 
 const DISMISS_KEY = 'wherdr.update.dismissed'
+const MAJOR_DISMISS_KEY = 'wherdr.update.major.dismissed'
 export const updateInfo = ref<UpdateInfo | null>(null)
 const dismissed = ref<string>('')
+const majorDismissed = ref<string>('')
 let loaded = false
 
 export function loadUpdate() {
   if (loaded) return
   loaded = true
-  try { dismissed.value = localStorage.getItem(DISMISS_KEY) || '' } catch { /* stockage indisponible */ }
+  try {
+    dismissed.value = localStorage.getItem(DISMISS_KEY) || ''
+    majorDismissed.value = localStorage.getItem(MAJOR_DISMISS_KEY) || ''
+  } catch { /* storage unavailable */ }
   api<UpdateInfo>('/api/update').then((u) => { updateInfo.value = u }).catch(() => { loaded = false })
 }
 
-// New version to announce on the home screen (hideable).
+// A newer major (wherdr 3) to announce on the home screen, instead of the
+// update banner (hideable until the next one).
+export const majorCard = computed(() => {
+  const next = updateInfo.value?.nextMajor
+  return next && next.version !== majorDismissed.value ? next : null
+})
+
+// New version of the running major to announce on the home screen (hideable).
 export const updateBanner = computed(() => {
   const u = updateInfo.value
-  return u?.latest && u.latest !== dismissed.value ? u : null
+  return !majorCard.value && u?.latest && u.latest !== dismissed.value ? u : null
 })
+
+export function dismissMajor() {
+  const v = updateInfo.value?.nextMajor?.version
+  if (!v) return
+  majorDismissed.value = v
+  try { localStorage.setItem(MAJOR_DISMISS_KEY, v) } catch { /* storage unavailable */ }
+}
 
 export function dismissUpdate() {
   const v = updateInfo.value?.latest

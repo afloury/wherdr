@@ -1,7 +1,7 @@
 // herdr-projects' links for the home list (GET /api/tasks/links): which panes
 // and spaces belong to each machine's board. Read every 15 s while a list that
 // uses it is mounted and the page is shown (`same` when nothing changed), and
-// again when Herdr's spaces change (a task's space opens). Kept at module
+// again when the offline view ends or Herdr's spaces change (a task's space opens). Kept at module
 // level: the list comes back with the last links at once.
 import { type BoardLinks, type BoardLinksReply, type MachineLinks, resolveCoordinators } from '#shared/boardLinks'
 
@@ -38,6 +38,9 @@ export function useBoardLinks() {
   })
   onBeforeUnmount(() => { if (!--users) clearInterval(poll) })
   watch(pageVisible, (v) => { if (v) load() })
+  // A reloaded page shows the device's saved state first (no read then): read
+  // as soon as the live state replaces it, not at the next poll.
+  watch(offlineView, (v) => { if (!v) load() })
   // A space opened or closed: the board may have just linked it.
   let spaces = ''
   watch(() => herdrState.value.workspaces.map(w => w.id).join(' '), (now) => {

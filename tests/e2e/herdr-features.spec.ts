@@ -98,6 +98,9 @@ test('structured terminal mouse: touch tap, desktop drag, Shift selection and ol
     await desktopPage.goto('/')
     await expect.poll(async () => (await fakeHerdr('e2e.pane_size', { pane_id: OMP_CHAT_PANE })).attached).toBe(false)
     await fakeHerdr('e2e.terminal_version', { version: '0.9.1' })
+    // The server learns the version from its next poll; until then its cached
+    // `herdr --version` answer (still 0.9.2) would enable the mouse.
+    await expect.poll(async () => (await (await desktopPage.request.get('/api/state')).json()).version).toBe('0.9.1')
     await open(desktopPage)
     await desktopScreen.click({ position: { x: 20, y: 20 } })
     expect(await events()).toEqual([])

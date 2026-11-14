@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { compareVersions, installMode, oneTapMode, parseVersion, updateCommand } from '../shared/updates'
+import { compareVersions, installMode, majorMove, oneTapMode, parseVersion, updateCommand } from '../shared/updates'
 import { RELEASES_URL, createUpdateChecker, fetchUpdateResource } from '../server/utils/updates'
 
 describe('versions', () => {
@@ -24,12 +24,12 @@ describe('update command', () => {
     expect(installMode('plugin')).toBe('plugin')
     expect(installMode(undefined)).toBe('native')
     expect(installMode('autre')).toBe('native')
-    const cmd = (m: Parameters<typeof updateCommand>[0]) => updateCommand(m, 'owner/wherdr')
-    expect(cmd('native')).toBe('git pull && npm ci && npm run build')
+    const cmd = (m: Parameters<typeof updateCommand>[0]) => updateCommand(m, 'owner/wherdr', '2.x')
+    expect(cmd('native')).toBe('git checkout 2.x && git pull && npm ci && npm run build')
     expect(cmd('npm')).toBe('npx wherdr@latest')
     expect(cmd('brew')).toBe('brew upgrade wherdr && brew services restart wherdr')
     expect(cmd('npm-global')).toBe('npm install -g wherdr@latest && wherdr restart')
-    expect(cmd('plugin')).toBe('herdr plugin install owner/wherdr --yes')
+    expect(cmd('plugin')).toBe('herdr plugin install owner/wherdr --ref 2.x --yes')
   })
 
   it('offers the one-tap update only where wherdr can replace itself', () => {
@@ -47,7 +47,7 @@ describe('release check', () => {
     const check = createUpdateChecker({ current: '1.1.0', env: { WHERDR_INSTALL: 'native' }, fetch })
     const u = await check()
     expect(fetch).toHaveBeenCalledWith(RELEASES_URL)
-    expect(u).toEqual({ current: '1.1.0', latest: '1.2.0', url: 'https://example.test/releases/v1.2.0', checked: true, mode: 'native', command: 'git pull && npm ci && npm run build', oneTap: false, behind: 1, missed: ['1.2.0'], behindAtLeast: false })
+    expect(u).toEqual({ current: '1.1.0', latest: '1.2.0', url: 'https://example.test/releases/v1.2.0', checked: true, mode: 'native', command: 'git checkout 1.x && git pull && npm ci && npm run build', oneTap: false, behind: 1, missed: ['1.2.0'], behindAtLeast: false, nextMajor: null })
   })
 
   it('says nothing when up to date or ahead', async () => {
@@ -121,6 +121,31 @@ describe('independent release channels', () => {
       fetch: async () => ({ ok: true, json: async () => releases, text: async () => text }) })()
     expect((await check('url "old"')).latest).toBeNull()
     expect((await check('url "https://github.com/example/wherdr/releases/download/v1.3.3/wherdr-1.3.3.tgz"')).latest).toBe('1.3.3')
+  })
+})
+
+describe('a newer major (v3) is announced, never offered', () => {
+  // Every asset, npm tarball and formula answers: only the major filter stops one-tap.
+  const check = (tags: { tag_name: string, prerelease?: boolean }[], WHERDR_INSTALL = 'plugin') => createUpdateChecker({ current: '2.5.0', env: { WHERDR_INSTALL },
+    fetch: async url => ({ ok: true, json: async () => url.endsWith('/latest') ? { version: '2.6.0' } : tags, text: async () => '/v2.6.0/wherdr-2.6.0.tgz"' }) })()
+
+  it.each(['plugin', 'npm-global', 'brew'])('3.0.0 on GitHub, with its package attached (%s): no update, the card instead', async (mode) => {
+    const u = await check([{ tag_name: 'v3.0.0' }], mode)
+    expect(u).toMatchObject({ latest: null, checked: true, nextMajor: { version: '3.0.0', url: expect.stringContaining('/releases/tag/v3.0.0'),
+      guide: expect.stringContaining('/blob/v3.0.0/docs/migrate-from-v2.md'), command: expect.stringContaining('git clone -b v3.0.0 ') } })
+  })
+  it('the card names the found release tag, not the v3 branch', () => {
+    expect(majorMove('owner/wherdr', '3.1.2')).toMatchObject({
+      guide: 'https://github.com/owner/wherdr/blob/v3.1.2/docs/migrate-from-v2.md',
+      command: 'git clone -b v3.1.2 https://github.com/owner/wherdr.git /tmp/wherdr-setup && sh /tmp/wherdr-setup/scripts/install-v3-beside-v2.sh' })
+  })
+  it('2.6.0 then 3.0.0: 2.6.0 is still offered', async () => {
+    for (const mode of ['plugin', 'npm-global', 'brew', 'native']) {
+      expect(await check([{ tag_name: 'v3.0.0' }, { tag_name: 'v2.6.0' }], mode)).toMatchObject({ latest: '2.6.0', missed: ['2.6.0'], nextMajor: { version: '3.0.0' } })
+    }
+  })
+  it('a 3.0.0 prerelease is neither offered nor announced', async () => {
+    expect(await check([{ tag_name: 'v3.0.0', prerelease: true }])).toMatchObject({ latest: null, nextMajor: null })
   })
 })
 

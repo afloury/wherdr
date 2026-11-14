@@ -23,6 +23,9 @@
   the first 2.0 load; turning it on again is kept. Other agents
   also use dense rows, with a last-answer preview in normal mode; waiting agents keep their
   questions and one-tap answers in both modes.
+  omp cards show context usage as a thin bottom-border line, without changing row height or
+  click targets. Open the conversation for percentage and estimated-token details. Resting
+  panes retain their last reading; unknown readings stay hidden.
   With [herdr-projects](board.md#works-great-with-herdr-projects), the board's spaces follow Herdr's sidebar:
   the Coordinators on top, then one group per repo, headed by its project coordinator (the repo's
   name, the wherdr mark, **Coordinator** and its state), a bar that folds the group and sums up its
@@ -59,3 +62,29 @@ cards remain the default. Board tasks and repository headers keep their existing
 grouping, and **Show terminals** still controls plain terminal rows. The setting
 follows you across devices. Workspace drag reordering is disabled in this view;
 switch it off to reorder spaces.
+
+## What the counters count
+
+The three counters at the top of the home (**Your turn**, **Working**, **Ready**) count the
+rows of the list under them: **one row, one count**, in the state that row shows. The counters,
+the rows' state (their badge, accent and place in their group), the repo bar and the machine
+bar's numbers all come from the same functions (`taskStat`, `memberStat` and `countedPanes` in
+`shared/boardLinks.ts`, `homeCounts` in `shared/homeCounts.ts`).
+
+- **A Board task** counts once, by its state on the Board, whatever helpers (reviewer, planner,
+  attempts) it has open and in however many spaces. **Needs you** and **Ready to approve** are
+  **Your turn**: you must act. A task ready to approve keeps its *Ready to approve* label, but its
+  badge and row accent use the Your turn colour, and it sits with the tasks waiting for you. A
+  task that waits for you still counts once its agent has exited or its space was closed.
+  **Working** is the Board's working group (reviews and checks included); **To do** and
+  **Done** are Ready.
+- **A coordinator** (the Board's, a machine's or a project's) is a row with its own state square:
+  it counts by that state, like any agent row. The repo bar's summary (`3 TASKS · 1 YOUR TURN`)
+  is the one exception: it counts the repo's tasks only, since its coordinator's row and state
+  sit right above it.
+- **A row standing for several terminals** (a space with several agents, its card showing their
+  number) counts once, in the state the row shows: its most urgent terminal. With Settings ›
+  Appearance › Home screen › **Individual agents** on, each agent is a row, and a count. A
+  space shared by several tasks, or by a coordinator and other agents, is split into one row per
+  task or agent, and counts the same way.
+- Each counter's number uses its own state colour, that of its legend square.

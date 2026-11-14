@@ -120,6 +120,15 @@ describe('one-tap update: commands of each installation', () => {
     expect(io.states.at(-1)![1]).toMatch(/Homebrew installed 1\.3\.0, not 1\.3\.1.*Still on 1\.3\.0/)
   })
 
+  it('refuses a major change, in the plan and in the updater', async () => {
+    const o = { mode: 'plugin' as const, current: '2.5.0', latest: '3.0.0', to: '3.0.0', job: null, now: 0, root: '/r', dir: '/d', runtime: 'node', pid: 1, env: {} }
+    expect(() => buildPlan(o)).toThrow(/new major version/)
+    const io = fakeIo()
+    expect(await runUpdate({ ...plans.plugin, from: '2.5.0', to: '3.0.0' }, io)).toBe('failed')
+    expect(io.calls).toEqual([])
+    expect(io.states.at(-1)![1]).toMatch(/new major version.*Still on 2\.5\.0/)
+  })
+
   it('refuses installations it cannot update', () => {
   })
 

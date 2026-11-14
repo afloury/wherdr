@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, h } from 'vue'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
+import { UApp } from '#components'
 import ChatView from '~/components/ChatView.vue'
 import { lightboxSet, lightboxSrc } from '~/composables/useUi'
 import { herdrState } from '~/composables/useHerdr'
@@ -10,6 +12,32 @@ import ompErrors from '../fixtures/omp-errors.jsonl?raw'
 const pane: Pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'omp', name: null, label: null, status: 'blocked', title: null, cwd: '/tmp/demo', agentSession: null }
 let items: ChatItem[] = []
 registerEndpoint('/api/chat', () => ({ available: true, token: 'rendering', file: '/tmp/demo/transcript.jsonl', items }))
+// A finished task's recorded conversation (/api/tasks/transcript): what it was asked for.
+const transcriptAsked: Record<string, string>[] = []
+registerEndpoint('/api/tasks/transcript', (event) => {
+  transcriptAsked.push(Object.fromEntries(new URL(event.node.req.url || '', 'http://x').searchParams))
+  return { available: true, token: 'recorded', file: 'session.jsonl', items: [
+    { role: 'user', text: 'Add a dark mode toggle.', ts: '2026-01-01T00:00:00Z' },
+    { role: 'assistant', text: 'Done: the toggle is in Settings.', ts: '2026-01-01T00:01:00Z' },
+  ] }
+})
+
+describe('a recorded conversation (a finished task)', () => {
+  it('reads the task\'s conversation, read only: no reply actions, no offline note', async () => {
+    const recorded: Pane = { ...pane, id: 'task:far|demo/3|worker', agent: 'claude', status: null, cwd: null }
+    // In the app (its tooltips): the finished turn offers to copy its reply.
+    const Host = defineComponent({ render: () => h(UApp, null, () => h(ChatView, { pane: recorded, localQueued: [], source: { machine: 'far', id: 'demo/3', role: 'worker' } })) })
+    const w = await mountSuspended(Host)
+    try {
+      await expect.poll(() => w.find('.chat').text()).toContain('Done: the toggle is in Settings.')
+      expect(transcriptAsked[0]).toMatchObject({ machine: 'far', id: 'demo/3', role: 'worker' })
+      expect(transcriptAsked[0]).not.toHaveProperty('pane')
+      expect(w.find('.msg-reply').exists()).toBe(false)
+      expect(w.find('.chat-list').classes()).toContain('no-reply')
+      expect(w.text()).not.toContain('Offline reading')
+    } finally { w.unmount() }
+  })
+})
 
 describe('conversation rendering', () => {
   afterEach(() => { lightboxSrc.value = null; lightboxSet.value = []; herdrState.value = { ok: false, workspaces: [], panes: [] } })

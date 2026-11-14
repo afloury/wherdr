@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events'
 import { PassThrough } from 'node:stream'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({ cli: vi.fn(), spawn: vi.fn(), serverVersion: '0.9.2' }))
 vi.mock('../server/utils/machines', () => ({
@@ -11,11 +11,13 @@ vi.mock('../server/utils/state', () => ({ termSessions: new Set(), getState: () 
 vi.mock('../server/utils/paneSizes', () => ({
   createPaneSizes: () => ({ hold: async () => ({ resized: vi.fn(), release: vi.fn() }) }),
 }))
-import { openTerm } from '../server/utils/terminal'
+
+beforeEach(() => { vi.resetModules(); mocks.cli.mockReset() })
 
 afterEach(() => { mocks.serverVersion = '0.9.2'; vi.useRealTimers() })
 async function relay(version: string) {
   vi.useFakeTimers()
+  const { openTerm } = await import('../server/utils/terminal')
   const child = Object.assign(new EventEmitter(), {
     stdin: new PassThrough(), stdout: new PassThrough(), stderr: new PassThrough(), exitCode: null, kill: vi.fn(),
   })
@@ -30,6 +32,27 @@ async function relay(version: string) {
 }
 
 describe('terminal mouse relay', () => {
+  it.each(['exit', 'throw'] as const)('retries a failed version read (%s) on the next attach', async failure => {
+    if (failure === 'exit') mocks.cli.mockResolvedValueOnce({ code: 1, stdout: Buffer.alloc(0) })
+    else mocks.cli.mockRejectedValueOnce(new Error('CLI unreachable'))
+    const first = await relay('0.9.2')
+    expect(first.send).toHaveBeenCalledWith(JSON.stringify({ type: 'web.capabilities', mouse: false }))
+    first.session.onClose(true)
+    const next = await relay('0.9.2')
+    expect(next.send).toHaveBeenCalledWith(JSON.stringify({ type: 'web.capabilities', mouse: true }))
+    expect(mocks.cli).toHaveBeenCalledTimes(2)
+    next.session.onClose(true)
+    await vi.advanceTimersByTimeAsync(1500)
+  })
+  it('reuses a successful version read across terminal attaches', async () => {
+    const first = await relay('0.9.2')
+    first.session.onClose(true)
+    const next = await relay('0.9.2')
+    expect(next.send).toHaveBeenCalledWith(JSON.stringify({ type: 'web.capabilities', mouse: true }))
+    expect(mocks.cli).toHaveBeenCalledTimes(1)
+    next.session.onClose(true)
+    await vi.advanceTimersByTimeAsync(1500)
+  })
   it('advertises capability and forwards validated mouse events to the owning CLI', async () => {
     const r = await relay('0.9.2')
     expect(r.send).toHaveBeenCalledWith(JSON.stringify({ type: 'web.capabilities', mouse: true }))

@@ -1,4 +1,4 @@
-// WHR-48: the setup guide's optional Quotas step is added before Security when
+// WHR-48: the setup guide's optional Quotas step is added before the last step (Alerts, `security` in links) when
 // /api/quotas says a machine needs it. Quotas that arrive after the mount must
 // not move the user off the step they are on (a #/setup?step=security link).
 import { afterEach, describe, expect, it } from 'vitest'
@@ -25,18 +25,18 @@ describe('setup guide: quotas arriving late', () => {
     appConfig.value = { ...config }; herdrState.value = { ok: false, workspaces: [], panes: [] } as never
   })
 
-  it('keeps the user on Security when the Quotas step is added before it', async () => {
+  it('keeps the user on the last step when the Quotas step is added before it', async () => {
     onboardingStep.value = 'security'
     const w = await mountSuspended(OnboardingGuide)
     await new Promise(r => setTimeout(r, 0))
-    expect(current(w)).toMatch(/Security|Sécurité/)
+    expect(current(w)).toMatch(/Alerts|Alertes/)
     const before = counter(w)
     homeQuotas.value = missing
     await nextTick()
     await nextTick()
     expect(w.findAll('.onboarding-steps li').map(l => l.text()).some(t => /Quotas/.test(t))).toBe(true)
-    expect(current(w)).toMatch(/Security|Sécurité/)
-    // One step more, and Security moved one place further.
+    expect(current(w)).toMatch(/Alerts|Alertes/)
+    // One step more, and the last step moved one place further.
     expect(counter(w)).not.toBe(before)
     // Not left through the Quotas step: nothing was declined.
     expect(homeQuotas.value?.claudeSetup?.[0]?.dismissed).toBeUndefined()
@@ -61,11 +61,11 @@ describe('setup guide: quotas arriving late', () => {
     await new Promise(r => setTimeout(r, 0))
     const items = w.findAll('.onboarding-steps li button')
     await items[items.length - 1]!.trigger('click')
-    expect(current(w)).toMatch(/Security|Sécurité/)
+    expect(current(w)).toMatch(/Alerts|Alertes/)
     homeQuotas.value = missing
     await nextTick()
     await nextTick()
-    expect(current(w)).toMatch(/Security|Sécurité/)
+    expect(current(w)).toMatch(/Alerts|Alertes/)
     w.unmount()
   })
 

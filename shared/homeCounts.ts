@@ -44,7 +44,7 @@ export function withBoardGroups(links: MachineLinks[], board: TasksBoard | null 
 export { taskStat, type HomeStat } from './boardLinks'
 export type HomeCounts = Record<HomeStat, number>
 
-// An agent without a linked task: its own state, as Herdr reads it.
+// An agent row without a task (a coordinator, a plain agent): its own state, as Herdr reads it.
 function paneStat(status: string | null): HomeStat | null {
   if (status === 'blocked') return 'blocked'
   if (status === 'working') return 'working'
@@ -52,26 +52,33 @@ function paneStat(status: string | null): HomeStat | null {
   return null
 }
 
-// The home counters (YOUR TURN, WORKING, READY). `panes`: the agents Herdr
-// shows; `keepPane`: those the counters follow (the machine bar's selection,
-// reachable); `keepBoard`: the boards they follow, by base machine key.
-// A task counts once, whatever helpers (reviewer, planner, attempts) it has
-// open and in however many spaces; one that waits for you counts even with
-// no agent pane left.
-export function homeCounts<P extends Pick<Pane, 'id' | 'agent' | 'status' | 'workspace'>>(
+// The home counters (YOUR TURN, WORKING, READY): one count per row of the
+// list, in the state its row shows (docs/home.md, "What the counters count").
+// `panes`: the agents Herdr shows; `keepPane`: those the counters follow (the
+// machine bar's selection, reachable); `keepBoard`: the boards they follow, by
+// base machine key; `individual`: Individual agents on (a row per agent).
+// - A task counts once, by its Board group (taskStat: needs you and ready to
+//   approve are YOUR TURN), whatever helpers (reviewer, planner, attempts) it
+//   has open and in however many spaces; one that waits for you counts even
+//   with no agent pane left.
+// - A coordinator counts by its own state, like any agent row.
+// - A row standing for several terminals counts once, by the state it shows.
+export function homeCounts<P extends Pick<Pane, 'id' | 'agent' | 'status' | 'workspace'> & { machine?: string }>(
   panes: P[],
   links: MachineLinks[],
   board: TasksBoard | null | undefined,
   keepPane: (p: P) => boolean = () => true,
   keepBoard: (machine: string) => boolean = () => true,
+  individual = false,
 ): HomeCounts {
   const out: HomeCounts = { blocked: 0, working: 0, ready: 0 }
   const rows = boardRows(board)
   const kept = panes.filter(p => p.agent && keepPane(p))
   const taskOf = taskLinks(links, kept)
+  const coordinators = new Set(links.flatMap(m => m.coordinators.map(c => c.pane)).filter(Boolean))
   const seen = new Set<string>()
-  for (const p of countedPanes(kept, links)) {
-    const link = taskOf(p)
+  for (const p of countedPanes(kept, links, individual)) {
+    const link = coordinators.has(p.id) ? undefined : taskOf(p)
     const k = link ? rowKey(link.machine, link.task.id) : undefined
     const group = (k ? rows.get(k)?.group : undefined) ?? link?.task.group
     if (group && k) {

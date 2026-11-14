@@ -1,7 +1,7 @@
 // A message shows in the conversation from the tap on Send: one bubble, from
 // "sending" to the server's record to the transcript, never two, never lost.
 import { describe, expect, it } from 'vitest'
-import { type OutboxItem, SETTLED_MS, addSending, failLocal, newOutboxId, prune, resend, settle, withOutbox } from '../app/utils/outbox'
+import { GONE_MAX_MS, type OutboxItem, REPEAT_MS, SETTLED_MS, addSending, failLocal, isRepeat, newOutboxId, prune, recentSends, resend, settle, withOutbox } from '../app/utils/outbox'
 import { pendingQueue } from '../app/utils/pendingQueue'
 import type { ChatItem, QueuedMessage } from '../shared/types'
 
@@ -70,9 +70,28 @@ describe('outbox: prune on a new server state', () => {
     expect(prune(settled, [{ id: 'w-a', text: 'hi' }], T0 + 8100)).toEqual([])
   })
 
-  it('keeps an answered record a while after a slow send, then forgets it', () => {
-    expect(prune(settled, [], T0 + 9000)).toHaveLength(1)
-    expect(prune(settled, [], T0 + 8000 + SETTLED_MS)).toEqual([])
+  it('keeps a taken record until a read made well after it left, then forgets it', () => {
+    const gone = prune(settled, [], T0 + 9000)
+    expect(gone).toEqual([expect.objectContaining({ id: 'w-a', goneAt: T0 + 9000 })])
+    // A read that started too soon may predate the message in the transcript.
+    expect(prune(gone, [], T0 + 9000 + SETTLED_MS, T0 + 9500)).toHaveLength(1)
+    expect(prune(gone, [], T0 + 9000 + SETTLED_MS, T0 + 9000 + SETTLED_MS)).toEqual([])
+  })
+
+  // WHR-384: the agent took the message, then every read of the transcript
+  // failed (reconnecting): the bubble stayed 10 s, then vanished.
+  it('keeps a sent message shown while the transcript cannot be read', () => {
+    let box = prune(settled, [], T0 + 9000, T0 + 7000)
+    for (let t = T0 + 10_000; t < T0 + 9000 + GONE_MAX_MS; t += 1500) box = prune(box, [], t, T0 + 7000)
+    expect(shown([], box)).toEqual([expect.objectContaining({ id: 'w-a', raw: 'hi' })])
+    // Never read again for that long: it goes anyway.
+    expect(prune(box, [], T0 + 9000 + GONE_MAX_MS, T0 + 7000)).toEqual([])
+  })
+
+  it('counts the wait from when the agent took a message held for a long time', () => {
+    // Listed (held) for minutes after the send's answer, then taken just now.
+    const taken = T0 + 300_000
+    expect(prune(settled, [], taken, taken - 500)).toHaveLength(1)
   })
 
   it('never forgets a bubble still sending or never delivered', () => {
@@ -85,4 +104,31 @@ it('makes ids the server accepts, all different', () => {
   const ids = Array.from({ length: 500 }, newOutboxId)
   expect(new Set(ids).size).toBe(500)
   for (const id of ids) expect(id).toMatch(/^w-[a-z0-9]{1,32}$/)
+})
+
+// A dictation app can press Enter again while the page lags: the same text,
+// sent again a moment later, is that echo and not a new message.
+describe('outbox: an echo of the message just sent', () => {
+  const sent = [{ text: 'Fix the cache', at: T0 }]
+
+  it('is the exact same text within REPEAT_MS', () => {
+    expect(isRepeat(sent, 'Fix the cache', T0)).toBe(true)
+    expect(isRepeat(sent, 'Fix the cache', T0 + REPEAT_MS - 1)).toBe(true)
+  })
+
+  it('any change in the text is a new message', () => {
+    expect(isRepeat(sent, 'Fix the cache.', T0 + 10)).toBe(false)
+    expect(isRepeat(sent, 'fix the cache', T0 + 10)).toBe(false)
+    expect(isRepeat(sent, 'Fix the cache ', T0 + 10)).toBe(false)
+  })
+
+  it('a deliberate resend later goes', () => {
+    expect(isRepeat(sent, 'Fix the cache', T0 + REPEAT_MS)).toBe(false)
+  })
+
+  it('forgets old sends and keeps recent ones', () => {
+    const list = [{ text: 'old', at: T0 - REPEAT_MS }, { text: 'new', at: T0 - 1 }]
+    expect(recentSends(list, T0)).toEqual([{ text: 'new', at: T0 - 1 }])
+    expect(isRepeat(list, 'old', T0)).toBe(false)
+  })
 })

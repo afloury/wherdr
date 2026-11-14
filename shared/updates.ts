@@ -38,6 +38,9 @@ export interface UpdateInfo {
   behind?: number
   missed?: string[] // newest first, at most five versions (including latest)
   behindAtLeast?: boolean // the API page was full: the count is a lower bound
+  // A stable release of a newer major (wherdr 3): never installed over this
+  // one, announced by a card instead (see MajorReleaseCard).
+  nextMajor?: MajorMove | null
 }
 
 // "v1.2.3", "1.2.3-beta.1" -> [1, 2, 3]; null if unreadable. Pre-releases
@@ -55,18 +58,42 @@ export function compareVersions(a: string, b: string): number {
   return 0
 }
 
+export function majorOf(v: string): number | null {
+  return parseVersion(v)?.[0] ?? null
+}
+
+// Release branch of a major: `2.x` (plugin ref, curl installer, native checkout).
+export const releaseBranch = (current: string) => `${majorOf(current) ?? 0}.x`
+
+// v3 installs beside v2 (never over it): its release notes, migration guide
+// and the installer command (a dry run until `--yes`). Both point to the
+// release's own tag, never a branch: this text is frozen in every installed
+// 2.x, and branches move or disappear.
+export interface MajorMove { version: string, url: string, guide: string, command: string }
+export function majorMove(repo: string, version: string, url?: string): MajorMove {
+  const major = majorOf(version)
+  return {
+    version,
+    url: url || `https://github.com/${repo}/releases/tag/v${version}`,
+    guide: `https://github.com/${repo}/blob/v${version}/docs/migrate-from-v2.md`,
+    command: `git clone -b v${version} https://github.com/${repo}.git /tmp/wherdr-setup && sh /tmp/wherdr-setup/scripts/install-v${major}-beside-v2.sh`,
+  }
+}
+
 const MODES: InstallMode[] = ['npm', 'npm-global', 'brew', 'plugin']
 export function installMode(env: string | undefined): InstallMode {
   return MODES.find(m => m === env) ?? 'native'
 }
 
 // `repo`: owner/name of the GitHub repository (the Herdr plugin installs from it).
-export function updateCommand(mode: InstallMode, repo: string): string {
+// `branch`: release branch of the running major (`2.x`), never `main`, which
+// holds the next major.
+export function updateCommand(mode: InstallMode, repo: string, branch: string): string {
   if (mode === 'npm') return 'npx wherdr@latest'
   if (mode === 'npm-global') return 'npm install -g wherdr@latest && wherdr restart'
   if (mode === 'brew') return 'brew upgrade wherdr && brew services restart wherdr'
-  if (mode === 'plugin') return `herdr plugin install ${repo} --yes`
-  return 'git pull && npm ci && npm run build'
+  if (mode === 'plugin') return `herdr plugin install ${repo} --ref ${branch} --yes`
+  return `git checkout ${branch} && git pull && npm ci && npm run build`
 }
 
 // Modes the server can update and restart by itself;

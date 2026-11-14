@@ -7,6 +7,22 @@ import { isKeyLegend, tabsOfRow } from '../../shared/settingsScreen'
 // `kind` keeps the direction shown by the agent: "used" (Claude) or "left" (Codex).
 export interface Meter { label: string, pct: number, kind: 'used' | 'left', reset: string | null }
 
+const CONTEXT = /◫\s*(\d+(?:\.\d+)?)%\s*\/\s*(\d+(?:\.\d+)?)\s*([kKmM])?\b/
+const BORDER_CONTEXT = /^▶[─━│┃╎┆┊:|\s\u{f055d}\u{f0068}-]*(\d+(?:\.\d+)?)%[─━│┃╎┆┊:|\s\u{f055d}\u{f0068}-]*(\d+(?:\.\d+)?)([kKmM])?[─━│┃╎┆┊:|\s\u{f055d}\u{f0068}-]*◀$/u
+const OVERFLOW_CONTEXT = /^▶[─━│┃╎┆┊:|\s\u{f055d}\u{f0068}-]*(\d+(?:\.\d+)?)([kKmM])?[─━│┃╎┆┊:|\s\u{f055d}\u{f0068}-]+(\d+(?:\.\d+)?)%[─━│┃╎┆┊:|\s\u{f055d}\u{f0068}-]*◀$/u
+
+// omp's footer reports a rounded percentage, not an exact token count.
+export function parseOmpContext(text: string | null | undefined): { pct: number, total: number, estimated: number } | null {
+  const match = CONTEXT.exec(text || '') || BORDER_CONTEXT.exec(text?.trim() || '')
+  const overflow = match ? null : OVERFLOW_CONTEXT.exec(text?.trim() || '')
+  if (!match && !overflow) return null
+  const pct = Number(match?.[1] ?? overflow?.[3])
+  const unit = (match?.[3] ?? overflow?.[2])?.toUpperCase()
+  const total = Number(match?.[2] ?? overflow?.[1]) * (unit === 'M' ? 1_000_000 : unit === 'K' ? 1_000 : 1)
+  if (!Number.isFinite(pct) || !Number.isFinite(total) || total <= 0) return null
+  return { pct, total, estimated: total * pct / 100 }
+}
+
 const BAR = /[█▉▊▋▌▍▎▏░▒▓■□]/
 const CLAUDE_PCT = /^\s*[█▉▊▋▌▍▎▏░▒▓\s]*?\s*(\d{1,3})%\s+(used|left)\s*$/
 const INLINE = /^\s*(.+?):\s*\[?[█▉▊▋▌▍▎▏░▒▓■□\s]*\]?\s*(\d{1,3})%\s+(used|left)\s*(?:\((?:resets\s+)?(.+?)\))?\s*$/i

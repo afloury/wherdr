@@ -58,7 +58,7 @@ The script ([read it first](https://wherdr.dev/install), source in
    Mac with Homebrew, otherwise the official Node.js 22 build from nodejs.org, its checksum
    checked, unpacked in `~/wherdr/node` (used by wherdr only: your `PATH` is not changed). With
    musl libc (Alpine) it gives the install links instead;
-4. runs `herdr plugin install afloury/wherdr --yes`: the [Herdr plugin](plugins.md#install-as-a-herdr-plugin)
+4. runs `herdr plugin install afloury/wherdr --ref 2.x --yes`: the [Herdr plugin](plugins.md#install-as-a-herdr-plugin)
    downloads the GitHub release package of its version (checksum checked, no wait for npm),
    installs it in `~/wherdr/app`, starts it on `http://localhost:7683`, opens the setup guide in
    your browser (first install) and binds **prefix+i** to its panel;
@@ -87,7 +87,7 @@ Settings, as environment variables (`curl -fsSL https://wherdr.dev/install | WHE
 | `WHERDR_SERVICE` | — | `off`: no login service; wherdr then starts with Herdr only (the plugin's startup hook). |
 | `WHERDR_YES` | — | `1` answers yes to every question (non-interactive use), installing Node.js included. |
 | `WHERDR_NO_BROWSER` | — | `1` never opens a browser. |
-| `WHERDR_REF` | main | Git tag or branch of the plugin. |
+| `WHERDR_REF` | `2.x` | Git tag or branch of the plugin (`2.x` is the wherdr 2 release branch). |
 | `WHERDR_PLUGIN` | `afloury/wherdr` | A local checkout to link and build instead (development, tests). |
 
 Update: run the command again (it offers the update), **U** in the wherdr panel, or **Update** in
@@ -134,6 +134,13 @@ home screen and in Settings › About, with the release notes and the exact comm
 Hide it until the next version with ×. Set `WHERDR_UPDATE_CHECK=off` to disable the check. The
 installed version is shown in Settings › About.
 
+Updates stay within the running major version: wherdr 2 only offers 2.x releases, and the
+one-tap update refuses to install a new major. When wherdr 3 is published, the home screen shows
+a **“wherdr 3 is out”** card instead of the banner, with its release notes, its migration guide and a
+Copy button for the command that installs wherdr 3 **beside** wherdr 2 (it only prints its plan
+until you add `--yes`). wherdr 2 keeps running with its data, and 2.x fixes are still offered in
+Settings › About.
+
 GitHub release packages (including the bundled agent skill) and Homebrew
 updates are published without waiting for npm moderation. Native plugin installs and updates
 use the GitHub `.tgz` and verify its SHA-256 checksum before extraction. A failed one-tap
@@ -142,7 +149,9 @@ GitHub first, then the prebuilt npm package of the exact same version (with its 
 This also keeps older 1.3.x releases without GitHub archives installable with Node.js or Bun.
 Packages predating the bundled skill retain the plugin checkout's commands and skill, so
 skill refresh, installation and uninstallation remain available.
-The installer fetches `main` explicitly unless you set `WHERDR_REF`.
+The installer fetches the `2.x` branch unless you set `WHERDR_REF`. The plugin update command
+adds `--ref 2.x`, and a git checkout follows `2.x` (`git checkout 2.x`) before pulling: `main`
+holds wherdr 3.
 
 The SHA-256 checksum detects damaged downloads. It is served beside the archive, so someone
 who can replace both files can make them match; it does not prove the publisher’s identity
@@ -175,10 +184,10 @@ and the app says so. Every step is logged in `~/wherdr/update.log`.
 | Setup | Update command (in the wherdr folder) |
 | --- | --- |
 | The one command | Run `curl -fsSL https://wherdr.dev/install \| sh` again: it offers the update (GitHub release package) |
-| Herdr plugin, Node.js | **U** in the **wherdr** panel, or `herdr plugin install afloury/wherdr --yes` (wherdr restarts on the new version) |
+| Herdr plugin, Node.js | **U** in the **wherdr** panel, or `herdr plugin install afloury/wherdr --ref 2.x --yes` (wherdr restarts on the new version) |
 | `wherdr` command (npm) | `npm install -g wherdr@latest && wherdr restart` (npx: stop it, then `npx wherdr@latest`) |
 | `wherdr` command (Homebrew) | `brew upgrade wherdr`, then `brew services restart wherdr` |
-| From source | `git pull && npm ci && npm run build`, then restart wherdr |
+| From source | `git checkout 2.x && git pull && npm ci && npm run build`, then restart wherdr |
 
 Update notices also show the number of newer stable releases and up to four
 additional version numbers besides the latest. This measures published releases,

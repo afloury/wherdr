@@ -3,7 +3,7 @@
 // address, Tailscale's errors, and when the QR code shows.
 import { describe, expect, it } from 'vitest'
 import { keyCommand, render } from '../bin/lib/panel.mjs'
-import { healthReach, phoneAddress, serveError, servedAddresses, servedPorts, tailnetStatus, tailscaleBin } from '../bin/lib/tailnet.mjs'
+import { healthReach, phoneAddress, serveError, servedAddresses, servedPorts, readJson, tailnetStatus, tailscaleBin } from '../bin/lib/tailnet.mjs'
 
 const URL = 'https://box.example.ts.net:7683/'
 const state = (over: Record<string, unknown> = {}) => ({
@@ -71,6 +71,33 @@ describe('phone address', () => {
     expect(tailscaleBin({ PATH: '/usr/bin' }, (p: string) => p === mac)).toBe(mac)
     expect(tailscaleBin({ PATH: '/opt/x/bin' }, (p: string) => p === '/opt/x/bin/tailscale')).toBe('/opt/x/bin/tailscale')
     expect(tailscaleBin({ PATH: '' }, () => false)).toBeNull()
+  })
+
+  it('on macOS, prefers the wrapper to the app binary (#724)', () => {
+    const mac = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
+    const wrapper = '/usr/local/bin/tailscale'
+    const both = (p: string) => p === mac || p === wrapper
+    expect(tailscaleBin({ PATH: '/usr/bin:/bin' }, both, 'darwin')).toBe(wrapper)
+    expect(tailscaleBin({ PATH: '/usr/bin:/bin' }, (p: string) => p === mac, 'darwin')).toBe(mac)
+    expect(tailscaleBin({ PATH: '/usr/bin' }, both, 'linux')).toBe(mac)
+  })
+
+  it('falls back to the next CLI when an answer is empty or not JSON, logging each failure once', async () => {
+    const answers: Record<string, () => Promise<{ stdout: string }>> = {
+      empty: async () => ({ stdout: '' }),
+      gui: async () => ({ stdout: 'The Tailscale GUI failed to start' }),
+      fails: async () => { throw Object.assign(new Error('exit 1'), { stderr: 'CLIError error 3\nmore' }) },
+      ok: async () => ({ stdout: '{"BackendState":"Running"}' }),
+    }
+    const log: string[] = []
+    const opts = { run: (bin: string) => answers[bin]!(), log: (l: string) => log.push(l) }
+    expect(await readJson(['empty', 'gui', 'fails', 'ok'], ['status', '--json'], opts)).toEqual({ bin: 'ok', out: '{"BackendState":"Running"}' })
+    expect(await readJson(['fails'], ['status', '--json'], opts)).toEqual({ bin: 'fails', out: '' })
+    expect(log).toEqual([
+      '[tailscale] empty status --json: no JSON: (no output)',
+      '[tailscale] gui status --json: no JSON: The Tailscale GUI failed to start',
+      '[tailscale] fails status --json: failed: CLIError error 3 | more',
+    ])
   })
 })
 

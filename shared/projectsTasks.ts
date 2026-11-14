@@ -4,6 +4,7 @@
 //
 // Nothing here trusts the output: every field is checked and bounded, and an
 // unknown field is dropped, so a newer 1.x can add fields without breaking it.
+import { type TranscriptAgent, hasTranscript } from './agentKind'
 
 // The board's five groups, in the order they need you (1.x: shown/states.rs).
 export type TaskGroup = 'needs' | 'ready' | 'working' | 'todo' | 'done'
@@ -116,7 +117,37 @@ export interface TaskDetails {
 // dialog). A reviewer's `pane: null`: its session is not open in wherdr.
 export interface TaskReviewer { pane: string | null }
 export const REVIEW_STAGES: readonly string[] = ['reviewing', 'reviewneeds']
-export type TaskPanes = { pane: string | null, reviewer?: TaskReviewer | null }
+// `transcripts`: the program of each conversation the board recorded for the
+// task (its agent's `session`, its reviewer's `reviewSession`), when wherdr can
+// read it: what the Agent and Reviewer tabs show once that agent has exited.
+export type TaskTranscripts = { worker: TranscriptAgent | null, reviewer: TranscriptAgent | null }
+export type TaskPanes = { pane: string | null, reviewer?: TaskReviewer | null, transcripts?: TaskTranscripts }
+export type TaskRole = 'worker' | 'reviewer'
+export const isTaskRole = (v: unknown): v is TaskRole => v === 'worker' || v === 'reviewer'
+
+// A conversation the board recorded for one role of the task (task.json, as
+// 1.x limits/spent.rs finds it again): the program and its session. The
+// worker's program is the one on it (`on`, else `agent`); the reviewer's is its
+// link while it reviews, then who wrote the last review (`review.by`). A
+// session is an id (Claude, Codex: never a path) or omp's session file, which
+// the transcript reader checks lies in omp's own folder. null: none recorded,
+// or a program whose conversation wherdr does not read.
+const SESSION_ID_RE = /^[A-Za-z0-9][\w.-]{0,127}$/
+export function taskConversation(file: unknown, role: TaskRole): { kind: TranscriptAgent, session: string } | null {
+  const t = obj(file)
+  if (!t) return null
+  const program = (v: unknown) => str(v, 160).split('/')[0] || ''
+  const kind = role === 'worker'
+    ? program(t.on) || program(t.agent)
+    : program(obj(obj(t.link)?.reviewer)?.kind) || program(obj(t.review)?.by)
+  const session = str(role === 'worker' ? t.session : t.reviewSession, 1000)
+  if (!hasTranscript(kind) || !session) return null
+  if (kind === 'omp' ? !session.startsWith('/') || !session.endsWith('.jsonl') : !SESSION_ID_RE.test(session) || session.includes('..')) return null
+  return { kind, session }
+}
+export function taskTranscripts(file: unknown): TaskTranscripts {
+  return { worker: taskConversation(file, 'worker')?.kind ?? null, reviewer: taskConversation(file, 'reviewer')?.kind ?? null }
+}
 
 // Identity stays with the worker, even when `app` names the active helper.
 export interface TaskAgentIdentity { agent: string, reviewer: string, from: string }

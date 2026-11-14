@@ -298,35 +298,43 @@ function refreshCodexField(p: Pane) {
     .finally(() => codexFieldBusy.delete(p.id))
 }
 
-// omp status line (see ompScreen.ts): re-read only for an omp on screen.
-// While it works, the same reading gives its activity (running step and
-// elapsed time), re-read as often as Claude's verb; nothing is kept when idle.
-// The start of the turn is kept from one reading to the next (the counter
-// does not change the state). It also gives the "!" / "$" command the user
-// runs (omp stays idle meanwhile), whose start is kept the same way.
+// omp status line (see ompScreen.ts): also read unviewed working panes so
+// their meters are available on cards. Resting panes retain the last reading;
+// only viewed panes need ongoing activity and shell reads while resting.
+// The start of a turn or shell command is kept across successive readings.
 const OMP_STATUS_MS = 3000
-type OmpScreenState = { status: OmpStatus | null, activity: OmpActivity | null, shell: ShellRun | null, at: number }
+type OmpScreenState = { session: string | null, status: OmpStatus | null, activity: OmpActivity | null, shell: ShellRun | null, at: number | null }
 const ompStatuses = new Map<string, OmpScreenState>()
 const ompStatusBusy = new Set<string>()
 function refreshOmpStatus(p: Pane) {
   if (ompStatusBusy.has(p.id)) return
   ompStatusBusy.add(p.id)
-  const prev = ompStatuses.get(p.id)
+  const entry = ompStatuses.get(p.id)!
+  entry.at = Date.now()
+  const stale = () => {
+    if (ompStatuses.get(p.id) !== entry || !entry.status?.metersFresh) return
+    entry.status = { ...entry.status, metersFresh: false }
+    setTimeout(poll, 0)
+  }
   herdr('pane.read', { pane_id: p.id, source: 'detection' }, 4000)
     .then((r) => {
-      const text = r.read && r.read.text
-      const shell = parseOmpShell(text)
-      if (shell && prev?.shell && prev.shell.command === shell.command) shell.since = prev.shell.since
-      return { status: parseOmpStatus(text), activity: findPane(p.id)?.status === 'working' ? ompActivityOf(parseOmpActivity(text), prev?.activity ?? null) : null, shell }
-    }, () => ({ status: prev?.status ?? null, activity: prev?.activity ?? null, shell: prev?.shell ?? null }))
-    .then(({ status, activity, shell }) => {
-      const old = ompStatuses.get(p.id)
-      // Reading finished after the end of the turn: no stale step on the next turn.
-      if (findPane(p.id)?.status !== 'working') activity = null
-      ompStatuses.set(p.id, { status, activity, shell, at: Date.now() })
-      if (JSON.stringify(old?.status ?? null) !== JSON.stringify(status) || JSON.stringify(old?.activity ?? null) !== JSON.stringify(activity)
-        || JSON.stringify(old?.shell ?? null) !== JSON.stringify(shell)) setTimeout(poll, 0)
-    })
+      // A removed pane or a replacement agent cannot inherit an old read.
+      if (ompStatuses.get(p.id) !== entry) return
+      const text = r?.read?.text
+      if (typeof text !== 'string' || !text) { stale(); return }
+      const parsed = parseOmpStatus(text)
+      const status = parsed
+        ? { ...parsed, meters: parsed.meters ?? entry.status?.meters ?? null, metersFresh: Boolean(parsed.meters) }
+        : entry.status ? { ...entry.status, metersFresh: false } : null
+      const viewed = isViewed(p.id)
+      const shell = viewed ? parseOmpShell(text) : null
+      if (shell && entry.shell && entry.shell.command === shell.command) shell.since = entry.shell.since
+      const activity = viewed && findPane(p.id)?.status === 'working' ? ompActivityOf(parseOmpActivity(text), entry.activity) : null
+      const changed = JSON.stringify(entry.status) !== JSON.stringify(status) || JSON.stringify(entry.activity) !== JSON.stringify(activity)
+        || JSON.stringify(entry.shell) !== JSON.stringify(shell)
+      Object.assign(entry, { status, activity, shell })
+      if (changed) setTimeout(poll, 0)
+    }, stale)
     .finally(() => ompStatusBusy.delete(p.id))
 }
 
@@ -1031,6 +1039,12 @@ async function enrich(next: HerdrState, snap: Json, machine: string, publish?: (
   selfUpdates.prune(live, id => machineOf(id) === machine)
   for (const id of commands.keys()) if (machineOf(id) === machine && !live.has(id)) commands.delete(id)
   for (const p of next.panes) {
+    const omp = ompStatuses.get(p.id)
+    if (omp && (p.agent !== 'omp' || omp.session !== (p.agentSession ?? null))) ompStatuses.delete(p.id)
+    else if (omp && p.status === 'working' && prevStatus.get(p.id) !== 'working') {
+      // Fence an in-flight resting read as well as its retained gauges.
+      ompStatuses.set(p.id, { ...omp, status: omp.status ? { ...omp.status, metersFresh: false } : null, activity: null, shell: null, at: null })
+    }
     const b = agentBorn.get(p.id)
     if (!p.agent) {
       if (b) { agentBorn.delete(p.id); bornDirty = true }
@@ -1155,16 +1169,24 @@ async function enrich(next: HerdrState, snap: Json, machine: string, publish?: (
       if (a && a.notice) p.claudeNotice = a.notice
       if (a && a.suggestion && !working && p.status !== 'blocked') p.claudeSuggestion = a.suggestion
     } else activities.delete(p.id)
-    if (p.agent === 'omp' && isViewed(p.id)) {
-      const o = ompStatuses.get(p.id)
+    if (p.agent === 'omp') {
+      const viewed = isViewed(p.id)
       const working = p.status === 'working'
-      // Fast while it works, runs a command or has a message on its way.
-      const fast = working || Boolean(o?.shell) || queued.has(p.id)
-      if (!o || Date.now() - o.at >= (fast ? ACTIVITY_MS : OMP_STATUS_MS)) refreshOmpStatus(p)
-      if (o && o.status) p.ompStatus = o.status
-      if (o && o.activity && working) p.ompActivity = o.activity
-      if (o && o.shell) p.ompShell = o.shell
-    } else ompStatuses.delete(p.id)
+      let o = ompStatuses.get(p.id)
+      if (!o && (viewed || working)) {
+        o = { session: p.agentSession ?? null, status: null, activity: null, shell: null, at: null }
+        ompStatuses.set(p.id, o)
+      }
+      if (o) {
+        if (!viewed) { o.activity = null; o.shell = null }
+        // Unviewed resting panes keep their last reading without polling.
+        const fast = working || Boolean(o.shell) || queued.has(p.id)
+        if ((viewed || working) && (o.at === null || Date.now() - o.at >= (fast ? ACTIVITY_MS : OMP_STATUS_MS))) refreshOmpStatus(p)
+        if (o.status) p.ompStatus = o.status
+        if (viewed && o.activity && working) p.ompActivity = o.activity
+        if (viewed && o.shell) p.ompShell = o.shell
+      }
+    }
     if (p.agent === 'codex' && isViewed(p.id)) {
       const c = codexStatus.statusOf(p)
       if (c) p.codexStatus = c
@@ -1192,6 +1214,7 @@ async function enrich(next: HerdrState, snap: Json, machine: string, publish?: (
   for (const id of chatDelta.ids()) if (!alive(id)) chatDelta.forget(id)
   for (const id of models.keys()) if (!alive(id)) { models.delete(id); forgetModel(id) }
   for (const id of activities.keys()) if (!alive(id)) activities.delete(id)
+  for (const id of ompStatuses.keys()) if (!alive(id)) ompStatuses.delete(id)
   for (const id of codexFields.keys()) if (!alive(id)) codexFields.delete(id)
 }
 
@@ -1215,6 +1238,7 @@ function broadcastState() {
 function rebuild() {
   const machines = allMachines()
   for (const k of mstates.keys()) if (!getMachine(k)) mstates.delete(k)
+  for (const id of ompStatuses.keys()) if (!getMachine(machineOf(id))) ompStatuses.delete(id)
   const loc = mstates.get(LOCAL) || { ok: false, error: 'starting…', workspaces: [], panes: [] }
   const next: HerdrState = { ...loc, workspaces: [...loc.workspaces], tabs: [...(loc.tabs || [])], panes: [...loc.panes] }
   const ready = isReady()

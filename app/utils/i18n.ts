@@ -190,10 +190,10 @@ const FR: Record<string, string> = {
   // Lock
   'Security': 'Sécurité', 'wherdr is locked': 'wherdr est verrouillé',
   'Unlock with your passkey (Face ID, Touch ID, Windows Hello…) to reach your agents.': 'Déverrouille avec ta clé d’accès (Face ID, Touch ID, Windows Hello…) pour accéder à tes agents.',
-  'Unlock': 'Déverrouiller', 'Unlock cancelled': 'Déverrouillage annulé', 'Device': 'Appareil',
+  'Unlock': 'Déverrouiller', 'Unlock cancelled': 'Déverrouillage annulé', 'Too many attempts, wait a minute': 'Trop de tentatives, attends une minute', 'Device': 'Appareil',
   'Lock enabled on this device ✓': 'Verrouillage activé sur cet appareil ✓', 'Registration cancelled': 'Enregistrement annulé',
   'This device is already registered': 'Cet appareil est déjà enregistré',
-  'Optional: wherdr already answers only this computer and your tailnet. A passkey adds a lock on each device, with Face ID, Touch ID, Windows Hello…': 'Facultatif : wherdr ne répond déjà qu’à cet ordinateur et à ton tailnet. Une passkey ajoute un verrou sur chaque appareil, avec Face ID, Touch ID, Windows Hello…',
+  'Optional: wherdr already answers only this computer and your own tailnet devices. If you want one, a passkey adds an automatic lock on each device, with Face ID, Touch ID, Windows Hello…': 'Facultatif : wherdr ne répond déjà qu’à cet ordinateur et à tes propres appareils du tailnet. Si tu veux, une passkey ajoute un verrou automatique sur chaque appareil, avec Face ID, Touch ID, Windows Hello…',
   'This browser does not support passkeys.': 'Ce navigateur ne gère pas les clés d’accès.',
   'Registered keys:': 'Clés enregistrées :',
   'Turn off lock': 'Désactiver le verrouillage',
@@ -508,7 +508,7 @@ const FR: Record<string, string> = {
   'Copy': 'Copier', 'Reply': 'Répondre', 'Reply to this passage': 'Répondre à ce passage', 'Show original message': 'Voir le message d’origine', 'Original message not found (further up the conversation?)': 'Message d’origine introuvable (plus haut dans la conversation ?)', 'Copy reply': 'Copier la réponse', 'No output': 'Aucune sortie', 'Copied': 'Copié', 'Copy pane ID': 'Copier l’ID du pane', 'Copy failed': 'Copie impossible', 'Copy ID': 'Copier l’identifiant',
   'Quoted': 'Citée', 'Discuss': 'Discuter', 'Yes': 'Oui', 'No': 'Non', 'OK to all': 'Ok tout', 'Decisions': 'Décisions', 'Quoted questions': 'Citations', 'Remove quote': 'Retirer la citation',
   '⌘+click to open': '⌘+clic pour ouvrir', 'Ctrl+click to open': 'Ctrl+clic pour ouvrir',
-  'Enter': 'Entrée', 'send': 'envoyer', 'suggestion': 'suggestion', 'Use suggestion': 'Utiliser la suggestion', 'new line': 'nouvelle ligne',
+  'Enter': 'Entrée', 'send': 'envoyer', 'suggestion': 'suggestion', 'Use suggestion': 'Utiliser la suggestion', 'new line': 'nouvelle ligne', 'again to stop': 'encore pour arrêter', 'Already sent': 'Déjà envoyé',
   'Image not found': 'image introuvable', 'Invalid JSON': 'JSON invalide', 'Request too large': 'requête trop grosse',
   // Model
   'Model': 'Modèle', 'Unknown model': 'Modèle inconnu',
