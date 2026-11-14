@@ -100,6 +100,14 @@ current session stops), and *Stop the coordinator*, after a short confirm: its a
 starts again on the next message or wake. Mute and Stop show while it runs. Alfred's row keeps
 its own menu. A coordinator shows only in its own row, never again among the agents.
 
+Their order is yours and follows you to every device: drag a row by the ⠿ handle that shows on
+hover (or with the up and down arrows on it), or long press it on a phone, then drag. The menu's
+*Move to hidden* puts a coordinator in the **Hidden** group at the end of the section, as does
+dropping it there; the group stays collapsed behind a muted *Show hidden (3)* link, which opens
+it (*Hide* closes it again). Hidden rows look the same, a little muted; drag one back up, or
+pick *Move back* in its menu. A hidden coordinator still works as usual (wakes, tasks); when it
+needs you (a question, a block), its row comes back in the main list until you answer.
+
 Coordinators and **Tasks to review** follow the [machine tab](#machines-as-tabs): a tab shows the
 projects whose allowed machines it holds (a project on machines of several groups shows on each
 of those tabs), **All** shows every project, and Alfred shows on every tab. An open coordinator
