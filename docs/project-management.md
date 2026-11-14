@@ -525,12 +525,16 @@ project coordinator's conversation, the **Autopilot** button in the header (a
 clock) shows the autopilot's state (green square: on; hollow: asleep) and a
 count when the kept conversation ran with another agent. It is only about the
 autopilot: a workflow change the coordinator proposed is a *Workflow change*
-card in its conversation (see [Workflow](#workflow)). A tap opens its window,
-under the autopilot's line and a link to the project's Workflow tab:
+card in its conversation (see [Workflow](#workflow)). A tap opens its window
+(880 px wide on a computer, up to 90 % of the screen's height; a full sheet on
+the phone) with two tabs under its title, **Activity** and **Settings**. The
+window opens on the tab you picked last (on this device; Activity the first
+time); a link to the autopilot setting (`project.autopilot`) opens Settings.
+**Activity**, under the autopilot's line and a link to the project's Workflow tab:
 
-- the agent that answers the coordinator (Alfred's too), and a warning when its conversation
+- on the board, *Open*, and a warning when its conversation
   ran with another one: *New conversation* with the default, or *Resume* the one kept (for
-  Alfred, the agent resumed becomes its default); on the board, *Open* opens or starts it; when its
+  Alfred, the agent resumed becomes its default); *Open* opens or starts it; when its
   conversation stopped (its terminal ended, for example when its machine
   restarted), *Resume the conversation* takes it up again with the agent that
   ran it, and *New conversation* starts a new one;
@@ -545,9 +549,15 @@ under the autopilot's line and a link to the project's Workflow tab:
   ended, a wake not handled highlighted), each wake skipped and why (nothing to
   do, the account ahead of its pace, nothing changed since the last wake…), each
   task the autopilot started (Keep the board busy, a wake; never yours);
-  yesterday's below, in the same scroll;
-- the settings, below, in four groups the form saves together (*Unsaved
-  changes* until you save): **Goal**; **When it wakes**: *Every*, *At*, the
+  yesterday's below, in the same scroll.
+
+**Settings**: the agent that answers the coordinator (applied at once; Alfred's
+window has only this and *Open*, no tabs), then the autopilot's settings in four
+groups the form saves together. A bar pinned at the bottom of the tab, visible
+while you scroll, says *Unsaved changes* and holds *Cancel* (back to the saved
+values) and *Save* (enabled once something changed). Leaving the tab or closing
+the window with unsaved changes asks once whether to discard them. The groups:
+**Goal**; **When it wakes**: *Every*, *At*, the
   **Health check** interval (empty: every 3h; `off`: never; see
   [Who sends a wake](#who-sends-a-wake)), the routine events it also wakes on,
   all off by default since the engine handles them (*Task added*: by someone

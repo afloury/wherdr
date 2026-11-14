@@ -9,6 +9,7 @@ import { agentOrder, herdrState, hiddenAgents } from '~/composables/useHerdr'
 import { coordinators, resumedCoordinators } from '~/composables/useCoordinators'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
+import { answerConfirm, confirmState } from '~/composables/useUi'
 import { pick } from '../helpers/select'
 
 const posts: { url: string, body: Record<string, unknown> }[] = []
@@ -17,6 +18,8 @@ const post = (url: string, reply: () => unknown) => registerEndpoint(url, { meth
 registerEndpoint('/api/pm/coordinators', () => views)
 post('/api/pm/coordinator-agent', () => ({}))
 post('/api/pm/coordinator-start', () => ({ terminal: 'host/t2' }))
+// As the server: the saved autopilot back (the same endpoint as CoordinatorAutopilot.test.ts).
+registerEndpoint('/api/pm/autopilot', { method: 'POST', handler: async (e) => { const body = await readBody(e); posts.push({ url: '/api/pm/autopilot', body }); return body.autopilot ? { autopilot: body.autopilot } : {} } })
 herdrState.value = { ok: true, workspaces: [], panes: [{ id: 'w1:p1', coreAddress: 'host/t1', status: 'idle', agent: 'codex', workspace: 'w', tab: 't' } as Pane] }
 
 const view = (more: Partial<CoordinatorView> = {}): CoordinatorView => ({ project: 'CO', name: 'Company', agent: { program: 'claude' }, ...more })
@@ -64,6 +67,39 @@ it('header button: a clock, the autopilot\'s state, and a tap opens the autopilo
   await vi.waitFor(() => expect(document.querySelector('[data-testid="coordinator-autopilot"]')).not.toBeNull())
   expect(document.querySelector('[data-testid="autopilot-next-wake"]')?.textContent).toMatch(/^Next wake (23:30|11:30)/i)
   expect(document.querySelector('[data-testid="workflow-change"]')).toBeNull()
+})
+
+it('window: Activity and Settings tabs, a pinned Save enabled by a change, and closing with unsaved changes asks', async () => {
+  localStorage.removeItem('wherdr.autopilotTab')
+  w = await mountSuspended(CoordinatorButton, { attachTo: document.body, props: { c: view({ autopilot: { on: true, goal: 'Ship', events: [], perDay: null, atOnce: null } }) } })
+  await w.get('[data-testid="coordinator-button"]').trigger('click')
+  const $ = <T extends HTMLElement>(id: string) => document.querySelector<T>(`[data-testid="${id}"]`)!
+  await vi.waitFor(() => expect($('coordinator-autopilot')).not.toBeNull())
+  const shown = (id: string) => $(id).style.display !== 'none'
+  // Activity first: the switch and the timeline; the agent and the goal are in Settings.
+  expect([shown('autopilot-activity'), shown('autopilot-settings')]).toEqual([true, false])
+  expect($('autopilot-activity').contains($('autopilot-run-now'))).toBe(true)
+  expect($('autopilot-settings').contains($('coordinator-agent'))).toBe(true)
+  $('autopilot-tab-settings').click()
+  await vi.waitFor(() => expect(shown('autopilot-settings')).toBe(true))
+  expect(localStorage.getItem('wherdr.autopilotTab')).toBe('settings')
+  expect($('autopilot-settings').querySelector('form')!.lastElementChild).toBe($('autopilot-bar')) // pinned: the scroll's last element
+  const save = $<HTMLButtonElement>('autopilot-save')
+  expect(save.disabled).toBe(true)
+  const goal = document.querySelector<HTMLTextAreaElement>('textarea#ap-goal-CO')!
+  goal.value = 'Ship 3'
+  goal.dispatchEvent(new Event('input'))
+  await vi.waitFor(() => expect(save.disabled).toBe(false))
+  // Closing asks; no keeps the window and the change.
+  document.querySelector<HTMLButtonElement>('.hw-sheet-close')!.click()
+  await vi.waitFor(() => expect(confirmState.open).toBe(true))
+  expect(confirmState.message).toBe('Discard the unsaved autopilot changes?')
+  answerConfirm(false)
+  await nextTick()
+  expect($('coordinator-autopilot')).not.toBeNull()
+  save.click()
+  await vi.waitFor(() => expect(posts.at(-1)).toEqual({ url: '/api/pm/autopilot', body: { project: 'CO', autopilot: { on: true, goal: 'Ship 3', every: '', at: '', events: [], perDay: null, atOnce: null } } }))
+  localStorage.removeItem('wherdr.autopilotTab')
 })
 
 it('with no default set, or its default unchecked in Settings › Agents, offers the user\'s first agent', async () => {

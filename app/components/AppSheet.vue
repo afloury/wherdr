@@ -106,6 +106,8 @@ function dragEnd(e: TouchEvent) {
     // The closing animation starts from where the finger left the sheet.
     d.sheet.style.transition = ''
     open.value = false
+    // Kept open (unsaved changes, CoordinatorButton): it springs back.
+    nextTick(() => { if (open.value) d.sheet.style.transform = '' })
     return
   }
   d.sheet.style.transition = 'transform .2s cubic-bezier(.2, .8, .2, 1)'

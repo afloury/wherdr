@@ -1938,6 +1938,8 @@ body.kb .composer { padding-bottom: 8px; }
    under it. The folder picker's buttons; a task's To do buttons on the phone
    (TaskTodo.vue, next to its sticky rule). */
 .hw-sheet > [data-slot="body"]:has(.dir-actions) { padding-bottom: 0; }
+/* The autopilot's pinned Save bar (CoordinatorAutopilot.vue) in the coordinator window. */
+.hw-sheet > [data-slot="body"]:has(> .coord > .ap[data-tab="settings"]) { padding-bottom: 0; }
 .hw-sheet-title { min-width: 0; font: 850 24px/1 var(--display); letter-spacing: -.035em; word-spacing: .06em; color: var(--text); overflow-wrap: anywhere; }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
 /* Before the title (a task's id badge): the title follows it. */
@@ -2917,6 +2919,8 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .hw-sheet:has(.review-done):not(:has(.review-item)) { height: auto; }
   /* A project's sheet: as wide, its height from its tab (ProjectSheet.vue). */
   .hw-sheet:has(.project-sheet) { width: min(920px, 92vw); }
+  /* A coordinator's window with its autopilot's tabs (CoordinatorPanel.vue). */
+  .hw-sheet.tall:has(> [data-slot="body"] > .coord .ap-tabs) { width: min(880px, 90vw); max-height: 90vh; }
   /* New › Project: room for folder paths and the repository list (NewProjectForm.vue). */
   .hw-sheet:has(.coord-new) { width: min(760px, 92vw); }
   .hw-sheet.full { width: min(1100px, 92vw); height: 86vh; max-height: 86vh; padding-top: 20px; }

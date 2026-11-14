@@ -6,7 +6,11 @@
 // what it is. Not its proposed workflow change: a card in its conversation.
 // On the board (`open`), also the button that opens or starts it; a stopped
 // conversation (its terminal ended) can be resumed instead.
+// A project coordinator's window has the autopilot's tabs: its agent in Settings,
+// opening its conversation in Activity. Alfred's (Bare): its agent, then the rest.
+import type { FunctionalComponent } from 'vue'
 import type { CoordinatorView } from '#shared/pm/coordinator'
+import CoordinatorAutopilot from '~/components/CoordinatorAutopilot.vue'
 
 const props = defineProps<{ c: CoordinatorView, open?: boolean }>()
 const busy = ref(false)
@@ -40,32 +44,44 @@ const resume = () => {
   if (props.open && pane.value) navigateTo(panePath(pane.value.id))
 }
 const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh())
+
+const Bare: FunctionalComponent<{ c: CoordinatorView }> = (_, { slots }) => [slots.settings?.(), slots.activity?.()]
+Bare.props = ['c']
+const auto = ref<InstanceType<typeof CoordinatorAutopilot>>()
+// Unsaved autopilot settings: asked before the window closes.
+defineExpose({ leave: () => auto.value?.leave() ?? Promise.resolve(true) })
 </script>
 
 <template>
   <div class="coord" data-testid="coordinator-panel">
-    <PartHead v-if="!c.main" part="autopilot" :project="c.project" />
-    <div class="coord-head">
-      <div class="coord-field">
-        <span class="field-label">{{ c.main ? tl(`${coordinatorName(c)}’s agent`) : tl('Answering agent', 'Agent qui répond') }}</span>
-        <USelect :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent w-full" :disabled="busy" :aria-label="tl('Default agent', 'Agent par défaut')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
-      </div>
-      <UButton v-if="open && !other && stopped" color="primary" size="lg" :loading="busy" data-testid="coordinator-resume-stopped" @click="resumeStopped">
-        {{ tl('Resume the conversation') }}
-      </UButton>
-      <UButton v-if="open && !other" :color="stopped ? 'neutral' : 'primary'" :variant="stopped ? 'outline' : 'solid'" size="lg" :loading="busy" data-testid="coordinator-open" @click="openIt">
-        {{ pane ? tl('Open', 'Ouvrir') : stopped ? tl('New conversation') : tl(`Start with ${agentName(agent)}`, `Lancer avec ${agentName(agent)}`) }}
-      </UButton>
-    </div>
-    <p v-if="unoffered" class="coord-note muted" data-testid="coordinator-unoffered">{{ tl(`${unoffered} is no longer offered on this machine (Settings › Agents): pick another agent, or offer it again.`) }}</p>
-    <div v-if="other && c.ran" class="term-banner coord-warn" data-testid="coordinator-other-agent">
-      <UIcon name="i-lucide-triangle-alert" class="term-banner-icon" />
-      <span class="coord-warn-text">{{ tl(`The previous conversation used ${agentName(c.ran)}. The default is ${agentName(agent)}.`, `La conversation précédente utilisait ${agentName(c.ran)}. Le défaut est ${agentName(agent)}.`) }}</span>
-      <UButton size="xs" color="warning" :loading="busy" data-testid="coordinator-new" @click="fresh">{{ tl(`New conversation with ${agentName(agent)}`, `Nouvelle conversation avec ${agentName(agent)}`) }}</UButton>
-      <UButton size="xs" color="warning" variant="outline" data-testid="coordinator-resume" @click="resume">{{ tl(`Resume with ${agentName(c.ran)}`, `Reprendre avec ${agentName(c.ran)}`) }}</UButton>
-    </div>
-    <p v-if="error" class="error coord-error">{{ error }}</p>
-    <CoordinatorAutopilot v-if="!c.main" :c="c" />
+    <component :is="c.main ? Bare : CoordinatorAutopilot" ref="auto" :c="c">
+      <template #settings>
+        <div class="coord-field">
+          <span class="field-label">{{ c.main ? tl(`${coordinatorName(c)}’s agent`) : tl('Answering agent') }}</span>
+          <USelect :model-value="agent?.program" :items="agentItems" size="lg" class="coord-agent w-full" :disabled="busy" :aria-label="tl('Default agent')" data-testid="coordinator-agent" @update:model-value="v => setDefault(String(v))" />
+        </div>
+        <p v-if="unoffered" class="coord-note muted" data-testid="coordinator-unoffered">{{ tl(`${unoffered} is no longer offered on this machine (Settings › Agents): pick another agent, or offer it again.`) }}</p>
+        <p v-if="error && !c.main" class="error coord-error">{{ error }}</p>
+      </template>
+      <template #activity>
+        <PartHead v-if="!c.main" part="autopilot" :project="c.project" />
+        <div v-if="open && !other" class="coord-head">
+          <UButton v-if="stopped" color="primary" size="lg" :loading="busy" data-testid="coordinator-resume-stopped" @click="resumeStopped">
+            {{ tl('Resume the conversation') }}
+          </UButton>
+          <UButton :color="stopped ? 'neutral' : 'primary'" :variant="stopped ? 'outline' : 'solid'" size="lg" :loading="busy" data-testid="coordinator-open" @click="openIt">
+            {{ pane ? tl('Open') : stopped ? tl('New conversation') : tl(`Start with ${agentName(agent)}`) }}
+          </UButton>
+        </div>
+        <div v-if="other && c.ran" class="term-banner coord-warn" data-testid="coordinator-other-agent">
+          <UIcon name="i-lucide-triangle-alert" class="term-banner-icon" />
+          <span class="coord-warn-text">{{ tl(`The previous conversation used ${agentName(c.ran)}. The default is ${agentName(agent)}.`) }}</span>
+          <UButton size="xs" color="warning" :loading="busy" data-testid="coordinator-new" @click="fresh">{{ tl(`New conversation with ${agentName(agent)}`) }}</UButton>
+          <UButton size="xs" color="warning" variant="outline" data-testid="coordinator-resume" @click="resume">{{ tl(`Resume with ${agentName(c.ran)}`) }}</UButton>
+        </div>
+        <p v-if="error" class="error coord-error">{{ error }}</p>
+      </template>
+    </component>
   </div>
 </template>
 
@@ -73,9 +89,11 @@ const openIt = () => (pane.value ? navigateTo(panePath(pane.value.id)) : fresh()
 .coord { display: grid; gap: 12px; }
 .coord-head { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
 .coord-head > * { flex: 1 1 160px; }
-.coord-field { display: grid; gap: 4px; min-width: 0; }
+/* A computer: the buttons as wide as their words, not across the tab. */
+@media (min-width: 640px) { .coord-head > * { flex: 0 1 auto; } }
+.coord-field { display: grid; gap: 4px; min-width: 0; max-width: 420px; }
 .coord-warn { flex-wrap: wrap; }
 .coord-warn-text { flex: 1 1 calc(100% - 40px); }
-.coord-head :deep(.coord-agent) { min-width: 0; max-width: 100%; }
+.coord :deep(.coord-agent) { min-width: 0; max-width: 100%; }
 .coord-error, .coord-note { margin: 0; }
 </style>
