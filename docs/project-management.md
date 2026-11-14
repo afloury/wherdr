@@ -112,7 +112,8 @@ data, and post it only on your yes.
 the project list and the [template library](#template-library): each row shows
 the name (with a **Public** badge for a public repository), the key, the machine
 and the folder. *Add project* opens the setup window on a new project; *Open the
-board* goes to the board. A row opens the
+board* goes to the board. Until the list is read, the switch and the rows show
+as grey blocks and both buttons wait; a failed read says why, with *Try again*. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
 Autopilot; on a computer it is a wide window, and its General fields pair up
 side by side (name and key, worker and reviewer). Its ⋯ menu removes the project from wherdr, after a confirmation:
