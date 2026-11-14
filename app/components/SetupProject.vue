@@ -13,7 +13,7 @@ const props = defineProps<{ projects: Project[] }>()
 const emit = defineEmits<{ added: [key: string] }>()
 
 const machines = machineChoices
-const d = reactive<ProjectDraft>({ machine: machines.value?.find(m => m.local)?.key ?? '', path: '', name: '', key: '', template: '', gitInit: false, probe: null })
+const d = reactive<ProjectDraft>({ machine: machines.value?.find(m => m.local)?.key ?? '', path: '', name: '', key: '', gitInit: false, probe: null })
 const color = ref<ProjectColor>(defaultColor(props.projects))
 const repos = ref<string[] | null>(null)
 const home = ref('')
@@ -58,7 +58,7 @@ async function add() {
   busy.value = true
   error.value = ''
   try {
-    const { project } = await api<{ project: { key: string } }>('/api/pm/project', { ...draftBody(d, ''), color: color.value })
+    const { project } = await api<{ project: { key: string } }>('/api/pm/project', { ...draftBody(d), color: color.value })
     emit('added', project.key)
   }
   catch (e) { error.value = (e as Error).message }

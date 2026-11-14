@@ -148,8 +148,11 @@ survives updates; delete it to free the space. Dictation through a cloud service
 Settings › About shows the version that runs, with the commit it was built from
 (`wherdr 3.0.0+1a2b3c4 · herdr-core`). Once a day wherdr checks GitHub for a newer 3.x release and
 the home screen shows a banner when there is one: never a 2.x release (v2 keeps its own updates),
-nor the next major version. `WHERDR_UPDATE_CHECK=off` turns the check off. There is no one-tap
-update: to update, in the checkout:
+nor the next major version. `WHERDR_UPDATE_CHECK=off` turns the check off. The banner's
+**What's new** shows the release notes, rendered from GitHub, and **Update with Alfred** asks
+Alfred to update, following [Update with an agent](update-with-an-agent.md): it shows you the
+plan, backs up `DATA_DIR`, runs `update.sh` (or the commands below), checks the new version and
+rolls back on failure. To update by hand, in the checkout:
 
 ```sh
 git pull

@@ -17,7 +17,7 @@ describe('versions', () => {
 })
 
 function release(tag: string) {
-  return vi.fn(async (_url: string) => ({ ok: true, json: async () => ([{ tag_name: tag, html_url: `https://example.test/releases/${tag}` }]) }))
+  return vi.fn(async (_url: string) => ({ ok: true, json: async () => ([{ tag_name: tag, html_url: `https://example.test/releases/${tag}`, body: '## Upgrade notes' }]) }))
 }
 
 describe('release check', () => {
@@ -26,7 +26,7 @@ describe('release check', () => {
     const check = createUpdateChecker({ current: '1.1.0', env: {}, fetch })
     const u = await check()
     expect(fetch).toHaveBeenCalledWith(RELEASES_URL)
-    expect(u).toEqual({ current: '1.1.0', latest: '1.2.0', url: 'https://example.test/releases/v1.2.0', checked: true, command: 'git pull && npm ci && npm run build', behind: 1, missed: ['1.2.0'], behindAtLeast: false })
+    expect(u).toEqual({ current: '1.1.0', latest: '1.2.0', url: 'https://example.test/releases/v1.2.0', notes: '## Upgrade notes', checked: true, command: 'git pull && npm ci && npm run build', behind: 1, missed: ['1.2.0'], behindAtLeast: false })
   })
 
   it('offers only newer releases of the running major', async () => {

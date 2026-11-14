@@ -20,7 +20,8 @@ of them. On a `v3.*` tag, `release.yml` only publishes the reviewed draft with i
 
 Steps: set the version in `package.json` and `package-lock.json`, move the Unreleased
 changelog into a dated entry, create the GitHub release as a **draft** with notes following
-the [checklist](#release-notes-checklist), then push the `v3.Y.Z` tag. 2.x tags run the
+the [checklist](#release-notes-checklist) (with its `## Upgrade notes` when an update needs a
+manual step), then push the `v3.Y.Z` tag. 2.x tags run the
 `release.yml` of the commit they point to (the `2.x` branch), which still publishes to npm
 and Homebrew.
 
@@ -145,6 +146,10 @@ run it manually if needed. After re-enabling, workflow-completion and manual che
 - Summarize the changes in English under `## New`, `## Improved`, `## Fixed` or `## Update`;
   omit categories with no relevant changes. Use complete sentences, at least two in total
   (at least twelve words), describing the user-visible behavior and any required upgrade action.
+- v3 only, optional: a `## Upgrade notes` section for what an update needs beyond `update.sh`
+  (a manual step, a migration, a new setting), as commands and short sentences. The home
+  banner's What's new shows it, and an agent updating wherdr follows it
+  ([update-with-an-agent](update-with-an-agent.md)).
 - Put the full changelog link after the summary, using the release tag rather than `main`.
 - Review the text against that version's changelog. The automated check enforces structure
   and minimum content; the reviewer checks accuracy and clarity.

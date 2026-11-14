@@ -17,10 +17,10 @@ import { common } from '../shared/pm/examples'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 
 // A coordinator's start is not run here: APP's fails, the others start.
-const started = vi.hoisted(() => [] as { key: string, first?: string[] }[])
+const started = vi.hoisted(() => [] as string[])
 vi.mock('../server/utils/pmCoordinator', async orig => ({
   ...(await orig<object>()),
-  startCoordinator: vi.fn(async (_d: unknown, key: string, _a: unknown, _u: unknown, first?: string[]) => { if (key === 'APP') throw new Error('agent missing'); started.push({ key, first }); return { terminal: `t-${key}` } }),
+  startCoordinator: vi.fn(async (_d: unknown, key: string) => { if (key === 'APP') throw new Error('agent missing'); started.push(key); return { terminal: `t-${key}` } }),
 }))
 vi.mock('../server/utils/pmReady', () => ({ checkMachine: vi.fn(async () => ({ items: [], at: 1, refused: 'gh login: not logged in' })) }))
 
@@ -159,7 +159,7 @@ describe('runAlfredCommand', () => {
     const done = await actOnCard({ store, applyChange: (argv: string[], lines: string[], c?: typeof choice) => applyProposedChange(deps(), argv, lines, c) } as never, card.id, undefined, false, choice)
     expect(done).toMatchObject({ state: 'done', outcome: { lines: ['APP: added; coordinator not started: agent missing', 'SITE: added, coordinator started'] } })
     expect((await store.projects()).map(p => [p.key, p.from])).toEqual([['APP', undefined], ['SITE', undefined]])
-    expect(started).toEqual([{ key: 'SITE', first: [expect.stringContaining('Your first conversation')] }])
+    expect(started).toEqual(['SITE'])
     // --only and --start no are the card's defaults; an Apply without a choice keeps them.
     await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind: 'user', at: Date.now() } })
     await run('v2', 'import', '--only', 'mydocs', '--start', 'no', '--propose')
