@@ -8,7 +8,8 @@ import { releaseIdle } from '../server/utils/pmRelease'
 import { advanceTick } from '../server/utils/pmAdvance'
 import { mechanicTick } from '../server/utils/pmMechanic'
 import { forgetMemory } from '../server/utils/pmMemory'
-import { FIX_QUIET_MS, RELEASE_IDLE_MS, ROOM_WAKE_MS, agentBack, agentsAtWork, fixWatch, handFix, handToAgent, idleSince, releaseDue, retriesAction } from '../shared/pm/release'
+import { askAgentFix } from '../server/utils/pmFix'
+import { FIX_QUIET_MS, RELEASE_IDLE_MS, ROOM_WAKE_MS, agentBack, agentsAtWork, fixAskText, fixAskedStep, fixWatch, fixableBlock, handFix, handToAgent, idleSince, releaseDue, retriesAction } from '../shared/pm/release'
 import { cardStatus } from '../shared/pm/board'
 import { initialState, onEvent, type PlannedStep } from '../shared/pm/steps'
 import { wherdr } from '../shared/pm/examples'
@@ -325,5 +326,79 @@ describe('work the engine handed the worker', () => {
     expect(cardStatus({ plan: [], state: t.step })).toEqual({ text: 'Waits for its machine (paused)', tone: 'bad' })
     expect(await log()).toContain('ci-to-agent: Waits for its machine (paused). No wake: the engine goes on once the machine is back.')
     expect(await store.wakes()).toEqual([])
+  })
+})
+
+describe('ask the agent to fix it', () => {
+  let dir = ''
+  beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-fix-')) })
+  afterEach(() => fs.rm(dir, { recursive: true, force: true }))
+
+  it('names the block its worker could fix, and takes the step out of Your turn', () => {
+    const plan: PlannedStep[] = [{ id: 'work', holder: 'worker', ends: 'report', text: '', timeout: '2h' }, { id: 'merge', ends: 'action', action: { kind: 'github.merge' }, text: '' }]
+    const at = (s: Partial<Task['step']>, over: Partial<Task> = {}) => task({ step: { ...task().step!, ...s }, ...over })
+    const refused = at({ at: 1, yourTurn: { reason: 'action', badge: 'Merge: conflict', error: 'The PR conflicts with v3' } })
+    expect(fixableBlock(refused)).toBe('The PR conflicts with v3')
+    expect(fixableBlock(at({ yourTurn: { reason: 'timeout', badge: 'Check work: over 2h' } }))).toBe('Check work: over 2h')
+    expect(fixableBlock(task({ state: 'waiting', waiting: 'claude stopped' }))).toBe('claude stopped')
+    // A stall (an idle worker, red CI with no new push): the board's own words.
+    expect(fixableBlock(task(), { cause: 'red:abc', reason: 'CI red, no new push for 10 min', since: 1 })).toBe('Stalled: CI red, no new push for 10 min')
+    expect(fixableBlock(task())).toBeUndefined()
+    // Nothing for its agent: a question, a step of the user's, a stop.
+    expect(fixableBlock(task({ state: 'waiting', waiting: 'A question', waitKind: 'question' }))).toBeUndefined()
+    expect(fixableBlock(at({ yourTurn: { reason: 'user', badge: 'Merge' } }))).toBeUndefined()
+    expect(fixableBlock({ ...refused, stopped: { by: 'the user', why: 'x', at: 1 } })).toBeUndefined()
+    expect(fixAskText('The PR conflicts with v3')).toMatch(/The PR conflicts with v3[\s\S]*merge the base[\s\S]*wherdr\.report=done[\s\S]*one clear question with choices/)
+    // A failed action: handed over (the agent is fixing it); over its time limit: its time again.
+    expect(fixAskedStep(plan, refused.step!, 7)).toMatchObject({ yourTurn: undefined, agent: { kind: 'fix block', at: 7 } })
+    expect(fixAskedStep(plan, at({ at: 0, yourTurn: { reason: 'timeout', badge: 'x' } }).step!, 7)).toMatchObject({ yourTurn: undefined, deadline: 7 + 2 * 3_600_000 })
+  })
+
+  it('starts an ended worker again with the block\'s reason, logged as the user\'s', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await store.saveTemplate(wherdr)
+    await store.addProject({ key: 'WH', machine: 'm1', path: '/home/u/wh', template: 'wherdr' }, async (_m, p) => p)
+    await store.addTask({ project: 'WH', title: 'Fix it', type: 'simple' })
+    const calls: string[] = [], files: Record<string, string> = {}
+    const call = async (method: string, p: Record<string, unknown>) => {
+      calls.push(method)
+      if (method === 'machine.exec') {
+        const [, , script, , ...args] = p.argv as string[]
+        if (script!.includes('command -v')) return { code: 0, stdout: Buffer.from('claude').toString('base64') }
+        if (script!.includes('$HOME')) return { code: 0, stdout: Buffer.from('/home/u').toString('base64') }
+        if (p.input) files[args[0]!] = Buffer.from(p.input as string, 'base64').toString()
+        return { code: 0, stdout: '' }
+      }
+      if (method === 'terminal.run') return { address: `m1/t${calls.filter(c => c === 'terminal.run').length}` }
+      return { state: 'running' }
+    }
+    const deps = { call, store, machines: () => [{ key: 'm1', label: 'm1', local: false, status: 'online' }], launchWatchMs: 0 } as unknown as PmLaunchDeps
+    await startTask(deps, 'WH-1')
+    const plan = (await store.workflow('WH'))!.taskTypes.simple!.steps
+    const at = plan.findIndex(x => typeof x !== 'string' && x.id === 'merge')
+    const badge = 'Merge: The PR conflicts with its target branch'
+    await store.saveTask({ ...(await store.task('WH-1'))!, step: { ...task().step!, at, yourTurn: { reason: 'action', badge, error: 'The PR conflicts with v3' } } })
+    await store.saveRun({ ...(await store.runs())[0]!, state: 'ended', endedBy: 'exit' })
+
+    const t = await askAgentFix(deps, 'WH-1')
+    expect(calls.filter(c => c === 'terminal.run')).toHaveLength(2) // started again
+    expect(files['/home/u/.wherdr/pm/tasks/WH-1/instructions.md']).toMatch(/What to do now:[\s\S]*The PR conflicts with v3[\s\S]*one clear question/)
+    expect(t).toMatchObject({ state: 'working', step: { yourTurn: undefined, agent: { kind: 'fix block' } } })
+    expect(t.log!.at(-1)).toMatchObject({ by: 'user', text: 'asked the agent to fix: The PR conflicts with v3' })
+    // Its agent at work on it: nothing left to fix.
+    await expect(askAgentFix(deps, 'WH-1')).rejects.toThrow('nothing its agent can fix')
+
+    // A worker idle at its step (a stall, no Your turn of the step's): told, the stall's clock starts again.
+    const work = plan.findIndex(x => (typeof x === 'string' ? x : x.id) === 'work')
+    const stall = { cause: `idle:${work}:5`, reason: 'The worker stopped before saying it is done', since: 6 }
+    await store.saveRun({ ...(await store.runs()).at(-1)!, state: 'running' })
+    await store.saveTask({ ...(await store.task('WH-1'))!, state: 'working', idle: 1, stall, stalls: { [stall.cause]: { since: 6 } }, step: { ...task().step!, at: work, since: 5, told: 5 } })
+    const before = Date.now()
+    const idle = await askAgentFix(deps, 'WH-1')
+    expect(calls.filter(c => c === 'terminal.send')).toHaveLength(1)
+    expect(idle.stall!.since).toBeGreaterThanOrEqual(before)
+    expect(idle.stalls![stall.cause]!.back).toBeGreaterThanOrEqual(before)
+    expect(idle.log!.slice(-2).map(e => e.text)).toEqual(['asked the agent to fix: Stalled: The worker stopped before saying it is done', 'back to work: the user asked the agent to fix it'])
   })
 })

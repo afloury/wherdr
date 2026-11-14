@@ -5,7 +5,9 @@
 // needs it. Only agents that hold a step under way count against a machine's
 // cap. Pure: server/utils/pmRelease.ts reads the terminals and ends the agents.
 import type { Run, Task } from './run'
-import type { AgentWork, PlannedStep, StepState } from './steps'
+import { durationMs, type AgentWork, type PlannedStep, type StepState } from './steps'
+import { DONE_CMD } from './advance'
+import { stallTurn, type Stall } from './blocked'
 import { isRoomHold, roomShort } from './placement'
 
 export const RELEASE_IDLE_MS = 10 * 60_000
@@ -116,6 +118,33 @@ export const retriesAction = (plan: PlannedStep[], s: StepState) =>
 export function handFix(plan: PlannedStep[], s: StepState | undefined, kind: string, now: number): StepState | undefined {
   if (!s?.started || s.done || s.acting || plan[s.at]?.ends !== 'action' || s.yourTurn?.reason !== 'action') return
   return handToAgent(s, `fix ${kind}`, undefined, now)
+}
+
+// Ask the agent to fix it (the user's button): what blocks a started task that its
+// worker could fix, the block's exact reason; a failed step action, a step past its
+// time limit, a stalled or ended worker, red CI with no new push (stall: stallOf,
+// as the board reads it). Undefined: nothing for it (a question, a step of the
+// user's, a decision, a stop, work already handed to it).
+export function fixableBlock(t: Pick<Task, 'state' | 'waiting' | 'waitKind' | 'step' | 'stopped'>, stall?: Stall): string | undefined {
+  const s = t.step
+  if (t.stopped || !s?.started || s.done || s.acting || s.agent) return
+  if (s.yourTurn) return s.yourTurn.reason === 'action' ? s.yourTurn.error || s.yourTurn.badge : s.yourTurn.reason === 'timeout' ? s.yourTurn.badge : undefined
+  if (t.state === 'waiting' && !t.waitKind) return t.waiting || 'Waiting'
+  if (stall) return stallTurn(stall)
+}
+
+// What the worker is told: the block's reason, fix it or ask the user one question.
+export const fixAskText = (reason: string) => `The user asks you to fix what blocks this task: ${reason}
+
+Fix it yourself if you can (merge the base and solve the conflict, fix the CI, push), then say you are done: ${DONE_CMD}
+If it needs a decision or access only the user has, ask the user one clear question with choices.`
+
+// The step once the fix is asked: a failed action handed over (tried again once fixed,
+// back to the user if not, fixWatch); a step past its time limit gets its time again.
+export function fixAskedStep(plan: PlannedStep[], s: StepState, now: number): StepState {
+  const timeout = plan[s.at]?.timeout
+  return handFix(plan, s, 'block', now)
+    ?? (s.yourTurn?.reason === 'timeout' ? { ...s, yourTurn: undefined, deadline: timeout ? now + durationMs(timeout) : undefined } : s)
 }
 
 // How long the agent fixing a failed action may sit idle, its report not in,

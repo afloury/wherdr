@@ -6,4 +6,5 @@
 // pm/worker-start: Start the worker, a merge that waits on it (WHR-278).
 // pm/user-shot: a screenshot the user adds to a send-back (WHR-294).
 // pm/ask-coordinator: Ask the coordinator, a step it holds that waits on the user (WHR-300).
-export default ['GET pm/board', 'GET pm/handle', 'GET pm/agents', 'pm/step-user', 'pm/step-back', 'pm/report', 'pm/task-check', 'pm/review-restart', 'pm/worker-start', 'pm/user-shot', 'pm/ask-coordinator'] as string[]
+// pm/agent-fix: Ask the agent to fix it, a blocked task's worker told or started again (WHR-356).
+export default ['GET pm/board', 'GET pm/handle', 'GET pm/agents', 'pm/step-user', 'pm/step-back', 'pm/report', 'pm/task-check', 'pm/review-restart', 'pm/worker-start', 'pm/user-shot', 'pm/ask-coordinator', 'pm/agent-fix'] as string[]
