@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { useRouter } from '#app'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
@@ -9,6 +9,7 @@ import { agentOrder, herdrState, hiddenAgents } from '~/composables/useHerdr'
 import { coordinators, resumedCoordinators } from '~/composables/useCoordinators'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
+import { answerConfirm, confirmState } from '~/composables/useUi'
 import { pick } from '../helpers/select'
 
 const posts: { url: string, body: Record<string, unknown> }[] = []
@@ -17,6 +18,8 @@ const post = (url: string, reply: () => unknown) => registerEndpoint(url, { meth
 registerEndpoint('/api/pm/coordinators', () => views)
 post('/api/pm/coordinator-agent', () => ({}))
 post('/api/pm/coordinator-start', () => ({ terminal: 'host/t2' }))
+// As the server: the saved autopilot back (the same endpoint as CoordinatorAutopilot.test.ts).
+beforeAll(() => registerEndpoint('/api/pm/autopilot', { method: 'POST', handler: async (e) => { const body = await readBody(e); posts.push({ url: '/api/pm/autopilot', body }); return body.autopilot ? { autopilot: body.autopilot } : {} } }))
 herdrState.value = { ok: true, workspaces: [], panes: [{ id: 'w1:p1', coreAddress: 'host/t1', status: 'idle', agent: 'codex', workspace: 'w', tab: 't' } as Pane] }
 
 const view = (more: Partial<CoordinatorView> = {}): CoordinatorView => ({ project: 'CO', name: 'Company', agent: { program: 'claude' }, ...more })
@@ -24,11 +27,18 @@ let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
 const mount = async (c: CoordinatorView, open = false) => (w = await mountSuspended(CoordinatorPanel, { props: { c, open } }))
 afterEach(() => { w?.unmount(); w = null; posts.length = 0; coordinators.value = []; hiddenAgents.value = []; agentOrder.value = [] })
 
-it('says which agent answers, and changes the default in one gesture', async () => {
+it('says which agent answers; a new one is sent by Save, and Cancel takes it back', async () => {
   const b = await mount(view(), true)
   // No conversation yet: the button says which agent will answer.
   expect(b.find('[data-testid="coordinator-open"]').text()).toBe('Start with Claude')
+  const save = () => b.find('[data-testid="autopilot-save"]')
   await pick(b, 'coordinator-agent', 'codex')
+  expect(save().attributes('disabled')).toBeUndefined()
+  await b.find('[data-testid="autopilot-cancel"]').trigger('click')
+  expect(save().attributes('disabled')).toBeDefined()
+  await pick(b, 'coordinator-agent', 'codex')
+  expect(posts).toEqual([])
+  await save().trigger('submit')
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: 'CO', program: 'codex' } }]))
 })
 
@@ -38,6 +48,7 @@ it('Alfred: its agent picked in its window, and kept when no longer offered (sai
   const b = await mount(alfred())
   expect(b.text()).toContain('Alfred’s agent')
   expect(b.find('[data-testid="coordinator-autopilot"]').exists()).toBe(false) // Alfred has no autopilot
+  expect(await (b.vm as unknown as { leave: () => Promise<boolean> }).leave()).toBe(true) // its window closes
   await pick(b, 'coordinator-agent', 'codex')
   await vi.waitFor(() => expect(posts).toEqual([{ url: '/api/pm/coordinator-agent', body: { project: '_main', program: 'codex' } }]))
   hiddenAgents.value = ['claude']
@@ -64,6 +75,42 @@ it('header button: a clock, the autopilot\'s state, and a tap opens the autopilo
   await vi.waitFor(() => expect(document.querySelector('[data-testid="coordinator-autopilot"]')).not.toBeNull())
   expect(document.querySelector('[data-testid="autopilot-next-wake"]')?.textContent).toMatch(/^Next wake (23:30|11:30)/i)
   expect(document.querySelector('[data-testid="workflow-change"]')).toBeNull()
+})
+
+it('window: Settings and Activity tabs, a pinned Save enabled by a change, and closing with unsaved changes asks', async () => {
+  localStorage.removeItem('wherdr.autopilotTab')
+  w = await mountSuspended(CoordinatorButton, { attachTo: document.body, props: { c: view({ autopilot: { on: true, goal: 'Ship', events: [], perDay: null, atOnce: null } }) } })
+  await w.get('[data-testid="coordinator-button"]').trigger('click')
+  const $ = <T extends HTMLElement>(id: string) => document.querySelector<T>(`[data-testid="${id}"]`)!
+  await vi.waitFor(() => expect($('coordinator-autopilot')).not.toBeNull())
+  const shown = (id: string) => $(id).style.display !== 'none'
+  // Settings first: the agent and the goal; the switch and the timeline are in Activity.
+  expect([...document.querySelectorAll('[role="tab"]')].map(b => b.textContent!.trim())).toEqual(['Settings', 'Activity'])
+  expect([shown('autopilot-settings'), shown('autopilot-activity')]).toEqual([true, false])
+  expect($('autopilot-activity').contains($('autopilot-run-now'))).toBe(true)
+  expect($('autopilot-settings').contains($('coordinator-agent'))).toBe(true)
+  $('autopilot-tab-activity').click()
+  await vi.waitFor(() => expect(shown('autopilot-activity')).toBe(true))
+  expect(localStorage.getItem('wherdr.autopilotTab')).toBe('activity')
+  $('autopilot-tab-settings').click()
+  await vi.waitFor(() => expect(shown('autopilot-settings')).toBe(true))
+  expect($('autopilot-settings').querySelector('form')!.lastElementChild).toBe($('autopilot-bar')) // pinned: the scroll's last element
+  const save = $<HTMLButtonElement>('autopilot-save')
+  expect(save.disabled).toBe(true)
+  const goal = document.querySelector<HTMLTextAreaElement>('textarea#ap-goal-CO')!
+  goal.value = 'Ship 3'
+  goal.dispatchEvent(new Event('input'))
+  await vi.waitFor(() => expect(save.disabled).toBe(false))
+  // Closing asks; no keeps the window and the change.
+  document.querySelector<HTMLButtonElement>('.hw-sheet-close')!.click()
+  await vi.waitFor(() => expect(confirmState.open).toBe(true))
+  expect(confirmState.message).toBe('Discard the unsaved autopilot changes?')
+  answerConfirm(false)
+  await nextTick()
+  expect($('coordinator-autopilot')).not.toBeNull()
+  save.click()
+  await vi.waitFor(() => expect(posts.at(-1)).toEqual({ url: '/api/pm/autopilot', body: { project: 'CO', autopilot: { on: true, goal: 'Ship 3', every: '', at: '', events: [], perDay: null, atOnce: null } } }))
+  localStorage.removeItem('wherdr.autopilotTab')
 })
 
 it('with no default set, or its default unchecked in Settings › Agents, offers the user\'s first agent', async () => {

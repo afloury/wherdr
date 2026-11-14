@@ -17,6 +17,7 @@ const open = ref<string | null>(null)
 const names = reactive<Record<string, string>>({})
 
 async function load() {
+  error.value = ''
   try { set(await api<{ rows: PaceRow[] }>('/api/pacing')) }
   catch (e) { error.value = (e as Error).message }
 }
@@ -123,9 +124,9 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
 <template>
   <div class="settings-group pace-settings" data-testid="pace-settings">
     <h3>{{ t('Pace') }}</h3>
-    <p v-if="error" class="pace-error">{{ error }}</p>
-    <p v-if="!rows" class="muted settings-hint">{{ tl('Reading the quotas…', 'Lecture des quotas…') }}</p>
-    <div v-else class="settings-card pace-card">
+    <SettingsSkeleton v-if="!rows" :error="error" @retry="load" />
+    <p v-else-if="error" class="pace-error">{{ error }}</p>
+    <div v-if="rows" class="settings-card pace-card">
       <div v-for="r in rows" :key="r.account?.key ?? r.program" class="pace-row" data-testid="pace-row">
         <template v-if="r.account">
           <div class="pace-head">

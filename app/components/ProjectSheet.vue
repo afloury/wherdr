@@ -28,7 +28,12 @@ import { showHalo, waitForElement } from '~/utils/uiHalo'
 // projects: every project, for the other projects its coordinator may act on (ProjectReach).
 const props = defineProps<{ project: Project, tab: ProjectTab, templates: TemplateInfo[], review?: boolean, projects?: Project[] }>()
 const emit = defineEmits<{ tab: [tab: ProjectTab], close: [], changed: [] }>()
-const open = ref(true)
+const shown = ref(true)
+// Unsaved autopilot settings (CoordinatorAutopilot): asked before the sheet closes or the tab changes.
+const autopilot = ref<{ leave: () => Promise<boolean> }>()
+const keep = async () => !(props.tab === 'autopilot' && autopilot.value && !(await autopilot.value.leave()))
+const open = computed({ get: () => shown.value, set: async (v: boolean) => { if (v || (await keep())) shown.value = v } })
+const pickTab = async (k: ProjectTab) => { if (k !== props.tab && (await keep())) emit('tab', k) }
 const p = computed(() => props.project)
 
 const workflow = ref<Template | null>(null)
@@ -151,7 +156,7 @@ const menu = (): MenuItem[] => [
 async function remove() {
   if (!(await askConfirm(tl(`Remove ${p.value.name} from wherdr? Its folder, branches and tasks' worktrees stay on the machine.`), tl('Remove')))) return
   await run('rm', () => api('/api/pm/project-remove', { key: p.value.key }))
-  if (!error.value) open.value = false
+  if (!error.value) shown.value = false
 }
 </script>
 
@@ -163,7 +168,7 @@ async function remove() {
         <SpaceMenu :items="menu" :title="p.name" :label="tl(`Options of ${p.name}`)" />
       </div>
       <div class="segmented project-tabs" role="tablist" :style="{ '--segment-count': PROJECT_TABS.length }">
-        <button v-for="k in PROJECT_TABS" :id="`project-tab-${k}`" :key="k" type="button" role="tab" :class="{ on: tab === k }" :aria-selected="tab === k" :data-tab="k" @click="emit('tab', k)">
+        <button v-for="k in PROJECT_TABS" :id="`project-tab-${k}`" :key="k" type="button" role="tab" :class="{ on: tab === k }" :aria-selected="tab === k" :data-tab="k" @click="pickTab(k)">
           <span>{{ tl(TAB_LABEL[k]) }}</span>
           <span v-if="k === 'workflow' && coordinator?.proposal" class="card-state blocked project-tab-badge" :aria-label="tl('A change to review')" data-testid="workflow-badge"><i /></span>
         </button>
@@ -333,7 +338,7 @@ async function remove() {
         <ProjectAutomations v-else-if="tab === 'automations'" :project="p.key" :name="p.name" />
         <template v-else-if="tab === 'autopilot'">
           <PartHead part="autopilot" :project="p.key" class="pm-part" />
-          <CoordinatorAutopilot v-if="coordinator" data-ui-target="project.autopilot" :c="coordinator" />
+          <CoordinatorAutopilot v-if="coordinator" ref="autopilot" data-ui-target="project.autopilot" :c="coordinator" />
           <p v-else-if="coordinatorsLoaded" class="muted settings-hint">{{ tl('This project has no coordinator yet.') }}</p>
           <UButton to="/settings?section=pacing" color="neutral" variant="ghost" size="lg" icon="i-lucide-gauge">{{ tl('Pace of every account') }}</UButton>
         </template>

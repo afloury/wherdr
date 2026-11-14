@@ -12,6 +12,8 @@ const proposals = ref<AutomationProposal[]>([])
 // Each schedule's next firing, from the server (its time zone runs them).
 const nextAt = ref<Record<string, number>>({})
 const busy = ref('')
+// Until the first read: skeletons, not "No automation yet" (SettingsSkeleton).
+const loaded = ref(false)
 const error = ref('')
 const TIMELINE = 5
 const KIND: Record<ReturnType<typeof firingKind>, string> = { fired: 'Fired', waits: 'Waits for room', skipped: 'Skipped', failed: 'Failed' }
@@ -20,7 +22,8 @@ const result = (f: Firing) => [f.task, firingKind(f) === 'fired' ? '' : f.error]
 const when = (at: number) => new Date(at).toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 async function load() {
-  try { ({ automations: list.value, proposals: proposals.value, next: nextAt.value } = await api<{ automations: Automation[], proposals: AutomationProposal[], next: Record<string, number> }>(`/api/pm/automations?project=${encodeURIComponent(props.project)}`)) }
+  if (!loaded.value) error.value = '' // Try again; an action's error stays
+  try { ({ automations: list.value, proposals: proposals.value, next: nextAt.value } = await api<{ automations: Automation[], proposals: AutomationProposal[], next: Record<string, number> }>(`/api/pm/automations?project=${encodeURIComponent(props.project)}`)); loaded.value = true }
   catch (e) { error.value = (e as Error).message }
 }
 // Read again while open: a new proposal or a firing shows without a reload.
@@ -49,13 +52,14 @@ const ask = () => run('ask', async () => { if (coordinator.value) await openCoor
 
 <template>
   <section class="pa" :data-testid="`automations-${project}`">
-    <span class="mono-label pa-head">{{ name }} · {{ list.length }}</span>
+    <span class="mono-label pa-head">{{ name }}<template v-if="loaded"> · {{ list.length }}</template></span>
     <div class="pa-ask">
       <p class="muted">{{ tl('To add or change an automation, ask the project\'s coordinator (or Alfred).') }}</p>
       <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-message-square" :loading="busy === 'ask'" :disabled="!coordinator" data-testid="automation-ask" @click="ask">{{ coordinator?.main ? tl('Ask Alfred') : tl('Ask the coordinator') }}</UButton>
     </div>
     <AutomationProposalCard v-for="p in proposals" :key="p.id" :p="p" @answered="load" />
-    <ul v-if="list.length" class="pa-list">
+    <SettingsSkeleton v-if="!loaded" :rows="2" :error="error" @retry="load" />
+    <ul v-else-if="list.length" class="pa-list">
       <li v-for="a in list" :key="a.id" data-testid="automation">
         <div class="pa-row">
           <USwitch :model-value="a.on" color="success" size="lg" :disabled="!!busy" :aria-label="tl(`${a.name} on`)" data-testid="automation-on" @update:model-value="v => setOn(a, v)" />
@@ -81,7 +85,7 @@ const ask = () => run('ask', async () => { if (coordinator.value) await openCoor
       </li>
     </ul>
     <p v-else class="muted" data-testid="automations-empty">{{ tl('No automation yet.') }}</p>
-    <p v-if="error" class="form-error" role="alert">{{ error }}</p>
+    <p v-if="error && loaded" class="form-error" role="alert">{{ error }}</p>
   </section>
 </template>
 
