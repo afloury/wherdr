@@ -762,6 +762,8 @@ until you pick, it is *Follow machine tab* once machine groups exist, else *All
 projects*. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects. A done
 or archived task is never under Your turn.
+Until the board is first read, its columns show the shapes of cards, never
+empty columns counting 0.
 
 A card shows the task's title, its id (a badge in the project's color: a tap
 copies it, *Copied*, without opening the task), the machine it runs on when its

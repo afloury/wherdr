@@ -417,6 +417,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .stat { padding: 12px 12px 11px; min-width: 0; }
 .stat + .stat { border-left: 1px solid var(--line); }
 .stat b { display: block; font: 850 30px/1 var(--display); letter-spacing: -.04em; color: var(--text); }
+.stat .stat-skel { width: .8em; height: 1em; }
 .stat span {
   display: block; margin-top: 8px;
   font: 500 9.5px/1.2 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--muted);
@@ -3532,6 +3533,10 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 /* ------------------------------------------------------------ skeletons
    Shown only with nothing kept on this device, after 300 ms (useDelayedFlag): the
    shapes of what loads, at its size, square, static (no shimmer, no pulse). */
+/* A loading block (SettingsSkeleton, HomeSkeleton): muted, square, a gentle pulse, none with reduced motion. */
+.skel { display: block; background: var(--line-soft); animation: skel-pulse 1.6s ease-in-out infinite; }
+@keyframes skel-pulse { 50% { opacity: .5; } }
+@media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
 .chat-skel i { display: block; height: 11px; margin: 3px 0; background: var(--line-soft); }
 /* The conversation's: at the bottom, as the messages will be. */
 .chat-list.skeleton { flex: 1; justify-content: flex-end; }

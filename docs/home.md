@@ -49,6 +49,12 @@
   each card carries its machine's name. There is no section per machine. The list never scrolls
   sideways: long titles and badges are cut with an ellipsis, and its scrollbar stays thin, shown
   while the pointer is over the list.
+- **First load**: until the quotas, Alfred, the coordinators, the tasks to review and the task
+  agents have all been read once, the list shows the shapes of its sections (headings and rows at their real
+  size) and the counters show no number, then everything appears at once in its final order.
+  Later refreshes keep what is shown. A read that fails, or has not answered after 10 seconds,
+  shows *Part of the list did not load* and **Try again**, never the list without that section.
+  The list kept on this device shows alone only while the network is down.
 
 ### Alfred
 

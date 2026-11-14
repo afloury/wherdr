@@ -10,12 +10,13 @@ import type { ToHandle } from '#shared/pm/board'
 
 const all = ref<ToHandle[]>([])
 const tasks = computed(() => all.value.filter(x => projectOnBar(x.project)))
-const load = () => api<ToHandle[]>('/api/pm/handle').then((v) => { all.value = Array.isArray(v) ? v : [] }, () => {})
+const load = () => api<ToHandle[]>('/api/pm/handle').then((v) => { all.value = Array.isArray(v) ? v : []; markHomeLoad('handle', true) }, () => markHomeLoad('handle', false))
 let timer: ReturnType<typeof setInterval> | undefined
 // Read while the card is on screen: a hidden page waits for the next tick it is shown.
 onMounted(() => { load(); timer = setInterval(() => { if (!document.hidden) load() }, 15_000) })
 onBeforeUnmount(() => clearInterval(timer))
 watch(taskSheetTick, load) // an action in a task's sheet or the review sheet
+watch(homeRetryTick, () => { if (homeFirstLoad.handle !== 'ok') load() }) // the home list's Try again
 const show = (v: boolean) => { reviewOpen.value = v }
 </script>
 
