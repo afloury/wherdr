@@ -78,16 +78,21 @@ stops and the new one carries on from the same home folder, `alfred/` in
 wherdr's data folder. There, `AGENTS.md` (and `CLAUDE.md`, `GEMINI.md`,
 `QWEN.md`, which point to it) is wherdr's and rewritten at each start; `identity.md` (its name and tone) and `memory.md` (what it learns about
 you, cleaned up at each start) are its own. Give it another name and the row
-shows it as soon as its turn ends. Alfred reads and changes projects, coordinators and settings with
+shows it as soon as its turn ends. Its replies are headed with its name, and the message field
+says *Message to Alfred…*. Its start instructions, sent by wherdr, show as a collapsed *Start instructions
+sent by wherdr* line, never as your message nor as the conversation's title. Alfred reads and changes projects, coordinators and settings with
 [`wherdr alfred`](alfred.md): it shows you each
 change first and makes it only after your yes.
 
 With no project yet, Alfred's first message also offers to set up the first one
 with you: here, one question at a time, or in the setup window, which it can open
 for you (Settings › Projects › *Set up a project*). A user coming from wherdr v2 gets
-the offer to set up their v2 projects instead. Home's empty list says so too: *Set up
-a project with Alfred* opens Alfred's conversation with the setup asked of it, and
-*Open the setup window* opens the same window.
+the offer to set up their v2 projects instead. Alfred asks one question per message: with
+such an offer, it asks whether you want to give it another name only once the offer is answered.
+Home's empty list says so too: *Set up a project with Alfred* opens Alfred's conversation with the
+setup asked of it, and *Open the setup window* opens the same window. Coming from wherdr v2, it
+counts the v2 projects not set up yet instead (*3 projects from wherdr v2: set them up with Alfred.*),
+and *Set up with Alfred* asks Alfred to set them up.
 
 ### Coordinators
 

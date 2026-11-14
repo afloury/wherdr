@@ -41,7 +41,7 @@ export function loadCoordinators() {
 // Alfred, wherdr's assistant (GET /api/alfred, with projects on or off): its
 // name, the program the user chose (none before its first start), the one
 // running, its conversation. No model: each harness runs its own default.
-export interface AlfredView { name: string, program?: AlfredProgram, ran?: AlfredProgram, terminal?: string }
+export interface AlfredView { name: string, program?: AlfredProgram, ran?: AlfredProgram, terminal?: string, v2?: number } // v2: wherdr v2 projects not set up yet
 export const alfred = ref<AlfredView | null>(null)
 export const loadAlfred = () => api<AlfredView>('/api/alfred').then((v) => { alfred.value = v; markHomeLoad('alfred', true) }, () => markHomeLoad('alfred', false))
 export const alfredPane = computed(() => (alfred.value?.terminal ? herdrState.value?.panes.find(p => p.coreAddress === alfred.value!.terminal) : undefined))
@@ -111,6 +111,7 @@ export async function launchCoordinator(project: string, agent?: CoordinatorAgen
 // Hands a request to Alfred: its conversation (started with its agent, else
 // the first offered one), the request sent, then opened. The setup window and
 // Home's empty state ask it to set up projects this way.
+export const ALFRED_V2_PROMPT = 'Set up my wherdr v2 projects with me.'
 export const ALFRED_SETUP_PROMPT = 'Help me set up project management in wherdr, one question at a time: turn it on, add a project and start its coordinator, which then sets up how I work with me.'
 export async function askAlfred(text: string) {
   await loadAlfred()

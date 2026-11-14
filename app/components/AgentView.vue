@@ -125,7 +125,8 @@ onMounted(() => { if (!Object.keys(taskAgents.value).length) loadTaskAgents() })
 const badge = computed(() => paneBadge(pane.value))
 const headTitle = computed(() => (pane.value ? paneCoordinatorName(pane.value) || paneTaskTitle(pane.value, !badge.value) || desktopHeaderTitle(pane.value, workspace.value, ownTitle.value) : herdrState.value.ok ? '—' : ''))
 const subtitle = computed(() => {
-  const s = pane.value ? conversationSubtitle(pane.value, workspace.value) : ''
+  // Alfred's session title comes from its start message: never shown.
+  const s = pane.value && !isAlfredPane(pane.value) ? conversationSubtitle(pane.value, workspace.value) : ''
   return s && s !== headTitle.value ? s : ''
 })
 const command = computed(() => (pane.value?.command && pane.value.command !== headTitle.value && pane.value.command !== subtitle.value ? pane.value.command : ''))
