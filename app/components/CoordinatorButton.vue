@@ -6,9 +6,13 @@
 // workflow change is a card in the conversation (WorkflowChange).
 // Alfred has no autopilot: in its conversation the button is its Agent's, without a state.
 import type { CoordinatorView } from '#shared/pm/coordinator'
+import type CoordinatorPanel from '~/components/CoordinatorPanel.vue'
 
 const props = defineProps<{ c: CoordinatorView, open?: boolean }>()
 const sheet = ref(false)
+const panel = ref<InstanceType<typeof CoordinatorPanel>>()
+// Closing with unsaved autopilot settings asks first; kept open on no.
+const sheetOpen = computed({ get: () => sheet.value, set: async (v: boolean) => { if (v || (await (panel.value?.leave() ?? true))) sheet.value = v } })
 const on = computed(() => !!props.c.autopilot?.on)
 const state = computed(() => (!on.value ? 'inactive' : props.c.asleep ? 'idle' : 'done'))
 const stateText = computed(() => (!on.value ? tl('Off', 'Arrêté') : props.c.asleep ? tl('Asleep', 'Endormi') : tl('On', 'Actif')))
@@ -25,8 +29,8 @@ const title = computed(() => (props.c.main ? tl(`${coordinatorName(props.c)}’s
     <span class="coord-btn-text">{{ word }}</span>
     <span v-if="pending" class="mono-label coord-btn-n" data-testid="coordinator-pending">{{ pending }}</span>
   </UButton>
-  <AppSheet v-model:open="sheet" :title="title" tall>
-    <CoordinatorPanel :c="c" :open="open" />
+  <AppSheet v-model:open="sheetOpen" :title="title" tall>
+    <CoordinatorPanel ref="panel" :c="c" :open="open" />
   </AppSheet>
 </template>
 

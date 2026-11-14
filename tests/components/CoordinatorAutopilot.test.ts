@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { readBody, setResponseStatus } from 'h3'
 import CoordinatorAutopilot from '~/components/CoordinatorAutopilot.vue'
@@ -8,12 +8,13 @@ import type { Wake } from '#shared/pm/wakes'
 const posts: Record<string, unknown>[] = []
 registerEndpoint('/api/pm/coordinators', () => [])
 let refuse = ''
-registerEndpoint('/api/pm/autopilot', { method: 'POST', handler: async (e) => {
+// Registered when this file runs: another file's mock of the same URL (DecisionsView) is not used.
+beforeAll(() => registerEndpoint('/api/pm/autopilot', { method: 'POST', handler: async (e) => {
   const body = await readBody(e)
   posts.push(body)
   if (refuse) { setResponseStatus(e, 400); return { code: 'bad_input', error: refuse } }
   return body.autopilot ? { autopilot: body.autopilot } : {}
-} })
+} }))
 
 const autopilot = { on: false, goal: 'Ship 2.1', every: '2h', events: ['done', 'stuck'], perDay: 10, atOnce: 2 } as const
 const wake = (id: string, more: Partial<Wake>): Wake => ({ id, coordinator: 'CO', reasons: ['CO-1 (Fix it): done', 'CO-2 (Add it): stuck'], createdAt: Date.UTC(2026, 10, 5, 4, 0), tries: 1, ...more })
@@ -161,6 +162,8 @@ it('keeps unsaved edits across reloads, takes changes saved elsewhere, and shows
   expect(b.find('[data-testid="autopilot-unsaved"]').exists()).toBe(true)
   refuse = ''
   await b.find('input#ap-every-CO').setValue('1h')
+  // Save is off while the refused save still loads.
+  await vi.waitFor(() => expect(b.find('[data-testid="autopilot-save"]').attributes('disabled')).toBeUndefined(), { timeout: 5000 })
   await b.find('[data-testid="autopilot-save"]').trigger('submit')
   // A slow CI runner can take over a second to save.
   await vi.waitFor(() => expect(b.find('[data-testid="autopilot-saved"]').exists()).toBe(true), { timeout: 5000 })

@@ -3,12 +3,20 @@
 // (nothing to do: its scheduled wakes are skipped), today's counters against
 // the limits, the day's timeline (AutopilotTimeline) and "run now", then its
 // settings, saved by the user only: goal, when it wakes, limits, hours.
-// In the coordinator window and the project sheet's Autopilot tab.
+// In the coordinator window and the project sheet's Autopilot tab. Two tabs:
+// Settings, first and the default, whose Save bar is pinned at the bottom of the
+// scroll, and Activity (switch, run now, timeline, wake log). The tab is
+// remembered per viewer; a link to `project.autopilot` opens Settings. Leaving Settings, or closing the window
+// (`leave`, CoordinatorButton), with unsaved changes asks once.
+// Slots: `activity` and `settings`, the coordinator window's parts at the top of each tab.
+// `withAgent` (the coordinator window): the answering agent heads Settings, saved
+// and discarded with the rest.
 import { AUTOPILOT_EVENTS, DEFAULT_AUTOPILOT, LOOK_PER_DAY, MAX_PER_DAY, oldDefaults, type Autopilot, type AutopilotEvent } from '#shared/pm/autopilot'
-import type { CoordinatorView } from '#shared/pm/coordinator'
+import type { CoordinatorProgram, CoordinatorView } from '#shared/pm/coordinator'
 import { HEALTH_EVERY } from '#shared/pm/health'
+import { uiTarget } from '#shared/uiTargets'
 
-const props = defineProps<{ c: CoordinatorView }>()
+const props = defineProps<{ c: CoordinatorView, withAgent?: boolean }>()
 const ap = computed<Autopilot>(() => props.c.autopilot ?? DEFAULT_AUTOPILOT)
 const busy = ref(false)
 const error = ref('')
@@ -33,12 +41,38 @@ watch(() => JSON.stringify(formOf(ap.value)), () => {
   for (const k of KEYS) if (!edited(k)) (form as Record<string, unknown>)[k] = next[k]
   base.value = next
 })
-const dirty = computed(() => KEYS.some(edited))
+// The answering agent: picked here, sent by Save (its own endpoint).
+const savedProgram = computed<CoordinatorProgram | undefined>(() => coordinatorAgent(props.c)?.program)
+const program = ref<CoordinatorProgram | undefined>(savedProgram.value)
+const agentEdited = computed(() => !!props.withAgent && program.value !== savedProgram.value)
+watch(savedProgram, (p, old) => { if (program.value === old) program.value = p })
+const agentItems = computed(() => offerCoordinators(undefined, props.c.project).map(p => ({ label: kindLabel(p), value: p })))
+const dirty = computed(() => agentEdited.value || KEYS.some(edited))
 const saved = ref(false)
 watch(dirty, d => { if (d) saved.value = false })
 
 const EVENT_LABEL: Record<AutopilotEvent, [string, string]> = {
   added: ['Task added', 'Tâche ajoutée'], done: ['Task done', 'Tâche finie'], stuck: ['Task stuck', 'Tâche bloquée'], ready: ['Ready for you', 'Prête pour toi'],
+}
+type Tab = 'activity' | 'settings'
+const TABS: [Tab, string][] = [['settings', 'Settings'], ['activity', 'Activity']]
+const TAB_KEY = 'wherdr.autopilotTab'
+const storedTab = (): Tab => { try { return localStorage.getItem(TAB_KEY) === 'activity' ? 'activity' : 'settings' } catch { return 'settings' } }
+const tab = ref<Tab>(uiTarget(useRoute().query.target) === 'project.autopilot' ? 'settings' : storedTab())
+// Back to the saved values.
+const discard = () => { Object.assign(form, { ...base.value, events: [...base.value.events] }); program.value = savedProgram.value; saveError.value = '' }
+// Unsaved changes: asks once whether to drop them; false keeps them (and the tab, the window).
+async function leave() {
+  if (!dirty.value) return true
+  if (!(await askConfirm(tl('Discard the unsaved autopilot changes?'), tl('Discard')))) return false
+  discard()
+  return true
+}
+defineExpose({ leave })
+async function pickTab(k: Tab) {
+  if (k === tab.value || (tab.value === 'settings' && !(await leave()))) return
+  tab.value = k
+  try { localStorage.setItem(TAB_KEY, k) } catch { /* Storage may be disabled: kept for this visit. */ }
 }
 const toggleEvent = (e: AutopilotEvent) => { form.events = form.events.includes(e) ? form.events.filter(x => x !== e) : [...form.events, e] }
 
@@ -59,6 +93,8 @@ async function save() {
   saveError.value = ''
   await act(async () => {
     const { lookForWork: _, lookPerDay: __, keepBusy: ___, health: ____, hours: _____, ...kept } = ap.value
+    if (agentEdited.value) await api('/api/pm/coordinator-agent', { project: props.c.project, program: program.value })
+    if (!KEYS.some(edited)) { saved.value = true; return }
     const hours = String(form.from).trim() !== '' && String(form.to).trim() !== '' ? { hours: { from: Number(form.from), to: Number(form.to) } } : {}
     try {
       const r = await api<{ autopilot: Autopilot }>('/api/pm/autopilot', {
@@ -96,7 +132,16 @@ const counters = computed(() => props.c.limits
 </script>
 
 <template>
-  <section class="ap" data-testid="coordinator-autopilot">
+  <section class="ap" :data-tab="tab" data-testid="coordinator-autopilot">
+    <div class="segmented ap-tabs" role="tablist" :style="{ '--segment-count': TABS.length }">
+      <button v-for="[k, label] in TABS" :id="`ap-tab-${k}-${c.project}`" :key="k" type="button" role="tab" :class="{ on: tab === k }" :aria-selected="tab === k" :data-testid="`autopilot-tab-${k}`" @click="pickTab(k)">
+        <span>{{ tl(label) }}</span>
+      </button>
+    </div>
+    <p v-if="error" class="error" role="alert">{{ error }}</p>
+
+    <div v-show="tab === 'activity'" class="ap-panel" role="tabpanel" :aria-labelledby="`ap-tab-activity-${c.project}`" data-testid="autopilot-activity">
+    <slot name="activity" />
     <div class="ap-head">
       <USwitch :model-value="ap.on" color="success" size="lg" :disabled="busy" :aria-label="tl('Autopilot', 'Autopilote')" data-testid="autopilot-on" @update:model-value="setOn" />
       <span class="mono-label" data-testid="autopilot-state" :data-asleep="ap.on && c.asleep ? '' : undefined">{{ tl('Autopilot', 'Autopilote') }} · {{ stateText }}</span>
@@ -106,8 +151,15 @@ const counters = computed(() => props.c.limits
     <p v-if="!c.terminal" class="muted">{{ tl('Start the coordinator to wake it.', 'Lance le coordinateur pour le réveiller.') }}</p>
     <p v-else-if="sent" class="muted" role="status">{{ tl('Queued: it goes as soon as the coordinator is idle.', 'En file : il part dès que le coordinateur est inactif.') }}</p>
     <AutopilotTimeline :c="c" />
+    </div>
 
+    <div v-show="tab === 'settings'" class="ap-panel" role="tabpanel" :aria-labelledby="`ap-tab-settings-${c.project}`" data-testid="autopilot-settings">
+    <slot name="settings" />
     <form class="ap-form" @submit.prevent="save()">
+      <div v-if="withAgent" class="ap-agent">
+        <label class="field-label" :for="`ap-agent-${c.project}`">{{ tl('Answering agent') }}</label>
+        <USelect :id="`ap-agent-${c.project}`" v-model="program" :items="agentItems" size="lg" class="w-full" data-testid="coordinator-agent" />
+      </div>
       <fieldset class="ap-group">
         <legend class="mono-label">{{ tl('Goal', 'Objectif') }}</legend>
         <UTextarea :id="`ap-goal-${c.project}`" v-model="form.goal" :rows="2" autoresize :maxrows="6" size="xl" class="w-full" :maxlength="2000" :aria-label="tl('Goal')" data-testid="autopilot-goal"
@@ -192,30 +244,37 @@ const counters = computed(() => props.c.limits
         <p v-if="fieldError('from')" class="error" role="alert" data-testid="autopilot-error-hours">{{ fieldError('from') }}</p>
       </fieldset>
 
-      <div class="ap-actions">
-        <UButton type="submit" color="primary" size="lg" :loading="busy" data-testid="autopilot-save">{{ t('Save') }}</UButton>
-        <span v-if="dirty" class="mono-label ap-unsaved" data-testid="autopilot-unsaved">{{ tl('Unsaved changes', 'Modifications non enregistrées') }}</span>
-        <span v-else-if="saved" class="mono-label ap-saved" role="status" data-testid="autopilot-saved">{{ tl('Saved', 'Enregistré') }}</span>
+      <div class="ap-bar" data-testid="autopilot-bar">
+        <span v-if="dirty" class="mono-label ap-unsaved" data-testid="autopilot-unsaved">{{ tl('Unsaved changes') }}</span>
+        <span v-else-if="saved" class="mono-label ap-saved" role="status" data-testid="autopilot-saved">{{ tl('Saved') }}</span>
+        <span v-else class="mono-label">{{ tl('No changes') }}</span>
+        <UButton type="button" color="neutral" variant="outline" size="lg" :disabled="!dirty || busy" data-testid="autopilot-cancel" @click="discard">{{ tl('Cancel') }}</UButton>
+        <UButton type="submit" color="primary" size="lg" :loading="busy" :disabled="!dirty" data-testid="autopilot-save">{{ t('Save') }}</UButton>
       </div>
     </form>
-    <p v-if="error" class="error" role="alert">{{ error }}</p>
+    </div>
   </section>
 </template>
 
 <style scoped>
-.ap { display: grid; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.ap, .ap-panel { display: grid; gap: 8px; min-width: 0; }
+.ap { gap: 12px; }
 .ap p { margin: 0; overflow-wrap: anywhere; }
 .ap-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .ap-head > .mono-label:not(.ap-count) { color: var(--text); }
 .ap-count { flex: 1; color: var(--muted); white-space: nowrap; }
 .ap-look-note { align-self: end; }
-.ap-actions .ap-unsaved { color: var(--ochre); }
-.ap-actions .ap-saved { color: var(--green); }
-.ap-form { display: grid; gap: 12px; padding-top: 8px; }
+.ap-agent { display: grid; gap: 4px; min-width: 0; max-width: 420px; }
+/* Pinned at the bottom of the sheet's scroll, its last element: it carries the
+   sheet's end padding (main.css drops the body's in the coordinator window). */
+.ap-bar { position: sticky; bottom: 0; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 0 var(--sheet-end, 12px); background: var(--sheet-bg, var(--bg-2)); border-top: 1px solid var(--line-soft); }
+.ap-bar .mono-label { flex: 1 1 120px; min-width: 0; color: var(--muted); }
+.ap-bar .ap-unsaved { color: var(--ochre); }
+.ap-bar .ap-saved { color: var(--green); }
+.ap-form { display: grid; gap: 12px; }
 .ap-group { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 10px 0 0; border: 0; border-top: 1px solid var(--line); }
 .ap-group > legend { padding: 0 8px 0 0; color: var(--text); }
 .ap-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 @media (min-width: 640px) { .ap-grid.three { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-.ap-events, .ap-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.ap-actions .mono-label { flex: 1; color: var(--muted); }
+.ap-events { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 </style>
