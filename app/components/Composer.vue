@@ -15,6 +15,7 @@ import { viaPrompt } from '#shared/sendRoute'
 import type { AttachKind } from '#shared/attachments'
 import { refusalText, sortForAgent } from '~/utils/fileDrop'
 import { uploadPhoto } from '~/utils/photoUpload'
+import { keepPreview } from '~/utils/sentPreviews'
 import { lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
 import { isLongPaste, messageBody } from '#shared/pastedText'
 import { rememberPastes } from '~/utils/sentPastes'
@@ -260,7 +261,7 @@ async function submit() {
   if (free < 0 && viaPrompt(p) && !isSlashCommand(msg)) {
     rememberSent(typed)
     text.value = ''
-    clearAttachments()
+    clearAttachments(true)
     rememberPastes(pastes)
     haptic()
     emit('sent', null)
@@ -288,7 +289,7 @@ async function submit() {
       if (!(await choose(props.paneId, free, prompt.options[free]!.label, prompt.identity, { text: msg, question: prompt.question }))) return giveBack()
     } else queued = await sendMessage(p, props.paneId, msg)
     rememberSent(typed)
-    for (const a of atts) if (a.url) URL.revokeObjectURL(a.url)
+    for (const a of atts) releaseAtt(a, true)
     haptic()
     emit('sent', queued)
     if (!isSlashCommand(msg)) answered(p)
@@ -382,8 +383,13 @@ function stop() {
 onBeforeUnmount(() => clearTimeout(escTimer))
 
 // ------------------------------------------------------------ photos
-function clearAttachments() {
-  for (const a of attachments.value) if (a.url) URL.revokeObjectURL(a.url)
+// `sent`: a photo's local preview goes on to its bubble (utils/sentPreviews.ts).
+function releaseAtt(a: Att, sent = false) {
+  if (sent && a.name && a.url.startsWith('blob:')) keepPreview(a.name, a.url)
+  else if (a.url) URL.revokeObjectURL(a.url)
+}
+function clearAttachments(sent = false) {
+  for (const a of attachments.value) releaseAtt(a, sent)
   attachments.value = []
 }
 // Large preview (same viewer as the conversation), including while
