@@ -53,20 +53,27 @@ const AFTER_MERGE = `a=$(git config --get wherdr.afterMerge) && { sh -c "$a" >/d
 // The files that change the interface, at any depth (app/components, pages…).
 const UI_FILES = ['components', 'assets', 'pages', 'layouts'].map(d => `':(glob)**/${d}/**'`).join(' ')
 
-// A file's text without its comments and blank lines, spaces collapsed, for
-// the types whose comments the interface never shows; others as they are.
-// Without perl, as they are too: a comment-only change then counts as a change.
-const STRIP = `strip() { case "$1" in
-  *.css) r='s{/\\*.*?\\*/}{}gs;' ;;
-  *.scss|*.less|*.js|*.mjs|*.cjs|*.ts|*.mts|*.cts|*.jsx|*.tsx) r='s{/\\*.*?\\*/}{}gs; s{(^|\\s)//.*$}{$1}gm;' ;;
-  *.vue) r='s{<!--.*?-->}{}gs; s{/\\*.*?\\*/}{}gs; s{(^|\\s)//.*$}{$1}gm;' ;;
-  *.html|*.htm|*.md) r='s{<!--.*?-->}{}gs;' ;;
-  *) cat; return ;; esac
+// A file's text without its comments, for the types whose comments the
+// interface never shows; others as they are. Strings (and Markdown code) are
+// kept whole, and so is every space: only a comment goes, with its own line
+// when it had one. Without perl, as they are: a comment then counts as a change.
+// No single quote in it (\x27): it goes into the script between single quotes.
+const STRIP_PL = String.raw`my $m = shift; local $/; my $t = <STDIN>; $t = "" unless defined $t; my $Z = "\0";
+my $S = qr{"(?:\\.|[^"\\\n])*"|\x27(?:\\.|[^\x27\\\n])*\x27|\x60(?:\\.|[^\x60\\])*\x60};
+sub code { my ($s, $line) = @_; my $c = $line ? qr{/\*.*?\*/|(?<![:\w\\])//[^\n]*}s : qr{/\*.*?\*/}s;
+  $s =~ s{($S)|[ \t]*(?<!\\)(?:$c)}{defined $1 ? $1 : $Z}gse; return $s }
+sub block { my ($o, $in, $c) = $_[0] =~ m{^(<[^>]*>)(.*)(</\w+>)$}s; return $o . code($in, $o =~ m{^<script|lang=["\x27]?(?:scss|less)}i ? 1 : 0) . $c }
+if ($m eq "css") { $t = code($t, 0) } elsif ($m eq "js") { $t = code($t, 1) }
+elsif ($m eq "html") { $t =~ s{(<(script|style)\b[^>]*>.*?</\2>)|[ \t]*<!--.*?-->}{defined $1 ? block($1) : $Z}gsei }
+elsif ($m eq "md") { $t =~ s{(\x60\x60\x60.*?\x60\x60\x60|\x60[^\x60\n]*\x60)|[ \t]*<!--.*?-->}{defined $1 ? $1 : $Z}gse }
+$t =~ s{^[ \t]*$Z[$Z \t]*\n}{}gm; $t =~ s{$Z}{}g; print $t;`
+const STRIP = `P='${STRIP_PL}'
+strip() { case "$1" in *.css) k=css ;; *.scss|*.less|*.js|*.mjs|*.cjs|*.ts|*.mts|*.cts|*.jsx|*.tsx) k=js ;; *.vue|*.html|*.htm) k=html ;; *.md) k=md ;; *) cat; return ;; esac
   command -v perl >/dev/null 2>&1 || { cat; return; }
-  perl -0777 -pe "$r"' s{[ \\t]+}{ }g; s{^ | $}{}gm; s{\\n+}{\\n}g; s{^\\n}{};'; }`
+  perl -e "$P" "$k"; }`
 
 // A script: is the task's own change (in `files`) the same at commits $2 and
-// $3, base $1? "same"; "comments" when only comments and whitespace moved;
+// $3, base $1? "same"; "comments" when only comments moved (STRIP);
 // else the files whose change moved, then "changed".
 const ownChange = (files: string) => `${IN} git fetch -q origin "$1" 2>/dev/null; b="origin/$1"; _b=$(mktemp) && _c=$(mktemp) || exit 1; trap 'rm -f "$_e" "$_b" "$_c"' EXIT
 for c in "$2" "$3"; do git cat-file -e "$c^{commit}" 2>/dev/null || git fetch -q origin "$c" 2>/dev/null; done

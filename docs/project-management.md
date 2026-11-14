@@ -442,7 +442,7 @@ A review round after a send-back reviews only the commits since the last round
 (with that round's findings), not the whole change again. Before a merge, new
 commits since the review go back to a short re-review of those commits only;
 commits that only merge the base, the task's own change unchanged, and
-changes to comments and whitespace only are not reviewed again (the same rule
+changes to comments only are not reviewed again (the same rule
 as for your approval; a comment-only change is said in the log).
 
 ### Guards
@@ -1142,15 +1142,20 @@ each said in one line of the task's log at the merge (*approval kept:
 comment-only change*, *approval kept: base merge, same interface*, *approval
 kept: no interface file changed*):
 
-- changes to comments and whitespace only, in CSS, SCSS, Less, JavaScript,
-  TypeScript, Vue, HTML and Markdown files (compared with comments, blank lines
-  and extra spaces left out);
+- changes to comments only, in CSS, SCSS, Less, JavaScript, TypeScript, Vue,
+  HTML and Markdown files (compared with comments left out; text in strings,
+  Markdown code and every space still count);
 - what a merge of the base brought, a conflict solved included, as long as the
   task's own interface change is the same as the one you approved;
 - a fix outside the interface files.
 
 When the approval is dropped, the log says why: which interface files changed,
-between which commits, or new screenshots.
+between which commits, or new screenshots. wherdr then asks the task's agent
+why (started again if it was released): it uploads new screenshots of the
+change with one line, *Back to review because: …*, what changed on screen and
+why. Tasks to review and the task sheet's To do show it in a banner on top,
+the other task it names as a link, above the new screenshots; until the agent
+answers, the banner says what wherdr saw (the files and commits).
 
 It also comes back when wherdr truly cannot go on: a conflict its worker could
 not solve, a merge refused by a guard or by GitHub.

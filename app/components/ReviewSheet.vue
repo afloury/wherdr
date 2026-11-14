@@ -165,6 +165,7 @@ function onKey(e: KeyboardEvent) {
         </header>
         <div class="review-scroll">
         <template v-if="approves">
+          <LookAgainBanner v-if="card.state?.lookAgain" :look="card.state.lookAgain" />
           <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="answer()">
             <TaskShots v-if="shots.length && shotStep" :task="card.id" :shots="shots" :mode="shotMode(shotStep)" />
           </TaskTldr>

@@ -241,14 +241,16 @@ describe('on a real repo', () => {
     const own = async (to: string) => (await localSh(SCRIPT.ownChanged, [wt, 'dev', approved, to])).out
     expect(await own(git(wt, 'rev-parse', 'HEAD~2'))).toBe('same')
     expect(await own(git(wt, 'rev-parse', 'HEAD~1'))).toBe('server/x.ts\nchanged')
-    // Comments and blank lines only, in CSS, TS and Vue: comments; a real line among them: changed.
+    // Comments only, in CSS, TS and Vue: comments; a real line among them: changed.
     git(wt, 'reset', '-q', '--hard', 'HEAD~2')
-    const styled = put(wt, 'app/assets/main.css', '/* a */\n.a { color: red; }\n') && put(wt, 'app/components/B.vue', '<template>\n  <p>b</p>\n</template>\n<script setup lang="ts">\nconst n = 1 // one\n</script>\n') && put(wt, 'app/components/c.ts', '/** c */\nexport const c = 1\n')
+    const styled = put(wt, 'app/assets/main.css', '/* a */\n.a { color: red; }\n') && put(wt, 'app/components/B.vue', '<template>\n  <p>b</p>\n</template>\n<script setup lang="ts">\nconst n = 1 // one\n</script>\n') && put(wt, 'app/components/c.ts', '/** c */\nexport const c = "/* old */"\n')
     const ui2 = async (to: string) => (await localSh(SCRIPT.uiChanged, [wt, 'dev', styled, to])).out
-    put(wt, 'app/assets/main.css', '/* a,\n   longer */\n\n.a {  color: red; }\n')
+    put(wt, 'app/assets/main.css', '/* a,\n   longer */\n.a { color: red; } /* why */\n')
     put(wt, 'app/components/B.vue', '<template>\n  <!-- why -->\n  <p>b</p>\n</template>\n<script setup lang="ts">\nconst n = 1 // one, said better\n</script>\n')
-    expect(await ui2(put(wt, 'app/components/c.ts', '/**\n * c, said better\n */\nexport const c = 1\n'))).toBe('comments')
+    expect(await ui2(put(wt, 'app/components/c.ts', '/**\n * c, said better\n */\nexport const c = "/* old */"\n'))).toBe('comments')
     expect(await ui2(put(wt, 'app/assets/main.css', '/* a */\n.a { color: blue; }\n'))).toBe('app/assets/main.css\nchanged')
+    // Text the user sees is never a comment: in a string, or spaces in the markup.
+    expect(await ui2(put(wt, 'app/components/c.ts', '/** c */\nexport const c = "/* new */"\n'))).toBe('app/assets/main.css\napp/components/c.ts\nchanged')
   })
 
   it('lands a task on dev, refuses main, sends a conflict back and verifies the merge', async () => {
