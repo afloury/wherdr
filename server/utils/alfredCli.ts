@@ -14,7 +14,8 @@ import { keyClash, projectOf as findProject, shownKey } from '../../shared/pm/pr
 import { HerdrError } from './herdr'
 import { alfredTokenOk, appendCoordinatorMemory, coordinatorsView, noteTurn, startCoordinator, v2Projects, type CoordinatorUrls } from './pmCoordinator'
 import type { V2Candidate } from './v2Board'
-import { sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
+import type { CoreAdminDeps } from './coreCreate'
+import { resendFirst } from './coordinatorFirst'
 import { lastWords } from './pmRead'
 import type { FolderCheck, PmStore } from './pmStore'
 import { readSettings } from './settings'
@@ -156,14 +157,18 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
           catch (e) { outcome.push(`${c.key}: not added: ${(e as Error).message}`); continue }
           if (!cmd.start) { outcome.push(`${c.key}: added`); continue }
           // No workflow needed: the minimal default; its first reply proposes one (startCoordinator).
-          try { await startCoordinator(deps, c.key, await projectAgent(c.key), deps.urls); outcome.push(`${c.key}: added, coordinator started`) }
+          try { await startCoordinator(deps, c.key, await projectAgent(c.key), deps.urls); outcome.push(`${c.key}: added, coordinator started (its first message is typed once it is ready)`) }
           catch (e) { outcome.push(`${c.key}: added; coordinator not started: ${(e as Error).message}`) }
         }
         return { outcome }
       })
     }
     case 'machines': return { machines: machines.map(m => ({ key: m.key, label: m.label, local: m.local, status: m.status })) }
-    case 'coordinators': return { coordinators: await Promise.all((await coordinatorsView(store)).map(async c => ({ project: c.project, name: c.name, agent: c.main ? c.agent?.program : (await projectAgent(c.project)).program, ...runState(c.terminal) }))) }
+    case 'coordinators': return { coordinators: await Promise.all((await coordinatorsView(store)).map(async c => ({ project: c.project, name: c.name, agent: c.main ? c.agent?.program : (await projectAgent(c.project)).program, ...runState(c.terminal), ...(c.undelivered ? { firstMessage: `not delivered: ${c.undelivered.why}; tell the user, and send it again with wherdr alfred coordinator resend ${c.project}` } : {}) }))) }
+    case 'coordinator resend': {
+      const k = findProject(projects, cmd.key)?.key ?? cmd.key
+      return { ...await resendFirst(deps, k, async () => startCoordinator(deps, k, await projectAgent(k), deps.urls)), next: `wherdr alfred coordinators says whether it got it` }
+    }
     case 'coordinator open': {
       const c = (await coordinatorsView(store)).find(x => x.project === (findProject(projects, cmd.key)?.key ?? cmd.key))
       const pane = c?.terminal ? deps.panes().find(p => p.coreAddress === c.terminal) : undefined
@@ -249,13 +254,13 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       const p = projectOf(cmd.key)
       const pane = await coordinatorPane(p.key)
       const started = !pane
-      const terminal = pane?.coreAddress ?? (await startCoordinator(deps, p.key, await projectAgent(p.key), deps.urls)).terminal
+      const text = `From ${ALFRED}: ${cmd.text}`
+      // Not running: started with the message, typed once it is ready (coordinatorFirst.ts).
+      const terminal = pane?.coreAddress ?? (await startCoordinator(deps, p.key, await projectAgent(p.key), deps.urls, [text])).terminal
       // The coordinator's turn is the user's when Alfred relays the user's message; a wake's otherwise.
       const turn = await alfredTurn()
       await noteTurn(store, p.key, turn?.kind === 'user' ? 'user' : 'wake', turn?.said)
-      const text = `From ${ALFRED}: ${cmd.text}`
-      if (started) void sendFirstMessage(deps, terminal, text).then(r => (r === 'dialog' || r === 'installing' ? sendAfterDialog(deps, terminal, text) : r)).catch(() => {})
-      else await deps.call('terminal.send', { terminal, text }, 30000)
+      if (!started) await deps.call('terminal.send', { terminal, text }, 30000)
       await store.logProject(p.key, { by: ALFRED, text: `told the coordinator: ${cmd.text.slice(0, 300)}`, ...(turn?.said ? { said: turn.said } : {}) })
       return { told: p.key, ...(started ? { started: `its coordinator was not running: started on ${machineName(p.machine)}, the message goes once it is ready` } : {}), next: `Read its answer later with wherdr alfred last ${p.key}` }
     }
