@@ -22,10 +22,6 @@ export function noteTab(tabId: string) {
   const open = herdrState.value.ok ? herdrState.value.workspaces.map(w => w.id) : undefined
   saveMemory(rememberTab(tabMemory.value, e.tab.workspace, tabId, open))
 }
-// Tab just created (not yet in Herdr's state): remembered right away.
-export function rememberNewTab(workspaceId: string, tabId: string) {
-  saveMemory(rememberTab(tabMemory.value, workspaceId, tabId))
-}
 
 // Panes just closed from the app, hidden until Herdr's state
 // removes them (a tab whose panes are all gone disappears with them):
@@ -69,8 +65,7 @@ export function openTab(tabId: string) {
   return navigateTo(tabTarget(tabId))
 }
 // Open a space from the list: its last tab, otherwise `preferred` (the
-// card's representative tab: a coordinator's), otherwise that of its most
-// urgent pane.
+// card's representative tab), otherwise that of its most urgent pane.
 export function openSpace(workspaceId: string, preferred?: string) {
   const tab = spaceTab(spaceTabs(workspaceId), tabMemory.value, workspaceId, preferred)
   if (tab) return openTab(tab)
