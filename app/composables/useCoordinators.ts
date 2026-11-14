@@ -5,10 +5,15 @@ import { MAIN, sameAgent, type CoordinatorAgent, type CoordinatorView } from '#s
 import type { AlfredProgram } from '#shared/pm/alfred'
 import { projectCoordinatorName } from '#shared/pm/project'
 import type { Pane } from '#shared/types'
+import { readKeys } from '#shared/pm/coordinatorOrder'
+import { syncedRef } from './useSyncedSettings'
 
 export const coordinators = ref<CoordinatorView[]>([])
 // The projects' own coordinators: Alfred (the main one) has its own row.
 export const projectCoordinators = computed(() => coordinators.value.filter(c => !c.main))
+// The Coordinators section's order and Hidden group, on every device.
+export const coordinatorOrder = syncedRef<string[]>('coordinatorOrder', readKeys, v => (v.length ? JSON.stringify(v) : null), { deep: true })
+export const coordinatorsHidden = syncedRef<string[]>('coordinatorsHidden', readKeys, v => (v.length ? JSON.stringify(v) : null), { deep: true })
 let loading: Promise<void> | null = null
 // Kept conversations of another agent the user chose to resume: no warning
 // any more, also after a reload (this browser only).
