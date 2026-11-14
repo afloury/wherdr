@@ -207,7 +207,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
       result = { ok: true, ...(result.commit ? { commit: result.commit } : {}), note: `verify-merged disagreed: ${(result.error ?? 'no answer').replace(/^verify-merged: /, '')}` }
     const evidence = { ...(result.link ? { link: result.link } : {}), ...(result.commit ? { commit: result.commit } : {}), ...(result.report ? { report: result.report } : {}) }
     const catchUp = result.catchUp && result.commit ? { catchUp: { base: result.catchUp, head: result.commit } } : {}
-    const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.later ? { later: true } : {}), ...(result.detail ? { detail: result.detail } : {}), ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...(result.unapproved ? { unapproved: true as const } : {}), ...catchUp, evidence }, Date.now())
+    const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.later ? { later: true } : {}), ...(result.detail ? { detail: result.detail } : {}), ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...(result.unapproved ? { unapproved: result.unapproved } : {}), ...catchUp, evidence }, Date.now())
     state = back.state
     mergedInto = result.ok ? result.base : undefined
     // Try again on a failed action: its result in the log, even when it fails the same way.
