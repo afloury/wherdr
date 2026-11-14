@@ -31,7 +31,9 @@ wherdr drives Herdr, so **it can run anything as your user**.
   Security, for a lost or stolen device) ends every session, this one included, and keeps the
   passkeys: each device unlocks again with its own. Turning the lock off removes the passkeys and
   invalidates every session. Lost passkey: delete `data/auth.json` on the server; the app is open
-  again to whoever can reach it.
+  again to whoever can reach it. A damaged `data/auth.json` (cut write, full disk) never opens the
+  app: it stays locked, the server log says so, and the file is left as it is; restore it from a
+  backup, or delete it and register the passkeys again, then restart wherdr.
 - <a id="new-device"></a>**New device**: it can only get in with an existing passkey. Unlock it
   with a passkey synced by your password manager (iCloud Keychain, Google Password Manager,
   1Password…), or with the passkey of another device through the browser's "use a phone or

@@ -19,6 +19,9 @@
 // counter), generation number (incremented when disabling or locking every
 // device: all current sessions become invalid), maximum session duration.
 // Lost key: deleting data/auth.json on the server reopens the app.
+// Written atomically. A file that exists but cannot be read or parsed (cut
+// write, full disk) never means "no key yet": the lock stays on, every request
+// but the auth routes is refused, and the file is left as it is.
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
@@ -28,6 +31,7 @@ import {
 } from '@simplewebauthn/server'
 import type { AuthenticatorTransportFuture } from '@simplewebauthn/server'
 import type { AuthStatus } from '../../shared/types'
+import { writeDeliveryFile } from './deliveryLedger'
 import { DAY_MS, DEFAULT_MAX_SESSION_DAYS, isMaxSessionDays, MAX_SESSION_DAYS, OVERRUN_MS, type MaxSessionDays } from '../../shared/sessionLimit'
 
 // Browser lifetime of a session cookie, counted from the passkey unlock.
@@ -68,22 +72,36 @@ type Json = any
 export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: { dataDir: string, log?: (...a: unknown[]) => void, passkeyUser?: string }) {
   const FILE = path.join(dataDir, 'auth.json')
   let db: AuthDb = { secret: null, generation: 0, credentials: [] }
-  try { db = { ...db, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) } }
-  catch { /* no file yet */ }
-  const save = () => {
-    fs.mkdirSync(dataDir, { recursive: true })
-    fs.writeFileSync(FILE, JSON.stringify(db, null, 2) + '\n', { mode: 0o600 })
+  // Only a missing file means "no passkey yet".
+  let damaged = false
+  try {
+    const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'))
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !Array.isArray(raw.credentials ?? [])) throw new Error('not an auth file')
+    db = { ...db, ...raw }
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') damaged = true
   }
-  if (!db.secret) {
+  const DAMAGED_MESSAGE = 'The lock file data/auth.json is damaged: the app stays locked. On the server, restore it from a backup, or delete it to start over (every passkey will have to be registered again), then restart wherdr'
+  const assertIntact = () => {
+    if (damaged) throw new AuthError('damaged', DAMAGED_MESSAGE)
+  }
+  const save = () => {
+    assertIntact()
+    fs.mkdirSync(dataDir, { recursive: true })
+    writeDeliveryFile(FILE, JSON.stringify(db, null, 2) + '\n')
+  }
+  if (damaged) log(`lock: ${FILE} cannot be read. ${DAMAGED_MESSAGE}`)
+  else if (!db.secret) {
     db.secret = crypto.randomBytes(32).toString('hex')
     save()
   }
 
   // Temporary token, renewed at each startup and only visible in the logs.
   const bootstrapToken = crypto.randomBytes(24).toString('base64url')
-  if (!db.credentials.length) log(`First passkey: bootstrap token ${bootstrapToken}`)
+  if (!damaged && !db.credentials.length) log(`First passkey: bootstrap token ${bootstrapToken}`)
 
-  const enabled = () => db.credentials.length > 0
+  // A damaged file counts as a registered key nobody can use: locked.
+  const enabled = () => damaged || db.credentials.length > 0
   const sign = (v: string) => crypto.createHmac('sha256', db.secret!).update(v).digest('base64url')
   const safeEq = (a: string, b: string) => {
     const x = Buffer.from(String(a))
@@ -115,6 +133,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   // Cookies from before the unlock time was recorded (exp.gen.mac) count from
   // their last renewal.
   function session(req: ReqLike, now = Date.now()): { exp: number, since: number } | null {
+    if (damaged) return null
     const v = readCookie(req)
     if (!v) return null
     const parts = v.split('.')
@@ -178,6 +197,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
 
   async function registerOptions(req: ReqLike, body: Json = {}) {
+    assertIntact()
     if (enabled() && !isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     checkBootstrap(body)
     const { rpID } = relying(req)
@@ -191,6 +211,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
 
   async function registerVerify(req: ReqLike, body: Json) {
+    assertIntact()
     if (enabled() && !isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     checkBootstrap(body)
     const { origin, rpID } = relying(req)
@@ -214,6 +235,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
 
   async function loginOptions(req: ReqLike) {
+    assertIntact()
     const { rpID } = relying(req)
     const opts = await generateAuthenticationOptions({
       rpID, userVerification: 'required',
@@ -223,6 +245,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
 
   async function loginVerify(req: ReqLike, body: Json) {
+    assertIntact()
     const { origin, rpID } = relying(req)
     const cred = db.credentials.find(c => c.id === (body.response && body.response.id))
     if (!cred) throw new AuthError('unknown_key', 'Key unknown on this server')
@@ -239,6 +262,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
 
   function disable(req: ReqLike) {
+    assertIntact()
     if (!isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     db.credentials = []
     db.generation += 1
@@ -249,6 +273,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
 
   // Lost or stolen device: every session ends (this one included), the keys stay.
   function lockAll(req: ReqLike) {
+    assertIntact()
     if (!enabled() || !isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     db.generation += 1
     save()
@@ -257,6 +282,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
 
   function setMaxSession(req: ReqLike, days: unknown, now = Date.now()) {
+    assertIntact()
     if (!enabled() || !isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     if (!isMaxSessionDays(days)) throw new AuthError('invalid', 'Invalid duration')
     if (days !== (db.maxSessionDays ?? DEFAULT_MAX_SESSION_DAYS)) db.maxSessionChangedAt = now
