@@ -27,7 +27,8 @@ import { taskPlan, trustKeys, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { cardNotesMessage, tellCardOutcome } from './cardOutcome'
 import { answeredTask, clearQuestion } from './pmAnswer'
-import { PATH_SETUP, homeOf, machineOn, sendAfterDialog, sendFirstMessage, type CoreAdminDeps } from './coreCreate'
+import { PATH_SETUP, homeOf, machineOn, type CoreAdminDeps } from './coreCreate'
+import { deliverFirst, startTurn } from './coordinatorFirst'
 import { CREATE_SCRIPT, WRITE_SCRIPT, exec, launched, startTask } from './pmLaunch'
 import { actionShell } from './pmActions'
 import { SCRIPT } from '../../shared/pm/actions'
@@ -85,7 +86,7 @@ async function lastOpenIncident(store: PmStore, key: string) {
 }
 
 // alfredHome: Alfred's home folder (DATA_DIR/alfred by default).
-type Deps = CoreAdminDeps & { store: PmStore, alfredHome?: string, clients?: UiOpenDeps['clients'], notes?: NotesStore, settingsFile?: string }
+type Deps = CoreAdminDeps & { store: PmStore, alfredHome?: string, clients?: UiOpenDeps['clients'], notes?: NotesStore, settingsFile?: string, startGapMs?: number }
 const homeOfAlfred = (deps: { alfredHome?: string }) => deps.alfredHome ?? path.join(DATA_DIR, 'alfred')
 const sha = (s: string) => createHash('sha256').update(s).digest()
 
@@ -743,6 +744,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
           }),
       project: p.key, name: p.name, ...('coordinatorName' in p && p.coordinatorName ? { coordinatorName: p.coordinatorName } : {}), ...('machine' in p ? { machines: allowedMachines(p) } : {}), ...(paused.length ? { paused } : {}), ...(busy.length ? { busy } : {}), ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
+      ...(c?.undelivered ? { undelivered: { why: c.undelivered.why, at: c.undelivered.at } } : {}),
       ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, changes, template: c.proposal.template, by: c.proposal.by ?? (p.key === MAIN ? 'main' : p.key), ...(c.proposal.said ? { said: c.proposal.said } : {}), ...(c.proposal.saidAt ? { saidAt: c.proposal.saidAt } : {}) } } : {}),
       ...('label' in p && p.label ? { label: p.label } : {}), ...('color' in p && p.color ? { color: p.color } : {}),
       ...(answersOf(c).length ? { answers: answersOf(c) } : {}),
@@ -908,29 +910,40 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   // Its very first start on a git project with no accepted workflow: its first reply proposes one.
   const git = key !== MAIN && projects.find(x => x.key === key)?.git !== false
   const proposes = git && !resume && !before?.ran && isDefaultWorkflow(await deps.store.workflow(key)) ? [FIRST_REPLY] : []
-  const prompt = [...c.prompt, ...first, ...proposes, ...notes]
+  // First messages its last session never got (coordinatorFirst.ts): given again, once.
+  // Alfred's start prompt is made anew at each start: an old one is not given again.
+  const pending = c.prompt.length ? [] : (before?.undelivered?.texts ?? []).filter(x => !c.prompt.includes(x) && !first.includes(x) && !proposes.includes(x))
+  const prompt = [...c.prompt, ...first, ...proposes, ...pending, ...notes]
   // A resumed Codex reads a word after `resume --last` as a session: its messages are typed.
   const asArg = promptAsArg(program) && !resume
   // Codex takes one [PROMPT] argument: its messages go as one.
   const argv = [...c.argv, ...(asArg && prompt.length ? [prompt.join('\n\n')] : [])]
   const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
-  const { address } = await deps.call<{ address: string }>('terminal.run', {
-    cwd: c.folder, ...(c.on ? { on: c.on } : {}), no_parent: true, wait: false, env: c.env,
-    labels: { 'wherdr.install': await deps.store.install(), 'wherdr.coordinator': key },
-    line: `${PATH_SETUP}; export PATH=${quote(`${c.folder}/bin`)}:"$PATH"; exec ${argv.map(quote).join(' ')}`,
-  }, 30000)
+  // One start at a time (coordinatorFirst.ts): the one before is up first.
+  const up = await startTurn(deps)
+  let address: string
+  try {
+    address = (await deps.call<{ address: string }>('terminal.run', {
+      cwd: c.folder, ...(c.on ? { on: c.on } : {}), no_parent: true, wait: false, env: c.env,
+      labels: { 'wherdr.install': await deps.store.install(), 'wherdr.coordinator': key },
+      line: `${PATH_SETUP}; export PATH=${quote(`${c.folder}/bin`)}:"$PATH"; exec ${argv.map(quote).join(' ')}`,
+    }, 30000)).address
+  } catch (e) { up(); throw e }
   // Its folder is wherdr's own, new at its first start: its trust dialog is answered here.
   void answerOwnTrust(deps, address, c.folder).catch(() => {})
-  // Typed once the program is ready (in the background: it may wait on a dialog).
-  if (!asArg) for (const text of prompt) void sendFirstMessage(deps, address, text).then(r => (r === 'dialog' || r === 'installing' ? sendAfterDialog(deps, address, text) : r)).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
   // version: what this session knows (takeUpdateNotice tells it of an update).
-  const { told: _told, cardNotes: _said, ...rec } = (await deps.store.coordinator(key))!
+  const { told: _told, cardNotes: _said, undelivered: _lost, ...rec } = (await deps.store.coordinator(key))!
   await deps.store.saveCoordinator({ ...rec, terminal: address, ran: a, version: wherdrVersion(), ...(key === MAIN ? { agent: a } : {}) })
   // Its turn follows the user's clicks (issueToken cleared it): it may propose the next card.
   // Its first reply's workflow proposal follows the user's start.
-  const said = [...proposes, ...notes]
+  const said = [...proposes, ...pending, ...notes]
   if (said.length) await noteTurn(deps.store, key, 'user', said.join('\n\n'))
+  // Typed one after another once the program is ready (in the background: it may wait
+  // on a dialog), each outcome logged; saved first, so that a failure stays on its record.
+  // The start queue (startTurn) moves on once its session is up.
+  // A fresh Claude or Codex has them on its command line: watched until its session is up.
+  void deliverFirst(deps, key, address, prompt, up, asArg).catch(() => up())
   // This conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
   return { terminal: address, folder: c.folder }

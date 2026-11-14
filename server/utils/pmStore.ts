@@ -66,6 +66,7 @@ export interface CoordinatorRecord {
   cards?: UiCard[] // the action buttons it put in its replies (shared/uiActions.ts), newest first
   cardNotes?: string[] // what the user did with its cards while it did not run, said at its next start (cardOutcome.ts)
   visits?: { at: number, by: string, what: string }[] // what other coordinators did on its project since its last wake (reach.ts)
+  undelivered?: { texts: string[], why: string, at: number } // first messages its session never got (coordinatorFirst.ts)
 }
 
 export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark>, proposals?: AutomationProposal[] }

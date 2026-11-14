@@ -157,7 +157,7 @@ describe('runAlfredCommand', () => {
     // MYDOCS unchecked: skipped. APP's coordinator fails to start: SITE still goes on.
     const choice = { picks: ['APP', 'SITE'], start: true }
     const done = await actOnCard({ store, applyChange: (argv: string[], lines: string[], c?: typeof choice) => applyProposedChange(deps(), argv, lines, c) } as never, card.id, undefined, false, choice)
-    expect(done).toMatchObject({ state: 'done', outcome: { lines: ['APP: added; coordinator not started: agent missing', 'SITE: added, coordinator started'] } })
+    expect(done).toMatchObject({ state: 'done', outcome: { lines: ['APP: added; coordinator not started: agent missing', 'SITE: added, coordinator started (its first message is typed once it is ready)'] } })
     expect((await store.projects()).map(p => [p.key, p.from])).toEqual([['APP', undefined], ['SITE', undefined]])
     expect(started).toEqual(['SITE'])
     // --only and --start no are the card's defaults; an Apply without a choice keeps them.

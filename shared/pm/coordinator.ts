@@ -94,6 +94,8 @@ export interface CoordinatorView {
   // machines: the project's allowed machines, home first (none for the main coordinator);
   // paused: those paused for it; busy: the paused ones where one of its tasks still runs.
   project: string, machines?: string[], paused?: string[], busy?: string[], name: string, coordinatorName?: string, label?: string, color?: ProjectColor, main?: boolean, git?: false, agent?: CoordinatorAgent, template?: string, ran?: CoordinatorAgent, terminal?: string
+  // undelivered: its first message never reached its session, and why (Send again).
+  undelivered?: { why: string, at: number }
   // proposal: the change waiting for the user, as a person reads it too (template: the
   // workflow it proposes, drawn with its changes); answers: the last ones, oldest first.
   proposal?: Omit<Proposal, 'template' | 'base'> & { template?: Template }, answers?: ProposalAnswer[]
