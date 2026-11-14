@@ -218,7 +218,6 @@ function onKey(e: KeyboardEvent) {
         <ReviewQuestion v-else-if="asked" :card="card" :busy="answering || !!gone" :sent="answered" @send="reply" />
         <TaskTodo v-else-if="kind" :card="card" :kind="kind" :pane="pane" :busy="busy || !!gone" :pressing="pressing" :refused="refused"
           @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" @review="restartReview" @worker="startWorker" @fix="fix" @comments="answer()" />
-        <p v-if="done === 'fixing'" class="muted" role="status" data-testid="review-fixing">{{ tl('The agent is fixing it') }}</p>
         <ReviewReject v-if="acts && rejecting" :card="card" :busy="busy" @send="reject" @cancel="rejecting = false" />
         <p v-if="error" class="error" role="alert" data-testid="review-error">{{ error }}</p>
         <p v-if="approves && refused" class="error" role="alert" data-testid="review-refused">{{ stepRefusalText(refused) }}</p>
@@ -237,6 +236,7 @@ function onKey(e: KeyboardEvent) {
 
     <template #footer>
       <div v-if="card" class="review-foot">
+        <p v-if="done === 'fixing'" class="muted review-fixing" role="status" data-testid="review-fixing">{{ tl('The agent is fixing it') }}</p>
         <div class="review-choices" aria-live="polite">
           <template v-if="acts">
             <UButton color="primary" size="xl" :icon="done === 'approved' ? 'i-lucide-check-check' : 'i-lucide-check'" :class="{ confirmed: done === 'approved' }" :loading="busy && !rejecting" :disabled="rejecting || done === 'sent'" data-testid="review-approve" @click="approve">{{ done === 'approved' ? tl('Approved') : tl('Approve') }}</UButton>
@@ -288,6 +288,7 @@ function onKey(e: KeyboardEvent) {
 .review-done-icon { width: 32px; height: 32px; color: var(--done); }
 .review-foot { display: grid; gap: 8px; padding: 12px 16px 0; border-top: 1px solid var(--line-soft); }
 .review-choices { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
+.review-fixing { margin: 0; }
 .review-nav { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 @media (max-width: 699px) {
   .review-choices > * { flex: 1 1 auto; justify-content: center; }
