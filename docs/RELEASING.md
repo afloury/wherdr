@@ -1,5 +1,76 @@
 # Releasing wherdr
 
+> [!NOTE]
+> Two release channels. **v2** (2.x) is published to npm, Homebrew, GitHub releases and the
+> Herdr plugin, as described from [Publishing a 2.x version](#publishing-a-2x-version) on.
+> **v3** (3.x) is a GitHub release only: see [Releasing v3](#releasing-v3) and the
+> [transition checklist](#transition-from-v2-to-v3).
+
+## Releasing v3
+
+v3 is installed **beside** v2, from git, never over it ([migrate-from-v2](migrate-from-v2.md)).
+v2 installs update from the release archive, npm and Homebrew, so a v3 release must reach none
+of them. On a `v3.*` tag, `release.yml` only publishes the reviewed draft with its notes:
+
+- no `wherdr-X.Y.Z.tgz` asset, no npm dispatch, no Homebrew formula bump;
+- the release is published with `latest=false`: `releases/latest` stays on the newest 2.x,
+  which the legacy v2 update channel reads;
+- `npm.yml` refuses any tag other than 1.x or 2.x, and `release-ready.yml`
+  (`scripts/release-ready.mjs`) only promotes 1.x and 2.x releases.
+
+Steps: set the version in `package.json` and `package-lock.json`, move the Unreleased
+changelog into a dated entry, create the GitHub release as a **draft** with notes following
+the [checklist](#release-notes-checklist) (with its `## Upgrade notes` when an update needs a
+manual step), then push the `v3.Y.Z` tag. 2.x tags run the
+`release.yml` of the commit they point to (the `2.x` branch), which still publishes to npm
+and Homebrew.
+
+The branch v3 is installed and built from is `config.branch` in `package.json`, read by
+`scripts/install-v3-beside-v2.mjs` (and the `update.sh` it writes) and `scripts/v3-builder.sh`.
+
+## Transition from v2 to v3
+
+The plan: `v3` and `main` stay as they are until v2's last release has reached its installs.
+
+1. Release **2.6.0** from `develop` with the 2.x process below (the version whose update
+   check ignores 3.x releases). Its installer and Herdr plugin must install from `2.x`, not
+   `main` (`WHERDR_REF` and `--ref`): from step 5 on, `main` holds v3's stubs.
+2. Create the frozen **`2.x`** branch at the `v2.6.0` tag: `git push origin v2.6.0^{commit}:refs/heads/2.x`.
+   Later 2.x fixes are tagged on `2.x`.
+3. Wait **2 to 4 weeks**.
+4. Check that v2 installs are on 2.6 (npm downloads per version, Homebrew, issues) before going on.
+5. Merge `v3` into `main`. Keep v2's required `checks` and `e2e` jobs passing on `main`
+   (see the header of `.github/workflows/ci.yml`). `release-ready.yml` and
+   `develop-prerelease.yml` run from `main`: check they still serve 2.x and `develop`.
+6. Tag and publish **3.0.0** from `main` as described in [Releasing v3](#releasing-v3):
+   a GitHub release only.
+7. Move the docs and scripts from `-b v3` to `main`:
+   - `config.branch` in `package.json` to `main`: the default branch of
+     `install-v3-beside-v2.mjs`, the `update.sh` it writes and `v3-builder.sh`
+     (installs made before keep `v3` in their `update.sh` until the installer is run again);
+   - `git clone -b v3` in [README](../README.md), [quick-start](quick-start.md),
+     [installation](installation.md), [development](development.md) (also its
+     `--base origin/v3` and "pull requests for v3 target the `v3` branch"),
+     [migrate-from-v2](migrate-from-v2.md) (also its `origin/v3` builder lines) and
+     [install-with-an-agent](install-with-an-agent.md);
+   - the CI badge (`?branch=v3`) in [overview](overview.md) and the `branches: [v3]`
+     triggers of `ci.yml`;
+   - the "v2 docs" links (`blob/main/…`) to `blob/2.x/…`: [README](../README.md),
+     [installation](installation.md), [troubleshooting](troubleshooting.md) and
+     [command](command.md);
+   - in the v3 stubs, `website/public/install` (also its `git clone -b v3`),
+     `herdr-plugin.toml` and `tests/herdrPlugin.test.ts`: `blob/v3` to `blob/main`;
+   - `grep -rnE -- '-b v3|origin/v3|branch=v3|blob/main|blob/v3' README.md docs scripts .github website/public/install herdr-plugin.toml tests/herdrPlugin.test.ts`
+     must then list nothing left to move.
+8. The site: wherdr.dev stays v2's as it is, because v3's `site.yml` runs by hand only, so
+   merging v3 into `main` deploys nothing (to redeploy v2's site, run `site.yml` on `2.x`).
+   On v3, `website/public/install` and the Herdr plugin (`herdr-plugin.toml`) only print
+   how to install v3 beside v2: a failed plugin build
+   leaves the installed v2 plugin as it was. Update the pages and `agent.md` for v3, point v2
+   readers to `2.x`, then run `site.yml` on `main`.
+
+## Publishing a 2.x version
+
 Publishing a version requires the user's explicit approval. Never republish a package held
 for npm review. No new secret is needed: GitHub uses `GITHUB_TOKEN`, npm uses OIDC Trusted
 Publishing (`npm.yml`), and the tap uses the existing optional `HOMEBREW_TAP_TOKEN`.
@@ -70,34 +141,15 @@ marker is left alone. GitHub disables scheduled workflows in public repositories
 without repository activity. Check that `release-ready.yml` remains enabled; re-enable it and
 run it manually if needed. After re-enabling, workflow-completion and manual checks work too.
 
-## herdr-projects tested version
-
-wherdr installs one herdr-projects release, and offers an update to it on machines with an older
-one: `PROJECTS_TESTED` in `shared/projectsPlugin.ts`. `PROJECTS_MIN` (1.2.1) is the oldest
-release wherdr still reads; it moves only when wherdr drops one.
-
-To move to a newer herdr-projects release:
-
-1. Download its binary from GitHub (`gh release download vX.Y.Z -R eliasstravik/herdr-projects`)
-   and check it against its `.sha256`. Run it with `HOME` set to an empty temporary folder and
-   Herdr unreachable. Record `version`, `list --json`, `list --json --archived`,
-   `details --json -- <id>`, `show --json -- <id>` and `coordinator --machine --json status`
-   into `tests/recordings/herdr-projects-X.Y.Z/` (no personal paths or machine names).
-   Also check that `tell`, `approve`, `after`, `archive`, `restore` and `coordinator … tell`
-   still take the same arguments.
-2. Set `PROJECTS_TESTED` to `X.Y.Z`, and point the recordings test in
-   `tests/projectsTasks.test.ts` at the new folder.
-3. If the release adds a feature worth naming, add it to `FEATURES` in
-   `app/components/ProjectsPluginSettings.vue` (the update's one-line summary, FR + EN).
-4. Run `npx vitest related --run shared/projectsPlugin.ts`: `tests/projectsPlugin.test.ts`
-   fails until the install commands in `docs/board.md`, `docs/herdr-projects-1x.md` and
-   `website/public/agent.md` name the new release.
-
 ## Release notes checklist
 
 - Summarize the changes in English under `## New`, `## Improved`, `## Fixed` or `## Update`;
   omit categories with no relevant changes. Use complete sentences, at least two in total
   (at least twelve words), describing the user-visible behavior and any required upgrade action.
+- v3 only, optional: a `## Upgrade notes` section for what an update needs beyond `update.sh`
+  (a manual step, a migration, a new setting), as commands and short sentences. The home
+  banner's What's new shows it, and an agent updating wherdr follows it
+  ([update-with-an-agent](update-with-an-agent.md)).
 - Put the full changelog link after the summary, using the release tag rather than `main`.
 - Review the text against that version's changelog. The automated check enforces structure
   and minimum content; the reviewer checks accuracy and clarity.
