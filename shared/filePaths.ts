@@ -1,7 +1,7 @@
 // File and folder paths written by agents in their replies, as inline code
 // (`~/project/src/app.ts`, `/Users/me/notes.md`, `src/app.ts:42`): detected on
 // the client (clickable path, utils/markdown.ts) and resolved on the server
-// before "Reveal in Finder" / "Open" (server/utils/reveal.ts).
+// before it is opened (server/utils/files.ts).
 
 // path.posix.resolve without node:path (this file also runs in the browser).
 export function posixResolve(base: string, p: string): string {
@@ -65,20 +65,20 @@ export function pathCandidate(code: string): string | null {
   return null
 }
 
+// `p` is `root` or lies under it (both absolute and normalized).
+export const insideRoot = (root: string, p: string) => p === root || p.startsWith(root === '/' ? '/' : root + '/')
+
 // Absolute path for a path written by an agent: `~` is the machine's home,
 // a relative path is relative to the agent's folder (its home when the folder
-// is unknown or outside home). Null outside the home folder.
-export function resolveAgentPath(written: string, cwd: string | null | undefined, home: string): string | null {
+// is unknown or outside `roots`). Null outside `roots` (the home folder by
+// default; shared/chatFiles.ts).
+export function resolveAgentPath(written: string, cwd: string | null | undefined, home: string, roots: string[] = [home]): string | null {
   const p = stripPosition(String(written || '').trim())
   if (!p || !home.startsWith('/') || /[\0\n\r]/.test(p)) return null
   const root = posixResolve('/', home)
-  const inside = (r: string) => r === root || r.startsWith(root === '/' ? '/' : root + '/')
+  const allowed = roots.filter(r => r.startsWith('/')).map(r => posixResolve('/', r))
+  const inside = (r: string) => allowed.some(a => insideRoot(a, r))
   const base = cwd && cwd.startsWith('/') && inside(posixResolve('/', cwd)) ? posixResolve('/', cwd) : root
   const r = posixResolve(base, p.replace(/^~(?=$|\/)/, root))
   return inside(r) ? r : null
 }
-
-// What "Open" refuses to launch: it would run code (application, script,
-// installer) instead of showing a document.
-const RUNNABLE = /\.(app|command|tool|terminal|pkg|mpkg|workflow|action|scpt|scptd|applescript|jar|sh|bash|zsh|csh|fish|py|rb|pl|webloc|inetloc|fileloc|prefpane|qlgenerator|saver|kext|osax|dmg)\/?$/i
-export const runnablePath = (p: string) => RUNNABLE.test(p)

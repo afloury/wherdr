@@ -3,10 +3,12 @@
 //    account): once at the top, as before.
 //  - Different accounts (Claude or Codex): each machine has the table of its
 //    account under its header (collapsed with it), nothing left of that agent at the top.
-import type { ClaudeSetup, Quota, QuotaWindow, Quotas } from '../../shared/types'
+import type { ClaudeSetup, Quota, QuotaCredits, QuotaWindow, Quotas } from '../../shared/types'
+import { defaultAccountName } from '../../shared/quotaAccount'
 import installer from '../../scripts/install-claude-statusline.sh?raw'
 
-export interface QuotaRow { key: string, agent: 'claude' | 'codex', q: Quota }
+// `account`, `name`: the account key and the user's name for it (machine rows).
+export interface QuotaRow { key: string, agent: 'claude' | 'codex', q: Quota, account?: string, name?: string }
 
 // Machines whose Claude Code runs on API billing (usage without quota).
 const claudeApiKeys = (q: Quotas) => (q.claudeSetup || []).filter(s => s.state === 'api').map(s => s.key)
@@ -37,7 +39,8 @@ export function quotaRows(q: Quotas | null, hidden: readonly string[] = []): Quo
 }
 
 // Rows specific to a machine (key '' = local): its Claude account, its Codex
-// account, when accounts differ or the Codex identity is unknown.
+// account, when accounts differ or a Codex identity cannot be established
+// (see mergeQuotas).
 export function machineQuotaRows(q: Quotas | null, key: string, hidden: readonly string[] = []): QuotaRow[] {
   if (!q) return []
   const rows: QuotaRow[] = []
@@ -46,10 +49,35 @@ export function machineQuotaRows(q: Quotas | null, key: string, hidden: readonly
     if (hidden.includes(agent) || !(agent === 'claude' ? claudeSplit(q) : (list?.length || 0) > 0)) continue
     const a = list!.find(a => a.machines.some(m => m.key === key))
     if (!a) continue
-    const { machines: _, ...quota } = a
-    rows.push({ key: `${agent}:${key}`, agent, q: quota })
+    const { machines: _, key: account, name, ...quota } = a
+    rows.push({ key: `${agent}:${key}`, agent, q: quota, ...(account ? { account } : {}), ...(name ? { name } : {}) })
   }
   return rows
+}
+
+// Machine quotas below the shared ones: one block per account, titled with
+// its name and listing the machines that share it, so a shared account shows
+// its numbers once. A machine whose account is unknown (no account key, or
+// Claude on API billing) keeps its own block, titled with its name.
+export interface QuotaBlock { key: string, title: string, machines: string[], rows: QuotaRow[], api: boolean }
+export function quotaBlocks(machines: readonly { key: string, name: string, quotas: readonly QuotaRow[], api: boolean }[]): QuotaBlock[] {
+  const blocks: QuotaBlock[] = []
+  const byAccount = new Map<string, QuotaBlock>()
+  for (const m of machines) {
+    const own: QuotaRow[] = []
+    for (const r of m.quotas) {
+      if (!r.account) { own.push(r); continue }
+      const b = byAccount.get(r.account)
+      if (b) { if (!b.machines.includes(m.name)) b.machines.push(m.name); continue }
+      const block = { key: r.account, title: r.name || defaultAccountName(r.account), machines: [m.name], rows: [r], api: false }
+      byAccount.set(r.account, block)
+      blocks.push(block)
+    }
+    if (own.length || m.api) blocks.push({ key: `machine:${m.key}`, title: m.name, machines: [], rows: own, api: m.api })
+  }
+  // Claude blocks first (an API billing label is Claude's), then Codex.
+  const codexOnly = (b: QuotaBlock) => (!b.api && b.rows.every(r => r.agent === 'codex') ? 1 : 0)
+  return blocks.sort((a, b) => codexOnly(a) - codexOnly(b))
 }
 
 // A machine bar tab showing one machine: the shared rows and that machine's
@@ -100,6 +128,16 @@ export const quotaLevel = (w: QuotaWindow, now: number) => {
 
 // Reading older than an hour: numbers to take with caution.
 export const STALE_MS = 3600000
+
+// A window whose value is no longer known: reset since the reading, or read
+// longer ago than the window lasts. Its bar shows dashed and `?` stands for
+// the number, with how to refresh it in a tooltip (QuotaStrip).
+export const windowStale = (w: QuotaWindow, at: number, now: number) =>
+  Boolean(w.resetsAt && w.resetsAt <= now) || (w.minutes > 0 && now - at > w.minutes * 60000)
+
+// "120 credits", "unlimited credits", "credits" (no balance given).
+export const creditsText = (c: QuotaCredits) =>
+  c.unlimited ? 'unlimited credits' : c.balance === null ? 'credits' : `${c.balance.toLocaleString('en-US', { maximumFractionDigits: 2 })} credits`
 
 // Reset time: the time alone within the next 24 h (even the
 // next day: "00:00" and not "Sun 00:00", which looks like the weekly one),
