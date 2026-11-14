@@ -10,13 +10,13 @@ import { CREATE_SCRIPT, launched } from '../server/utils/pmLaunch'
 import { execFileSync } from 'node:child_process'
 import { trustKeys } from '../shared/pm/run'
 import { coordinatorStart, setupDone } from '../shared/pm/setup'
-import { MAIN, parseCommand, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
+import { FIRST_REPLY, MAIN, parseCommand, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
 import { EXAMPLES, common, company as example, github } from '../shared/pm/examples'
 import { DONE_CMD, reviewFile } from '../shared/pm/advance'
 import { onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import type { Finding } from '../shared/pm/verdict'
-import { defaultWorkflow, type Template } from '../shared/pm/workflow'
+import { defaultWorkflow, isDefaultWorkflow, type Template } from '../shared/pm/workflow'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 import { runNow, wakeCoordinators, wakeTick } from '../server/utils/pmWakes'
 import { askCoordinator } from '../server/utils/pmReport'
@@ -687,6 +687,22 @@ describe('role files', () => {
     expect(runs.filter(r => r.method === 'terminal.run').at(-1)!.line).toMatch(/exec 'claude' '--continue' '--add-dir' '\/src\/co'$/)
   })
 
+  it('first start on a project with no accepted workflow: no template needed, its first reply proposes one, in the user\'s turn; not again', async () => {
+    const { runs, deps } = fakeCore()
+    const projects = JSON.parse(await fs.readFile(store.files.projects, 'utf8'))
+    await fs.writeFile(store.files.projects, JSON.stringify({ ...projects, projects: [...projects.projects, { key: 'NW', name: 'New', machine: '', path: '/src/nw', addedAt: 1 }] }))
+    expect(isDefaultWorkflow(await store.workflow('NW'))).toBe(true)
+    await startCoordinator(deps, 'NW', { program: 'codex' }, urls)
+    expect(runs[0]!.line).toContain(FIRST_REPLY)
+    // Starting it is the user's gesture: its `template edit` is allowed.
+    expect((await store.coordinator('NW'))!.turn).toMatchObject({ kind: 'user', said: FIRST_REPLY })
+    // A project with an accepted workflow: no proposal.
+    await startCoordinator(deps, 'CO', { program: 'codex' }, urls)
+    expect(runs.filter(r => r.method === 'terminal.run')[1]!.line).not.toContain(FIRST_REPLY)
+    await startCoordinator(deps, 'NW', { program: 'codex' }, urls)
+    expect(runs.filter(r => r.method === 'terminal.run')[2]!.line).not.toContain(FIRST_REPLY)
+  })
+
   it('on another machine, the coordinator gets wherdr\'s published address, never loopback', async () => {
     const remote = fakeCore(false)
     await startCoordinator(remote.deps, 'CO', { program: 'codex', model: 'gpt-5' }, urls)
@@ -717,6 +733,7 @@ describe('role files', () => {
     const first = roleFiles({ key: 'CO', name: 'Company', machine: '', path: '/src/co', addedAt: 1 }, defaultWorkflow('CO'), EXAMPLES)['AGENTS.md']!
     expect(first).toContain('## Your first conversation')
     expect(first).toContain('propose a workflow with `template edit`')
+    expect(first).toContain('In that same first reply, propose a workflow')
     expect(agents).toContain('"id":"vibe"')
     expect(agents).toContain('with its absolute path (`/src/co/README.md`)')
     expect(files['CLAUDE.md']).toBe('@AGENTS.md\n')

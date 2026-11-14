@@ -31,9 +31,6 @@ import { notesStore, runNotes, type NotesStore } from './notesStore'
 
 type Deps = CoreAdminDeps & { store: PmStore, check: FolderCheck, urls: CoordinatorUrls, settingsFile?: string, dataDir?: string, notes?: NotesStore, herdrProjects?: string, clients?: UiOpenDeps['clients'] }
 
-// A coordinator started by a v2 import speaks first: its workflow questions.
-const FIRST_TALK = 'You were just started for a project brought over from wherdr v2. Follow "Your first conversation" in AGENTS.md now: look at the repository, introduce yourself, and ask the user your first question on how they work.'
-
 // The command a card keeps: without --propose; a card with checkboxes, without --only and --start too.
 function cardArgv(argv: string[], picks: boolean) {
   const out: string[] = []
@@ -158,8 +155,8 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
           try { await store.addProject({ key: c.key, name: c.name, machine: '', path: c.path, ...(c.base ? { base: c.base } : {}) }, deps.check) }
           catch (e) { outcome.push(`${c.key}: not added: ${(e as Error).message}`); continue }
           if (!cmd.start) { outcome.push(`${c.key}: added`); continue }
-          // No workflow needed: the minimal default; its first message asks the user how they work.
-          try { await startCoordinator(deps, c.key, await projectAgent(c.key), deps.urls, [FIRST_TALK]); outcome.push(`${c.key}: added, coordinator started`) }
+          // No workflow needed: the minimal default; its first reply proposes one (startCoordinator).
+          try { await startCoordinator(deps, c.key, await projectAgent(c.key), deps.urls); outcome.push(`${c.key}: added, coordinator started`) }
           catch (e) { outcome.push(`${c.key}: added; coordinator not started: ${(e as Error).message}`) }
         }
         return { outcome }

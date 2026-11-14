@@ -107,7 +107,7 @@ watch(kinds, syncKind)
 function pickCoordinator() {
   coordinator.value = true
   draft.value = null
-  if (!projectCoordinators.value.some(c => c.project === coordProject.value)) coordProject.value = projectCoordinators.value[0]?.project ?? ''
+  coordProject.value = ''
 }
 function pickKind(k: string) {
   coordinator.value = false
@@ -200,7 +200,7 @@ async function launch() {
 
       <NewProjectForm
         v-if="coordinator" v-model:project="coordProject" v-model:agent="coordAgent" v-model:draft="draft" :machine="machine" :machines="machineList"
-        @settings="open = false" @browse="browsing = true" @machine="pickMachine"
+        @browse="browsing = true" @machine="pickMachine"
       />
       <template v-else>
         <label class="field-label">{{ t('Folder') }}</label>
