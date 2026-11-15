@@ -30,6 +30,9 @@
   by the field counts as several lines: elsewhere the arrows move the caret. History keeps the
   last 100 texts sent from this device per agent, without attachments or quoted references.
 - **Settings** in a sidebar, with desktop-only options such as the content width.
+- **Grid behind the conversation**: the margins around the reading column show the wherdr grid,
+  with small glowing packets running along its lines (still when the system asks for reduced
+  motion). It is always on; there is no setting for it.
 
 ### On a phone
 
