@@ -10,6 +10,7 @@ All notable changes to this project are documented here. The format follows
 
 - **Antigravity CLI (`agy`) terminals** are recognized: their label, icon and live state.
 - **Antigravity CLI (`agy`) conversations** open on their saved transcript, locally or on another machine (Node 22.13 or later).
+- **Antigravity commands in the + menu.** An `agy` conversation's + menu offers `/compact`, `/clear`, `/context`, `/usage`, `/model` and `/diff`, as for Claude Code, Codex and omp. A command that opens a panel or the model picker shows the interactive terminal over the conversation; Esc there brings the message field back.
 
 ### Fixed
 
