@@ -68,6 +68,7 @@ import { runMap } from './pmMap'
 import { adoptRepo } from './pmAdopt'
 import { splitFeature } from './pmFeature'
 import { afterRefusal, closeRefusal, featureState } from '../../shared/pm/feature'
+import { pmDir } from './pmHome'
 
 // The running build's version (shared/v3Version.ts: package version plus commit),
 // so the update notice fires between two builds of one version. Outside Nitro
@@ -754,7 +755,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
 }
 
 // The role files (and the `wherdr` script) in the coordinator's own folder,
-// ~/.wherdr/pm/coordinators/<KEY> on the project's machine; never ~/.claude
+// ~/.wherdr/pm/coordinators/<KEY> (pmHome.ts) on the project's machine; never ~/.claude
 // or ~/.codex.
 // The main coordinator's: Alfred's home (writeAlfredHome).
 export async function writeRoleFiles(deps: Deps, key: string) {
@@ -768,7 +769,7 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   const { m, on } = machineOn(deps, p.machine)
   const home = await homeOf(deps, on)
   if (!home) throw new HerdrError('core', 'Home folder not found on the project\'s machine')
-  const folder = `${home}/.wherdr/pm/coordinators/${key}`
+  const folder = `${home}/${pmDir()}/coordinators/${key}`
   for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES, m.local ? docsDir() : undefined, k => { const x = projects.find(y => y.key === k); return x && shownKey(x) }, membersOf(key, projects).map(shownKey))))
     if ((await exec(deps, on, WRITE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not write ${file}`)
   for (const [file, text] of Object.entries(OWN_ROLE_FILES))
@@ -786,7 +787,7 @@ export async function appendCoordinatorMemory(deps: Deps, key: string, lines: st
   const { on } = machineOn(deps, p.machine)
   const home = await homeOf(deps, on)
   if (!home) throw new HerdrError('core', 'Home folder not found on the project\'s machine')
-  const file = `${home}/.wherdr/pm/coordinators/${key}/memory.md`
+  const file = `${home}/${pmDir()}/coordinators/${key}/memory.md`
   if ((await exec(deps, on, APPEND_SCRIPT, [file, OWN_ROLE_FILES['memory.md']!], `${lines.join('\n')}\n`)).code !== 0) throw new HerdrError('core', 'Could not write memory.md')
   return { file, added: lines.length }
 }

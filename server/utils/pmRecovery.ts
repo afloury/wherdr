@@ -9,14 +9,15 @@ import { MAIN } from '../../shared/pm/coordinator'
 import { enqueue } from '../../shared/pm/wakes'
 import { incidentReasons, toTell } from '../../shared/pm/incidentWake'
 import { showIds } from '../../shared/pm/projectKey'
-import type { Incident } from '../../shared/pm/incident'
+import { isOpen, type Incident } from '../../shared/pm/incident'
 import { causeGone, interrupted, interruptedWhy, resumeOrder, resumeText } from '../../shared/pm/recovery'
 import { handoverText } from '../../shared/pm/stop'
-import type { Task } from '../../shared/pm/run'
+import type { Run, Task } from '../../shared/pm/run'
 import { machineOn } from './coreCreate'
 import { HerdrError } from './herdr'
 import { limitOf, readAccounts, type IncidentDeps } from './pmIncidents'
-import { startTask, type PmLaunchDeps } from './pmLaunch'
+import { exec, startTask, type PmLaunchDeps } from './pmLaunch'
+import { killTerminal } from './pmProcs'
 import { paceOf, placeFor } from './pmPlace'
 import { forgetMemory } from './pmMemory'
 import { load } from './pmStop'
@@ -27,6 +28,33 @@ export async function interruptTask(deps: PmLaunchDeps, task: Task, i: Incident,
   const r = interrupted(task, i, now)
   if (!r.escalate) return deps.store.saveTask(r.task)
   return deps.store.logTask(r.task, 'engine', `not resumed again: the same cause right after a resume; the coordinators are told in incident ${i.id}'s wake`)
+}
+
+// A running agent on its login prompt: the open login incident of its
+// machine and program takes it (one notice for them all), else a new one.
+export async function loginExpired(deps: PmLaunchDeps, task: Task, run: Run, now = Date.now()) {
+  const { store } = deps
+  const tasks = await store.tasks()
+  let i = (await store.incidents()).find(x => x.cause === 'login' && x.machine === run.machine && x.program === run.program && !x.renewed && isOpen(x, tasks))
+  const label = deps.machines().find(m => m.key === run.machine)?.label ?? (run.machine || 'this machine')
+  if (i) await store.linkIncident(i.id, task.id, run.id)
+  else i = (await store.addIncidents([{ at: now, machine: run.machine, label, cause: 'login', program: run.program, evidence: [`${task.id} ${run.role}: its terminal shows the login prompt at ${new Date(now).toISOString()}`], tasks: [task.id], runs: [run.id] }]))[0]!
+  const t = await interruptTask(deps, task, i, now)
+  await store.logTask(t, 'engine', `incident ${i.id} on ${label}: ${run.program}'s login expired; restarted once the login is renewed`)
+}
+
+// The login renewed on the machine: its credentials file changed after the incident (mtime in seconds).
+const CREDENTIALS = `case $1 in claude) f="\${CLAUDE_CONFIG_DIR:-$HOME/.claude}/.credentials.json";; codex) f="\${CODEX_HOME:-$HOME/.codex}/auth.json";; *) exit 2;; esac
+[ -f "$f" ] || exit 1; stat -c %Y "$f" 2>/dev/null || stat -f %m "$f"`
+async function renewedAt(deps: PmLaunchDeps, i: Incident): Promise<number | undefined> {
+  if (i.renewed) return i.renewed
+  let on: string | undefined
+  try { on = machineOn(deps, i.machine).on } catch { return }
+  const r = await exec(deps, on, CREDENTIALS, [i.program ?? 'claude'], undefined, 10).catch(() => null)
+  const at = r?.code === 0 ? Number(r.out) * 1000 : NaN
+  if (!(at > i.at)) return
+  await deps.store.renewIncident(i.id, at)
+  return at
 }
 
 // One Incident wake per incident, once no resume of it is under way (busy):
@@ -54,6 +82,8 @@ export async function resumeInterrupted(deps: IncidentDeps, now = Date.now()) {
   // Incidents with a resume under way this tick: their wake waits for the next one.
   const busy = new Set<string>()
   let accounts: Awaited<ReturnType<typeof readAccounts>> | undefined
+  let incidents: Incident[] | undefined
+  const renewals: Record<string, number | undefined> = {}
   for (const t of resumeOrder(await store.tasks())) {
     const r = t.recovery!
     const worker = runs.filter(x => x.task === t.id && x.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
@@ -65,7 +95,24 @@ export async function resumeInterrupted(deps: IncidentDeps, now = Date.now()) {
     let online = true
     try { machineOn(deps, machine) } catch { online = false }
     const limited = online && !!worker && r.cause === 'limit' && !!limitOf(accounts ??= await readAccounts(deps))(worker.program, machine, now)
-    if (!causeGone(r, { online, limited })) continue
+    const login = r.cause === 'login' ? (incidents ??= await store.incidents()).find(i => i.id === r.incident) : undefined
+    const renewed = login && online ? (renewals[login.id] ??= await renewedAt(deps, login)) : undefined
+    if (!causeGone(r, { online, limited, renewed })) continue
+    // The agent still sits on its login prompt: it ends; a reviewer starts again as a reviewer.
+    const stuck = login && runs.find(x => x.id === r.run)
+    if (stuck?.role === 'reviewer') {
+      await store.saveTask({ ...t, state: 'working', waiting: undefined, recovery: { ...r, waits: undefined, resumedAt: now } })
+      // Imported here: pmWatchdog imports the mechanic, which imports this file.
+      await (await import('./pmWatchdog')).restartReview(deps, t.id, 'engine', `the login is renewed (incident ${r.incident}): its reviewer started again`)
+        .catch(async (e: Error) => store.logTask((await store.task(t.id))!, 'engine', `could not restart its reviewer after incident ${r.incident}: ${e.message}`))
+      busy.add(r.incident)
+      resumed.push(t.id)
+      continue
+    }
+    if (stuck && stuck.state !== 'ended') {
+      if (stuck.terminal) await killTerminal(deps, stuck.terminal).catch(() => {})
+      await store.saveRun({ ...stuck, state: 'ended', endedBy: 'exit' })
+    }
     const placed = await placeFor(deps, t, { waits: (await paceOf(store, p, t, now)).waits })
     if ('hold' in placed) { if (t.held !== placed.hold) await store.logTask({ ...t, held: placed.hold }, 'engine', `resumes once there is room: ${placed.hold}`); continue }
     machines.add(placed.machine)
