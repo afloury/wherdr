@@ -110,8 +110,10 @@ describe('a turn the coordinator takes by itself after routine wakes', () => {
     herdrState.value = { ok: true, workspaces: [], panes: [pane] }
     items = [
       ...wake('Autopilot: wake a1', 'Scheduled wake', 'Nothing to do.', 8),
-      ...wake('Autopilot: wake a2', 'Scheduled wake', '**WHR-12 merged.**\nThe board is clear.', 9),
+      ...wake('Autopilot: wake a2', 'Scheduled wake', '**WHR-12 merged.**', 9),
       { role: 'assistant', text: 'The fix is live.', ts: at(10), own: true },
+      ...wake('Autopilot: wake a3', 'Scheduled wake', 'The study is done.\n\n```wherdr\nchoices "Go" | "Wait"\n```', 11),
+      ...wake('Autopilot: wake a4', 'Scheduled wake', 'Nothing new.', 12),
     ]
     const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] }, global: { stubs: { UTooltip: { template: '<slot />' } } } })
     try {
@@ -120,6 +122,12 @@ describe('a turn the coordinator takes by itself after routine wakes', () => {
       expect(w.find('.wake-last').text()).toBe('· last: “WHR-12 merged.”')
       expect(w.find('.chat').text()).toContain('The fix is live.')
       expect(w.find('.chat').text()).not.toContain('Nothing to do.')
+      // A reply with choices is never folded: it shows in full under its row.
+      expect(w.findAll('[data-testid="wake-run"]')).toHaveLength(1)
+      expect(w.find('.chat').text()).toContain('The study is done.')
+      expect(w.findAll('[data-testid="wake"]').some(r => r.find('.wake-answer').exists() && r.text().includes('study'))).toBe(false)
+      // A routine one-liner on its own still folds under its row.
+      expect(w.findAll('.wake-answer').map(a => a.text())).toContain('Nothing new.')
     } finally { w.unmount() }
   })
 })
