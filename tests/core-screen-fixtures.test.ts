@@ -120,6 +120,35 @@ describe('readCoreScreen on recorded screens (no core status)', () => {
   })
 })
 
+// Antigravity reports its own status (idle under these panels). A slash command
+// from the conversation (+ menu or typed) that opens a panel or a picker shows
+// the interactive terminal over the conversation; Esc there brings the field back.
+// The model list is never offered as choices: a tap must not switch the model.
+describe('Antigravity slash-command panels', () => {
+  const PANELS = ['agy-context', 'agy-usage', 'agy-diff', 'agy-model']
+
+  it.each(PANELS)('%s opens the terminal', (name) => {
+    expect(readCoreScreen(screen(name), 'agy', 'idle')).toEqual({ status: null, choices: null, interaction: 'terminal' })
+    expect(readCoreScreen(screen(name), 'agy', 'blocked').choices).toBeNull()
+  })
+
+  it.each(PANELS)('%s: read as the terminal, Esc back to the field', async (name) => {
+    let text = screen(name)
+    const screens = createCoreScreens({ call: async () => ({ text }), viewed: () => true })
+    const p = { id: name, agent: 'agy', status: 'idle', coreAddress: 'host-a/t2' } as Pane
+    await screens.enrich([p])
+    expect(p.interaction).toBe('terminal')
+    // The overlay itself opens once 'terminal' has held for 500 ms.
+    const window = createInteractionWindow()
+    expect(window.update(p.interaction!, 0)).toBe(false)
+    expect(window.update(p.interaction!, 500)).toBe(true)
+    text = screen('agy-idle')
+    screens.forget(p.id)
+    await screens.enrich([p])
+    expect(p.interaction).toBe('input')
+  })
+})
+
 describe('enrich + card preview on recorded screens', () => {
   it('keeps an idle Devin at its input without opening the terminal window', async () => {
     const text = screen('devin-idle')
