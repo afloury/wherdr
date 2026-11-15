@@ -68,7 +68,7 @@ async function create() {
 <template>
   <AppSheet v-model:open="open" :title="tl('Add workspace')" tall>
     <form id="add-workspace" class="sheet-form" data-testid="add-workspace" novalidate @submit.prevent="create">
-      <p class="muted settings-hint">{{ tl('A workspace\'s coordinator runs the repositories cloned under its root folder, for work that spans several of them.') }}</p>
+      <p class="muted ws-hint">{{ tl('A workspace\'s coordinator runs the repositories cloned under its root folder, for work that spans several of them.') }}</p>
       <label class="field-label" for="add-workspace-name">{{ tl('Name') }}</label>
       <UInput id="add-workspace-name" v-model="name" size="xl" class="w-full" maxlength="60" data-testid="add-workspace-name" />
       <p v-if="shown('name')" class="form-error">{{ shown('name') }}</p>
@@ -81,7 +81,7 @@ async function create() {
       <USelect v-model="groupPick" :items="groupItems" size="xl" class="w-full" :aria-label="tl('Tab group')" data-testid="add-workspace-group" />
 
       <label class="field-label">{{ tl('Machines and root folders') }}</label>
-      <p class="muted settings-hint">{{ tl('Where the repositories are cloned on each machine, such as ~/work. The first one is its home. Nothing is cloned for you.') }}</p>
+      <p class="muted ws-hint">{{ tl('Where the repositories are cloned on each machine, such as ~/work. The first one is its home. Nothing is cloned for you.') }}</p>
       <div class="ws-machines">
         <div v-for="m in machines" :key="m.key" class="ws-machine" data-testid="add-workspace-machine">
           <UCheckbox :model-value="on.includes(m.key)" :label="m.label" size="xl" @update:model-value="v => toggle(m.key, v === true)" />
@@ -100,6 +100,7 @@ async function create() {
 </template>
 
 <style scoped>
+.ws-hint { margin: 6px 2px 10px; font-size: 13px; }
 .ws-machines { display: grid; gap: 10px; }
 .ws-machine { display: grid; gap: 6px; }
 </style>
