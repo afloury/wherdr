@@ -12,11 +12,11 @@ import type { Task } from './run'
 export const IN_A_ROW_MS = 60 * 60_000
 
 const resumesWhen = (r: Pick<Recovery, 'cause' | 'label'>) =>
-  r.cause === 'offline' ? `once ${r.label} is back` : r.cause === 'limit' ? 'once the account\'s limit resets' : 'now'
+  r.cause === 'offline' ? `once ${r.label} is back` : r.cause === 'limit' ? 'once the account\'s limit resets' : r.cause === 'login' ? 'once the login is renewed' : 'now'
 
 // The task as the incident leaves it: waiting for the engine's resume, or,
 // the same cause again right after one, for the coordinator (escalate: its wake's reason).
-export function interrupted(task: Task, i: Pick<Incident, 'id' | 'cause' | 'machine' | 'label'>, now: number): { task: Task, escalate?: string } {
+export function interrupted(task: Task, i: Pick<Incident, 'id' | 'cause' | 'machine' | 'label' | 'program'>, now: number): { task: Task, escalate?: string } {
   const prev = task.recovery
   const again = !!prev?.resumedAt && prev.cause === i.cause && now - prev.resumedAt < IN_A_ROW_MS
   const recovery: Recovery = { incident: i.id, cause: i.cause, machine: i.machine, label: i.label, ...(task.run ? { run: task.run } : {}), at: now, n: again ? prev!.n + 1 : 1 }
@@ -29,9 +29,9 @@ export function interrupted(task: Task, i: Pick<Incident, 'id' | 'cause' | 'mach
 }
 
 // Whether the cause is gone, from what the engine reads now: a machine still
-// offline keeps its tasks waiting, whatever the cause.
-export const causeGone = (r: Pick<Recovery, 'cause'>, now: { online: boolean, limited: boolean }) =>
-  now.online && !(r.cause === 'limit' && now.limited)
+// offline keeps its tasks waiting, whatever the cause; a login, until renewed after the task stopped on it.
+export const causeGone = (r: Pick<Recovery, 'cause' | 'at'>, now: { online: boolean, limited: boolean, renewed?: number }) =>
+  now.online && !(r.cause === 'limit' && now.limited) && !(r.cause === 'login' && !((now.renewed ?? 0) > r.at))
 
 // The recovering tasks the engine may resume, oldest first: none whose
 // earlier tasks (after) are still recovering. Those wait for them.

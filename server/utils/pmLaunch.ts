@@ -26,6 +26,7 @@ import { LABEL, TMP_DIR, agentEnv, agentLine, isAuthFailure, instructionsText, s
 import { isOpen, type Incident, type Recovery } from '../../shared/pm/incident'
 import { recordGone, type CoreList } from './pmIncidents'
 import { interruptTask } from './pmRecovery'
+import { pmDir } from './pmHome'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base,
 // origin's as fetched now when origin has it (a local one may be stale: a
@@ -247,7 +248,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const contLine = fetched?.code === 2 ? `Branch \`${task.fromBranch}\` is no longer on the remote: this task starts from the base branch instead.` : ''
   if (contLine) task = await store.logTask(task, 'engine', contLine)
   // Named at the first start (a task started before has task/<id>): a later title, tag or template change leaves it alone.
-  const paths = taskPaths(home, task.id, task.branch || (cont ? task.fromBranch : task.run ? undefined : branchFor(p.branchName, { ...task, id: shownTaskId([p], task.id) })))
+  const paths = taskPaths(home, task.id, task.branch || (cont ? task.fromBranch : task.run ? undefined : branchFor(p.branchName, { ...task, id: shownTaskId([p], task.id) })), pmDir())
   // Recorded at the first start: changing the project's branch later leaves this task alone.
   const base = taskBase(task, p) ?? ''
   const wt = await exec(deps, on, WORKTREE_SCRIPT, [repo, paths.worktree, paths.branch, base, cont ? `origin/${task.fromBranch}` : ''])
