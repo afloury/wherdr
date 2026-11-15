@@ -343,7 +343,15 @@ describe('runAlfredCommand', () => {
     await userMessageTo(store, 'host/t1', 'How is it going?', '*group:work')
     expect(await run('groups')).toEqual({ open: 'Work', groups: [{ name: 'Perso', kind: 'group', projects: ['WEB'] }, { name: 'Work', kind: 'group', projects: ['API'] }] })
     expect(await run('brief')).toMatchObject({ scope: 'Work', open: 'Work', projects: [{ project: 'API', merged: [], waiting: [], coordinator: 'not started' }], machines: [], quotas: [{ status: 'quota:claude', near: ['week 92% used'] }], others: ['all', 'Perso'] })
-    expect(await run('brief', '--group', 'perso')).toMatchObject({ scope: 'Perso', projects: [{ project: 'WEB', waiting: [{ id: 'WEB-1', what: 'Merge' }] }], machines: [{ status: 'machine:this', state: 'full' }] })
+    // A machine's status line names it by key; a label with a space never makes one (it would not parse).
+    const [local, mac] = machines as { label: string, status: string }[]
+    local!.label = 'Mac Studio'
+    mac!.status = 'offline'
+    try {
+      expect((await run('brief', '--group', 'work') as { machines: unknown[] }).machines).toEqual([{ name: 'Mac', state: 'offline', status: 'machine:mac' }])
+      expect((await run('brief', '--group', 'perso') as { machines: unknown[] }).machines).toEqual([{ name: 'Mac Studio', state: 'full' }])
+    } finally { local!.label = 'this'; mac!.status = 'online' }
+    expect(await run('brief', '--group', 'perso')).toMatchObject({ scope: 'Perso', projects: [{ project: 'WEB', waiting: [{ id: 'WEB-1', what: 'Merge' }] }], machines: [{ name: 'this', state: 'full', status: 'machine:this' }] })
     expect((await run('brief', '--all') as { projects: unknown[] }).projects).toHaveLength(2)
     expect((await store.coordinator(MAIN))!.briefs).toEqual({ '*group:work': expect.any(Number), '*group:perso': expect.any(Number), 'all': expect.any(Number) })
     await expect(run('brief', '--group', 'Home')).rejects.toThrow('Unknown scope Home')

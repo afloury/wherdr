@@ -7,7 +7,8 @@ import { isOpen } from '../../shared/pm/incident'
 import { shownKey, shownTaskId } from '../../shared/pm/projectKey'
 import { projectScopes, resolveScope, scopeName } from '../../shared/notes'
 import { readProjectTabs } from '../../shared/settings'
-import type { Quotas } from '../../shared/types'
+import type { MachineInfo, Quotas } from '../../shared/types'
+import { parseStatusBlock } from '../../shared/statusBlock'
 import type { CoreAdminDeps } from './coreCreate'
 import { HerdrError } from './herdr'
 import { homeTabs } from './notesStore'
@@ -60,10 +61,15 @@ export async function alfredBrief(deps: BriefDeps, cmd: { group?: string, all?: 
   })
   // The scope's machines: offline, or every agent slot taken.
   const scoped = machines.filter(m => !tab || tab.machines.includes(m.baseKey ?? m.key))
+  // Its status line names it by key, else by a label a status line reads (none: no line, its name only).
+  const fact = (m: MachineInfo, state: string) => {
+    const arg = m.key || m.label
+    return { name: m.label, state, ...(parseStatusBlock(`status machine:${arg}`) ? { status: `machine:${arg}` } : {}) }
+  }
   const machineFacts = (await Promise.all(scoped.map(async (m) => {
-    if (m.status === 'offline') return { status: `machine:${m.label}`, state: 'offline' }
+    if (m.status === 'offline') return fact(m, 'offline')
     const mem = await memoryState(deps, m.key).catch(() => null)
-    return mem?.cap !== undefined && mem.agents >= mem.cap ? { status: `machine:${m.label}`, state: 'full' } : null
+    return mem?.cap !== undefined && mem.agents >= mem.cap ? fact(m, 'full') : null
   }))).filter(x => x !== null)
   const q = await (deps.quotas ?? (async () => (await import('./quotas')).readQuotas()))().catch(() => null)
   const quotas = (['claude', 'codex'] as const).flatMap((program) => {
