@@ -124,14 +124,14 @@ it('follows the group tab by default, and keeps the filter picked', async () => 
     await expect.poll(shown).toBe('WK-1')
     reviewFilter.value = 'all'
     await expect.poll(progress).toBe('1 of 3')
-    // WHR-401: each option counts what waits under it, muted on the right; none at 0,
+    // WHR-401: each option counts what waits under it, in a grey chip after the name; none at 0,
     // listed after those with tasks (groups still before projects); the closed picker too.
     cards = [...cards, card('WK-2', 'work'), card('OT-1', 'other', { yourTurn: undefined })]
     machineGroups.value = [{ id: '*group:spare', name: 'Spare', machines: ['spare'] }, ...machineGroups.value]
     taskSheetTick.value++
     await expect.poll(() => q('review-filter')?.querySelector('[data-testid="option-count"]')?.textContent).toBe('4')
     q('review-filter')!.click()
-    const options = () => [...document.querySelectorAll('[role="option"]')].map(o => [o.querySelector('[data-slot="itemLabel"]')?.textContent?.trim(), o.querySelector('[data-testid="option-count"]')?.textContent ?? ''])
+    const options = () => [...document.querySelectorAll('[role="option"]')].map(o => [o.querySelector('[data-testid="option-label"]')?.textContent, o.querySelector('[data-testid="option-count"]')?.textContent ?? ''])
     await expect.poll(() => options().length).toBe(7)
     expect(options()).toEqual([['Follow group tab', '2'], ['All', '4'], ['Personal', '2'], ['Work', '2'], ['Spare', ''], ['Home', '2'], ['Work', '2']])
     w.unmount()
