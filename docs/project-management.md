@@ -651,10 +651,12 @@ reason (*Scheduled wake*, *WHR-9: stuck: …*) and its time; a tap opens the
 full text and the coordinator's whole turn. That turn ends at its own end,
 at your next message or `!`/`/` command, or where the coordinator speaks on
 its own (a background task it ran finished), which all show as usual below it.
-Once that turn is over, the coordinator's last answer in it sits under the row, smaller and muted, two lines at
-most. Consecutive routine wakes (no incident, nothing changed: no file edit
+Once that turn is over, a routine one-line answer (*Nothing new, …*) sits under the row, smaller and muted.
+Any other answer is a message to you and shows in full, under the row, like any
+message: one with a `wherdr` block (choices, task, status, action), a link,
+more than one line, or a question is never folded. Consecutive routine wakes (no incident, nothing changed: no file edit
 nor `wherdr pm` command beyond `ack`, `read`, `list`, `show`, `incidents`,
-`help`; an answer that asks nothing) fold into one row, *3 routine checks ·
+`help`; a one-line answer that asks nothing) fold into one row, *3 routine checks ·
 last: "WHR-12 merged"*, 08:00–11:00, with the first line of the last answer in
 it, that opens on tap. The fold holds only the wakes and their own turns. An incident, or a wake whose answer asks you
 something, keeps its row (in its stronger colour); an answer that asks you

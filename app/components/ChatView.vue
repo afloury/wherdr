@@ -33,6 +33,7 @@ import { duplicateImages } from '#shared/imageDupes'
 import { stripPosition } from '#shared/filePaths'
 import { turnOpens as openCards } from '#shared/uiOpen'
 import { readAloudEngine, stopSpeaking } from '~/composables/useReadAloud'
+import { foldableReply } from '~/utils/wakeReply'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 // A version of a reply replaced while the agent writes takes its question marks with it.
@@ -781,7 +782,8 @@ const endsWakeTurn = (b: Block) => fromUser(b) || (b.k === 'who' && !!b.own)
 // A wake (shared/pm/wakes.ts) is not the user's: a compact row with its kind,
 // its first line and time; once its turn is over, the coordinator's last
 // answer sits under it in a lighter style and the rest of the turn opens on
-// tap. An answer that asks the user stays a full reply. Consecutive routine
+// tap. Any other answer (one that asks, a `wherdr` block, a link, more than
+// one line: see utils/wakeReply.ts) stays a full reply. Consecutive routine
 // wakes (not an incident, nothing changed, nothing asked) fold into one row,
 // with the first line of the last answer in it. A fold holds only wakes and
 // their own turns: a turn the agent took by itself stays outside.
@@ -816,7 +818,8 @@ function foldWakes(out: Block[]): Block[] {
     const done = j < out.length || turn.at(-1)?.k === 'turn' || wakesDone.has(b.key)
     if (done) wakesDone.add(b.key)
     const asked = !!last && asks(last)
-    const fold = done && !!last && !asked
+    // Only a routine one-liner folds; any other reply shows in full.
+    const fold = done && !!last && !asked && foldableReply(last.text)
     const changed = turn.some(x => x.k === 'tools' && x.list.some(changes))
     const routine = fold && b.wake !== 'incident' && !changed
     if (!routine) endRun()
