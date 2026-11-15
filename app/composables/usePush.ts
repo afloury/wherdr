@@ -24,7 +24,7 @@ export async function syncPushLanguage(lang = language) {
   if (!('serviceWorker' in navigator) || !('Notification' in window) || Notification.permission !== 'granted') return
   const reg = await navigator.serviceWorker.ready
   const sub = await reg.pushManager.getSubscription()
-  if (sub) await api('/api/push/subscribe', { ...sub.toJSON(), lang, sessions: machineSessions.value })
+  if (sub) await api('/api/push/subscribe', { ...sub.toJSON(), lang })
 }
 
 const LAST_ENDPOINT = 'pushEndpoint'
@@ -50,7 +50,7 @@ export async function enablePush() {
     const previous = sub?.endpoint || readLastEndpoint()
     if (sub) await sub.unsubscribe().catch(() => {})
     sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key })
-    await api('/api/push/subscribe', { ...sub.toJSON(), previous, lang: language, sessions: machineSessions.value })
+    await api('/api/push/subscribe', { ...sub.toJSON(), previous, lang: language })
     try { localStorage.setItem(LAST_ENDPOINT, sub.endpoint) } catch { /* stockage indisponible */ }
     toast(t('Notifications enabled ✓'))
   } catch (err) {

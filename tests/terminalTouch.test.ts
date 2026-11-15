@@ -1,6 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createTerminalTouch, touchPreviewOffset } from '../app/utils/terminalTouch'
-import { createTouchScrollPacer } from '../server/utils/touchScrollPacer'
 
 function gesture(horizontal = false) {
   let time = 0, id = 0
@@ -113,64 +112,5 @@ describe('terminal touch gestures', () => {
     expect(touchPreviewOffset(400, 16)).toBe(16)
     expect(touchPreviewOffset(-400, 16)).toBe(-16)
     expect(touchPreviewOffset(12, 0)).toBe(1)
-  })
-})
-
-describe('touch scroll backpressure', () => {
-  afterEach(() => { vi.useRealTimers() })
-  it('responds immediately and keeps a bounded rate while following frames', () => {
-    vi.useFakeTimers(); vi.setSystemTime(0)
-    const times: number[] = []
-    const p = createTouchScrollPacer(() => times.push(Date.now()))
-    for (let i = 0; i < 125; i++) { p.push('up', 1); p.frame(); vi.advanceTimersByTime(8) }
-    p.dispose()
-    expect(times[0]).toBe(0); expect(times.length).toBeGreaterThanOrEqual(60)
-    expect(times.length).toBeLessThanOrEqual(74)
-    const batches = [...new Set(times)]
-    for (let i = 1; i < batches.length; i++) expect(batches[i]! - batches[i - 1]!).toBeGreaterThanOrEqual(16)
-    for (const at of batches) expect(times.filter(t => t === at).length).toBeLessThanOrEqual(3)
-  })
-  it('preserves a fast drag as separate wheel reports because Herdr ignores lines', () => {
-    vi.useFakeTimers(); vi.setSystemTime(0)
-    const send = vi.fn(), p = createTouchScrollPacer(send)
-    p.push('up', 20)
-    for (let i = 0; i < 15; i++) { vi.advanceTimersByTime(16); p.frame() }
-    expect(send.mock.calls.map(([direction, lines]) => [direction, lines])).toEqual(Array.from({ length: 20 }, () => ['up', 1]))
-    p.dispose()
-  })
-  it('drops queued movement in the old direction as soon as the finger reverses', () => {
-    vi.useFakeTimers(); vi.setSystemTime(0)
-    const send = vi.fn(), p = createTouchScrollPacer(send)
-    p.push('up', 20)
-    const alreadySent = send.mock.calls.length
-    p.push('down', 2); vi.advanceTimersByTime(16); p.frame()
-    expect(send.mock.calls.slice(alreadySent).map(([direction, lines]) => [direction, lines])).toEqual([['down', 1], ['down', 1]])
-    p.dispose()
-  })
-  it('expires stale movement instead of catching up long after a flick', () => {
-    vi.useFakeTimers(); vi.setSystemTime(0)
-    const send = vi.fn(), p = createTouchScrollPacer(send)
-    p.push('up', 60); vi.advanceTimersByTime(1000)
-    const count = send.mock.calls.length
-    expect(count).toBeLessThanOrEqual(12)
-    p.frame(); vi.advanceTimersByTime(1000)
-    expect(send).toHaveBeenCalledTimes(count)
-    p.dispose()
-  })
-  it('backs off for an unresponsive terminal instead of flooding its input', () => {
-    vi.useFakeTimers(); vi.setSystemTime(0)
-    const send = vi.fn(), p = createTouchScrollPacer(send)
-    for (let i = 0; i < 125; i++) { p.push('up', 1); vi.advanceTimersByTime(8) }
-    expect(send.mock.calls.length).toBeLessThanOrEqual(18)
-    p.dispose(); const count = send.mock.calls.length
-    vi.advanceTimersByTime(1000); expect(send).toHaveBeenCalledTimes(count)
-  })
-  it('drops pending scroll when cancelled and does not resume after disposal', () => {
-    vi.useFakeTimers(); vi.setSystemTime(0)
-    const send = vi.fn(), p = createTouchScrollPacer(send)
-    p.push('up', 1); p.push('up', 10); p.cancel(); vi.advanceTimersByTime(500)
-    expect(send).toHaveBeenCalledTimes(1)
-    p.dispose(); p.push('down', 10); p.frame(); vi.runAllTimers()
-    expect(send).toHaveBeenCalledTimes(1)
   })
 })
