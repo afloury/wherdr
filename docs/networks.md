@@ -7,13 +7,12 @@
 Your agents keep running when your laptop is closed, and you follow them from your phone.
 wherdr stays on your private network: it is **never published on the Internet**.
 
-**1. Herdr on the server.** Install [Herdr](https://herdr.dev) (≥ 0.9.1) and start it
-(`herdr` or `herdr server`), with the integrations of the agents you use
-(`herdr integration install claude|codex`).
+**1. herdr-core on the server.** Start your hc session on the server, from a plain shell, with
+the agents you use (Claude Code, Codex) installed.
 
-**2. wherdr.** Run [the one command](installation.md#the-one-command) on the server, as your user (over SSH, it
-prints the address and the phone steps instead of opening a browser). wherdr runs as a service
-that starts with the machine and keeps running when you log out.
+**2. wherdr.** Build and start wherdr v3 on the server, as your user
+([First launch](quick-start.md#quick-start)), and keep it running as a service that starts with
+the machine and keeps running when you log out ([Keep it running](installation.md#keep-it-running)).
 
 **3. Private HTTPS with Tailscale.** Install [Tailscale](https://tailscale.com) on the server,
 your phone and your computers, on the same tailnet, with
@@ -26,21 +25,22 @@ tailscale serve --bg --https=7683 http://127.0.0.1:7683
 ```
 
 Tailscale Serve listens on HTTPS port 7683 of your tailnet name, with a valid certificate, and
-forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it.
+forwards to wherdr's local HTTP port. Only devices of your tailnet can reach it, and wherdr
+answers only **your own** devices among them: another user's device in a team tailnet, a node
+shared in from another tailnet or a tagged node is refused until you set up a passkey (see
+[Your own devices only](security.md#own-devices)).
 
 **wherdr enables that address by itself**, on a server without a screen too: at startup, every
 30 seconds, and when an address it does not know yet is opened, it reads what `tailscale serve`
 publishes on this machine (the `tailscale` command) and adopts the HTTPS address that points to
 its own port (allowed host and `APP_URL`, saved in `data/app-url.json`; an HTTPS `APP_URL` in the
-environment or `~/wherdr/wherdr.env` wins). An address removed from `tailscale serve` is refused
+environment wins). An address removed from `tailscale serve` is refused
 again. Nothing a request says can enable an address: only Tailscale's own state on the machine
 does, and an address that `tailscale funnel` opens to the Internet is never adopted.
 
 **Settings › Phone** on the server (`http://localhost:7683/#/settings?section=phone`) shows the
 state and the QR code and publishes wherdr itself: one button, asked first. From a terminal,
-**P** in the wherdr panel, `wherdr phone` (npm, Homebrew) or the [one command](installation.md#the-one-command)
-run again checks the same thing, and `curl -fsS http://127.0.0.1:7683/api/phone` prints the state
-as JSON.
+`curl -fsS http://127.0.0.1:7683/api/phone` prints the same state as JSON.
 
 If the phone shows **"This address isn't enabled yet"** (403), the address it opened is not one
 `tailscale serve` publishes for wherdr's port on that machine: the page gives the command to run
@@ -53,21 +53,20 @@ there.
 - **passkeys** for the lock screen (Face ID, Touch ID, Windows Hello, Android).
 
 **4. On the phone:** open the address, [install the app](phone.md#install-it-as-an-app), then
-Settings → **Enable notifications**. **On the computer:** use the same address in a browser; the
-desktop layout can replace the Herdr terminal client for daily work.
+Settings → **Enable notifications**. **On the computer:** use the same address in a browser.
 
 **5. Passkey lock** (optional): Settings → Security → **Enable passkey lock**. The
-first passkey asks for a bootstrap token, printed in the server log (`~/wherdr/wherdr.log`,
-**L** in the wherdr panel); it changes on each restart and is only needed for that first passkey. Add a passkey on each of
-your devices after that (see [New device](security.md#new-device)). Without one, every device of your
-tailnet can control your agents: enough when the tailnet is yours alone, a passkey adds a lock
-on each device when someone else shares the tailnet or your devices.
+first passkey asks for a bootstrap token, printed in the server's output (`npm start`, or your
+service's log); it changes on each restart and is only needed for that first passkey. Add a passkey on each of
+your devices after that (see [New device](security.md#new-device)). Without one, wherdr
+answers this computer and your own tailnet devices; devices of other people on your tailnet are
+always refused (with a passkey, they reach the lock screen). A passkey adds an automatic lock on
+each device if you want one, for example on a computer other people log in to (see
+[Shared computers](security.md#shared-computers)).
 
-**6. More machines** (optional): register your other computers in Herdr over SSH
-(`herdr machine add`, see [Several machines (SSH)](machines.md#several-machines-ssh)). Their agents show
-in wherdr in their own section, and everything works the same on them. The machine menu also has
-**Keep awake**, which stops a Mac (`caffeinate`) or a Linux machine (`systemd-inhibit`) from
-sleeping for an hour, four hours, the evening or until turned off.
+**6. More machines** (optional): add your other computers to hc over SSH, from Settings ›
+Machines or with `hc machine add` (see [Several machines (SSH)](machines.md#several-machines-ssh)).
+Each one gets its tab on the home screen, and New starts agents on it.
 
 > [!CAUTION]
 > Never publish wherdr on the Internet: no port forwarding on your router, no public reverse
@@ -82,7 +81,7 @@ works with any private network that gives it an **HTTPS address with a valid cer
 - **HTTPS with a certificate your phone trusts.** The installed app (PWA), push notifications
   and passkeys only work on `https://`. A self-signed certificate or plain `http://` on your
   LAN is not enough, and is never a supported way to reach wherdr.
-- **`APP_URL` set to that address** (the environment of `wherdr` / `npm start`), then restart wherdr. Its hostname is allowed automatically and it enables Web
+- **`APP_URL` set to that address** (the environment of the wherdr server), then restart wherdr. Its hostname is allowed automatically and it enables Web
   Push. Add `HERDR_WEB_ALLOWED_HOSTS` only if you also open wherdr under another name. The
   automatic adoption and the address check in **Settings › Phone** only know the `*.ts.net`
   addresses of `tailscale serve`; an HTTPS `APP_URL` in the environment always wins.

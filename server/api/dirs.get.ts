@@ -1,4 +1,7 @@
+import { coreAdminDeps } from '../utils/coreAdminDeps'
+import { coreListDirs } from '../utils/coreCreate'
+
 export default defineApi((event) => {
   const q = getQuery(event)
-  return listDirs(String(q.path || '') || null, String(q.machine || ''))
+  return coreListDirs(coreAdminDeps(), String(q.path || '') || null, q.machine)
 })
