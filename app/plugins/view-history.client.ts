@@ -36,7 +36,7 @@ export default defineNuxtPlugin((app) => {
     window.addEventListener('popstate', onPop, { capture: true })
     const router = useRouter()
     const route = router.currentRoute.value
-    if (desk.value || !isDetailRoute(route.path, route.query) || internalBack(history.state?.back)) return
+    if (desk.value || !isDetailRoute(route.path) || internalBack(history.state?.back)) return
     // A cold notification or direct link has no app screen behind it. Put Home
     // underneath the detail once, including on reload. Use RouterHistory so its
     // position/back/forward bookkeeping stays consistent with native iOS/Android

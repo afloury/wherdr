@@ -28,8 +28,9 @@ const FRENCH = /[àâçéèêëîïôûùœ]|\b(introuvable|injoignable|invalide
 const BILINGUAL = /\blang\b|\bfr\b|Fr\b|\bfr:|introuvable\/i/
 
 // Bilingual by design: the coordinator rules and TASKS.md template written in the
-// project's language, and reply markers and task labels recognized in both languages.
-const BILINGUAL_FILES = new Set(['shared/projectBoard.ts', 'shared/replyQuote.ts', 'shared/reference.ts', 'shared/threadLimits.ts'])
+// project's language, reply markers and task labels recognized in both languages,
+// and the step descriptions (tl pairs passed in by the app).
+const BILINGUAL_FILES = new Set(['shared/pm/describe.ts', 'shared/projectBoard.ts', 'shared/replyQuote.ts', 'shared/reference.ts', 'shared/threadLimits.ts'])
 
 const SERVER = [
   ...files('server', /\.ts$/).map(f => ({ f, src: code(readFileSync(f, 'utf8'), false) })),
@@ -52,11 +53,11 @@ describe('server messages', () => {
   })
 
   it('are translated back from a filled template, values included', () => {
-    const msg = fmt('{machine} is unreachable: {reason}', { machine: 'laptop', reason: 'Herdr server not responding' })
-    expect(msg).toBe('laptop is unreachable: Herdr server not responding')
-    expect(french(msg)).toBe('laptop injoignable : Serveur Herdr muet')
+    const msg = fmt('{machine} is unreachable: {reason}', { machine: 'laptop', reason: 'timed out' })
+    expect(msg).toBe('laptop is unreachable: timed out')
+    expect(french(msg)).toBe('laptop injoignable : délai dépassé')
     expect(french(fmt('{machine} is unreachable', { machine: 'laptop' }))).toBe('laptop injoignable')
-    expect(french(fmt('Not a Git repository: {path}', { path: '~/demo' }))).toBe('Pas un dépôt Git : ~/demo')
+    expect(french(fmt('Folder not found: {path}', { path: '~/demo' }))).toBe('Dossier introuvable : ~/demo')
     expect(french(fmt('{count} tasks', { count: 3 }))).toBe('3 tâches')
     expect(french('Invalid pane')).toBe('pane invalide')
     expect(french('Some text from Herdr')).toBeUndefined()
