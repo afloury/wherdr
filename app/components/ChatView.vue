@@ -488,9 +488,9 @@ const NOTICE: Record<string, [string, string]> = {
 type Block = ({ k: 'day', key: string, label: string }
   // `own`: it opens a turn the agent took by itself (a background task finished…).
   | { k: 'who', key: string, own?: boolean }
-  | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, reply: ReplyTarget | null, origin: string | null, wake: WakeKind | null, ms?: number }
+  | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, ts: string | null, reply: ReplyTarget | null, origin: string | null, wake: WakeKind | null, ms?: number }
   // `rid`: its code in the references to it (shared/reference.ts messageId).
-  | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, endsTurn: boolean, ms?: number }
+  | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, ts: string | null, endsTurn: boolean, ms?: number }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
   | { k: 'job', key: string, id: string, tool: string, out: string, ms: number | undefined, error: boolean }
   // `cmd`: a local '/' command the user ran.
@@ -501,7 +501,7 @@ type Block = ({ k: 'day', key: string, label: string }
   | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean, ms?: number }
   | { k: 'ompRun', key: string, tool: ChatItem & { omp: OmpToolView }, ms?: number }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
-  | { k: 'turn', key: string, text: string, copy: string | null, reply: string | null }
+  | { k: 'turn', key: string, text: string, ts: string | null, copy: string | null, reply: string | null }
   // A wake: one compact row, the coordinator's answer under it (see foldWakes).
   // The user's click on a card, told to the agent (shared/uiActions.ts cardNote): a muted row.
   | { k: 'card', key: string, text: string, time: string | null, at: string | null }
@@ -641,7 +641,7 @@ const blocks = computed<Block[]>(() => {
       const acts = turn.tools ? ` · ${turn.tools} ${t(turn.tools > 1 ? 'actions' : 'action')}` : ''
       // "Reply" of the last reply: next to "Copy", on the end-of-turn line.
       if (lastReplyBlock) lastReplyBlock.endsTurn = true
-      out.push({ k: 'turn', key: `e:${turn.key}`, text: `✓ ${fmtDuration(s)}${acts}`, copy: lastReply, reply: lastReplyBlock?.key || null })
+      out.push({ k: 'turn', key: `e:${turn.key}`, text: `✓ ${fmtDuration(s)}${acts}`, ts: lastReplyBlock?.ts || turn.end, copy: lastReply, reply: lastReplyBlock?.key || null })
     }
     turn = null
     lastReply = null
@@ -703,11 +703,11 @@ const blocks = computed<Block[]>(() => {
       if (card !== null) { out.push({ k: 'card', key, text: card, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null }); return }
       const parsed = parseReply(text)
       const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
-      out.push({ k: 'user', key, text: parsed ? parsed.body : text, pasted: it.pasted, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, reply: parsed?.reply || null, origin, wake: wakeKindOf(text), ...msOf(it) })
+      out.push({ k: 'user', key, text: parsed ? parsed.body : text, pasted: it.pasted, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, ts: it.ts || null, reply: parsed?.reply || null, origin, wake: wakeKindOf(text), ...msOf(it) })
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
-      lastReplyBlock = lazyHtml({ k: 'assistant' as const, key, id: replyId(it), rid: messageId(it), text: it.text, time, endsTurn: false, ...(it.ts ? { ms: new Date(it.ts).getTime() } : {}) }, () => withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No'), okAll: t('OK to all'), decisions: t('Decisions') }))
+      lastReplyBlock = lazyHtml({ k: 'assistant' as const, key, id: replyId(it), rid: messageId(it), text: it.text, time, ts: it.ts || null, endsTurn: false, ...(it.ts ? { ms: new Date(it.ts).getTime() } : {}) }, () => withQuestions(md(it.text), { reply: t('Reply'), quoted: t('Quoted'), discuss: t('Discuss'), yes: t('Yes'), no: t('No'), okAll: t('OK to all'), decisions: t('Decisions') }))
       out.push(lastReplyBlock)
       replies.push({ key, time, text: it.text, rid: lastReplyBlock.rid })
     } else if (it.role === 'thinking') {
@@ -1601,7 +1601,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                     </span><UserText :text="b.text" :pasted="b.pasted" />
                   </template>
                 </UChatMessage>
-                <div v-if="b.time" class="msg-time" :title="b.at || undefined">{{ b.time }}</div>
+                <MsgStamp v-if="b.ts" :ts="b.ts" />
               </div>
 
               <template v-else-if="b.k === 'assistant'">
@@ -1615,11 +1615,12 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                     <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" @done="typingDone(b.id)" />
                   </template>
                 </UChatMessage>
-                <div v-if="!b.endsTurn && (!readOnly || readAloudEngine !== 'off')" class="msg-actions">
+                <div v-if="!b.endsTurn && (b.ts || !readOnly || readAloudEngine !== 'off')" class="msg-actions">
                   <button v-if="!readOnly" type="button" class="msg-reply" @click="replyTo(b.key)">
                     <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
                   </button>
                   <ReadAloudButton :id="`${paneId}:${b.key}`" :text="b.text" />
+                  <MsgStamp v-if="b.ts" :ts="b.ts" />
                 </div>
                 <template v-if="coord"><template v-for="p in proposalCards.get(b.key)" :key="p.key"><AutomationProposalCard v-if="p.auto" :p="p.auto" /><ProposalCard v-else :c="coord" :answer="p.answer" :can-goto="!p.answer && !!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" /></template></template>
               </template>
@@ -1701,6 +1702,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </button>
                 <ReadAloudButton v-if="b.copy && b.reply" :id="`${paneId}:${b.reply}`" :text="b.copy" />
                 <span>{{ b.text }}</span>
+                <MsgStamp v-if="b.ts" :ts="b.ts" />
               </div>
 
               <!-- omp: a console, "OMP · N ACTIONS · Σ time", one line per call. -->
