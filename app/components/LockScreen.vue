@@ -2,6 +2,7 @@
 // Passkey lock (WebAuthn, see server/utils/auth.ts).
 import { startAuthentication } from '@simplewebauthn/browser'
 
+const props = defineProps<{ afterUnlock?: () => Promise<void> }>()
 const busy = ref(false)
 const error = ref<string | null>(null)
 
@@ -13,7 +14,8 @@ async function unlock() {
     const response = await startAuthentication({ optionsJSON: opts })
     await api('/api/auth/login/verify', { response })
     haptic()
-    await start()
+    if (props.afterUnlock) await props.afterUnlock()
+    else await start()
   } catch (err) {
     const e = err as Error
     error.value = e.name === 'NotAllowedError' ? t('Unlock cancelled') : e.message
