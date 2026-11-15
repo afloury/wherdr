@@ -2,7 +2,8 @@
 // agent's own terminal, in its shell mode ("! cmd": Claude Code's bash mode,
 // Codex and omp likewise; utils/shellCommand.ts). Used by the conversation
 // (ChatView.vue).
-import type { Pane, QueuedMessage } from '#shared/types'
+import { ref } from 'vue'
+import type { ChatItem, Pane, QueuedMessage } from '#shared/types'
 
 // The pane takes commands now: online, not stale, an agent with a shell mode.
 export const canRunIn = (pane: Pane | null | undefined): pane is Pane =>
@@ -81,4 +82,61 @@ export async function copyCode(text: string) {
     await navigator.clipboard.writeText(text)
     toast(t('Copied'))
   } catch { toast(t('Copy failed'), true) }
+}
+
+// ------------------------------------------------------------ runs
+// Commands run with Run, per pane, from the moment they are sent: the
+// conversation shows each at once as a live card (ChatView), and the button
+// says "Running…", then "Ran at 16:42". The transcript only writes a "!"
+// command once it has finished; that entry then replaces the live card.
+// `seen`: entries of the same command already there (or still on their way)
+// when it was sent; the next one is this run's. `doneAt`: when it finished.
+export interface CodeRun { cmd: string, at: number, seen: number, doneAt?: number }
+type RunEntry = Pick<ChatItem, 'role' | 'text' | 'ts' | 'ms' | 'out' | 'omp'>
+// Past this, a run the transcript never wrote (lost, cleared) stops showing as running.
+export const RUN_MAX_MS = 3_600_000
+const RUNS_KEPT = 20
+export const codeRuns = ref<Record<string, CodeRun[]>>({})
+
+// The same command, whatever its spacing (the screen wraps a long one, even mid-word).
+const flat = (s: string) => String(s || '').replace(/\s+/g, '')
+export const sameCmd = (a: string, b: string) => flat(a) === flat(b)
+const entriesOf = (items: readonly RunEntry[], cmd: string) => items.filter(it => it.role === 'bash' && flat(it.text) === flat(cmd))
+
+// A new run, counted after the entries and the runs of the same command.
+export function newRun(runs: readonly CodeRun[], items: readonly RunEntry[], cmd: string, at: number): CodeRun {
+  const pending = runs.filter(r => r.doneAt === undefined && flat(r.cmd) === flat(cmd)).length
+  return { cmd, at, seen: entriesOf(items, cmd).length + pending }
+}
+
+// The runs with those whose entry has landed (or that ran too long) marked done.
+export function settleRuns(runs: readonly CodeRun[], items: readonly RunEntry[], now: number): CodeRun[] {
+  return runs.map((r) => {
+    if (r.doneAt !== undefined) return r
+    const entry = entriesOf(items, r.cmd)[r.seen]
+    // Finished once its output is written (omp: its tool view).
+    if (entry && (entry.out !== undefined || entry.omp)) {
+      const end = entry.ts ? Date.parse(entry.ts) + (entry.ms || 0) : NaN
+      return { ...r, doneAt: end >= r.at ? end : now }
+    }
+    return now - r.at > RUN_MAX_MS ? { ...r, doneAt: now } : r
+  })
+}
+
+export function addRun(paneId: string, items: readonly RunEntry[], cmd: string) {
+  const list = codeRuns.value[paneId] || []
+  codeRuns.value = { ...codeRuns.value, [paneId]: [...list, newRun(list, items, cmd, Date.now())].slice(-RUNS_KEPT) }
+}
+
+// The Run button's state per command (key: runKey): running, or the time of its last run.
+export const runKey = flat
+export type RunMark = { running: boolean, at: number }
+export function runMarks(runs: readonly CodeRun[]): Record<string, RunMark> {
+  const out: Record<string, RunMark> = {}
+  for (const r of runs) {
+    const k = flat(r.cmd)
+    const running = r.doneAt === undefined
+    out[k] = { running: running || Boolean(out[k]?.running), at: running ? r.at : r.doneAt! }
+  }
+  return out
 }
