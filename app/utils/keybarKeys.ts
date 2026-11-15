@@ -23,8 +23,11 @@ export function virtualNavigationBytes(chord: string): string | null {
   return code.endsWith('~') ? `\x1b[${code.slice(0, -1)};${modifier}~` : `\x1b[1;${modifier}${code}`
 }
 
-// The named-key API can emit the same CSI bytes one key at a time. Keep
-// uppercase final bytes as Shift chords; text input would bracket-paste them.
-export function virtualNavigationKeys(chord: string): string[] {
+// Without a terminal attached, through the named-key API. herdr-core names these
+// keys itself (home, pageup, ctrl+delete...) and sends the same bytes. Herdr 0.9.5
+// emits the CSI bytes one key at a time: uppercase final bytes stay Shift chords,
+// text input would bracket-paste them.
+export function virtualNavigationKeys(chord: string, core = false): string[] {
+  if (core) return virtualNavigationBytes(chord) ? [chord] : []
   return Array.from(virtualNavigationBytes(chord) || '', c => virtualInputKey(c)!)
 }

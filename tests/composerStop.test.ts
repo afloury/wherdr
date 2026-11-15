@@ -26,3 +26,13 @@ describe('bouton Stop du champ de saisie', () => {
     expect(fn).toContain(`'/api/interrupt'`)
   })
 })
+
+describe('Stop with a queued message', () => {
+  it('is not an error when the queued message started', () => {
+    const fn = /async function interrupt\(\)[\s\S]*?\n\}/.exec(composer)?.[0] || ''
+    expect(fn).toContain('hadQueued')
+    expect(fn).toContain('Interrupted, next message started')
+    expect(fn).toMatch(/r\.outcome === 'still_working'/)
+    expect(composer).toContain('sentWhileWorking')
+  })
+})

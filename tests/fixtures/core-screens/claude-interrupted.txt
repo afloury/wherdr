@@ -1,0 +1,10 @@
+❯ Rename the config loader
+
+⏺ Read(src/config.ts)
+  ⎿  Read 120 lines
+  ⎿  Interrupted · What should Claude do instead?
+
+────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle)
