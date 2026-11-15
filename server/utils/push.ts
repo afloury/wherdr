@@ -6,8 +6,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import webpush from 'web-push'
 import { DATA_DIR, appUrl, log } from './env'
+import { auth } from './http'
 import { pushConfig } from './pushConfig'
-import type { Pane } from '../../shared/types'
 import { type Quiet, quietActive, silenced } from '../../shared/quiet'
 import { type PushDelivery, type PushDeviceView, classifyPushError, expiredLongAgo, pushProvider } from '../../shared/pushDelivery'
 
@@ -24,6 +24,10 @@ export interface PushSub {
   sessions?: Record<string, string>
   quiet?: Quiet // mode silence de cet appareil
   last?: PushDelivery // result of the last send to this device
+  // Lock generation when the device subscribed (auth.generation()): Lock all
+  // devices changes it, and this subscription is then dropped. Missing on
+  // subscriptions saved before: kept until the next Lock all devices.
+  gen?: string
 }
 // Text in English, with the French version for devices subscribed in French
 // (the language is stored with the subscription; English by default).
@@ -78,10 +82,6 @@ export async function writeSubs(subs: PushSub[]) {
 // `audience`: the devices a notification goes to (none given: all of them).
 export type PushAudience = (sub: PushSub) => boolean
 
-export function subWatchesSession(sub: PushSub, baseKey: string, session: string, baseSession: string): boolean {
-  return (sub.sessions?.[baseKey] || baseSession) === session
-}
-
 // Quiet mode for all devices (DATA_DIR/quiet.json, kept across restarts).
 export async function readGlobalQuiet(): Promise<Quiet | null> {
   try {
@@ -102,9 +102,26 @@ export function agentNotificationTitle(kind: 'blocked' | 'done', who: string): {
     : { title: `${who} has finished`, titleFr: `${who} a terminé` }
 }
 
+// A subscription saved under an earlier lock generation (Lock all devices
+// since): the device has no session any more and gets nothing.
+export const staleSub = (sub: PushSub, generation: string) => sub.gen !== undefined && sub.gen !== generation
+
+// Lock all devices / lock turned off: every subscription goes (none was saved
+// under the new generation yet). Returns how many were removed.
+export async function dropAllSubs(): Promise<number> {
+  const subs = await readSubs()
+  if (subs.length) await writeSubs([])
+  return subs.length
+}
+
 export async function pushSend(payload: PushPayload, audience?: PushAudience, force = false): Promise<number> {
   if (!pushReady()) return 0
-  const subs = await readSubs()
+  const generation = auth.generation()
+  const all = await readSubs()
+  // Subscribed before a Lock all devices (saved in the meantime by a request
+  // already under way): never sent, and removed.
+  const subs = all.filter(s => !staleSub(s, generation))
+  if (subs.length < all.length) await writeSubs((await readSubs()).filter(s => !staleSub(s, generation)))
   const globalQuiet = force ? null : await readGlobalQuiet()
   const results = new Map<string, PushDelivery>()
   let ok = 0

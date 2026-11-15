@@ -1,28 +1,18 @@
-// "Cancel" button of queued messages: when to show it, and how to
-// put the message back into the input field (text + attached photos).
-import type { Pane } from '../../shared/types'
+// "Cancel" of a message not sent: how to put it back into the input field
+// (text + attached photos).
 import type { DraftAtt } from '../composables/useDraft'
 import { parseReply } from '../../shared/replyQuote'
 import { refLine } from '../../shared/reference'
 import { extensionOf, parseAttachmentLine } from '../../shared/attachments'
 import { splitPasted } from '../../shared/pastedText'
+import { isUploadLine } from '../../shared/queuedMatch'
 import { sentPastes } from './sentPastes'
 import { tl } from './i18n'
-
-const UPLOAD = '/.cache/herdr-web/uploads/'
-
-// Not sent yet (agent starting): always. Otherwise only for a working
-// Claude: its queue is recalled with ↑; Codex's has no verified
-// recall. When not working, the message is already read (or about to be).
-export function canCancelQueued(p: Pane | undefined): boolean {
-  if (!p || !p.agent) return false
-  return Boolean(p.pendingPrompt) || (p.agent === 'claude' && p.status === 'working')
-}
 
 // Puts a cancelled message back into the draft, as if it had never been
 // sent: its text before what was already typed, its attached photos.
 // `pasted`: the pasted texts the server lists for it (sent from another device).
-// `after`: a message the server gives back (see givenBack.ts) goes after what
+// `after`: a message the server gives back goes after what
 // was already typed.
 export function restoreDraft(draft: { text: string, atts: DraftAtt[] }, message: string, pasted: string[] = [], after = false) {
   // A reply marker of an earlier version comes back as a reference.
@@ -32,9 +22,9 @@ export function restoreDraft(draft: { text: string, atts: DraftAtt[] }, message:
   const split = splitPasted(String(message || ''), pasted, sentPastes.value, true)
   for (const paste of split.pastes) draft.atts.push({ url: '', path: null, paste })
   const lines = split.text.split('\n')
-  const photos = lines.filter(l => l.includes(UPLOAD)).map(l => l.trim())
+  const photos = lines.filter(isUploadLine).map(l => l.trim())
   const files = lines.filter(l => parseAttachmentLine(l))
-  const text = lines.filter(l => !l.includes(UPLOAD) && !parseAttachmentLine(l)).join('\n').trim()
+  const text = lines.filter(l => !isUploadLine(l) && !parseAttachmentLine(l)).join('\n').trim()
   draft.text = (after ? [draft.text.trim(), text] : [text, draft.text.trim()]).filter(Boolean).join('\n')
   for (const path of photos) {
     if (draft.atts.some(a => a.path === path)) continue
