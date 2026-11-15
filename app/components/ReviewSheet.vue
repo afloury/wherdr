@@ -200,7 +200,7 @@ function onKey(e: KeyboardEvent) {
         <Transition :name="motion">
       <article v-if="card && row" :key="card.id" class="review-item" :data-task="card.id" :data-kind="approves ? 'approve' : 'answer'" data-testid="review-item">
         <header class="review-head">
-          <ProjectBadge :text="card.shown" :color="card.color" />
+          <ProjectBadge :text="card.shown" :color="card.color" copy />
           <h3>{{ card.title }}</h3>
         </header>
         <p v-if="gone" class="muted review-gone" data-testid="review-gone">{{ tl(`Handled elsewhere: ${gone}`) }}</p>

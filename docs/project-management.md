@@ -1017,7 +1017,8 @@ agent that is not on screen here opens the sheet instead.
 
 <a id="tasks-to-review"></a>**Tasks to review.** To clear a morning's work in a
 few minutes, tap Home's **Tasks to review** card: it shows what waits for you
-one at a time. A task to approve shows its key, title and project, its
+one at a time. A task to approve shows its key (a tap copies it, as on the task
+sheet), title and project, its
 [TL;DR](#tldr), its newest screenshots (the sheet's viewer, before and after
 side by side), its PR and the review's verdict in one line, then:
 
