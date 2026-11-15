@@ -143,6 +143,14 @@ takes the workspace's settings unless it sets its own.
 
 ### General
 
+There is no *Save* button: every field saves by itself. A switch, a pick or a
+color saves at once; typed text (name, key, models, branch name, the worktree
+setup's fields) once you pause typing for a moment or leave the field. A
+discreet *Saved ✓* shows next to the field's label, then fades; a small spinner
+while it saves. An invalid value (a time limit over 10m) says why under the
+field and nothing is saved until it is fixed; a save the server refuses shows
+its message under the field and keeps what you typed.
+
 - **Name**, **Key** and **Color**. Task ids start with the key. Change it and every task,
   old ones too, shows the new key: on the board, and in what wherdr writes for you
   and its agents (wakes, notifications, task logs, PR titles, `wherdr pm` outputs,
@@ -186,8 +194,8 @@ takes the workspace's settings unless it sets its own.
 - **Worktree setup**: what wherdr prepares in a new task's worktree before its
   worker first starts, so the worker does not rebuild it. Short help lines sit
   above its fields, laid out in two columns on a computer and one on the phone.
-  Saved with *Save*, on its own row under the fields and enabled once a field of
-  the General tab changed, in the workflow's `worktree` block (shown in Workflow › JSON):
+  Saved by itself, like every General field, in the workflow's `worktree` block
+  (shown in Workflow › JSON):
   - *Files to copy*: ignored files taken from the project's clone, such as `.env`
     or a local config, one path per line. Literal paths only; a file git tracks
     (it is already there) or the clone does not have is skipped, and the log says so.
@@ -422,7 +430,7 @@ the task's machine. Any pair works, and nothing is picked for you:
 
 or a Claude reviewer with a Codex fallback:
 `"reviewModel": "claude-sonnet-5-5", "reviewFallbackAgent": "codex", "reviewFallbackModel": "gpt-6.1-sol"`.
-The fallback follows the reviewer's rules; *Save* refuses one that breaks them,
+The fallback follows the reviewer's rules; saving refuses one that breaks them,
 or one of the two prefs without the other.
 
 Before it starts a reviewer, wherdr reads the review agent's account (the
@@ -485,7 +493,10 @@ In the **Guards** tab:
   runs again, at most twice, then waits for you. A restart waits up to 20 s
   for a merge that runs.
 - **Effect**: what each task type adds and, for each step that merges, whether
-  it is left to you. It follows your changes before you save.
+  it is left to you.
+
+Each change saves at once (no *Save* button), with a discreet *Saved ✓* next to
+its heading; a refused save shows the server's message under it.
 
 Only you, or Alfred (with [`wherdr alfred project guards`](alfred.md) after
 your yes), can change guards: a project coordinator never can.
