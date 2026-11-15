@@ -1044,13 +1044,11 @@ body.short-bottom { --safe-bottom: 0px; }
   font-size: 15px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere;
 }
 .msg-time { font: 400 10.5px/1 var(--mono); color: var(--dim); letter-spacing: .04em; }
-/* A message's time as a button: tap shows the full date. */
-.msg-stamp { flex: none; white-space: nowrap; background: none; border: 0; border-radius: 0; padding: 0; cursor: pointer; text-align: left; }
-.turn-end > span:last-child { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A message's time as a button: tap shows the full date. Always on the right, like under the user's messages. */
+.msg-stamp { flex: none; white-space: nowrap; background: none; border: 0; border-radius: 0; padding: 0; cursor: pointer; text-align: right; }
+.turn-end > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .msg-stamp:hover, .msg-stamp:focus-visible { color: var(--text-2); }
-.msg-actions .msg-stamp, .turn-end .msg-stamp { height: 28px; padding: 0 6px; }
-.turn-end .msg-stamp + span { padding-left: 0; }
-.turn-end .msg-stamp::after { content: ' ·'; }
+.msg-actions .msg-stamp, .turn-end .msg-stamp { height: 28px; padding: 0; margin-left: auto; }
 /* Long typed message: folded after ~12 lines, with a fade and Show more. */
 .msg-fold { position: relative; }
 .msg-fold.folded { max-height: var(--fold-max, calc(15px * 1.5 * 12)); overflow: hidden; -webkit-mask-image: linear-gradient(to bottom, #000 60%, transparent); mask-image: linear-gradient(to bottom, #000 60%, transparent); }

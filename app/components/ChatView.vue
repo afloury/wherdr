@@ -1660,11 +1660,11 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   @quote="quote" @answer="answer" @hot="(n, on) => hotQuestion(b.key, n, on)" @pick="pickKey = pickKey === b.key ? null : b.key"
                 />
                 <div v-if="!b.endsTurn && (b.ts || !readOnly || readAloudEngine !== 'off')" class="msg-actions">
-                  <MsgStamp v-if="b.ts" :ts="b.ts" />
                   <button v-if="!readOnly" type="button" class="msg-reply" @click="replyTo(b.key)">
                     <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
                   </button>
                   <ReadAloudButton :id="`${paneId}:${b.key}`" :text="b.text" />
+                  <MsgStamp v-if="b.ts" :ts="b.ts" />
                 </div>
                 <template v-if="coord"><template v-for="p in proposalCards.get(b.key)" :key="p.key"><AutomationProposalCard v-if="p.auto" :p="p.auto" /><ProposalCard v-else :c="coord" :answer="p.answer" :can-goto="!p.answer && !!proposalSaidKey" @goto="gotoOrigin(proposalSaidKey)" /></template></template>
               </template>
@@ -1745,8 +1745,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
                 </button>
                 <ReadAloudButton v-if="b.copy && b.reply" :id="`${paneId}:${b.reply}`" :text="b.copy" />
-                <MsgStamp v-if="b.ts" :ts="b.ts" />
                 <span>{{ b.text }}</span>
+                <MsgStamp v-if="b.ts" :ts="b.ts" />
               </div>
 
               <!-- omp: a console, "OMP · N ACTIONS · Σ time", one line per call. -->

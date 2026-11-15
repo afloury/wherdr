@@ -9,8 +9,8 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
 - **Conversation view**: the agent's real transcript (Claude Code, Codex and Devin), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan),
   timestamps, search and infinite scroll back to the first message. Every message shows its time,
-  muted: under your messages, in the agent reply's action row or on its end-of-turn line
-  (`21:39 · ✓ 27 s · 1 action`), with the day for an earlier one (*Yesterday 21:39*, then a short
+  muted and always on the right: under your messages, at the end of the agent reply's action
+  row or of its end-of-turn line (`✓ 27 s · 1 action … 21:39`), with the day for an earlier one (*Yesterday 21:39*, then a short
   date); hover or tap it for the full date and time. Reading a conversation never
   touches the terminal, so it never resizes it. A command the agent proposes (shell code block,
   or inline `! command`) can be copied without its prompt.
