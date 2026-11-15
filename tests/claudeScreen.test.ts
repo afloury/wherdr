@@ -2,7 +2,7 @@
 // screen shows it running (bug t-0106: wherdr showed "En attente").
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { elapsedMs, parseClaudeNotice, parseClaudeScreen } from '../server/utils/claudeScreen'
+import { elapsedMs, parseClaudeScreen } from '../server/utils/claudeScreen'
 import { queuedPhase } from '../shared/queuedPhase'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
@@ -62,6 +62,19 @@ describe('Claude Code screen', () => {
     expect(parseClaudeScreen('  ctrl+enter to send now\n\n' + fx('claude-idle.txt'))?.sendNow).toBeUndefined()
   })
 
+  it('Claude Code 2.1.3xx: queue drawn above the activity line, not against the field', () => {
+    const screen = fx('claude-queued-above-activity.txt')
+    const s = parseClaudeScreen(screen, NOW)!
+    expect(s.queued).toEqual(['first queued note, please answer with ONE', 'second queued note, please answer with TWO'])
+    expect(s.sendNow).toBe(true)
+    expect(s.sent).toBe('Run ./work.sh with the Bash tool, then reply done.')
+    expect(queuedPhase('second queued note, please answer with TWO', s)).toBe('queued')
+    // Same screen once the queue is taken: no hint, so the message above the activity line is the one sent.
+    const taken = parseClaudeScreen(screen.replace(/❯ (first|second) queued.*\n/g, '').replace('  ctrl+enter to send now\n', ''), NOW)!
+    expect(taken.queued).toEqual([])
+    expect(taken.sent).toBe('Run ./work.sh with the Bash tool, then reply done.')
+  })
+
   it('existing screen without command or queue', () => {
     const s = parseClaudeScreen(fx('claude-working.txt'), NOW)!
     expect(s.shell).toBeNull()
@@ -110,29 +123,5 @@ describe('queued message against the screen', () => {
   it('photos: the paths sent do not count, nor does "[Image #1]"', () => {
     const s = { shell: null, sent: '[Image #1] Que vois-tu sur cette capture ?', queued: [] }
     expect(queuedPhase('/home/user/.cache/herdr-web/uploads/a.png\nQue vois-tu sur cette capture ?', s)).toBe('sent')
-  })
-})
-
-describe('parseClaudeNotice', () => {
-  const screen = (foot: string) => [
-    ' ▐▛███▜▌   Claude Code',
-    '',
-    '❯ /clear',
-    '',
-    '─'.repeat(40),
-    '❯ ',
-    '─'.repeat(40),
-    foot,
-  ].join('\n')
-  it('reads "Update installed" on the right of the footer', () => {
-    expect(parseClaudeNotice(screen('  ? for shortcuts                 ✔ Update installed · Restart to update'))).toBe('✔ Update installed · Restart to update')
-  })
-  it('lit le statut au-dessus du cadre', () => {
-    const s = ['❯ /clear', '                ✔ Update installed · Restart to update', '─'.repeat(40), '❯ ', '─'.repeat(40)].join('\n')
-    expect(parseClaudeNotice(s)).toBe('✔ Update installed · Restart to update')
-  })
-  it('ignore un statut inconnu ou absent', () => {
-    expect(parseClaudeNotice(screen('  ? for shortcuts'))).toBeNull()
-    expect(parseClaudeNotice(null)).toBeNull()
   })
 })

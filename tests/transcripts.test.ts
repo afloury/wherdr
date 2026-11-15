@@ -465,14 +465,23 @@ describe('"/" commands', () => {
     ])).toEqual(['user:/daily-log hier', 'assistant:Voici le journal.'])
   })
 
-  it('local command: system line with the useful output only', () => {
+  it('local command: one useful line, the full output kept for a tap', () => {
     expect(run([
       u(cmd('/cost'), '2026-01-01T00:00:00Z'),
       u('<local-command-stdout>Total cost: $0.12\nTotal duration: 3m</local-command-stdout>', '2026-01-01T00:00:01Z'),
       u(cmd('/status'), '2026-01-01T00:00:02Z'),
       u('<local-command-stdout>* Working… (1s)\nTip: press ?</local-command-stdout>', '2026-01-01T00:00:03Z'),
       a('Rien à voir.', '2026-01-01T00:00:10Z'),
-    ])).toEqual(['cmd:/cost → Total cost: $0.12', 'user:/status', 'assistant:Rien à voir.'])
+    ])).toEqual(['cmd:/cost → Total cost: $0.12|Total cost: $0.12\nTotal duration: 3m', 'user:/status', 'assistant:Rien à voir.'])
+  })
+
+  it('local command: no full output when the line says it all, or when it is screen text only', () => {
+    expect(run([
+      u(cmd('/cost'), '2026-01-01T00:00:00Z'),
+      u('<local-command-stdout>Total cost: $0.12</local-command-stdout>', '2026-01-01T00:00:01Z'),
+      u(cmd('/doctor'), '2026-01-01T00:00:02Z'),
+      u('<local-command-stdout>✔ Update installed · Restart to update</local-command-stdout>', '2026-01-01T00:00:03Z'),
+    ])).toEqual(['cmd:/cost → Total cost: $0.12', 'cmd:/doctor'])
   })
 
   it('"!" command: keeps its block and its real output', () => {

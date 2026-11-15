@@ -16,12 +16,19 @@
 // (12 h sliding) are re-issued at the next request, keeping their unlock time.
 //
 // data/auth.json: signing secret, registered keys (public key +
-// counter), generation number (incremented when disabling or locking every
-// device: all current sessions become invalid), maximum session duration.
+// counter), generation (a random nonce carried by every cookie), maximum
+// session duration. Disabling the lock or locking every device draws a new
+// secret and a new generation: every current session becomes invalid, even a
+// cookie forged by someone who once read this file. Earlier versions kept a
+// numeric counter: it is replaced by a nonce at startup (those sessions end once).
 // Lost key: deleting data/auth.json on the server reopens the app.
+// Written atomically. A file that exists but cannot be read or parsed (cut
+// write, full disk) never means "no key yet": the lock stays on, every request
+// but the auth routes is refused, and the file is left as it is.
 import fs from 'node:fs'
 import path from 'node:path'
 import crypto from 'node:crypto'
+import { createRateLimit } from './rateLimit'
 import {
   generateRegistrationOptions, verifyRegistrationResponse,
   generateAuthenticationOptions, verifyAuthenticationResponse,
@@ -35,6 +42,11 @@ const COOKIE_MS = Math.max(...MAX_SESSION_DAYS) * DAY_MS + OVERRUN_MS
 // Earlier versions: 12 h sliding cookies (exp = last renewal + 12 h).
 const LEGACY_SLIDE_MS = 12 * 3600 * 1000
 const CHALLENGE_MS = 5 * 60 * 1000
+// Challenges waiting for an answer: past this, the oldest is dropped (the
+// unlock route is public, it must not grow memory without bound).
+const CHALLENGE_MAX = 100
+// Unlock attempts per client and per minute.
+const LOGIN_PER_MINUTE = 10
 export const AUTH_COOKIE = 'hw_session'
 const CHALLENGE_COOKIE = 'hw_challenge'
 
@@ -52,7 +64,7 @@ interface Credential {
 }
 // maxSessionChangedAt: when the duration was last changed (a shorter one does not
 // cut a session in use before OVERRUN_MS has passed).
-interface AuthDb { secret: string | null, generation: number, credentials: Credential[], maxSessionDays?: MaxSessionDays, maxSessionChangedAt?: number }
+interface AuthDb { secret: string | null, generation: string, credentials: Credential[], maxSessionDays?: MaxSessionDays, maxSessionChangedAt?: number }
 
 export class AuthError extends Error {
   code: string
@@ -67,23 +79,64 @@ type Json = any
 
 export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: { dataDir: string, log?: (...a: unknown[]) => void, passkeyUser?: string }) {
   const FILE = path.join(dataDir, 'auth.json')
-  let db: AuthDb = { secret: null, generation: 0, credentials: [] }
-  try { db = { ...db, ...JSON.parse(fs.readFileSync(FILE, 'utf8')) } }
-  catch { /* no file yet */ }
-  const save = () => {
-    fs.mkdirSync(dataDir, { recursive: true })
-    fs.writeFileSync(FILE, JSON.stringify(db, null, 2) + '\n', { mode: 0o600 })
+  const nonce = () => crypto.randomBytes(18).toString('base64url')
+  let db: AuthDb = { secret: null, generation: '', credentials: [] }
+  // Only a missing file means "no passkey yet".
+  let damaged = false
+  try {
+    const raw = JSON.parse(fs.readFileSync(FILE, 'utf8'))
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw) || !Array.isArray(raw.credentials ?? [])) throw new Error('not an auth file')
+    db = { ...db, ...raw }
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== 'ENOENT') damaged = true
   }
-  if (!db.secret) {
+  const DAMAGED_MESSAGE = 'The lock file data/auth.json is damaged: the app stays locked. On the server, restore it from a backup, or delete it to start over (every passkey will have to be registered again), then restart wherdr'
+  const assertIntact = () => {
+    if (damaged) throw new AuthError('damaged', DAMAGED_MESSAGE)
+  }
+  const save = () => {
+    assertIntact()
+    fs.mkdirSync(dataDir, { recursive: true })
+    // Temporary file in the same folder, flushed, then renamed over: a cut
+    // write leaves the previous complete file.
+    const temp = `${FILE}.${crypto.randomUUID()}.tmp`
+    try {
+      const fd = fs.openSync(temp, 'w', 0o600)
+      try {
+        fs.writeFileSync(fd, JSON.stringify(db, null, 2) + '\n')
+        fs.fsyncSync(fd)
+      } finally { fs.closeSync(fd) }
+      fs.renameSync(temp, FILE)
+    } catch (error) {
+      fs.rmSync(temp, { force: true })
+      throw error
+    }
+    const dir = fs.openSync(dataDir, 'r')
+    try { fs.fsyncSync(dir) } finally { fs.closeSync(dir) }
+  }
+  if (damaged) log(`lock: ${FILE} cannot be read. ${DAMAGED_MESSAGE}`)
+  // New secret and generation: every cookie signed before is worthless.
+  const rotate = () => {
     db.secret = crypto.randomBytes(32).toString('hex')
+    db.generation = nonce()
+  }
+  // A damaged file is never rotated nor saved over.
+  if (!damaged && !db.secret) {
+    rotate()
+    save()
+  }
+  // Earlier versions: a predictable counter, replaced by a nonce.
+  if (!damaged && (typeof db.generation !== 'string' || !/^[\w-]{16,}$/.test(db.generation))) {
+    db.generation = nonce()
     save()
   }
 
   // Temporary token, renewed at each startup and only visible in the logs.
   const bootstrapToken = crypto.randomBytes(24).toString('base64url')
-  if (!db.credentials.length) log(`First passkey: bootstrap token ${bootstrapToken}`)
+  if (!damaged && !db.credentials.length) log(`First passkey: bootstrap token ${bootstrapToken}`)
 
-  const enabled = () => db.credentials.length > 0
+  // A damaged file counts as a registered key nobody can use: locked.
+  const enabled = () => damaged || db.credentials.length > 0
   const sign = (v: string) => crypto.createHmac('sha256', db.secret!).update(v).digest('base64url')
   const safeEq = (a: string, b: string) => {
     const x = Buffer.from(String(a))
@@ -115,12 +168,13 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   // Cookies from before the unlock time was recorded (exp.gen.mac) count from
   // their last renewal.
   function session(req: ReqLike, now = Date.now()): { exp: number, since: number } | null {
+    if (damaged) return null
     const v = readCookie(req)
     if (!v) return null
     const parts = v.split('.')
     if (parts.length !== 3 && parts.length !== 4) return null
     const mac = parts.pop()!
-    if (!mac || parts[1] !== String(db.generation) || !safeEq(mac, sign(parts.join('.')))) return null
+    if (!mac || parts[1] !== db.generation || !safeEq(mac, sign(parts.join('.')))) return null
     const exp = Number(parts[0])
     const since = parts.length === 3 ? Number(parts[2]) : exp - LEGACY_SLIDE_MS
     if (!(exp >= now) || !Number.isFinite(since)) return null
@@ -165,6 +219,8 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   const issueChallenge = (req: ReqLike, kind: 'reg' | 'auth', value: string) => {
     const client = crypto.randomBytes(24).toString('base64url')
     for (const [key, challenge] of challenges) if (challenge.exp < Date.now()) challenges.delete(key)
+    // A Map iterates in insertion order: the first key is the oldest.
+    while (challenges.size >= CHALLENGE_MAX) challenges.delete(challenges.keys().next().value!)
     challenges.set(challengeKey(kind, client), { value, exp: Date.now() + CHALLENGE_MS })
     return `${CHALLENGE_COOKIE}=${client}; Path=/api/auth/; HttpOnly; SameSite=Strict; Max-Age=${CHALLENGE_MS / 1000}${secure(req)}`
   }
@@ -178,6 +234,7 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
 
   async function registerOptions(req: ReqLike, body: Json = {}) {
+    assertIntact()
     if (enabled() && !isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     checkBootstrap(body)
     const { rpID } = relying(req)
@@ -185,12 +242,14 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
       rpName: 'wherdr', rpID, userName: passkeyUser, userDisplayName: passkeyUser,
       attestationType: 'none',
       excludeCredentials: db.credentials.map(c => ({ id: c.id, transports: c.transports })),
-      authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
+      // Discoverable: unlocking never needs to list the registered keys.
+      authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
     })
     return { ...opts, __cookie: issueChallenge(req, 'reg', opts.challenge) }
   }
 
   async function registerVerify(req: ReqLike, body: Json) {
+    assertIntact()
     if (enabled() && !isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     checkBootstrap(body)
     const { origin, rpID } = relying(req)
@@ -213,16 +272,19 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     return { ok: true, __cookie: sessionCookie(req) }
   }
 
-  async function loginOptions(req: ReqLike) {
+  // Public (the lock screen asks it): no key id is given out, the device
+  // offers its own passkey for this site (discoverable credential).
+  const attempts = createRateLimit(LOGIN_PER_MINUTE, 60_000)
+  async function loginOptions(req: ReqLike, client = '', now = Date.now()) {
+    assertIntact()
+    if (!attempts.take(client, now)) throw new AuthError('rate_limited', 'Too many attempts, wait a minute')
     const { rpID } = relying(req)
-    const opts = await generateAuthenticationOptions({
-      rpID, userVerification: 'required',
-      allowCredentials: db.credentials.map(c => ({ id: c.id, transports: c.transports })),
-    })
+    const opts = await generateAuthenticationOptions({ rpID, userVerification: 'required' })
     return { ...opts, __cookie: issueChallenge(req, 'auth', opts.challenge) }
   }
 
   async function loginVerify(req: ReqLike, body: Json) {
+    assertIntact()
     const { origin, rpID } = relying(req)
     const cred = db.credentials.find(c => c.id === (body.response && body.response.id))
     if (!cred) throw new AuthError('unknown_key', 'Key unknown on this server')
@@ -239,9 +301,10 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
   }
 
   function disable(req: ReqLike) {
+    assertIntact()
     if (!isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     db.credentials = []
-    db.generation += 1
+    rotate()
     save()
     log('lock disabled')
     return { ok: true, __cookie: clearCookie(req) }
@@ -249,14 +312,16 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
 
   // Lost or stolen device: every session ends (this one included), the keys stay.
   function lockAll(req: ReqLike) {
+    assertIntact()
     if (!enabled() || !isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
-    db.generation += 1
+    rotate()
     save()
     log('lock: all devices locked')
     return { ok: true, __cookie: clearCookie(req) }
   }
 
   function setMaxSession(req: ReqLike, days: unknown, now = Date.now()) {
+    assertIntact()
     if (!enabled() || !isUnlocked(req)) throw new AuthError('locked', 'Unlock first')
     if (!isMaxSessionDays(days)) throw new AuthError('invalid', 'Invalid duration')
     if (days !== (db.maxSessionDays ?? DEFAULT_MAX_SESSION_DAYS)) db.maxSessionChangedAt = now
@@ -273,8 +338,9 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     if (!enabled()) return { enabled: false, unlocked: true, devices }
     const s = session(req, now)
     const deadline = s ? s.since + maxSessionMs() : 0
+    // Locked: only what the lock screen needs (no key names, dates or clock).
     if (!s || (resume && now >= deadline)) {
-      return { enabled: true, unlocked: false, expiresAt: null, now, devices, ...(s ? { __cookie: clearCookie(req) } : {}) }
+      return { enabled: true, unlocked: false, expiresAt: null, devices: [], ...(s ? { __cookie: clearCookie(req) } : {}) }
     }
     const renewed = renew(req, now)
     return {
@@ -286,6 +352,8 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
 
   return {
     isUnlocked, status, renew,
+    // Current generation: stored with a push subscription, which stops when it changes.
+    generation: () => db.generation,
     // A passkey is registered (the lock is on).
     isEnabled: enabled, registerOptions, registerVerify, loginOptions, loginVerify, disable, lockAll, setMaxSession,
     lock: (req: ReqLike) => ({ ok: true, __cookie: clearCookie(req) }),
@@ -294,7 +362,9 @@ export function createAuth({ dataDir, log = () => {}, passkeyUser = 'herdr' }: {
     _db: () => db,
     _bootstrapToken: () => bootstrapToken,
     _takeChallenge: takeChallenge,
+    _challengeCount: () => challenges.size,
   }
 }
 
 export type Auth = ReturnType<typeof createAuth>
+

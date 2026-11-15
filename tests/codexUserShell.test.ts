@@ -3,7 +3,6 @@
 // queued bubble of the same command sent from wherdr goes away (t-0242).
 import { describe, expect, it } from 'vitest'
 import { parseLines } from '../server/utils/transcripts'
-import { queuedDone } from '../server/utils/queued'
 import { pendingQueue } from '../app/utils/pendingQueue'
 
 const T0 = Date.parse('2026-10-07T08:00:00Z')
@@ -21,10 +20,8 @@ describe('Codex "!" command', () => {
     ])
   })
 
-  it('takes the queued "!" message off the queue, server and app', () => {
+  it('takes the queued "!" message off the app queue', () => {
     const items = parseLines(user(run('sleep 5; echo ok', 0, 'ok'), T0 + 6000), 'codex')
-    expect(queuedDone({ text: '! sleep 5; echo ok', at: T0 }, items, false, T0 + 7000, 'codex')).toBe(true)
-    expect(queuedDone({ text: '! sleep 9; echo ok', at: T0 }, items, false, T0 + 7000, 'codex')).toBe(false)
     expect(pendingQueue({ mine: [{ id: 'a', text: '! sleep 5; echo ok', at: T0 }], claude: [], items, screen: null })).toEqual([])
   })
 })
