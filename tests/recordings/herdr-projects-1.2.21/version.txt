@@ -1,1 +1,0 @@
-herdr-projects 1.2.21 (/opt/herdr-projects-linux-x86_64)

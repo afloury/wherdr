@@ -213,7 +213,7 @@ export function createCodexStatus(d: CodexStatusDeps) {
 
   // Runs the update on the agent's machine; returns right away, the progress
   // goes through `codexStatus.update.job` of the machine's Codex panes.
-  // Method `terminal`: `inPane` types it into the agent's pane (restart.ts),
+  // Method `terminal`: `inPane` types it into the agent's pane,
   // its progress shows in that pane's `restart`.
   async function startUpdate(p: Pane, inPane?: (command: string) => Promise<{ done: Promise<void> }>) {
     const m = d.machineOf(p.id)
@@ -296,8 +296,6 @@ export function createCodexStatus(d: CodexStatusDeps) {
 
   return { statusOf, forget, startUpdate, dismiss, compute, knownWeek }
 }
-
-export type CodexStatusService = ReturnType<typeof createCodexStatus>
 
 export async function dirWritable(dir: string): Promise<boolean> {
   try {

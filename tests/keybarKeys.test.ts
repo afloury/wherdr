@@ -28,3 +28,12 @@ describe('navigation through the named-key API', () => {
     expect(virtualNavigationKeys('ctrl+shift+end')).toEqual(['esc', '[', '1', ';', '6', 'shift+f'])
   })
 })
+
+describe('navigation through herdr-core named keys', () => {
+  it('sends the key names hc accepts, not the CSI workaround', async () => {
+    const { virtualNavigationKeys } = await import('../app/utils/keybarKeys')
+    for (const k of ['home', 'end', 'pageup', 'pagedown', 'insert', 'delete', 'ctrl+shift+end', 'alt+pageup'])
+      expect(virtualNavigationKeys(k, true)).toEqual([k])
+    expect(virtualNavigationKeys('shift+left', true)).toEqual([])
+  })
+})
