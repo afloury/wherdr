@@ -21,7 +21,7 @@ export const SYNCED_SETTINGS = [
   // Coordinators section: their order and Hidden group (shared/pm/coordinatorOrder.ts)
   'coordinatorOrder', 'coordinatorsHidden',
   // Conversation
-  'typewriterSpeed', 'encryptedText', 'replyStyle', 'defaultViewMode',
+  'typewriterSpeed', 'encryptedText', 'defaultViewMode',
   // Board
   'boardGrouping', 'boardDone', 'boardFolds', 'boardProject',
   // Notes panel: its filter (shared/notes.ts)

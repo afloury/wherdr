@@ -102,11 +102,10 @@ const expanded = computed(() => fieldFocused.value || kbOpen.value || text.value
 // What the text refers to ("↳ … —" lines, see shared/reference.ts): one chip
 // each above the field, to remove it.
 const quotes = computed(() => quotesIn(text.value))
-// "native" mode (Settings › Conversation, utils/quoteTokens.ts): the
-// reference lines of the field drawn as tokens by a mirror behind it, while
-// the text holds one.
+// The reference lines of the field drawn as tokens by a mirror behind it
+// (utils/quoteMirror.ts), while the text holds one.
 let mirror: ReturnType<typeof attachQuoteMirror> | null = null
-watch([() => quoteMode.value === 'native' && quotes.value.length > 0, ta], ([on, el]) => {
+watch([() => quotes.value.length > 0, ta], ([on, el]) => {
   if (mirror && (!on || !el)) { mirror.destroy(); mirror = null }
   if (on && el && !mirror) mirror = attachQuoteMirror(el)
 }, { immediate: true, flush: 'post' })

@@ -974,44 +974,8 @@ function choose(btn: HTMLButtonElement) {
 }
 // The words of a question (`.q-text`) and its button share a number in their message.
 const wordsOf = (btn: HTMLElement) => btn.closest('.md-body')?.querySelectorAll<HTMLElement>(`.q-text[data-n="${btn.dataset.n}"]`) || []
-const buttonOf = (span: HTMLElement) => span.closest('.md-body')?.querySelector<HTMLElement>(`.q-reply[data-n="${span.dataset.n}"]`) || null
-// "Tap the text" style on a touch screen: a tap on a point only arms it (its
-// "↳ Discuss" button shows); a tap anywhere while reading must not quote.
-let armed: HTMLElement | null = null
-function arm(el: HTMLElement | null) {
-  armed?.classList.remove('q-armed')
-  armed = el
-  el?.classList.add('q-armed')
-}
-// "List" style: the message whose points are waiting to be picked.
-const pickKey = ref<string | null>(null)
 const draftText = computed(() => useDraft(props.pane.id).text)
 watch(draftText, (text) => { if (!text) held = false })
-function hotQuestion(key: string, n: string, on: boolean) {
-  for (const span of msgEl(key)?.querySelectorAll<HTMLElement>(`.q-text[data-n="${n}"]`) || []) span.classList.toggle('q-hot', on)
-}
-// A click on a point quotes it at once on a computer; not the first click of
-// a double click, which selects a word.
-let pointTimer: ReturnType<typeof setTimeout> | undefined
-function onPointClick(e: MouseEvent, target: HTMLElement) {
-  const point = target.closest<HTMLElement>('.msg-ai .md-body .q-pt')
-  const btn = point?.querySelector<HTMLElement>(':scope > .q-point')
-  const text = btn?.dataset.q
-  clearTimeout(pointTimer)
-  if (!point || !text || target.closest('a, button, summary, input')) return arm(null)
-  if (replyStyle.value === 'list') {
-    if (pickKey.value && point.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey === pickKey.value) {
-      pickKey.value = null
-      quote(refOf(btn!))
-    }
-    return
-  }
-  if (replyStyle.value !== 'text' || window.getSelection()?.isCollapsed === false) return arm(null)
-  if (isTouch()) return arm(point === armed ? null : point)
-  if (e.detail > 1) return
-  pointTimer = setTimeout(() => { if (window.getSelection()?.isCollapsed !== false) quote(refOf(btn!)) }, 220)
-}
-onUnmounted(() => clearTimeout(pointTimer))
 watch([() => useDraft(props.pane.id).text, visibleBlocks], () => nextTick(syncQuoted), { flush: 'post' })
 const selReply = ref<{ text: string, time: string | null, id: string | null, sig: string, top: number, left: number } | null>(null)
 const selBtn = ref<HTMLElement | null>(null)
@@ -1090,17 +1054,13 @@ function onListClick(e: MouseEvent) {
   const ans = target.closest?.('.q-ans') as HTMLElement | null
   // `detail` counts the clicks of a pointer; 0 for a button pressed with the keyboard.
   const click = e.detail > 0
-  if (ans?.dataset.q) { e.preventDefault(); arm(null); pickKey.value = null; answer(refOf(ans), ans.dataset.a === 'no' ? 'no' : 'yes', click); return }
+  if (ans?.dataset.q) { e.preventDefault(); answer(refOf(ans), ans.dataset.a === 'no' ? 'no' : 'yes', click); return }
   const rowAns = target.closest?.('.q-tans') as HTMLElement | null
-  if (rowAns?.dataset.n) { e.preventDefault(); arm(null); pickKey.value = null; answer(refOf(rowAns), rowAns.dataset.a === 'no' ? 'no' : 'yes', click); return }
+  if (rowAns?.dataset.n) { e.preventDefault(); answer(refOf(rowAns), rowAns.dataset.a === 'no' ? 'no' : 'yes', click); return }
   const all = target.closest?.('.q-all') as HTMLElement | null
-  if (all) { e.preventDefault(); arm(null); pickKey.value = null; okAll(refOf(all), click); return }
+  if (all) { e.preventDefault(); okAll(refOf(all), click); return }
   const question = target.closest?.('.q-reply, .q-point, .q-tquote') as HTMLElement | null
-  if (question) { e.preventDefault(); arm(null); pickKey.value = null; quote(refOf(question)); return }
-  // "Tap the text" style: the words of a question are its button.
-  const asked = replyStyle.value === 'text' && !readOnly.value ? target.closest?.('.q-text') as HTMLElement | null : null
-  const askedBtn = asked && window.getSelection()?.isCollapsed !== false ? buttonOf(asked) : null
-  if (askedBtn) { e.preventDefault(); arm(null); quote(refOf(askedBtn)); return }
+  if (question) { e.preventDefault(); quote(refOf(question)); return }
   const pathEl = target.closest?.('.md-body .md-path') as HTMLElement | null
   if (pathEl) { e.preventDefault(); openPathMenu(pathEl); return }
   const cmdEl = target.closest?.('.md-body .md-cmd') as HTMLElement | null
@@ -1108,7 +1068,6 @@ function onListClick(e: MouseEvent) {
   // Image in an agent reply (markdown): large preview, like ours.
   const img = target.closest?.('.md-body img') as HTMLImageElement | null
   if (img && img.src) { e.preventDefault(); openImage(img.src); return }
-  if (!readOnly.value && !target.closest?.('.code-block')) onPointClick(e, target)
   const run = target.closest?.('.can-run .code-run') as HTMLElement | null
   const runCmd = run?.closest<HTMLElement>('.code-block')?.dataset.cmd
   if (runCmd) { void runCommand(runCmd); return }
@@ -1185,7 +1144,6 @@ async function downloadFile(p: string) {
   catch (err) { toast((err as Error).message, true) }
 }
 function onListKey(e: KeyboardEvent) {
-  if (e.key === 'Escape' && (pickKey.value || armed)) { pickKey.value = null; arm(null); return }
   if (e.key !== 'Enter' && e.key !== ' ') return
   const el = (e.target as HTMLElement).closest?.('.md-body .md-path, .md-body .md-cmd') as HTMLElement | null
   if (!el) return
@@ -1545,7 +1503,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
         auto-scroll-icon="i-lucide-arrow-down"
         :ui="MSGS_UI"
       >
-        <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : `rs-${replyStyle}`, { asking: asked, skeleton }]" @click="onListClick" @keydown="onListKey">
+        <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : 'can-reply', { asking: asked, skeleton }]" @click="onListClick" @keydown="onListKey">
           <div v-if="shownUnavailable === 'not_found' && firstPrompt" class="msg-user-wrap" data-testid="first-prompt">
             <UChatMessage
               id="first-prompt" role="user" side="right" variant="soft" :parts="firstParts(firstPrompt)"
@@ -1648,17 +1606,12 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   :id="b.key" role="assistant" side="left" variant="naked"
                   :data-hit-key="b.key"
                   :parts="textParts(b)"
-                  :ui="aiUi(`msg msg-ai tw-${agent || 'agent'}${canRun ? ' can-run' : ''}${pickKey === b.key ? ' q-picking' : ''}`)"
+                  :ui="aiUi(`msg msg-ai tw-${agent || 'agent'}${canRun ? ' can-run' : ''}`)"
                 >
                   <template #content>
                     <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" @done="typingDone(b.id)" />
                   </template>
                 </UChatMessage>
-                <ChatQuestionBar
-                  v-if="replyStyle === 'list' && !readOnly && typingAt(b.id) === null && (replyTargets(b.html).questions.length || replyTargets(b.html).pick)"
-                  :pane-id="paneId" :targets="replyTargets(b.html)" :time="b.time" :rid="b.rid" :picking="pickKey === b.key"
-                  @quote="quote" @answer="answer" @hot="(n, on) => hotQuestion(b.key, n, on)" @pick="pickKey = pickKey === b.key ? null : b.key"
-                />
                 <div v-if="!b.endsTurn && (!readOnly || readAloudEngine !== 'off')" class="msg-actions">
                   <button v-if="!readOnly" type="button" class="msg-reply" @click="replyTo(b.key)">
                     <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>

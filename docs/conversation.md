@@ -88,8 +88,8 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   though, any program on this computer reaches the app's API, as the task sheet's buttons do.
 - **Setting changes Alfred proposes**: Alfred never changes a setting itself, even after a yes in
   text. It proposes one (`wherdr alfred setting set <key> <value> --propose`) and its reply carries
-  a card: *Setting change proposed · by Alfred*, the setting (*Conversation › Reply style*), before
-  → after (*default → list*) and the message of yours it answers. *Show me* opens Settings on that
+  a card: *Setting change proposed · by Alfred*, the setting (*Conversation › Typewriter*), before
+  → after (*default → slow*) and the message of yours it answers. *Show me* opens Settings on that
   setting and highlights it; *Apply* changes it from your session (never a token); *Cancel* drops
   it. The card then says *Applied by you · 14:02* or *Cancelled by you*. If the setting changed
   since (in Settings, on another device), it says so and applies nothing. Only in a turn that
@@ -158,17 +158,13 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   available; typing in it takes control of the terminal's size ([Terminal](terminal.md)).
 - The model and effort pickers, the slash-command list and Codex update cards are v2 only.
 
-**Settings › Conversation › Display › Reply style** chooses how an agent's reply offers to be quoted in
-the field, question by question and point by point (a list item or a paragraph that asks
-nothing), so that one message answers them all:
+An agent's reply can be quoted in the field question by question and point by point (a list
+item or a paragraph that asks nothing), so that one message answers them all:
 
-| Style | A question | A point |
-| --- | --- | --- |
-| **Icon** (default) | A small `↳` after it, in the middle or at the end of the message. | A grey `↳` at its end: on hover on a computer, always there and pale on a phone. |
-| **Tap the text** | No button: the question is underlined, tap or click it. | Click it on a computer. On a phone, tap it, then **↳ Discuss**: a single tap never quotes, so reading, scrolling and selecting text stay as they are. |
-| **List under the message** | A number after it, and the questions listed under the message. | **+ Quote a point** under the message, then the point. Offered when the reply has a list item to quote, or two points or more: not under one paragraph of prose. |
+- **A question**: a small `↳` after it, in the middle or at the end of the message.
+- **A point**: a grey `↳` at its end, on hover on a computer, always there and pale on a phone.
 
-Every one of these is a button reachable with the keyboard (`Tab`, then `Enter`), and selecting a
+Each `↳` is a button reachable with the keyboard (`Tab`, then `Enter`), and selecting a
 passage still offers **Reply** on it. A quoted question or point shows `✓`.
 
 **One syntax for every reference.** Whatever you reply to, the field gets one line that names it,
@@ -209,9 +205,8 @@ No
 - In the conversation, each reference of a sent message shows as a quote; tap it to see the
   message it names. Messages sent earlier with `> ` lines still show as quotes.
 
-**Settings › Conversation › Display › Quoted replies** chooses how the field shows these lines: **Tokens,
-native field** (default) draws each one as a token in the usual field, **Plain text** shows the
-same lines as text, a fallback if the tokens misbehave. The message sent is the same.
+The field draws each of these lines as a token, in the usual field: typing, dictation and
+autocorrect work as with plain text, and the message sent is the text itself.
 
 A **closed question**, one that yes or no answers in full, also gets **Yes** and **No** next to
 its `↳` (at the end of its row in the list style). A tap refers to the question and writes the

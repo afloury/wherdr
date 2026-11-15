@@ -22,7 +22,7 @@ export const SETTING_VALUES: Partial<Record<SyncedSetting, readonly string[]>> =
   'machineBar': ON_OFF, 'compactListV2': ON_OFF,
   'showShells': ON_OFF, 'showCounters': ON_OFF, 'showQuotas': ON_OFF, 'quotaDisplay': ['left', 'used'],
   'autoReorderReady': ON_OFF, 'readySort': READY_SORTS,
-  'typewriterSpeed': ['off', 'fast', 'medium', 'slow'], 'encryptedText': ON_OFF, 'replyStyle': ['icon', 'text', 'list'], 'defaultViewMode': ['chat', 'term'],
+  'typewriterSpeed': ['off', 'fast', 'medium', 'slow'], 'encryptedText': ON_OFF, 'defaultViewMode': ['chat', 'term'],
   'wherdr.files.hidden': ON_OFF, 'wherdr.files.md': ['rendered', 'source'],
 }
 // Where each one is in Settings: "Show me" on its proposal card highlights it.
@@ -31,7 +31,7 @@ export const SETTING_TARGETS: Partial<Record<SyncedSetting, UiTargetId>> = {
   showShells: 'appearance.home-screen', showCounters: 'appearance.home-screen', showQuotas: 'appearance.home-screen',
   autoReorderReady: 'appearance.home-screen', quotaDisplay: 'appearance.quotas',
   typewriterSpeed: 'conversation.typewriter', encryptedText: 'conversation.typewriter',
-  replyStyle: 'conversation.reply-style', defaultViewMode: 'conversation.default-pane',
+  defaultViewMode: 'conversation.default-pane',
 }
 const settable = (k: string): k is SyncedSetting => Object.hasOwn(SETTING_VALUES, k)
 
