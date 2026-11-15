@@ -1663,7 +1663,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </div>
               </div>
 
-              <ChatShellRun v-else-if="b.k === 'ompRun'" :tool="b.tool" />
+              <ChatShellRun v-else-if="b.k === 'ompRun'" :tool="b.tool" :agent="agent" />
               <div v-else-if="b.k === 'system' && b.full" class="msg-cmd" :class="{ open: isOpen(b.key) }">
                 <button type="button" class="msg-system" :aria-expanded="isOpen(b.key)" :title="isOpen(b.key) ? t('Collapse') : t('Show all')" @click="setOpen(b.key, !isOpen(b.key))">
                   <span>{{ b.text }}</span><UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="msg-cmd-chev" />
@@ -1786,7 +1786,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ queuedLabel(q) }}</span></div>
           </div>
           <!-- "!" command running: live output read from the screen. -->
-          <ChatShellRun v-if="liveRun" :tool="liveRun" live />
+          <ChatShellRun v-if="liveRun" :tool="liveRun" :agent="agent" live />
           <div v-for="q in queuedList.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>

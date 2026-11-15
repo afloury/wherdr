@@ -1699,12 +1699,15 @@ body.kb .composer { padding-bottom: 8px; }
 .fx-spin {
   --fx-ring: conic-gradient(var(--fx-1) 0deg, var(--fx-2) 60deg, var(--fx-2) 120deg, var(--fx-1) 180deg, var(--fx-1) 360deg);
 }
-.composer[data-agent="claude"] { --fx-base: var(--claude); --fx-2: var(--ring-2, var(--accent)); }
-.composer[data-agent="codex"] { --fx-base: var(--codex); --fx-2: var(--ring-2, var(--accent)); }
-.composer[data-agent="omp"], .tools.omp-console { --fx-base: var(--omp); --fx-2: var(--ring-2, var(--accent)); }
+/* A "!" command card (.omp-run) takes the conversation's agent, as the field does; omp's own
+   action consoles keep omp's colors. */
+:is(.composer, .omp-run)[data-agent="claude"] { --fx-base: var(--claude); --fx-2: var(--ring-2, var(--accent)); }
+:is(.composer, .omp-run)[data-agent="codex"] { --fx-base: var(--codex); --fx-2: var(--ring-2, var(--accent)); }
+:is(.composer, .omp-run)[data-agent="omp"], .tools.omp-console:not(.omp-run) { --fx-base: var(--omp); --fx-2: var(--ring-2, var(--accent)); }
+.tools.omp-run { --omp-color: var(--fx-base); }
 /* omp themes: their accent is the omp magenta's neighbour; glide the cyan / blue instead. */
-:root[data-theme="omp"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--teal); }
-:root[data-theme="omp-light"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--blue); }
+:root[data-theme="omp"] :is(.composer[data-agent="omp"], .omp-run[data-agent="omp"], .tools.omp-console:not(.omp-run)) { --fx-2: var(--teal); }
+:root[data-theme="omp-light"] :is(.composer[data-agent="omp"], .omp-run[data-agent="omp"], .tools.omp-console:not(.omp-run)) { --fx-2: var(--blue); }
 .prompt:focus-within { border-color: transparent; outline: none; }
 /* Both masks are as big as what they show (container units size the square): the square is
    at least as wide as the diagonal, so it covers them whatever its angle. */

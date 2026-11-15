@@ -17,7 +17,7 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   run in the agent's shell mode with **▷ Run** (shown on every such block, after a confirmation).
   The button then says *Running…*, and *Ran at 16:42* once it has finished; it stays a button, to
   run the command again. The run shows at once in the conversation as omp shows its actions: a
-  *! · You ran* card with the command, the elapsed time and the working ring, its output so far
+  *! · You ran* card with the command, the elapsed time and the working ring (in the agent's colors, as the message field's halo), its output so far
   underneath (Claude Code: read from its screen); when the transcript writes the command, that
   entry takes the card's place (shown once), with its run time and its output folded.
 - **Following new messages**: a new or growing reply (typed in as it arrives, or shown at once)
