@@ -25,7 +25,7 @@ describe('Run from a reply', () => {
   afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] } })
 
   it('shows the run at once, then only the transcript entry', async () => {
-    codeRuns.value = { [pane.id]: [{ cmd: CMD, at: Date.now(), seen: 0 }] }
+    codeRuns.value = { [pane.id]: [{ cmd: CMD, at: Date.now() }] }
     const w = await mount()
     try {
       await expect.poll(() => w.findAll('.queued-list .omp-run.live').map(c => c.text())).toEqual([expect.stringContaining(CMD)])

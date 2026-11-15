@@ -89,43 +89,46 @@ export async function copyCode(text: string) {
 // conversation shows each at once as a live card (ChatView), and the button
 // says "Running…", then "Ran at 16:42". The transcript only writes a "!"
 // command once it has finished; that entry then replaces the live card.
-// `seen`: entries of the same command already there (or still on their way)
-// when it was sent; the next one is this run's. `doneAt`: when it finished.
-export interface CodeRun { cmd: string, at: number, seen: number, doneAt?: number }
+// A run's entry is the first one of the same command, with its output,
+// written from the run's start on and not taken by another run: never by its
+// place in the loaded list, which grows at the top (older messages) or
+// restarts. `entry`: the entry taken (its time and command). `doneAt`: when it finished.
+export interface CodeRun { cmd: string, at: number, entry?: string, doneAt?: number }
 type RunEntry = Pick<ChatItem, 'role' | 'text' | 'ts' | 'ms' | 'out' | 'omp'>
 // Past this, a run the transcript never wrote (lost, cleared) stops showing as running.
 export const RUN_MAX_MS = 3_600_000
+// The entry's time is the agent's start of the command, a little before the
+// click is recorded (after the send), on another machine's clock.
+export const RUN_SKEW_MS = 30_000
 const RUNS_KEPT = 20
 export const codeRuns = ref<Record<string, CodeRun[]>>({})
 
 // The same command, whatever its spacing (the screen wraps a long one, even mid-word).
 const flat = (s: string) => String(s || '').replace(/\s+/g, '')
 export const sameCmd = (a: string, b: string) => flat(a) === flat(b)
-const entriesOf = (items: readonly RunEntry[], cmd: string) => items.filter(it => it.role === 'bash' && flat(it.text) === flat(cmd))
-
-// A new run, counted after the entries and the runs of the same command.
-export function newRun(runs: readonly CodeRun[], items: readonly RunEntry[], cmd: string, at: number): CodeRun {
-  const pending = runs.filter(r => r.doneAt === undefined && flat(r.cmd) === flat(cmd)).length
-  return { cmd, at, seen: entriesOf(items, cmd).length + pending }
-}
+const entryKey = (it: RunEntry) => `${it.ts}\0${flat(it.text)}`
 
 // The runs with those whose entry has landed (or that ran too long) marked done.
 export function settleRuns(runs: readonly CodeRun[], items: readonly RunEntry[], now: number): CodeRun[] {
+  const taken = new Set(runs.map(r => r.entry).filter(Boolean))
+  // Finished once its output is written (omp: its tool view), oldest first.
+  const landed = items.filter(it => it.role === 'bash' && it.ts && (it.out !== undefined || it.omp))
+    .map(it => ({ it, t: Date.parse(it.ts!) })).filter(x => x.t >= 0).sort((a, b) => a.t - b.t)
   return runs.map((r) => {
     if (r.doneAt !== undefined) return r
-    const entry = entriesOf(items, r.cmd)[r.seen]
-    // Finished once its output is written (omp: its tool view).
-    if (entry && (entry.out !== undefined || entry.omp)) {
-      const end = entry.ts ? Date.parse(entry.ts) + (entry.ms || 0) : NaN
-      return { ...r, doneAt: end >= r.at ? end : now }
+    const hit = landed.find(x => x.t >= r.at - RUN_SKEW_MS && sameCmd(x.it.text, r.cmd) && !taken.has(entryKey(x.it)))
+    if (hit) {
+      taken.add(entryKey(hit.it))
+      const end = hit.t + (hit.it.ms || 0)
+      return { ...r, entry: entryKey(hit.it), doneAt: end >= r.at ? end : now }
     }
     return now - r.at > RUN_MAX_MS ? { ...r, doneAt: now } : r
   })
 }
 
-export function addRun(paneId: string, items: readonly RunEntry[], cmd: string) {
+export function addRun(paneId: string, cmd: string) {
   const list = codeRuns.value[paneId] || []
-  codeRuns.value = { ...codeRuns.value, [paneId]: [...list, newRun(list, items, cmd, Date.now())].slice(-RUNS_KEPT) }
+  codeRuns.value = { ...codeRuns.value, [paneId]: [...list, { cmd, at: Date.now() }].slice(-RUNS_KEPT) }
 }
 
 // The Run button's state per command (key: runKey): running, or the time of its last run.

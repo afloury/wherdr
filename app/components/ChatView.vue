@@ -1086,7 +1086,7 @@ async function runCommand(cmd: string) {
   if (queued === false) return
   // Sent at once: a live card until the transcript writes it. Held by the
   // server instead: its queued bubble says so.
-  if (queued === null) addRun(props.pane.id, items.value, cmd)
+  if (queued === null) addRun(props.pane.id, cmd)
   emit('sent', queued)
 }
 // Runs of this pane, marked done as their entries land in the transcript.
