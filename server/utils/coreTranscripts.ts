@@ -33,7 +33,7 @@ export function processInfo(d: CoreDetail) {
   return { process_info: { foreground_processes: procs } }
 }
 
-const AGENT_PROGRAMS = new Set(['claude', 'codex', 'omp', 'devin'])
+const AGENT_PROGRAMS = new Set(['claude', 'codex', 'omp', 'devin', 'agy', 'antigravity', 'antigravity-cli'])
 const baseName = (s: string | undefined) => (s || '').split('/').pop() || ''
 // Programs under the terminal's process, from `ps -e -o pid=,ppid=,args=`: an agent started by a
 // shell, or hosted by a helper, is not the foreground process of the terminal.
@@ -113,15 +113,18 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
       const kids = agentDescendants(await psTable(), p.pid!).filter(isDevin).map(k => k.pid!)
       if (kids.length) p.childPids = kids
     }
-    if (devin.length) {
-      // Exact argv and a conservative birth bound, read together on the agent's machine.
+    const snapshotNames = new Set(['devin', 'agy', 'antigravity', 'antigravity-cli'])
+    const snapshotted = procs.filter(p => [baseName(p.name), ...(p.argv?.slice(0, 2).map(baseName) || [])].some(n => snapshotNames.has(n)) && Number.isSafeInteger(p.pid) && p.pid! > 0)
+    if (snapshotted.length) {
+      // Exact argv and a conservative birth bound for Devin and Antigravity
+      // processes, read together on the agent's machine.
       const on = machineOfAddress(address)
       const r = await deps.call<{ stdout?: string }>('machine.exec', {
-        argv: ['sh', '-c', DEVIN_PROCESS_SCRIPT, 'sh', ...devin.map(p => String(p.pid))],
+        argv: ['sh', '-c', DEVIN_PROCESS_SCRIPT, 'sh', ...snapshotted.map(p => String(p.pid))],
         ...(on ? { on } : {}), timeout: 5,
       }, 8000).catch(() => null)
       const snapshot = devinProcesses(Buffer.from(r?.stdout || '', 'base64').toString('utf8'))
-      for (const p of devin) Object.assign(p, snapshot.get(p.pid!))
+      for (const p of snapshotted) Object.assign(p, snapshot.get(p.pid!))
     }
     return info
   }
@@ -185,7 +188,7 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
       const by = new Map<string, TranscriptPane[]>()
       for (const p of panes) {
         const m = machineOfAddress(p.coreAddress)
-        const tp = p.agent === 'codex' ? await withBirth({ id: p.id, agent: p.agent, cwd: p.cwd, status: p.status }).catch(() => p) : p
+        const tp = p.agent === 'codex' || p.agent === 'agy' ? await withBirth({ id: p.id, agent: p.agent, cwd: p.cwd, status: p.status }).catch(() => p) : p
         by.set(m, [...(by.get(m) || []), tp as TranscriptPane])
       }
       // A machine whose agents all ended is observed too (with none): its caches empty.

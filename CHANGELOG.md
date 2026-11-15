@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows
 ### New
 
 - **Antigravity CLI (`agy`) terminals** are recognized: their label, icon and live state.
+- **Antigravity CLI (`agy`) conversations** open on their saved transcript, locally or on another machine (Node 22.13 or later).
 
 ### Fixed
 
