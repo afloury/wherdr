@@ -98,6 +98,37 @@ describe('files of a remote machine (shell)', () => {
     expect(shq("it's")).toBe(`'it'\\''s'`)
   })
 
+  it('lists the open files of a live process', async () => {
+    // /proc fd targets like "socket:[1]" or "pipe:[2]" are not paths: filtered out.
+    const files = await rfs.readProcessFiles!(process.pid)
+    expect(files).not.toBeNull()
+    expect(files!.length).toBeGreaterThan(0)
+    expect(files!.every(f => f.startsWith('/'))).toBe(true)
+  })
+
+  it('readProcessFiles: an empty answer means "scanned, no matching files"', async () => {
+    const fs = createShellFs(async () => ({ code: 0, stdout: Buffer.alloc(0), stderr: '' }))
+    expect(await fs.readProcessFiles!(1)).toEqual([])
+  })
+
+  it('readProcessFiles: a machine without /proc nor lsof answers null, never []', async () => {
+    // A dead pid has no /proc/<pid>/fd, and this env hides lsof: nothing to scan
+    // with → the "!" marker, reported as an unavailable scan.
+    const noScanSh: ShellExec = (script, args = []) => new Promise((resolve) => {
+      const child = spawn('env', ['-i', 'PATH=/nonexistent', '/bin/sh', '-c', script, 'sh', ...args], { stdio: ['pipe', 'pipe', 'pipe'] })
+      const out: Buffer[] = []
+      let err = ''
+      child.stdout.on('data', (b: Buffer) => out.push(b))
+      child.stderr.on('data', (b: Buffer) => { err += b.toString() })
+      child.on('close', code => resolve({ code, stdout: Buffer.concat(out), stderr: err }))
+      child.stdin.end()
+    })
+    expect(await createShellFs(noScanSh).readProcessFiles!(4194303)).toBeNull()
+    // Same contract when the marker comes from a distant shell verbatim.
+    const fs = createShellFs(async () => ({ code: 0, stdout: Buffer.from('!\n'), stderr: '' }))
+    expect(await fs.readProcessFiles!(1)).toBeNull()
+  })
+
   it('re-reads a remote transcript like a local one', async () => {
     const claudeDir = path.join(home, '.claude/projects/-Users-x')
     mkdirSync(claudeDir, { recursive: true })
