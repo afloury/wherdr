@@ -213,9 +213,12 @@ it('the General tab saves by itself: typed text after a pause or on blur, a swit
   expect(calls.at(-1)!.body.branchName).toBe('feature/x')
   expect((calls.at(-1)!.body.worktree as Record<string, string>).timeout).toBe('5m')
   expect(field('pm-branch-name').value).toBe('feature/x') // kept
+  refuse = '' // fixed: saved, nothing left to send on close
+  field('pm-branch-name').dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+  await vi.waitFor(() => expect(field('pm-branch-name').closest('.pm-field')!.querySelector('.form-error')).toBeNull())
 })
 
-it('a saved key stays in the field and the badge, and the shared coordinators are read again', async () => {
+it('a key saves only on blur, then stays in the field and the badge, and the shared coordinators are read again', async () => {
   state = { ...state, enabled: true, projects: [web()] }
   const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=general' })
   mounted = w
@@ -224,6 +227,8 @@ it('a saved key stays in the field and the badge, and the shared coordinators ar
   ;(key as HTMLInputElement).value = 'site'
   key.dispatchEvent(new Event('input'))
   await nextTick()
+  await new Promise(r => setTimeout(r, 1200))
+  expect(calls).toHaveLength(0) // a pause in a key saves nothing: only blur or Enter renames
   const reads = coordinatorReads
   key.dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
   await vi.waitFor(() => expect(calls.at(-1)?.body.newKey).toBe('SITE'))

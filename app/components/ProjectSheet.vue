@@ -61,6 +61,7 @@ async function load() {
   fill(p.value, workflow.value?.prefs ?? {})
   fillSetup(workflow.value?.worktree)
   filling = false
+  keyInput.value = form.key
   loaded.value = true
 }
 const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
@@ -92,7 +93,11 @@ const send = async () => {
 }
 const auto = useAutosave(send, invalid)
 const GROUP: Record<string, string> = { color: 'key', agent: 'worker', model: 'worker', reviewAgent: 'reviewer', reviewModel: 'reviewer', reviewFallbackAgent: 'fallback', reviewFallbackModel: 'fallback', noShare: 'share' }
-const TYPED = ['name', 'coordinatorName', 'key', 'branchName', 'model', 'reviewModel', 'reviewFallbackModel', 'copy', 'share', 'lockfile', 'command', 'timeout']
+// The key is typed in keyInput and saved only on blur or Enter (commitKey): a
+// pause mid-rename would make a partial key a real rename and a former key for good.
+const keyInput = ref('')
+const commitKey = () => { form.key = keyInput.value }
+const TYPED = ['name', 'coordinatorName', 'branchName', 'model', 'reviewModel', 'reviewFallbackModel', 'copy', 'share', 'lockfile', 'command', 'timeout']
 let filling = false
 for (const [o, keys] of [[form, Object.keys(form)], [setup, Object.keys(setup)]] as const)
   for (const k of keys) watch(() => JSON.stringify((o as Record<string, unknown>)[k]), () => { if (!filling) auto.change(GROUP[k] ?? k, !TYPED.includes(k)) }, { flush: 'sync' })
@@ -191,7 +196,7 @@ async function remove() {
       </div>
 
       <div class="project-panel" role="tabpanel" :aria-labelledby="`project-tab-${tab}`" data-testid="project-panel">
-        <form v-if="tab === 'general'" class="sheet-form" :aria-busy="busy !== '' || auto.busy.value" data-testid="pm-general" @submit.prevent="auto.flush()" @focusout="auto.flush()">
+        <form v-if="tab === 'general'" class="sheet-form" :aria-busy="busy !== '' || auto.busy.value" data-testid="pm-general" @submit.prevent="commitKey(); auto.flush()" @focusout="commitKey(); auto.flush()">
           <div class="pm-cols">
             <span class="pm-col">
               <label class="field-label" for="pmName">{{ t('Name') }}<SavedMark :s="auto.state.name" /></label>
@@ -202,8 +207,8 @@ async function remove() {
               <label class="field-label" for="pmKey">{{ tl('Key') }}<SavedMark :s="auto.state.key" /></label>
               <span class="pm-field">
                 <span class="pm-key-row">
-                  <UInput id="pmKey" v-model="form.key" size="lg" class="pm-key mono" maxlength="10" autocomplete="off" data-testid="pm-key" @update:model-value="v => (form.key = String(v).toUpperCase())" />
-                  <ProjectBadge :text="form.key || shownKey(p)" :color="form.color" />
+                  <UInput id="pmKey" v-model="keyInput" size="lg" class="pm-key mono" maxlength="10" autocomplete="off" data-testid="pm-key" @update:model-value="v => (keyInput = String(v).toUpperCase())" />
+                  <ProjectBadge :text="keyInput || shownKey(p)" :color="form.color" />
                 </span>
                 <span class="pm-colors" role="radiogroup" :aria-label="tl('Color')" data-testid="pm-colors">
                   <button

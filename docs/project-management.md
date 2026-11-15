@@ -144,8 +144,10 @@ takes the workspace's settings unless it sets its own.
 ### General
 
 There is no *Save* button: every field saves by itself. A switch, a pick or a
-color saves at once; typed text (name, key, models, branch name, the worktree
-setup's fields) once you pause typing for a moment or leave the field. A
+color saves at once; typed text (name, models, branch name, the worktree
+setup's fields) once you pause typing for a moment or leave the field. The key
+saves only when you leave its field or press Enter, never on a pause: a
+half-typed key would become a real rename. A
 discreet *Saved ✓* shows next to the field's label, then fades; a small spinner
 while it saves. An invalid value (a time limit over 10m) says why under the
 field and nothing is saved until it is fixed; a save the server refuses shows
