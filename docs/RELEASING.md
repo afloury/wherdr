@@ -23,14 +23,16 @@ of them. On a `v3.*` tag, `release.yml` only publishes the reviewed draft with i
 
 Steps:
 
-1. On `v3`, set the version (`X.Y.Z`, without `-dev`) in `package.json` and
-   `package-lock.json`, and move the Unreleased changelog into a dated entry.
+1. On `v3`, set the version (`X.Y.Z`, without `-dev`) in `package.json`,
+   `package-lock.json` and `herdr-plugin.toml`, and move the Unreleased changelog into a
+   dated entry.
 2. Create the GitHub release as a **draft** with notes following the
    [checklist](#release-notes-checklist) (with its `## Upgrade notes` when an update needs a
    manual step), then push the `v3.Y.Z` tag. `release.yml` checks that the tag matches
    `package.json`.
 3. Right after the release, bump `v3` to the next development version
-   (`npm version X.Y.(Z+1)-dev --no-git-tag-version`, e.g. `3.0.1-dev` after `3.0.0`) and add
+   (`npm version X.Y.(Z+1)-dev --no-git-tag-version`, e.g. `3.0.1-dev` after `3.0.0`, and the
+   same in `herdr-plugin.toml`) and add
    an empty `## [Unreleased]` section at the top of `CHANGELOG.md` if it is missing. Installs
    built from `v3` after the release then read as newer than it, and the next release starts
    clean.
