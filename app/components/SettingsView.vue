@@ -497,7 +497,7 @@ onMounted(() => {
           </div>
           <div v-show="convTab === 'read-aloud'" id="conversation-panel-read-aloud" role="tabpanel" aria-labelledby="conversation-tab-read-aloud" class="settings-group" data-testid="read-aloud-group" data-ui-target="conversation.read-aloud">
             <h3>{{ tl('Read aloud', 'Lecture à voix haute') }}</h3>
-            <p class="muted settings-lead">{{ tl('Play under each agent reply reads it aloud: the words only, with “code block” in place of code. One reply at a time; tap Stop to end it. On iPhone, iOS may stop reading when the screen locks or you leave the app.', 'Lire sous chaque réponse d’agent la lit à voix haute : les mots seulement, avec « bloc de code » à la place du code. Une réponse à la fois ; Arrêter y met fin. Sur iPhone, iOS peut arrêter la lecture quand l’écran se verrouille ou que tu quittes l’app.') }}</p>
+            <p class="muted settings-lead" data-testid="read-aloud-lead">{{ t('Turning it on adds a Play button under each reply, which reads it aloud: the words only, with “code block” in place of code. One reply at a time; tap Stop to end it. On iPhone, iOS may stop reading when the screen locks or you leave the app.') }}</p>
             <ReadAloudSettings />
             <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
           </div>
