@@ -206,12 +206,6 @@ const quotaItems = computed(() => [
   { label: t('Remaining'), description: t('What is left in each window, like Codex.'), value: 'left' },
   { label: t('Used'), description: t('What has been used, like Claude.'), value: 'used' },
 ])
-const backdropMode = backdrop
-const packetsOn = backdropPackets
-const backdropItems = computed(() => [
-  { label: 'wherdr grid', description: t('Dotted grid with light packets, like wherdr.dev.'), value: 'wherdr' },
-  { label: 'herdr grid', description: t('Flat line grid, like herdr.dev.'), value: 'herdr' },
-])
 
 // ------------------------------------------------------------ notifications
 const subscribed = pushOn
@@ -446,15 +440,6 @@ onMounted(() => {
           <!-- Computer layout only (same threshold as the app: 900 px). -->
           <template v-if="desk">
             <div class="eyebrow settings-subhead"><span>{{ t('Desktop') }}</span></div>
-            <div class="settings-group">
-              <h3>{{ t('Background') }}</h3>
-              <URadioGroup v-model="backdropMode" :items="backdropItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-              <label v-if="backdropMode === 'wherdr'" class="settings-toggle">
-                <span><b>{{ t('Animated packets') }}</b><small>{{ t('Small glowing squares running along the wherdr grid.') }}</small></span>
-                <USwitch v-model="packetsOn" size="xl" />
-              </label>
-              <p class="muted settings-hint">{{ t('In the margins of the conversation. Still when the system asks for reduced motion. Follows you on every device.') }}</p>
-            </div>
             <div class="settings-group settings-width">
               <h3>{{ t('Content width') }}</h3>
               <URadioGroup v-model="width" :items="widthItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
