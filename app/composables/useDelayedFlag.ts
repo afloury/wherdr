@@ -1,7 +1,7 @@
 // A loading state worth showing: true only once `on` has lasted `delay` ms (a
 // short load shows nothing, so nothing flashes), then kept for at least `min`
-// ms once shown (a skeleton never blinks for a frame). Skeletons of the Board
-// and of a conversation (BoardSkeleton, ChatSkeleton).
+// ms once shown (a skeleton never blinks for a frame). The conversation's
+// skeleton (ChatSkeleton).
 import { onScopeDispose, ref, watch, type Ref } from 'vue'
 
 export function useDelayedFlag(on: Ref<boolean>, delay = 300, min = 300): Ref<boolean> {

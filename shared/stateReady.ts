@@ -1,37 +1,13 @@
-// Server restart (redeployment): its first state may be partial.
-// The server only says it is "ready" once the machine list is read, the
-// local machine probed and each remote machine either probed or declared
-// offline (or after READY_MAX_MS, so it never stays stuck).
-// The app applies recovered machines immediately, retaining the last state
-// of machines still reconnecting. An unrelated slow machine must not hold
-// back the whole UI or unmount an open view for a transient reason.
+// Server restart (redeployment): its first state may be partial. The app
+// applies recovered machines immediately, retaining the last state of
+// machines still reconnecting. An unrelated slow machine must not hold back
+// the whole UI or unmount an open view for a transient reason.
 import type { HerdrState, MachineInfo } from './types'
 import { LOCAL, machineOf } from './ids'
 
-export const READY_MAX_MS = 20000
-
-export interface ReadyInput {
-  machinesListed: boolean
-  localPolled: boolean
-  remotes: { status: MachineInfo['status'], polled: boolean }[]
-  elapsedMs: number
-}
-
-export function serverReady(i: ReadyInput): boolean {
-  if (i.elapsedMs >= READY_MAX_MS) return true
-  return i.machinesListed && i.localPolled && i.remotes.every(r => r.polled || r.status === 'offline')
-}
-
-// A machine as the server publishes it. `ms`: its last read state, if any.
-// While not ready, `polled` says whether that state exists: 'online' only
-// proves the connection is back (SSH, or a secondary local session, which
-// is always online), not that the machine has been read yet.
-export function publishedMachine(info: MachineInfo, ms: HerdrState | undefined, ready: boolean): MachineInfo {
-  const flag = ready ? {} : { polled: Boolean(ms) }
-  // Machine connected but Herdr server silent: "attention".
-  if (info.status === 'online' && ms && !ms.ok) return { ...info, status: 'offline', error: ms.error || null, version: ms.version, ...flag }
-  return { ...info, version: ms && ms.version, ...flag }
-}
+// What the server sends before its first read: not ready, so a page that
+// reconnects to a restarted server keeps the state it shows.
+export const startingState = (): HerdrState => ({ ok: false, ready: false, error: 'starting…', workspaces: [], panes: [] })
 
 // State to show: null = keep the current state. `settling`: recent
 // reconnection (the server may have restarted).
