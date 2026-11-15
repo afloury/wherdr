@@ -274,7 +274,8 @@ field, so nothing moves when it comes or goes.
 - **Dictation** (`#/settings?section=conversation&tab=dictation`): off, on this device (its
   models), online, and the rewrite pass ([Dictation design](dictation.md)). A dictation error's
   **Settings** button opens this tab.
-- **Read aloud** (`#/settings?section=conversation&tab=read-aloud`): off or a voice, the voice
-  list and Test.
+- **Read aloud** (`#/settings?section=conversation&tab=read-aloud`): off by default; choosing a
+  voice adds a **Play** button under each reply. A voice chosen earlier on the device is kept.
+  The voice list and Test.
 
 Each setting says whether it is saved on this device or follows you on every device.
