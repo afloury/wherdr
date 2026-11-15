@@ -56,7 +56,7 @@ export function pasteRanges(body: string, blocks: string[]): [number, number][] 
   return out
 }
 
-// A queued record only keeps the start of its text (server/utils/state.ts addQueued).
+// A queued record only keeps the start of its text.
 export const QUEUED_CHARS = 4000
 
 // A text the server cut short: a conversation message then ends with "…", a

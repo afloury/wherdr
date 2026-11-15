@@ -1,0 +1,10 @@
+❯ Continue the refactor
+
+  ⎿  Claude usage limit reached. Your limit will reset at 6pm (UTC).
+
+     /upgrade to increase your usage limit.
+
+────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle)
