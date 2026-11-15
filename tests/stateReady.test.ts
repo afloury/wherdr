@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { HerdrState, MachineInfo, Pane } from '../shared/types'
-import { READY_MAX_MS, publishedMachine, serverReady, settleState } from '../shared/stateReady'
+import { settleState } from '../shared/stateReady'
 import { tabRouteStatus } from '../app/utils/tabRoute'
 
 const pane = (id: string): Pane => ({ id, workspace: id.replace(/:p\d+$/, ''), status: 'idle', agent: 'claude' } as unknown as Pane)
@@ -18,38 +18,6 @@ const machines = (status: 'online' | 'connecting' | 'offline', polled?: boolean)
 ]
 // What AgentView does with a pane's machine: anything but online disables input.
 const usable = (s: HerdrState, key: string) => s.machines!.find(m => m.key === key)!.status === 'online'
-
-describe('serverReady', () => {
-  const base = { machinesListed: true, localPolled: true, remotes: [], elapsedMs: 0 }
-  it('waits for the machine list and the first local poll', () => {
-    expect(serverReady({ ...base, machinesListed: false })).toBe(false)
-    expect(serverReady({ ...base, localPolled: false })).toBe(false)
-    expect(serverReady(base)).toBe(true)
-  })
-  it('waits for each remote machine, unless offline', () => {
-    expect(serverReady({ ...base, remotes: [{ status: 'connecting', polled: false }] })).toBe(false)
-    expect(serverReady({ ...base, remotes: [{ status: 'online', polled: true }] })).toBe(true)
-    expect(serverReady({ ...base, remotes: [{ status: 'offline', polled: false }] })).toBe(true)
-  })
-  it('never stays stuck', () => {
-    expect(serverReady({ ...base, machinesListed: false, elapsedMs: READY_MAX_MS })).toBe(true)
-  })
-})
-
-describe('publishedMachine', () => {
-  const info: MachineInfo = { key: REMOTE, label: 'remote', local: false, status: 'online', error: null }
-  it('says, while the server is not ready, whether the machine has been read', () => {
-    // SSH back (status online) before the first snapshot: not read yet.
-    expect(publishedMachine(info, undefined, false)).toMatchObject({ status: 'online', polled: false })
-    expect(publishedMachine(info, st([]), false)).toMatchObject({ status: 'online', polled: true })
-  })
-  it('adds nothing once the server is ready', () => {
-    expect(publishedMachine(info, st([]), true)).not.toHaveProperty('polled')
-  })
-  it('shows a connected machine whose Herdr is silent as offline', () => {
-    expect(publishedMachine(info, st([], { ok: false, error: 'down' }), true)).toMatchObject({ status: 'offline', error: 'down' })
-  })
-})
 
 describe('settleState', () => {
   const prev = st(['w1:p1', `${REMOTE}~w1:p1`], { machines: machines('online') })

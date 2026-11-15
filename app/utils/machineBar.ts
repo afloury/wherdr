@@ -18,20 +18,12 @@ export function barItems(order: readonly string[], machines: readonly string[]):
     : [...kept, ...missing]
 }
 
-// The items the bar shows, in order.
-export function barShown(order: readonly string[], hidden: readonly string[], machines: readonly string[]): string[] {
-  return barItems(order, machines).filter(id => !hidden.includes(id))
-}
-
 // The item chosen now: the saved one while the bar shows it, else "All" when
 // the bar shows it, else its first item. null: nothing to choose (an empty bar).
 export function barPick(saved: string | null | undefined, shown: readonly string[]): string | null {
   if (saved != null && shown.includes(saved)) return saved
   return shown.includes(BAR_ALL) ? BAR_ALL : shown[0] ?? null
 }
-
-// The machine the home list is filtered on, or null for every machine.
-export const barFilter = (pick: string | null) => (pick === null || pick === BAR_ALL ? null : pick)
 
 // `id` moved to position `to` of `items` (indexes of the list before the move).
 export function moveBarItem(items: readonly string[], id: string, to: number): string[] {
@@ -97,3 +89,7 @@ export function barMachineSelection(pick: string | null, groups: readonly Machin
   if (pick === null || pick === BAR_ALL) return null
   return groups.find(g => g.id === pick)?.machines ?? [pick]
 }
+
+// The machine "New" preselects: the tab's first online machine, else the host
+// (''). `only` is the tab's machines in order, null for the all-machines view.
+export const tabMachine = (only: readonly string[] | null, online: (key: string) => boolean) => only?.find(online) ?? ''

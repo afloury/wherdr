@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { AGENT_NAME_RE, toAgentName } from '../shared/ids'
+import { toAgentName } from '../shared/ids'
+
+// Name of an agent launched from the app (normalized to lowercase).
+const AGENT_NAME_RE = /^[a-z][a-z0-9_-]{0,31}$/
 
 describe('toAgentName', () => {
   it('converts a typed name instead of refusing it', () => {
