@@ -213,7 +213,8 @@ header is narrow (a phone, a side-by-side cell, a narrow window) Notes is the fi
 the header's ⋯ menu instead. Alfred and the coordinators write them for you:
 read-only, a short whiteboard. On a computer of
 at least 1280 px they open beside the conversation or Home's list, like Settings (drag the panel's left edge
-to resize it); otherwise in a sheet. They follow the home tab by default (**Follow
+to resize it); otherwise in a sheet. The panel stays open after a reload, on the linked file it
+showed if that file still exists, kept on each device (the sheet does not reopen). They follow the home tab by default (**Follow
 tab**), with a muted line saying which (*Work · following the tab*); the menu at the top shows
 **All** or one tab instead (every group and every machine shown as its own tab, in the bar's
 order), and the choice follows you across devices. A tab shows its own notes and the ones
