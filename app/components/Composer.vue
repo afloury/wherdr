@@ -682,7 +682,7 @@ defineExpose({
         </div>
       </template>
       <template #footer>
-        <!-- The focused field's ring (main.css, "Focus border"): out of the footer's flow, over
+        <!-- The focused field's ring (main.css, focused field): out of the footer's flow, over
              the field's border; a turning square under a fixed mask, so only the compositor works. -->
         <span class="fx-ring" aria-hidden="true"><span class="fx-spin" /></span>
         <span class="fx-halo" aria-hidden="true"><span class="fx-spin" /></span>

@@ -206,12 +206,6 @@ const quotaItems = computed(() => [
   { label: t('Remaining'), description: t('What is left in each window, like Codex.'), value: 'left' },
   { label: t('Used'), description: t('What has been used, like Claude.'), value: 'used' },
 ])
-const focusBorderMode = focusBorder
-const focusBorderItems = computed(() => [
-  { label: t('Border only'), description: t('A second color glides slowly around the border.'), value: 'border' },
-  { label: t('Halo'), description: t('The same, with a faint glow around the field.'), value: 'halo' },
-  { label: t('None'), description: t('Plain 1 px border, no animation.'), value: 'off' },
-])
 const backdropMode = backdrop
 const packetsOn = backdropPackets
 const backdropItems = computed(() => [
@@ -417,12 +411,6 @@ onMounted(() => {
             </div>
           </div>
           <p class="muted settings-hint">{{ t('The theme follows you on every device.') }}</p>
-
-          <div class="settings-group">
-            <h3>{{ t('Message field border on focus') }}</h3>
-            <URadioGroup v-model="focusBorderMode" :items="focusBorderItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-            <p class="muted settings-hint">{{ t('Also on omp’s running actions (border only). Frozen when the system asks for reduced motion. Follows you on every device.') }}</p>
-          </div>
 
           <div data-ui-target="appearance.home-screen" class="settings-group">
             <h3>{{ t('Home screen') }}</h3>

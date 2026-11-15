@@ -16,6 +16,10 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the
   **↓** button; content above that changes height (images, folding) does not move it. A
   conversation still opens at its last message.
+- **Message field focus**: the focused message field's border takes the agent's color, a
+  second color glides slowly around it, with a faint glow around the field (omp's running
+  actions get the same moving border, without the glow). It is frozen when the system asks for
+  reduced motion. There is no setting for it.
 - **SVG diagrams**: complete code fences labelled `svg` render as isolated, theme-aware images.
   **Source / Preview**, beside **Copy** in the card header, switches the same card between the
   diagram and its original markup; **Copy** always copies that markup. Click or use Enter/Space
