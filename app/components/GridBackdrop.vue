@@ -2,11 +2,10 @@
 // The website's background (website/app/components/GridBackground.vue, variant 5,
 // same values): a faint 64 px grid with dots at the crossings, a soft vignette, and
 // now and then a short glowing packet running along a line, at most three at once.
-// Shown in the margins of the conversation on a computer when Settings › Appearance ›
-// Desktop › Background is "wherdr grid" (the default). Cheap: a static CSS layer that does not scroll with the
-// content; packets are Web Animations started by a timer that only runs while the
-// layer is on screen and the page is visible. prefers-reduced-motion or Settings ›
-// Appearance › "Animated packets" off: no packets.
+// Always shown in the margins of the conversation on a computer. Cheap: a static CSS
+// layer that does not scroll with the content; packets are Web Animations started by a
+// timer that only runs while the layer is on screen and the page is visible.
+// prefers-reduced-motion: no packets, the grid stays still.
 import { MAX_PACKETS, nextPacketDelay, planPacket } from '~/utils/backdrop'
 
 const root = ref<HTMLElement | null>(null)
@@ -43,11 +42,11 @@ function spawn() {
 
 function schedule() {
   clearTimeout(timer)
-  if (reduced || !backdropPackets.value || !visible.value || document.hidden) return
+  if (reduced || !visible.value || document.hidden) return
   timer = setTimeout(() => { spawn(); schedule() }, nextPacketDelay())
 }
 
-watch([visible, backdropPackets], schedule)
+watch(visible, schedule)
 
 onMounted(() => {
   reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches
@@ -96,7 +95,7 @@ onBeforeUnmount(() => {
 /* A small glowing head with a fading 1 px trail on the line. */
 .gbd-packets :deep(.pkt) { position: absolute; display: block; will-change: transform, opacity; --c: var(--accent); }
 .gbd-packets :deep(.pkt.alt) { --c: var(--lav); }
-.gbd-packets :deep(.pkt.h) { width: 56px; height: 1px; margin-left: -56px; background: linear-gradient(90deg, transparent, var(--c)); }
+.gbd-packets :deep(.pkt.h) { width: 56px; height: 1px; margin-left: -56px; background: linear-gradient(90deg, transparent, var(--c)); } /* overflow-safe: .grid-backdrop clips (overflow: hidden) */
 .gbd-packets :deep(.pkt.h.rev) { margin-left: 0; background: linear-gradient(270deg, transparent, var(--c)); }
 .gbd-packets :deep(.pkt.h)::after { content: ''; position: absolute; right: -3px; top: -2px; width: 6px; height: 5px; background: var(--c); box-shadow: 0 0 10px var(--c); }
 .gbd-packets :deep(.pkt.h.rev)::after { right: auto; left: -3px; }

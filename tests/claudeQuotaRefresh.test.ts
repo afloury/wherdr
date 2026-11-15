@@ -6,7 +6,8 @@ import { localFs } from '../server/utils/fsx'
 import { machineQuotaRows } from '../app/utils/quotas'
 
 const state = vi.hoisted(() => ({ machines: [] as unknown[] }))
-vi.mock('../server/utils/machines', () => ({ allMachines: () => state.machines }))
+vi.mock('../server/utils/coreQuotaMachines', () => ({ coreQuotaMachines: async () => state.machines }))
+vi.mock('../server/utils/coreAdminDeps', () => ({ coreAdminDeps: () => ({}) }))
 import { readQuotas } from '../server/utils/quotas'
 
 const homes: string[] = []
@@ -16,7 +17,7 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-it('refreshes account membership after the TTL and never reuses a failed Claude identity', async () => {
+it('refreshes account membership after the TTL; a failed read keeps the newest good reading, never a delayed poll\'s', async () => {
   const now = Date.parse('2026-10-10T12:00:00Z')
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(now)
@@ -90,6 +91,8 @@ it('refreshes account membership after the TTL and never reuses a failed Claude 
   expect(current.claude!.five!.used).toBe(99)
   refuse = true
   const failed = await readQuotas(true)
-  expect(failed.claudeAccounts?.some(a => a.machines.some(m => m.key === 'server')) ?? false).toBe(false)
-  expect(failed.claude!.five!.used).toBe(98)
+  // A failed read keeps the machine's last good reading (WHR-337): the newest
+  // one, never the delayed poll's older account.
+  expect(failed.claudeAccounts).toBeUndefined()
+  expect(failed.claude!.five!.used).toBe(99)
 })
