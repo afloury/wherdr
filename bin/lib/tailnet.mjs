@@ -2,7 +2,7 @@
 // (private, only your devices). Reads Tailscale's state, publishes and
 // unpublishes wherdr's port, and checks that the address really answers.
 // Used by the server (Settings › Phone, server/utils/phone.ts) and by
-// `wherdr phone` / `wherdr panel`. No dependency on the rest of bin/lib nor
+// `wherdr phone`. No dependency on the rest of bin/lib nor
 // on packages: the server bundles this file.
 import { execFile } from 'node:child_process'
 import dns from 'node:dns'
@@ -20,11 +20,55 @@ export const LINKS = {
   operator: 'https://tailscale.com/kb/1242/tailscale-serve',
 }
 
-// The tailscale CLI: the macOS app's binary, Homebrew, system folders, then the PATH.
-export function tailscaleBin(env = process.env, exists = existsSync) {
-  const dirs = ['/Applications/Tailscale.app/Contents/MacOS/Tailscale', '/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale', '/usr/bin/tailscale']
-  for (const dir of (env.PATH || '').split(path.delimiter)) if (dir) dirs.push(path.join(dir, 'tailscale'))
-  return dirs.find(p => exists(p)) || null
+// The tailscale CLIs, best first. On macOS the CLI on PATH and the wrapper the
+// app installs (/usr/local/bin, Homebrew) come first and the app's own binary
+// last: run by execFile from a LaunchAgent, that binary tries to start the GUI
+// and prints an error instead of JSON (issue #724). Elsewhere: Homebrew,
+// system folders, then the PATH.
+const MAC_APP_BIN = '/Applications/Tailscale.app/Contents/MacOS/Tailscale'
+export function tailscaleBins(env = process.env, exists = existsSync, platform = process.platform) {
+  const onPath = (env.PATH || '').split(path.delimiter).filter(Boolean).map(dir => path.join(dir, 'tailscale'))
+  const dirs = platform === 'darwin'
+    ? [...onPath, '/usr/local/bin/tailscale', '/opt/homebrew/bin/tailscale', '/usr/bin/tailscale', MAC_APP_BIN]
+    : [MAC_APP_BIN, '/opt/homebrew/bin/tailscale', '/usr/local/bin/tailscale', '/usr/bin/tailscale', ...onPath]
+  return [...new Set(dirs)].filter(p => exists(p))
+}
+export function tailscaleBin(env = process.env, exists = existsSync, platform = process.platform) {
+  return tailscaleBins(env, exists, platform)[0] || null
+}
+
+const bins = bin => [bin].flat().filter(Boolean)
+const isJson = (text) => { try { JSON.parse(text); return true } catch { return false } }
+
+// Each failed command is logged once (the same one fails on every refresh).
+const logged = new Set()
+function logOnce(bin, args, why) {
+  const key = `${bin} ${args.join(' ')}`
+  if (logged.has(key)) return
+  logged.add(key)
+  console.warn(`${new Date().toISOString()} WARNING: ${key} failed: ${why}`)
+}
+const firstLines = text => String(text || '').trim().split('\n').slice(0, 3).join(' / ').slice(0, 300)
+
+// `tailscale <args>` of a JSON command on each candidate in turn → { bin, out }:
+// the first answer that parses, else out '' (nothing could be read). A failed
+// or unparsable answer moves on to the next candidate and is logged once.
+// `timeout` bounds the whole reading, all candidates together: callers such as
+// tailnetFacts must answer inside the client's handshake patience.
+export async function readTailscale(candidates, args, run = exec, timeout = 8000, now = Date.now) {
+  const deadline = now() + timeout
+  for (const bin of bins(candidates)) {
+    const left = deadline - now()
+    if (left < 50) break
+    try {
+      const { stdout, stderr } = await run(bin, args, { encoding: 'utf8', timeout: left })
+      if (isJson(stdout)) return { bin, out: stdout }
+      logOnce(bin, args, `no JSON in its answer: ${firstLines(stdout || stderr) || '(empty)'}`)
+    } catch (e) {
+      logOnce(bin, args, firstLines(e?.stderr) || e?.message || String(e))
+    }
+  }
+  return { bin: bins(candidates)[0] || null, out: '' }
 }
 
 // The local read-only API is useful when the CLI is absent from PATH.
@@ -69,17 +113,30 @@ export function tailnetStatus(statusJson) {
 // itself, never guessed from an interface address in 100.64.0.0/10.
 // readable: false for an empty or broken answer (a failed command, a socket
 // that did not answer): nothing is known then, not "stopped".
+// peerIps: your own devices only, those of the same user as this machine
+// (UserID), except nodes of someone this machine is shared with (ShareeNode).
+// otherIps: every other peer (another user's device in a team tailnet, a node
+// shared in from another tailnet, which has another UserID, a sharee's node, a
+// tagged node), which wherdr admits only behind a passkey.
+// Tagged nodes all share one "tagged-devices" UserID: a tagged peer is never
+// yours, and on a tagged machine no peer is (its owner is not known).
+const TAGGED_DEVICES = 2147455555
 export function tailnetPeers(statusJson) {
   let s = null
   try { s = JSON.parse(statusJson) } catch {}
   const ips = node => (Array.isArray(node?.TailscaleIPs) ? node.TailscaleIPs.filter(ip => typeof ip === 'string') : [])
   const readable = Boolean(s && typeof s === 'object' && typeof s.BackendState === 'string')
+  const peers = readable && s.Peer && typeof s.Peer === 'object' ? Object.values(s.Peer) : []
+  const me = s?.Self?.UserID
+  const tagged = node => (Array.isArray(node?.Tags) && node.Tags.length > 0) || node?.UserID === TAGGED_DEVICES
+  const own = p => Boolean(me) && !tagged(s.Self) && p?.UserID === me && !p?.ShareeNode && !tagged(p)
   return {
     readable,
     state: readable ? s.BackendState : null,
     running: readable && s.BackendState === 'Running',
     selfIps: readable ? ips(s.Self) : [],
-    peerIps: readable ? Object.values(s.Peer || {}).flatMap(ips) : [],
+    peerIps: peers.filter(own).flatMap(ips),
+    otherIps: peers.filter(p => !own(p)).flatMap(ips),
   }
 }
 
@@ -122,14 +179,21 @@ export function funnelExposes(port, serveJson) {
 }
 
 // Only a valid reading may prove the absence of Funnel on this port.
-export async function tailnetFacts(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket()) {
-  if (!bin && !socket) return { installed: false, readable: true, running: false, selfIps: [], peerIps: [], funnel: false }
-  const run = args => exec(bin, args, { encoding: 'utf8', timeout: 8000 }).then(r => r.stdout, () => '')
-  const { state, ...peers } = tailnetPeers(bin ? await run(['status', '--json']) : await localApi(socket, 'status'))
+export async function tailnetFacts(port, bin = tailscaleBins(), socket = bins(bin).length ? null : tailscaledSocket(), run = exec) {
+  const cli = bins(bin)
+  if (!cli.length && !socket) return { installed: false, readable: true, running: false, selfIps: [], peerIps: [], otherIps: [], funnel: false }
+  // Serial reads at the old 8 s budget could not finish inside the client's
+  // 6 s handshake patience: a wedged CLI looked like a refused upgrade. The
+  // reads go out together, each bounded under that patience; a timed-out
+  // call still reads as "unreadable" below. `serve` fires early and the
+  // exits under it may not need it -- a cheap local query either way.
+  const read = args => readTailscale(cli, args, run, 4500).then(r => r.out)
+  const status = cli.length ? read(['status', '--json']) : localApi(socket, 'status')
+  const serve = cli.length ? read(['serve', 'status', '--json']) : localApi(socket, 'serve-config').catch(() => '')
+  const { state, ...peers } = tailnetPeers(await status)
   if (!peers.readable) return { installed: true, ...peers, funnel: null }
   if (IDLE_STATES.has(state)) return { installed: true, ...peers, funnel: false }
-  const serve = bin ? await run(['serve', 'status', '--json']) : await localApi(socket, 'serve-config')
-  return { installed: true, ...peers, funnel: funnelExposes(port, serve) }
+  return { installed: true, ...peers, funnel: funnelExposes(port, await serve) }
 }
 
 // The HTTPS entries of a serve configuration that proxy to wherdr's local
@@ -201,15 +265,22 @@ export function serveError(output) {
   return null
 }
 
-export async function inspect(port, bin = tailscaleBin(), socket = bin ? null : tailscaledSocket()) {
-  if (!bin && !socket) return { installed: false }
-  const run = args => exec(bin, args, { encoding: 'utf8', timeout: 8000 }).then(r => r.stdout, () => '')
-  const status = tailnetStatus(bin ? await run(['status', '--json']) : await localApi(socket, 'status?peers=false'))
-  const serve = !status.name ? '' : bin ? await run(['serve', 'status', '--json']) : await localApi(socket, 'serve-config')
+// `bin`: one CLI or the candidates (tailscaleBins); the result's `bin` is the
+// one that answered, for the `tailscale serve` that may follow.
+export async function inspect(port, bin = tailscaleBins(), socket = bins(bin).length ? null : tailscaledSocket(), run = exec) {
+  let cli = bins(bin)
+  if (!cli.length && !socket) return { installed: false }
+  const read = async (args) => {
+    const r = await readTailscale(cli, args, run)
+    if (r.out) cli = [r.bin, ...cli.filter(b => b !== r.bin)]
+    return r.out
+  }
+  const status = tailnetStatus(cli.length ? await read(['status', '--json']) : await localApi(socket, 'status?peers=false'))
+  const serve = !status.name ? '' : cli.length ? await read(['serve', 'status', '--json']) : await localApi(socket, 'serve-config')
   const phone = phoneAddress(status.name, port, serve)
   // Publishing on wherdr's port would replace whatever else is served there.
   const taken = Boolean(phone && !phone.served && servedPorts(serve).includes(String(port)))
-  return { installed: true, bin, socket, ...status, phone, taken, served: servedAddresses(status.name, port, serve) }
+  return { installed: true, bin: cli[0] || null, socket, ...status, phone, taken, served: servedAddresses(status.name, port, serve) }
 }
 
 const MAGIC_DNS = '100.100.100.100'
