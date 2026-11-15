@@ -10,6 +10,7 @@ import { CREATE_SCRIPT, launched } from '../server/utils/pmLaunch'
 import { execFileSync } from 'node:child_process'
 import { trustKeys } from '../shared/pm/run'
 import { coordinatorStart, setupDone } from '../shared/pm/setup'
+import { WORKSPACE_FIRST } from '../shared/pm/workspace'
 import { FIRST_REPLY, MAIN, parseCommand, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
 import { EXAMPLES, common, company as example, github } from '../shared/pm/examples'
@@ -719,6 +720,17 @@ describe('role files', () => {
     expect(runs.filter(r => r.method === 'terminal.run')[1]!.line).not.toContain(FIRST_REPLY)
     await startCoordinator(deps, 'NW', { program: 'codex' }, urls)
     expect(runs.filter(r => r.method === 'terminal.run')[2]!.line).not.toContain(FIRST_REPLY)
+  })
+
+  it('first start of a new workspace: its first reply offers to build the map; not again', async () => {
+    const { runs, deps } = fakeCore()
+    const projects = JSON.parse(await fs.readFile(store.files.projects, 'utf8'))
+    await fs.writeFile(store.files.projects, JSON.stringify({ ...projects, projects: [...projects.projects, { key: 'WS', name: 'Work', machine: '', path: '/src/work', kind: 'workspace', git: false, addedAt: 1 }] }))
+    await startCoordinator(deps, 'WS', { program: 'codex' }, urls)
+    expect(runs[0]!.line).toContain(WORKSPACE_FIRST)
+    expect(runs[0]!.line).not.toContain(FIRST_REPLY)
+    await startCoordinator(deps, 'WS', { program: 'codex' }, urls)
+    expect(runs.filter(r => r.method === 'terminal.run')[1]!.line).not.toContain(WORKSPACE_FIRST)
   })
 
   it('a fresh start whose session never comes up: its first message is logged as not delivered, and the next start gives it again', async () => {

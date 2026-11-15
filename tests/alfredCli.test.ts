@@ -135,6 +135,23 @@ describe('runAlfredCommand', () => {
     expect(await run('project', 'template', 'WEB', 'example:vibe', '--apply')).toMatchObject({ applied: true, change: ['project WEB template: common → example:vibe'] })
   })
 
+  it('adds a workspace: its root on each machine and its tab group, then starts its coordinator', async () => {
+    expect(parseAlfredCommand(['workspace', 'add', 'ws', '--machine', ',mac', '--root', '~/work'])).toEqual({ error: '--machine and --root pair up: one root folder per machine, in the same order' })
+    await patchSettings({ machineGroups: JSON.stringify([{ id: '*group:o', name: 'Office', machines: ['mac'] }]) }, { file: path.join(dir, 'settings.json') })
+    await expect(run('workspace', 'add', 'WS', '--root', '~/work', '--group', 'Lab')).rejects.toThrow('No tab group Lab: Office')
+    const argv = ['workspace', 'add', 'WS', '--name', 'Work', '--machine', ',Mac', '--root', '~/work,/srv/work', '--group', 'Office']
+    expect(await run(...argv)).toMatchObject({ dryRun: true, remote: expect.stringContaining('Mac'), change: ['add workspace WS "Work" in tab group Office', 'root folder ~/work on this machine (its home: checked when applied, it must exist)', 'clone root /srv/work on Mac', expect.stringContaining('offers to build the map')] })
+    expect(await store.projects()).toEqual([])
+    await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind: 'user', at: Date.now() } })
+    await run(...argv, '--propose')
+    const card = (await store.coordinator(MAIN))!.cards!.at(-1)!
+    expect(card).toMatchObject({ label: 'New workspace WS', change: { argv } })
+    const done = await actOnCard({ store, applyChange: (a: string[], lines: string[]) => applyProposedChange(deps(), a, lines) } as never, card.id, undefined)
+    expect(done).toMatchObject({ state: 'done', outcome: { lines: ['WS: added, coordinator started (it offers to build the map)'] } })
+    expect(await store.project('WS')).toMatchObject({ kind: 'workspace', git: false, name: 'Work', path: '/home/user/work', group: '*group:o', shared: { machines: ['mac'], clones: { mac: '/srv/work' } } })
+    expect(started.splice(0)).toEqual(['WS'])
+  })
+
   it('lists the v2 projects read now from the herdr-projects board, with the v3 project made from each', async () => {
     expect(await run('v2')).toEqual({ fromV2: false })
     herdrProjects = path.resolve(__dirname, 'fixtures/v2-install/herdr-projects')
