@@ -326,6 +326,10 @@ function remoteMachine() {
       if (!existsSync(p)) return store.delete(p)
       store.set(p, { buf: readFileSync(p), mtimeMs: clock += 10, ino: store.get(p)?.ino ?? (ino += 7) })
     },
+    // Store bytes that are not a whole file (a WAL seen mid-write).
+    put: (p: string, buf: Buffer) => {
+      store.set(p, { buf: Buffer.from(buf), mtimeMs: clock += 10, ino: store.get(p)?.ino ?? (ino += 7) })
+    },
     setHook: (h: typeof hook) => { hook = h },
   }
 }
@@ -356,4 +360,148 @@ it('retries a remote read that moved under the copy', async () => {
   const r = await agy.chat(pane)
   expect(r.items?.map(i => i.text)).toEqual(['First request', 'First reply', 'Second reply'])
   expect(remote.bytes.get(live.file) ?? 0).toBeGreaterThan(remote.sizeOf(live.file)) // copied again after the move
+})
+
+it('keeps a remote base copy and ships only the grown WAL tail', async () => {
+  const { home } = fixture()
+  const live = openAgyFixture(home, { wal: true, rows: [
+    { role: 'user', text: 'First request' },
+    { role: 'agent', text: 'First reply' },
+  ] })
+  keepers.push(live)
+  const remote = remoteMachine()
+  remote.sync(live.file)
+  remote.sync(`${live.file}-wal`)
+  const agy = createAgyTranscripts({ home, fs: remote.fs })
+  const walFile = `${live.file}-wal`
+
+  const first = await agy.chat(pane)
+  expect(first.items?.at(-1)?.text).toBe('First reply')
+  const dbBytes = remote.bytes.get(live.file) ?? 0
+  const walBytes = remote.bytes.get(walFile) ?? 0
+  expect(walBytes).toBeGreaterThanOrEqual(remote.sizeOf(walFile))
+
+  const keptWal = remote.sizeOf(walFile)
+  live.append([{ role: 'agent', text: 'Second reply' }])
+  remote.sync(walFile)
+  const grown = remote.sizeOf(walFile)
+  const next = await agy.chat(pane, { since: first.token })
+  expect(next.items?.at(-1)?.text).toBe('Second reply')
+  // The database was not shipped again; the WAL shipped only its grown tail
+  // plus the small header checks (32-byte header, last kept frame, re-check).
+  expect(remote.bytes.get(live.file) ?? 0).toBe(dbBytes)
+  expect((remote.bytes.get(walFile) ?? 0) - walBytes).toBe(grown - keptWal + 88)
+})
+
+it('recopies the WAL in full when a kept frame was rewritten in place', async () => {
+  const { home } = fixture()
+  const live = openAgyFixture(home, { wal: true, rows: [
+    { role: 'user', text: 'First request' },
+    { role: 'agent', text: 'First reply' },
+  ] })
+  keepers.push(live)
+  const remote = remoteMachine()
+  remote.sync(live.file)
+  const agy = createAgyTranscripts({ home, fs: remote.fs })
+  const walFile = `${live.file}-wal`
+
+  // A one-page cache spills this transaction's frames into the WAL file while
+  // it is still uncommitted — the first copy lands on that in-flight state.
+  live.db.exec('PRAGMA cache_size=1')
+  live.db.exec('BEGIN; SAVEPOINT spill')
+  live.append([{ role: 'agent', text: `Spilled ${'x'.repeat(50000)}` }])
+  remote.sync(walFile)
+  const first = await agy.chat(pane)
+  expect(first.items?.map(i => i.text)).toEqual(['First request', 'First reply'])
+  const dbBytes = remote.bytes.get(live.file) ?? 0
+  const walBytes = remote.bytes.get(walFile) ?? 0
+  const keptWal = remote.sizeOf(walFile)
+
+  // Rewinding the savepoint marks those frames for rewriting: the transaction
+  // writes over them (same 32-byte header, same offsets, other bytes) and
+  // commits on top — the kept prefix is stale below the kept size.
+  live.db.exec('ROLLBACK TO spill; RELEASE spill')
+  live.append([{ role: 'agent', text: `Rewritten ${'y'.repeat(60000)}` }, { role: 'agent', text: 'Final reply' }])
+  live.db.exec('COMMIT')
+  remote.sync(walFile)
+  expect(remote.sizeOf(walFile)).toBeGreaterThan(keptWal)
+
+  const next = await agy.chat(pane, { since: first.token })
+  expect(next.items?.map(i => i.text)).toEqual(['First request', 'First reply', expect.stringMatching(/^Rewritten y+$/), 'Final reply'])
+  // The rewritten kept frame was detected: the whole WAL shipped again, the
+  // main file did not.
+  expect(remote.bytes.get(live.file) ?? 0).toBe(dbBytes)
+  expect((remote.bytes.get(walFile) ?? 0) - walBytes).toBeGreaterThanOrEqual(remote.sizeOf(walFile))
+})
+
+it('cuts a kept WAL ending mid-frame back to the last whole frame', async () => {
+  const { home } = fixture()
+  const live = openAgyFixture(home, { wal: true, rows: [
+    { role: 'user', text: 'First request' },
+    { role: 'agent', text: 'First reply' },
+  ] })
+  keepers.push(live)
+  const remote = remoteMachine()
+  remote.sync(live.file)
+  remote.sync(`${live.file}-wal`)
+  const agy = createAgyTranscripts({ home, fs: remote.fs })
+  const walFile = `${live.file}-wal`
+  const boundary = remote.sizeOf(walFile)
+
+  // The first copy lands mid-frame: a spilling transaction has written the new
+  // frame's 24-byte header, its page not yet (SQLite writes them separately).
+  live.db.exec('PRAGMA cache_size=1')
+  live.db.exec('BEGIN; SAVEPOINT spill')
+  live.append([{ role: 'agent', text: `Spilled ${'x'.repeat(50000)}` }])
+  remote.put(walFile, readFileSync(walFile).subarray(0, boundary + 24))
+  const first = await agy.chat(pane)
+  expect(first.items?.map(i => i.text)).toEqual(['First request', 'First reply'])
+  const dbBytes = remote.bytes.get(live.file) ?? 0
+  const walBytes = remote.bytes.get(walFile) ?? 0
+
+  // The transaction is then rewound and completed over that frame — another
+  // header at the same offset — and the WAL grows past the copied point.
+  live.db.exec('ROLLBACK TO spill; RELEASE spill')
+  live.append([{ role: 'agent', text: `Rewritten ${'y'.repeat(60000)}` }, { role: 'agent', text: 'Final reply' }])
+  live.db.exec('COMMIT')
+  remote.sync(walFile)
+  expect(remote.sizeOf(walFile)).toBeGreaterThan(boundary + 24)
+
+  const next = await agy.chat(pane, { since: first.token })
+  expect(next.items?.map(i => i.text)).toEqual(['First request', 'First reply', expect.stringMatching(/^Rewritten y+$/), 'Final reply'])
+  // The stale partial frame was not kept: the tail ships from the last
+  // whole-frame boundary, still far below a full WAL copy.
+  expect(remote.bytes.get(live.file) ?? 0).toBe(dbBytes)
+  expect((remote.bytes.get(walFile) ?? 0) - walBytes).toBe(remote.sizeOf(walFile) - boundary + 88)
+})
+
+it('recopies a restarted WAL in full', async () => {
+  const { home } = fixture()
+  const live = openAgyFixture(home, { wal: true, rows: [
+    { role: 'user', text: 'First request' },
+    { role: 'agent', text: 'First reply' },
+  ] })
+  keepers.push(live)
+  const remote = remoteMachine()
+  remote.sync(live.file)
+  remote.sync(`${live.file}-wal`)
+  const agy = createAgyTranscripts({ home, fs: remote.fs })
+  const walFile = `${live.file}-wal`
+
+  const first = await agy.chat(pane)
+  const dbBytes = remote.bytes.get(live.file) ?? 0
+  const walBytes = remote.bytes.get(walFile) ?? 0
+
+  // A TRUNCATE checkpoint empties the WAL; the next frames open a new
+  // generation under another header.
+  live.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  live.append([{ role: 'agent', text: 'Second reply' }])
+  remote.sync(walFile)
+  remote.sync(live.file)
+  const next = await agy.chat(pane, { since: first.token })
+  expect(next.items?.at(-1)?.text).toBe('Second reply')
+  const walNow = remote.sizeOf(walFile)
+  expect((remote.bytes.get(walFile) ?? 0) - walBytes).toBeGreaterThanOrEqual(walNow)
+  // The checkpoint rewrote the main file too: it shipped in full again.
+  expect(remote.bytes.get(live.file) ?? 0).toBeGreaterThan(dbBytes)
 })

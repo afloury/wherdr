@@ -1,12 +1,13 @@
 // Antigravity CLI (`agy`) conversations: ~/.gemini/antigravity-cli/conversations/
-// <uuid>.db (SQLite, WAL mode, protobuf step payloads). The database is copied
-// to a local snapshot before node:sqlite opens it — the same code path for a
-// remote machine through MachineFs, and a consistent WAL view for the live,
-// still-written local file. Locally the live database is opened in place,
+// <uuid>.db (SQLite, WAL mode, protobuf step payloads). Remote machines read a
+// kept local copy through MachineFs: the database goes back over the wire only
+// when its own identity moves, a matching WAL generation only by its grown
+// tail, and a pair that moved under the copy is retried so node:sqlite always
+// opens one generation. Locally the live database is opened in place,
 // read-only, only while agy holds both sidecars (node:sqlite would create
-// them otherwise); every other local read uses the copy.
+// them otherwise); every other local read uses the same kept copy.
 import { createHash } from 'node:crypto'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, mkdtempSync, openSync, readSync, rmSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { ChatItem, ChatResponse, ModelInfo } from '../../shared/types'
@@ -32,6 +33,7 @@ const DOCUMENT_CACHE_ENTRIES = 4
 // The 32-byte WAL header: magic, page size, checkpoint sequence and salts —
 // unchanged while a generation only appends, rewritten by every restart.
 const WAL_HEADER_BYTES = 32
+const WAL_FRAME_HEADER_BYTES = 24
 // A file that moved under the copy: the read retries on a fresh state, so the
 // database is never opened against a WAL from another generation.
 const MOVED = 'wherdr-moved'
@@ -47,6 +49,41 @@ const hash12 = (s: string) => createHash('sha1').update(s).digest('hex').slice(0
 const HEAD = /^(.*):(\d+):(null|\d+):([0-9a-f]{12})(?=[/~#]|$)/
 const ANCHOR = /\/(\d+)\.([0-9a-f]{12})(?=[~#]|$)/
 const AGY_SESSION = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i
+
+// End of the last whole WAL frame a file of `keptSize` bytes holds
+// (32 + n * (24 + page size)); the page size sits in the WAL header's
+// bytes 8–11. A copy can end mid-frame — a frame's 24-byte header and its
+// page are separate writes — and SQLite can rewrite that frame's header
+// later in the same generation (walRewriteChecksums starting exactly at
+// it), so bytes past this boundary are never trusted across reads. null
+// when nothing verifiable remains (no whole frame, implausible page
+// size): the next read must copy in full.
+function walWholeEnd(head: Buffer | null, keptSize: number): number | null {
+  const pageSize = head && head.length >= 12 ? head.readUInt32BE(8) : 0
+  if (pageSize < 512 || pageSize > 65536 || (pageSize & (pageSize - 1)) !== 0) return null
+  const frame = WAL_FRAME_HEADER_BYTES + pageSize
+  const whole = Math.floor((keptSize - WAL_HEADER_BYTES) / frame)
+  return whole < 1 ? null : WAL_HEADER_BYTES + whole * frame
+}
+
+// Byte range of the last whole WAL frame below `keptSize`. Within one
+// generation a rewound savepoint can still rewrite the headers of frames a
+// spilling transaction already wrote, so a matching 32-byte header alone
+// does not prove a kept prefix is current — this frame must read the same
+// remotely before the tail may append.
+function walLastFrame(head: Buffer, keptSize: number): { start: number, len: number } | null {
+  const end = walWholeEnd(head, keptSize)
+  return end === null ? null : { start: end - (WAL_FRAME_HEADER_BYTES + head.readUInt32BE(8)), len: WAL_FRAME_HEADER_BYTES }
+}
+
+// `len` bytes of a local file at `start` (short when the file ends sooner).
+function localSlice(file: string, start: number, len: number): Buffer {
+  const fd = openSync(file, 'r')
+  try {
+    const buf = Buffer.alloc(len)
+    return buf.subarray(0, readSync(fd, buf, 0, len, start))
+  } finally { closeSync(fd) }
+}
 
 // node:sqlite loads lazily through server/utils/sqliteDb.ts: nothing else in
 // the process pays its ExperimentalWarning, and a Node built before 22.13
@@ -192,6 +229,26 @@ export interface AgyDoc {
   results: Map<string, { out: string, error: boolean }>
 }
 
+// A conversation kept on local disk between reads: conv.db holds the main
+// database (recopied only when its own identity moves) and conv.db-wal the
+// WAL bytes (a matching generation ships only its grown tail, appended to
+// the kept file; a restart rewrites it once). walHead is the kept WAL's
+// 32-byte header for the generation compare — the WAL body stays on disk.
+// refs pins the directory against cache eviction while a read is open; queue
+// serializes reads of the same file — two generations can race the inflight
+// dedup and interleaved copies would tear the pair.
+interface SnapBase {
+  dir: string
+  db: string
+  wal: string
+  shm: string
+  dbId: string | null
+  walSize: number
+  walHead: Buffer | null
+  refs: number
+  queue: Promise<void>
+}
+
 export function parseAgy(kept: AgyStep[], doc: AgyDoc): ChatItem[] {
   const items: ChatItem[] = []
   for (const s of kept) {
@@ -311,44 +368,108 @@ export function createAgyTranscripts({
     return Buffer.concat(chunks, size - start)
   }
 
-  // A consistent snapshot of the database on local disk: its WAL sidecar
-  // comes along so committed frames are visible to node:sqlite. After the
-  // copy both files are stat'ed again *fresh* — never through the stat
-  // cache, which could answer with the pre-copy state: a move under the
-  // copy or a WAL from another generation retries instead of opening a
-  // torn pair.
-  async function snapshot(file: string, dbSt: FsStat, walSt: FsStat | null): Promise<{ dir: string, db: string }> {
+  const bases = new Map<string, SnapBase>()
+
+  // One base copy per file, evicted with its directory once the cache
+  // overflows (DOCUMENT_CACHE_ENTRIES, like the parsed documents). The temp
+  // dir is private (mkdtemp mode 0700).
+  function acquireBase(file: string): SnapBase {
+    let base = bases.get(file)
+    if (!base) {
+      const dir = mkdtempSync(path.join(tmpdir(), 'wherdr-agy-'))
+      const db = path.join(dir, 'conv.db')
+      base = { dir, db, wal: `${db}-wal`, shm: `${db}-shm`, dbId: null, walSize: 0, walHead: null, refs: 0, queue: Promise.resolve() }
+    }
+    bases.delete(file)
+    bases.set(file, base)
+    for (const [key, older] of bases) {
+      if (bases.size <= DOCUMENT_CACHE_ENTRIES) break
+      if (older.refs) continue
+      bases.delete(key)
+      rmSync(older.dir, { recursive: true, force: true })
+    }
+    return base
+  }
+
+  async function lockBase(file: string): Promise<{ base: SnapBase, unlock: () => void }> {
+    const base = acquireBase(file)
+    base.refs++
+    const prev = base.queue
+    let release = () => {}
+    base.queue = new Promise<void>(resolve => { release = resolve })
+    await prev
+    return { base, unlock: () => { base.refs--; release() } }
+  }
+
+  // Brings the kept copy to the remote state dbSt/walSt describe, then stats
+  // both files again *fresh*: an identity change, another WAL header or a
+  // shrink under the copy throws `moved` — the pair on disk never mixes
+  // generations. A WAL that only grew ships and appends just its tail.
+  async function syncBase(base: SnapBase, file: string, dbSt: FsStat, walSt: FsStat | null): Promise<void> {
     if (dbSt.size + (walSt?.size ?? 0) > MAX_SNAPSHOT_BYTES) throw new Error('Antigravity conversation exceeds the supported size limit')
-    const dir = mkdtempSync(path.join(tmpdir(), 'wherdr-agy-'))
-    const db = path.join(dir, 'conv.db')
     const walPath = `${file}-wal`
-    const copied = walSt && walSt.size > 0 ? walSt.size : 0
     try {
-      writeFileSync(db, await readAll(file, dbSt.size))
-      if (copied) writeFileSync(`${db}-wal`, await readAll(walPath, copied))
-      const dbNow = await fs.stat(file, { fresh: true }).catch(e => { if (isMissing(e)) return null; throw e })
-      if (!dbNow?.isFile || idOf(dbNow) !== idOf(dbSt)) throw moved('Antigravity conversation changed during the read')
-      const walNow = await fs.stat(walPath, { fresh: true }).catch(e => { if (isMissing(e)) return null; throw e })
-      const liveNow = walNow?.isFile && walNow.size > 0 ? walNow : null
-      if (!liveNow || !copied) {
-        if (liveNow || copied) throw moved('Antigravity conversation changed during the read')
+      if (base.dbId !== idOf(dbSt)) {
+        writeFileSync(base.db, await readAll(file, dbSt.size))
+        base.dbId = idOf(dbSt)
+      }
+      const live = walSt && walSt.size > 0 ? walSt : null
+      if (!live) {
+        rmSync(base.wal, { force: true })
+        base.walSize = 0
+        base.walHead = null
       } else {
-        // A grown WAL is fine — the copied prefix is a consistent read —
-        // a shrunk or restarted one is not.
-        if (liveNow.size < copied) throw moved('Antigravity conversation changed during the read')
-        const head = await fs.read(walPath, 0, Math.min(WAL_HEADER_BYTES, copied)).catch(e => {
-          if (isMissing(e)) throw moved('Antigravity conversation changed during the read')
-          throw e
-        })
-        const expected = readFileSync(`${db}-wal`).subarray(0, Math.min(WAL_HEADER_BYTES, copied))
-        if (head.length < expected.length || !head.subarray(0, expected.length).equals(expected)) {
-          throw moved('Antigravity conversation changed during the read')
+        const head = base.walSize >= WAL_HEADER_BYTES && live.size >= base.walSize
+          ? await fs.read(walPath, 0, WAL_HEADER_BYTES) : null
+        // A matching 32-byte header is not enough: a copy made mid-transaction
+        // can hold spilled frames whose headers were rewritten in place since.
+        // The kept copy's last whole frame must still read the same remotely.
+        const probe = head && base.walHead && head.equals(base.walHead) ? walLastFrame(head, base.walSize) : null
+        const current = !!probe && (await fs.read(walPath, probe.start, probe.len))
+          .equals(localSlice(base.wal, probe.start, probe.len))
+        if (current && live.size > base.walSize) {
+          appendFileSync(base.wal, await readAll(walPath, live.size, base.walSize))
+          base.walSize = live.size
+        } else if (!current || live.size !== base.walSize) {
+          // No WAL yet, a shrink, a restart (another header) or a kept frame
+          // rewritten in place: full copy.
+          const buf = await readAll(walPath, live.size)
+          writeFileSync(base.wal, buf)
+          base.walSize = live.size
+          base.walHead = Buffer.from(buf.subarray(0, Math.min(WAL_HEADER_BYTES, buf.length)))
+        }
+        // Either path can end mid-frame — a frame's 24-byte header and its
+        // page are separate writes — and a later rewrite starts exactly at
+        // those kept bytes. Cut the kept file and size back to the last
+        // whole frame so the next tail read re-ships them once complete.
+        const cut = walWholeEnd(base.walHead, base.walSize) ?? Math.min(base.walSize, WAL_HEADER_BYTES)
+        if (cut < base.walSize) {
+          truncateSync(base.wal, cut)
+          base.walSize = cut
         }
       }
-      return { dir, db }
     } catch (e) {
-      rmSync(dir, { recursive: true, force: true })
+      if (isMissing(e)) throw moved('Antigravity conversation moved during the read')
       throw e
+    }
+    const dbNow = await fs.stat(file, { fresh: true }).catch(e => { if (isMissing(e)) return null; throw e })
+    if (!dbNow?.isFile || idOf(dbNow) !== base.dbId) throw moved('Antigravity conversation changed during the read')
+    const walNow = await fs.stat(walPath, { fresh: true }).catch(e => { if (isMissing(e)) return null; throw e })
+    const liveNow = walNow?.isFile && walNow.size > 0 ? walNow : null
+    if (!liveNow || !base.walSize) {
+      if (liveNow || base.walSize) throw moved('Antigravity conversation changed during the read')
+      return
+    }
+    // A grown WAL is fine — the kept bytes stay a consistent prefix — a
+    // shrunk or restarted one is not.
+    if (liveNow.size < base.walSize) throw moved('Antigravity conversation changed during the read')
+    const head = await fs.read(walPath, 0, Math.min(WAL_HEADER_BYTES, liveNow.size)).catch(e => {
+      if (isMissing(e)) throw moved('Antigravity conversation changed during the read')
+      throw e
+    })
+    const expected = base.walHead!.subarray(0, Math.min(WAL_HEADER_BYTES, base.walSize))
+    if (head.length < expected.length || !head.subarray(0, expected.length).equals(expected)) {
+      throw moved('Antigravity conversation changed during the read')
     }
   }
 
@@ -392,7 +513,7 @@ export function createAgyTranscripts({
       // Local database: a plain read-only open in place, only while agy holds
       // both sidecars. node:sqlite (Node 24) creates a missing -wal and -shm
       // even for a read-only open and leaves them in agy's folder. Otherwise
-      // (agy not running, or a sidecar refused) read a copy; remote
+      // (agy not running, or a sidecar refused) read the kept copy; remote
       // machines always take the copy path.
       if (fs === localFs && walSt && existsSync(`${file}-shm`)) {
         try {
@@ -405,25 +526,27 @@ export function createAgyTranscripts({
           } catch { db.close() }
         } catch { /* WAL/shm not readable in place: copy below */ }
       }
-      let cur = { db: dbSt, wal: walSt, size, gen }
-      for (let attempt = 0; ; attempt++) {
-        let snap: { dir: string, db: string } | null = null
-        try {
-          snap = await snapshot(file, cur.db, cur.wal)
-          const db = new Db(snap.db, { readOnly: true })
+      const { base, unlock } = await lockBase(file)
+      try {
+        let cur = { db: dbSt, wal: walSt, size, gen }
+        for (let attempt = 0; ; attempt++) {
           try {
-            const doc = readSteps(db, session, file)
-            remember(loaded, file, { gen: cur.gen, size: cur.size, doc }, DOCUMENT_CACHE_ENTRIES)
-            return { doc, size: cur.size, gen: cur.gen }
-          } finally { db.close() }
-        } catch (e) {
-          if (!isMoved(e) || attempt >= 2) throw e
-          const next = await statDb(file)
-          cur = { db: next.db, wal: next.wal, size: next.size, gen: next.gen }
-        } finally {
-          if (snap) rmSync(snap.dir, { recursive: true, force: true })
+            await syncBase(base, file, cur.db, cur.wal)
+            // The shm is rebuilt from the WAL on every open.
+            rmSync(base.shm, { force: true })
+            const db = new Db(base.db, { readOnly: true })
+            try {
+              const doc = readSteps(db, session, file)
+              remember(loaded, file, { gen: cur.gen, size: cur.size, doc }, DOCUMENT_CACHE_ENTRIES)
+              return { doc, size: cur.size, gen: cur.gen }
+            } finally { db.close() }
+          } catch (e) {
+            if (!isMoved(e) || attempt >= 2) throw e
+            const next = await statDb(file)
+            cur = { db: next.db, wal: next.wal, size: next.size, gen: next.gen }
+          }
         }
-      }
+      } finally { unlock() }
     })()
     inflight.set(key, work)
     try { return await work }
