@@ -55,7 +55,9 @@ These pages describe wherdr 2.x on Herdr. They do not apply to v3.
 
 Release notes of the 2.x line: [2.5.0](release-notes-2.5.0.md) · [2.4.0](release-notes-2.4.0.md) ·
 [2.3.0](release-notes-2.3.0.md) · [2.2.0](release-notes-2.2.0.md) · [2.1.0](release-notes-2.1.0.md) ·
-[2.0.0](release-notes-2.0.0.md).
+[2.0.0](release-notes-2.0.0.md). Earlier: [1.2.0](release-notes-1.2.0.md).
+
+Example plugin: [hello-mic](examples/plugins/hello-mic/README.md), a microphone button for the [plugin API](plugins.md).
 
 ## Section reference
 
