@@ -171,9 +171,10 @@ export const runLabels = (install: string, run: Run) =>
   ({ [LABEL.install]: install, [LABEL.task]: run.task, [LABEL.run]: run.id, [LABEL.role]: run.role })
 
 // Where a task works on its machine, under that machine's home.
-export const taskPaths = (home: string, id: string, branch = `task/${id}`) => ({
-  worktree: `${home}/.wherdr/pm/worktrees/${id}`,
-  instructions: `${home}/.wherdr/pm/tasks/${id}/instructions.md`,
+// pm: the pm folder under the home (server/utils/pmHome.ts).
+export const taskPaths = (home: string, id: string, branch = `task/${id}`, pm = '.wherdr/pm') => ({
+  worktree: `${home}/${pm}/worktrees/${id}`,
+  instructions: `${home}/${pm}/tasks/${id}/instructions.md`,
   branch,
 })
 
