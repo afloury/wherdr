@@ -789,6 +789,8 @@ body.short-bottom { --safe-bottom: 0px; }
 .phone-keybar-toggle::after { content: ''; position: absolute; inset: -5px; }
 .phone-keybar-toggle .iconify { width: 20px; height: 20px; }
 .phone-keybar-toggle.on { color: var(--accent); border-color: var(--accent); }
+/* The last line of the chat (its time on the right) stays clear of the toggle. */
+.phone-chrome:has(.phone-keybar-controls) .chat-list { padding-bottom: 48px; }
 .phone-keybar-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* File dragged from the Finder / file explorer: drop zone over the whole view. */
 .file-drop {
