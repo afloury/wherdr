@@ -1,13 +1,11 @@
 <script setup lang="ts">
-// Settings › Appearance › Machine bar: show the bar or not, the order of its
-// items (drag the ⠿ handle, or arrow keys on it) and which ones it shows. A
-// machine taken off the bar still shows under "All". Kept on the server, so
+// Settings › Appearance › Machine tabs: show the tabs or not, their order
+// (drag the ⠿ handle, or arrow keys on it) and which ones show. A machine
+// taken off the tabs still shows under "All". Kept on the server, so
 // they follow the user across devices (composables/useMachineBar.ts).
 import type { MachineGroup } from '~/utils/machineBar'
 import type { MachineInfo } from '#shared/types'
 import { BAR_ALL, moveBarItem, setBarItemShown } from '~/utils/machineBar'
-
-onMounted(loadMachineOrder)
 
 const barOn = machineBarOn
 const editing = ref<MachineGroup | null>(null)
@@ -45,6 +43,8 @@ function deleteGroup() {
   machineBarOrder.value = machineBarOrder.value.filter(x => x !== id)
   machineBarHidden.value = machineBarHidden.value.filter(x => x !== id)
   if (machineBarSaved.value === id) machineBarSaved.value = BAR_ALL
+  // Projects shown in it go back to Automatic.
+  if (Object.values(projectTabs.value).includes(id)) projectTabs.value = Object.fromEntries(Object.entries(projectTabs.value).filter(([, v]) => v !== id))
   editing.value = null
 }
 const list = ref<HTMLElement | null>(null)
@@ -154,10 +154,10 @@ function onGrab(id: string, e: PointerEvent) {
 <template>
   <!-- Inside the Home screen group (Settings › Appearance › Home screen). -->
   <div ref="root" class="machine-bar-settings">
-    <h4 class="theme-section-title bar-pref-title">{{ tl('Machine bar', 'Barre des machines') }}</h4>
+    <h4 class="theme-section-title bar-pref-title">{{ tl('Machine tabs') }}</h4>
     <label v-if="!editing" class="settings-toggle">
-      <span><b>{{ tl('Show the machine bar', 'Afficher la barre des machines') }}</b><small>{{ tl('At the top of the home screen: “All”, then each machine. A tap shows that machine only.', 'En haut de l’accueil : « Toutes », puis chaque machine. Un toucher n’affiche que cette machine.') }}</small></span>
-      <USwitch v-model="barOn" color="success" size="xl" />
+      <span><b>{{ tl('Show the machine tabs') }}</b><small>{{ tl('At the top of the home screen: “All”, then one tab per machine. A tap shows that machine only.') }}</small></span>
+      <USwitch v-model="barOn" size="xl" />
     </label>
     <template v-if="barOn">
       <template v-if="!editing">

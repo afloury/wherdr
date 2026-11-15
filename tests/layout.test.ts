@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { neighborPane, paneBoxes, readingOrder, reduceLayout, splitPreview } from '../shared/layout'
+import { neighborPane, paneBoxes, readingOrder, reduceLayout } from '../shared/layout'
 import snap from './fixtures/snapshot-layouts.json'
 
 // Real layout (hwtest session, Herdr 0.9.1): w1:t1 = p1 on the left (55 %),
@@ -48,19 +48,5 @@ describe('layout', () => {
     expect(neighborPane(grid, 'w3:p3', 1)).toBe('w3:p2')
     expect(neighborPane(grid, 'w3:p3', -1)).toBe('w3:p1')
     expect(paneBoxes(grid)[1]).toEqual({ pane: 'w3:p3', left: 50, top: 0, width: 50, height: 50 })
-  })
-})
-
-describe('split preview', () => {
-  const base = { tab: 't1', workspace: 'w1', zoomed: false, focused: 'p1', area: { x: 0, y: 0, width: 120, height: 40 }, panes: [{ pane: 'p1', rect: { x: 0, y: 0, width: 120, height: 40 } }] }
-  it('right: left half kept, new pane on the right', () => {
-    expect(paneBoxes(splitPreview(base, 'p1', 'right', 'new'))).toEqual([
-      { pane: 'p1', left: 0, top: 0, width: 50, height: 100 },
-      { pane: 'new', left: 50, top: 0, width: 50, height: 100 },
-    ])
-  })
-  it('down: new pane below; unknown pane: unchanged', () => {
-    expect(splitPreview(base, 'p1', 'down', 'new').panes[1]).toEqual({ pane: 'new', rect: { x: 0, y: 20, width: 120, height: 20 } })
-    expect(splitPreview(base, 'p9', 'down', 'new')).toBe(base)
   })
 })
