@@ -160,10 +160,8 @@ onMounted(async () => {
   await router.push(here)
 })
 // Global refs bound in the template: local (assignable) aliases.
-const shellsOn = showShells
 const countersOn = showCounters
 const quotasOn = showQuotas
-const compactOn = compactList
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
 const agentClipboardOn = agentClipboard
@@ -415,16 +413,8 @@ onMounted(() => {
           <div data-ui-target="appearance.home-screen" class="settings-group">
             <h3>{{ t('Home screen') }}</h3>
             <label class="settings-toggle">
-              <span><b>{{ t('Compact list') }}</b><small>{{ t('Cards: one line in Compact, two in Normal with current activity. Follows you on every device.') }}</small></span>
-              <USwitch v-model="compactOn" size="xl" />
-            </label>
-            <label class="settings-toggle">
               <span><b>{{ t('Reorder automatically') }}</b><small>{{ t('In Ready, show unread agents before read ones. Follows you on every device.') }}</small></span>
               <USwitch v-model="autoReorderOn" size="xl" />
-            </label>
-            <label class="settings-toggle">
-              <span><b>{{ t('Show terminals') }}</b><small>{{ t('Show terminal spaces in the list, filed under Ready.') }}</small></span>
-              <USwitch v-model="shellsOn" size="xl" />
             </label>
             <label class="settings-toggle">
               <span><b>{{ t('Show counters') }}</b><small>{{ t('Show agent counters on the home screen.') }}</small></span>
@@ -504,13 +494,6 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'terminal'" class="settings-section">
-          <div class="settings-group">
-            <h3>{{ t('Home screen') }}</h3>
-            <label class="settings-toggle">
-              <span><b>{{ t('Show terminals') }}</b><small>{{ t('Show terminal spaces in the list, filed under Ready.') }}</small></span>
-              <USwitch v-model="shellsOn" size="xl" />
-            </label>
-          </div>
           <div data-ui-target="terminal.text-size" class="settings-group">
             <h3>{{ t('Text') }}</h3>
             <div class="settings-stepper">

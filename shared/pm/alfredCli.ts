@@ -18,16 +18,16 @@ import { BACKDROPS } from '../../app/utils/backdrop'
 const ON_OFF = ['1', '0']
 export const SETTING_VALUES: Partial<Record<SyncedSetting, readonly string[]>> = {
   'theme': THEMES.map(t => t.id), 'backdrop': BACKDROPS, 'backdropPackets': ['on', 'off'],
-  'machineBar': ON_OFF, 'compactListV2': ON_OFF,
-  'showShells': ON_OFF, 'showCounters': ON_OFF, 'showQuotas': ON_OFF, 'quotaDisplay': ['left', 'used'],
+  'machineBar': ON_OFF,
+  'showCounters': ON_OFF, 'showQuotas': ON_OFF, 'quotaDisplay': ['left', 'used'],
   'autoReorderReady': ON_OFF, 'readySort': READY_SORTS,
   'typewriterSpeed': ['off', 'fast', 'medium', 'slow'], 'encryptedText': ON_OFF, 'defaultViewMode': ['chat', 'term'],
   'wherdr.files.hidden': ON_OFF, 'wherdr.files.md': ['rendered', 'source'],
 }
 // Where each one is in Settings: "Show me" on its proposal card highlights it.
 export const SETTING_TARGETS: Partial<Record<SyncedSetting, UiTargetId>> = {
-  theme: 'appearance.theme', machineBar: 'appearance.home-screen', compactListV2: 'appearance.home-screen',
-  showShells: 'appearance.home-screen', showCounters: 'appearance.home-screen', showQuotas: 'appearance.home-screen',
+  theme: 'appearance.theme', machineBar: 'appearance.home-screen',
+  showCounters: 'appearance.home-screen', showQuotas: 'appearance.home-screen',
   autoReorderReady: 'appearance.home-screen', quotaDisplay: 'appearance.quotas',
   typewriterSpeed: 'conversation.typewriter', encryptedText: 'conversation.typewriter',
   defaultViewMode: 'conversation.default-pane',
