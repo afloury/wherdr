@@ -10,7 +10,7 @@ import { enqueue } from '../../shared/pm/wakes'
 import { incidentReasons, toTell } from '../../shared/pm/incidentWake'
 import { showIds } from '../../shared/pm/projectKey'
 import { isOpen, type Incident } from '../../shared/pm/incident'
-import { causeGone, interrupted, interruptedWhy, resumeOrder, resumeText } from '../../shared/pm/recovery'
+import { causeGone, interrupted, interruptedWhy, loginRestartText, resumeOrder, resumeText } from '../../shared/pm/recovery'
 import { handoverText } from '../../shared/pm/stop'
 import type { Run, Task } from '../../shared/pm/run'
 import { machineOn } from './coreCreate'
@@ -101,7 +101,8 @@ export async function resumeInterrupted(deps: IncidentDeps, now = Date.now()) {
     // The agent still sits on its login prompt: it ends; a reviewer starts again as a reviewer.
     const stuck = login && runs.find(x => x.id === r.run)
     if (stuck?.role === 'reviewer') {
-      await store.saveTask({ ...t, state: 'working', waiting: undefined, recovery: { ...r, waits: undefined, resumedAt: now } })
+      // say: its new reviewer's first message tells it to go on (pmAdvance.ts reviewer).
+      await store.saveTask({ ...t, state: 'working', waiting: undefined, recovery: { ...r, waits: undefined, resumedAt: now, say: true } })
       // Imported here: pmWatchdog imports the mechanic, which imports this file.
       await (await import('./pmWatchdog')).restartReview(deps, t.id, 'engine', `the login is renewed (incident ${r.incident}): its reviewer started again`)
         .catch(async (e: Error) => store.logTask((await store.task(t.id))!, 'engine', `could not restart its reviewer after incident ${r.incident}: ${e.message}`))
@@ -130,8 +131,11 @@ export async function resumeInterrupted(deps: IncidentDeps, now = Date.now()) {
       continue
     }
     const { plan } = await load(deps, t.id)
+    // After a login incident, one message sets it going again: Claude's resumed conversation's first, else its handover's next step (as tell --fix).
+    const said = r.cause === 'login' ? loginRestartText('worker') : undefined
+    const session = worker.program === 'claude' && worker.session ? { session: worker.session, text: said ?? resumeText(r, worker.instructions) } : undefined
     const handover = handoverText({ ...fresh, stopped: { by: 'the engine', why: interruptedWhy(r), at: now } }, plan, worker.branch)
-    const session = worker.program === 'claude' && worker.session ? { session: worker.session, text: resumeText(r, worker.instructions) } : undefined
+      + (said && !session ? `\nWhat to do now:\n\n${said}\n` : '')
     const res = await startTask(deps, t.id, { handover, ...(session ? { resume: session } : {}) }).catch(async (e: Error) => {
       // Started another way meanwhile (the user, the coordinator): nothing to do.
       if (e instanceof HerdrError && e.code === 'busy') return null
@@ -141,7 +145,7 @@ export async function resumeInterrupted(deps: IncidentDeps, now = Date.now()) {
     })
     if (!res) continue
     await store.logTask((await store.task(t.id))!, 'engine', res.state === 'working'
-      ? `resumed after incident ${r.incident} (${r.cause})${session ? ', the worker\'s conversation taken up again' : ''}`
+      ? `resumed after incident ${r.incident} (${r.cause})${session ? ', the worker\'s conversation taken up again' : ''}${said ? `; told it: ${said}` : ''}`
       : `could not resume after incident ${r.incident}: ${res.waiting ?? ''}`)
     resumed.push(t.id)
   }
