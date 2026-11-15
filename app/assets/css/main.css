@@ -1692,13 +1692,10 @@ body.kb .composer { padding-bottom: 8px; }
   background: var(--bg-2); border: 1px solid var(--input-line); box-shadow: none; backdrop-filter: none;
   transition: border-color .15s ease;
 }
-/* Focused field (Settings › Appearance › Focus border, utils/focusBorder.ts, applied as
-   data-focus-border on <html>). "off": the plain 1 px accent border. */
-.prompt:focus-within { border-color: color-mix(in srgb, var(--accent) 60%, transparent); outline: none; }
-/* "border" and "halo" (default): the whole 1 px border takes the agent's color and a second
-   color glides slowly around it. The agent's color is toned down a little toward the field's
-   background so that the second color reads on it (the herdr mauve on the Claude orange, for
-   instance). On the field, a conic gradient on a square (.fx-spin) turns under a fixed mask
+/* Focused field: the whole 1 px border takes the agent's color and a second color glides
+   slowly around it, with a faint halo around the field. The agent's color is toned down a
+   little toward the field's background so that the second color reads on it (the herdr mauve
+   on the Claude orange, for instance). On the field, a conic gradient on a square (.fx-spin) turns under a fixed mask
    (.fx-ring: the 1 px border; .fx-halo: the glow): only `transform` is animated, which the
    compositor runs alone. Animating the gradient's angle instead recomputed the page's style
    on every frame (more than half of the main thread while the field had the focus). No JS,
@@ -1723,11 +1720,11 @@ body.kb .composer { padding-bottom: 8px; }
 /* omp themes: their accent is the omp magenta's neighbour; glide the cyan / blue instead. */
 :root[data-theme="omp"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--teal); }
 :root[data-theme="omp-light"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--blue); }
-:root:not([data-focus-border="off"]) .prompt:focus-within { border-color: transparent; }
+.prompt:focus-within { border-color: transparent; outline: none; }
 /* Both masks are as big as what they show (container units size the square): the square is
    at least as wide as the diagonal, so it covers them whatever its angle. */
 .fx-ring, .fx-halo { display: none; position: absolute; pointer-events: none; overflow: hidden; container-type: size; }
-:root:not([data-focus-border="off"]) .prompt:focus-within .fx-ring { display: block; }
+.prompt:focus-within .fx-ring { display: block; }
 .fx-ring {
   inset: -1px; padding: 1px; z-index: 1;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor;
@@ -1741,17 +1738,17 @@ body.kb .composer { padding-bottom: 8px; }
 }
 @keyframes fx-spin { to { transform: translate(-50%, -50%) rotate(360deg); } }
 /* omp's console while its last action runs (ChatView `live`, only the last group): the same
-   ring (.omp-ring), "border only" whatever the field's setting, and none with "off". Kept in
+   ring (.omp-ring), border only (no halo). Kept in
    place so that it fades out when the group ends; it only turns while the group is live. */
 .tools.omp-console { position: relative; --fx-fill: var(--code-bg); }
 .tools.omp-console .omp-ring { display: block; opacity: 0; transition: opacity .4s ease; }
 .omp-ring .fx-spin { animation: none; }
-:root:not([data-focus-border="off"]) .tools.omp-console.live .omp-ring { opacity: 1; }
-:root:not([data-focus-border="off"]) .tools.omp-console.live .omp-ring .fx-spin { animation: fx-spin var(--fx-speed) linear infinite; }
-/* "halo": the same ring, faint and fading outward, under the field (its opaque background
+.tools.omp-console.live .omp-ring { opacity: 1; }
+.tools.omp-console.live .omp-ring .fx-spin { animation: fx-spin var(--fx-speed) linear infinite; }
+/* The halo: the same ring, faint and fading outward, under the field (its opaque background
    hides the inner part). A masked gradient, not a blur filter (cheap on an iPhone). */
-:root[data-focus-border="halo"] .composer { isolation: isolate; }
-:root[data-focus-border="halo"] .prompt:focus-within .fx-halo { display: block; }
+.composer { isolation: isolate; }
+.prompt:focus-within .fx-halo { display: block; }
 .fx-halo {
   inset: calc(-1px - var(--fx-glow)); z-index: -1; opacity: .32;
   --fx-fade-y: linear-gradient(to bottom, transparent, #000 var(--fx-glow), #000 calc(100% - var(--fx-glow)), transparent);
@@ -1761,7 +1758,7 @@ body.kb .composer { padding-bottom: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   /* Still colored all around, frozen. */
-  .fx-spin, :root:not([data-focus-border="off"]) .tools.omp-console.live .omp-ring .fx-spin { animation: none; transform: translate(-50%, -50%) rotate(135deg); }
+  .fx-spin, .tools.omp-console.live .omp-ring .fx-spin { animation: none; transform: translate(-50%, -50%) rotate(135deg); }
 }
 .prompt-body { width: 100%; min-width: 0; padding: 0; }
 .prompt-input {

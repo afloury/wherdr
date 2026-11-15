@@ -8,7 +8,7 @@ export const SYNCED_SETTINGS = [
   // Notification policy follows the user across every device.
   'notificationRules',
   // Appearance
-  'theme', 'focusBorder', 'backdrop', 'backdropPackets',
+  'theme', 'backdrop', 'backdropPackets',
   // Machine bar and groups
   'machineBar', 'machineBarOrder', 'machineBarHidden', 'machineGroups',
   // Which home tab shows each project (see readProjectTabs)
