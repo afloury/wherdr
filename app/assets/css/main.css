@@ -2531,7 +2531,7 @@ body.kb .composer { padding-bottom: 8px; }
 .onboarding-tailnet:focus-visible { outline: none; }
 @media (max-width: 520px) { .onboarding-tailnet-go { flex: 1 1 100%; justify-content: space-between; } }
 /* Passkey card on localhost: the lock is enabled on the tailnet address. */
-.settings-card > .passkey-tailnet { margin-top: 14px; color: var(--text-2); }
+.settings-card > .passkey-tailnet { color: var(--text-2); }
 .settings-action.passkey-tailnet-go { margin-top: 12px; padding: 12px 14px; background: var(--bg); box-shadow: inset 0 0 0 1px var(--line-strong); text-decoration: none; transition: background-color .12s ease, color .12s ease, box-shadow .12s ease; }
 .passkey-tailnet-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .passkey-tailnet-text small { font: 600 10px/1.4 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
@@ -2629,6 +2629,8 @@ body.kb .composer { padding-bottom: 8px; }
 @media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) { .theme-grid { grid-template-columns: 1fr 1fr; } .theme-grid .theme-opt:nth-child(2) { border-top: 0; } .theme-grid .theme-opt:nth-child(even) { border-left: 1px solid var(--line-soft); } }
 .settings-card, .settings-action.solo, .settings-stepper, .settings-toggle { background: var(--bg-2); border: 1px solid var(--line); }
 .settings-card { padding: 0 16px 14px; }
+/* Cards opening with text (no action row bringing its own top inset) get the bottom inset on top too. */
+.settings-card:has(> p:first-child) { padding-top: 14px; }
 .settings-card > p { margin: 6px 0 0; font-size: 13px; line-height: 1.45; }
 .settings-action {
   display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font-size: 15px;
