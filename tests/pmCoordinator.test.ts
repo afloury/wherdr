@@ -275,6 +275,8 @@ describe('the main coordinator (WHR-398)', () => {
     const runs: Record<string, unknown>[] = [], killed: unknown[] = []
     const call = async (method: string, params: Record<string, unknown>) => {
       if (method === 'terminal.kill') return killed.push(params.terminal), {}
+      // Each session up at once: no background "not delivered" write races the records saved below.
+      if (method === 'terminal.get') return { state: 'running', status: 'idle' }
       if (method !== 'terminal.run') return {}
       runs.push(params)
       return { address: `host/t${runs.length}` }

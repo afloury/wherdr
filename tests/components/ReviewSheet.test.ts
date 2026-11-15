@@ -12,6 +12,7 @@ import { machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 import { reviewFilter, reviewOpen } from '~/composables/useReview'
 import { lightboxSrc } from '~/composables/useUi'
 import { taskSheetTick } from '~/composables/useTaskSheet'
+import { setToaster } from '~/composables/useHerdr'
 import { toHandle, type Card } from '#shared/pm/board'
 
 const plan = [{ id: 'work', holder: 'worker', ends: 'report' }, { id: 'review', holder: 'reviewer', ends: 'verdict' }, { id: 'merge', holder: 'user', ends: 'user', action: { kind: 'github.merge' } }]
@@ -219,5 +220,26 @@ it('asks the agent to fix a blocked merge: it leaves at once, and comes back on 
   cards = [{ ...blocked(conflict), yourTurn: 'Its agent asks a question' }, cards[1]!]
   taskSheetTick.value++
   await expect.poll(progress).toBe('1 of 2')
+  w.unmount()
+})
+
+it('copies the task id from its badge, with the Copied toast, and the task stays on screen', async () => {
+  cards = [card('HO-1', 'home'), card('HO-2', 'home')]
+  const writeText = vi.fn(async () => {})
+  vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+  const added: { title: string }[] = []
+  setToaster({ add: (x: { title: string }) => added.push(x), clear: () => {} } as unknown as Parameters<typeof setToaster>[0])
+  const w = await mountSuspended(ReviewCard)
+  await expect.poll(() => w.find('[data-testid="review-open"]').exists()).toBe(true)
+  await w.find('[data-testid="review-open"]').trigger('click')
+  await expect.poll(shown).toBe('HO-1')
+  const badge = sheet()!.querySelector<HTMLElement>('.review-head [data-testid="project-badge"]')!
+  expect([badge.getAttribute('role'), badge.getAttribute('aria-label')]).toEqual(['button', 'Copy HO-1'])
+  badge.click()
+  await expect.poll(() => added.map(x => x.title)).toEqual(['Copied: HO-1'])
+  expect(writeText).toHaveBeenCalledWith('HO-1')
+  expect(shown()).toBe('HO-1')
+  setToaster(null as unknown as Parameters<typeof setToaster>[0])
+  vi.unstubAllGlobals()
   w.unmount()
 })
