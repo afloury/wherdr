@@ -1,5 +1,8 @@
 # Migrate a wherdr 1.x Docker install to wherdr 2.0
 
+> [!NOTE]
+> **v2 only.** This guide moves a wherdr 1.x Docker container to the native wherdr 2.0 service. wherdr v3 on herdr-core has no Docker image. See the [v3 documentation](README.md).
+
 wherdr 2.0.0 has no Docker image: it runs natively, as your user, so the herdr-projects Board can act.
 This guide moves a wherdr 1.x container to the native service. It keeps the port, the data
 folder (passkeys, push subscriptions, phone address, settings) and therefore the address your
@@ -39,7 +42,8 @@ expected, the plugin switches to native at step 4.
 
 If the user also runs herdr-projects 0.2 (the Project panel, `TASKS.md`, threads), stop here
 and tell them. wherdr 2.0's Board needs herdr-projects 1.2.1 or later; they must follow
-[the herdr-projects migration guide](herdr-projects-1x.md) as well, or stay on wherdr 1.3.4.
+the herdr-projects migration guide of wherdr 2.0 (`docs/herdr-projects-1x.md` on the `v2.0.0`
+tag) as well, or stay on wherdr 1.3.4.
 
 ## 1. Back up
 

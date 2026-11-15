@@ -1,0 +1,86 @@
+{
+  "Version": "1.90.6-t0123456789-g0123456789",
+  "TUN": true,
+  "BackendState": "Running",
+  "HaveNodeKey": true,
+  "AuthURL": "",
+  "TailscaleIPs": ["100.90.1.2", "fd7a:115c:a1e0::2"],
+  "Self": {
+    "ID": "nSELF000CNTRL",
+    "PublicKey": "nodekey:0000000000000000000000000000000000000000000000000000000000000001",
+    "HostName": "server",
+    "DNSName": "server.example.ts.net.",
+    "OS": "linux",
+    "UserID": 1001,
+    "TailscaleIPs": ["100.90.1.2", "fd7a:115c:a1e0::2"],
+    "Online": true,
+    "ExitNode": false
+  },
+  "Peer": {
+    "nodekey:0000000000000000000000000000000000000000000000000000000000000002": {
+      "ID": "nPHONE00CNTRL",
+      "HostName": "my-phone",
+      "DNSName": "my-phone.example.ts.net.",
+      "OS": "iOS",
+      "UserID": 1001,
+      "TailscaleIPs": ["100.101.102.103", "fd7a:115c:a1e0::5"],
+      "Online": true
+    },
+    "nodekey:0000000000000000000000000000000000000000000000000000000000000003": {
+      "ID": "nLAPTOP0CNTRL",
+      "HostName": "my-laptop",
+      "DNSName": "my-laptop.example.ts.net.",
+      "OS": "macOS",
+      "UserID": 1001,
+      "TailscaleIPs": ["100.101.102.104"],
+      "Online": true
+    },
+    "nodekey:0000000000000000000000000000000000000000000000000000000000000004": {
+      "ID": "nCOLLEAGCNTRL",
+      "HostName": "colleague-laptop",
+      "DNSName": "colleague-laptop.example.ts.net.",
+      "OS": "windows",
+      "UserID": 2002,
+      "TailscaleIPs": ["100.80.0.4", "fd7a:115c:a1e0::4"],
+      "Online": true
+    },
+    "nodekey:0000000000000000000000000000000000000000000000000000000000000005": {
+      "ID": "nSHARED0CNTRL",
+      "HostName": "friend-desktop",
+      "DNSName": "friend-desktop.other.ts.net.",
+      "OS": "linux",
+      "UserID": 3003,
+      "TailscaleIPs": ["100.80.0.5"],
+      "Online": true
+    },
+    "nodekey:0000000000000000000000000000000000000000000000000000000000000006": {
+      "ID": "nSHAREECNTRL",
+      "HostName": "sharee-phone",
+      "DNSName": "",
+      "OS": "android",
+      "UserID": 1001,
+      "ShareeNode": true,
+      "TailscaleIPs": ["100.80.0.6"],
+      "Online": true
+    },
+    "nodekey:0000000000000000000000000000000000000000000000000000000000000007": {
+      "ID": "nTAGGEDCNTRL",
+      "HostName": "ci-runner",
+      "DNSName": "ci-runner.example.ts.net.",
+      "OS": "linux",
+      "UserID": 2147455555,
+      "Tags": ["tag:ci"],
+      "TailscaleIPs": ["100.80.0.7"],
+      "Online": true
+    }
+  },
+  "User": {
+    "2147455555": { "ID": 2147455555, "LoginName": "tagged-devices", "DisplayName": "tagged-devices" },
+    "1001": { "ID": 1001, "LoginName": "owner@example.com", "DisplayName": "Owner" },
+    "2002": { "ID": 2002, "LoginName": "colleague@example.com", "DisplayName": "Colleague" },
+    "3003": { "ID": 3003, "LoginName": "friend@example.org", "DisplayName": "Friend" }
+  },
+  "CertDomains": ["server.example.ts.net"],
+  "MagicDNSSuffix": "example.ts.net",
+  "CurrentTailnet": { "Name": "example.com", "MagicDNSSuffix": "example.ts.net", "MagicDNSEnabled": true }
+}

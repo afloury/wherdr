@@ -1,10 +1,10 @@
 import { SETTING_MAX } from '#shared/settings'
 import { machineOf } from '#shared/ids'
-import { EXCEPTIONS_MAX, LEVEL_EVENTS, NOTIFICATION_LEVELS, coordinatorKey, levelOf, notificationEvents, notificationException,
+import { EXCEPTIONS_MAX, LEVEL_EVENTS, NOTIFICATION_LEVELS, coordinatorTarget, levelOf, migrateCoordinatorExceptions, notificationEvents, notificationException,
   paneNotificationSource, parseCoordinatorKey, parseNotificationSettings, tidyNotificationExceptions, sameNotificationTarget,
   type NotificationEvent, type NotificationException, type NotificationLevel, type NotificationSettings, type NotificationTarget } from '#shared/notificationRules'
-import type { LinkedCoordinator } from '#shared/boardLinks'
 import type { Pane } from '#shared/types'
+import { MAIN } from '#shared/pm/coordinator'
 import type { MenuItem } from './useUi'
 
 export const notificationRules = syncedRef('notificationRules', parseNotificationSettings, JSON.stringify)
@@ -21,8 +21,8 @@ export const levelLabel = (l: NotificationLevel | 'custom') => ({
 })[l]
 export const levelHint = (l: NotificationLevel) => ({
   'muted': t('Nothing.'),
-  'needs-you': t('A task or a coordinator is waiting for you.'),
-  'finished': t('Also a finished task, or a coordinator that finished answering you.'),
+  'needs-you': t('An agent is waiting for you.'),
+  'finished': t('Also an agent that finished answering you.'),
   'all': t('Also every intermediate message.'),
 })[l]
 export const eventLabel = (e: NotificationEvent) => ({ 'needs-you': t('Needs you'), 'finished': t('Finished'), 'message': t('New message'), 'scheduled': t('Scheduled task') })[e]
@@ -32,31 +32,29 @@ const baseMachine = (key: string) => {
   const m = allSessionsState.value.machines?.find(x => x.key === key) ?? herdrState.value.machines?.find(x => x.key === key)
   return m?.baseKey ?? m?.key ?? key
 }
+// A machine id that matches no known machine (one removed since) is not shown raw.
 export const notificationMachineName = (key: string) => machineName(key)
-  || (allSessionsState.value.machines ?? herdrState.value.machines)?.find(m => m.key === key || m.baseKey === key)?.label || key || t('This machine')
-export function notificationSource(pane: Pick<Pane, 'id' | 'workspace'>) {
-  return paneNotificationSource(pane, herdrState.value, boardLinksNow(), baseMachine(machineOf(pane.id)))
+  || (allSessionsState.value.machines ?? herdrState.value.machines)?.find(m => m.key === key || m.baseKey === key)?.label || (key ? t('Unknown machine') : t('This machine'))
+type NotifiedPane = Pick<Pane, 'id' | 'workspace'> & Partial<Pick<Pane, 'coreAddress'>>
+export function notificationSource(pane: NotifiedPane) {
+  const source = paneNotificationSource(pane, herdrState.value, [], baseMachine(machineOf(pane.id)))
+  const c = coordinatorAtAddress(pane.coreAddress)
+  return c ? { ...source, coordinator: coordinatorTarget(c.project) } : source
 }
-// A coordinator's name, kept the same as on the Board and the home list.
-export function coordinatorNotificationLabel(machine: string, key: string) {
-  const k = parseCoordinatorKey(key)
-  const local = (allSessionsState.value.machines ?? herdrState.value.machines)?.find(m => m.key === machine)?.local ?? !machine
-  const name = coordinatorKind(k.level, local, notificationMachineName(machine), k.repo).name
-  return k.session && k.session !== 'default' ? `${name} · ${k.session}` : name
-}
-export const coordinatorTarget = (machine: string, c: LinkedCoordinator): NotificationTarget => {
-  const id = coordinatorKey(c)
-  return { kind: 'coordinator', machine, id, label: coordinatorNotificationLabel(machine, id).slice(0, 120) }
-}
-// The exception a conversation can have: its coordinator identity, its own
-// pane for a standalone agent, none for a task agent (the Sub-agents switch).
-export function paneNotificationTarget(p: Pick<Pane, 'id' | 'workspace' | 'title'>): NotificationTarget | null {
+// The exception a conversation can have: its coordinator's (Alfred or a
+// project's, kept across its restarts), else its own pane.
+export function paneNotificationTarget(p: NotifiedPane & Pick<Pane, 'title'>): NotificationTarget {
+  const c = coordinatorAtAddress(p.coreAddress)
+  if (c) return { kind: 'coordinator', machine: '', id: coordinatorTarget(c.project), label: c.name.slice(0, 120) }
   const s = notificationSource(p)
-  if (s.subagent) return null
-  if (s.coordinator) return { kind: 'coordinator', machine: s.machine, id: s.coordinator, label: coordinatorNotificationLabel(s.machine, s.coordinator).slice(0, 120) }
   return { kind: 'conversation', machine: s.machine, id: p.id, label: (p.title || p.id).slice(0, 120) }
 }
-export function paneNotificationsMuted(p: Pick<Pane, 'id' | 'workspace'>) {
+// A coordinator exception's current name ('' when its coordinator is unknown).
+export const coordinatorExceptionName = (id: string) => {
+  const k = parseCoordinatorKey(id)
+  return k.session ? '' : k.level === 'top' ? coordinatorNameOf(MAIN) : k.level === 'project' && k.repo ? coordinatorNameOf(k.repo) : ''
+}
+export function paneNotificationsMuted(p: NotifiedPane) {
   return !notificationEvents(notificationRules.value, notificationSource(p), notificationClock.value).length
 }
 export const findException = (target: Pick<NotificationTarget, 'kind' | 'machine' | 'id'>) =>
@@ -84,34 +82,27 @@ export function removeException(target: Pick<NotificationTarget, 'kind' | 'machi
   toast(tl(`Back to the default: ${defaultLevelLabel()}`, `Retour au défaut : ${defaultLevelLabel()}`))
 }
 
-// Saved exceptions the model does not allow (pane-keyed coordinators, task
-// agents, ended timed mutes) are fixed once the board's links are known.
+// Ended timed mutes that left nothing behind are dropped from the saved
+// exceptions; older coordinator exceptions move to today's coordinators.
 export function useNotificationRekey() {
-  const boards = useBoardLinks()
-  watch([boards, notificationRules, notificationClock], ([b, s, now]) => {
-    const next = tidyNotificationExceptions(s, b, now)
-    if (next) saveNotificationRules(next)
+  onMounted(() => { if (!coordinatorsLoaded.value) loadCoordinators(); if (!alfred.value) loadAlfred() })
+  watch([notificationRules, notificationClock, coordinators, alfred], ([s, now]) => {
+    const tidy = tidyNotificationExceptions(s, [], now)
+    // Projects on: the list starts with the main coordinator.
+    const projects = coordinators.value.some(c => c.main) ? projectCoordinators.value.map(c => c.project) : null
+    const next = migrateCoordinatorExceptions(tidy ?? s, projects, p => coordinatorNameOf(p) || p)
+    if (next || tidy) saveNotificationRules(next ?? tidy!)
   }, { immediate: true })
 }
 
 // Row menus show the effective state; the settings panel keeps the same rules.
-export function notificationMenuItem(p: Pick<Pane, 'id' | 'workspace' | 'title'>, showState = false): MenuItem {
+export function notificationMenuItem(p: NotifiedPane & Pick<Pane, 'title'>, showState = false): MenuItem {
   const label = showState ? (paneNotificationsMuted(p) ? t('Unmute notifications') : t('Mute notifications')) : t('Notifications')
   return { label, icon: 'i-lucide-bell', run: () => openNotificationMenu(p) }
 }
-function openNotificationMenu(p: Pick<Pane, 'id' | 'workspace' | 'title'>) {
+function openNotificationMenu(p: NotifiedPane & Pick<Pane, 'title'>) {
   const settings = { label: t('Notification settings'), icon: 'i-lucide-settings-2', run: () => navigateTo('/settings?section=notifications') }
   const target = paneNotificationTarget(p)
-  if (!target) {
-    const on = notificationRules.value.default.subagents
-    return openMenu([
-      { kind: 'note', label: t('Task agents follow the Sub-agents switch of the default (or of their coordinator’s exception), never one by one.') },
-      { label: on ? t('Turn sub-agents off') : t('Turn sub-agents on'), icon: on ? 'i-lucide-bell-off' : 'i-lucide-bell-ring',
-        desc: tl(`Now: ${on ? 'on' : 'off'}`, `Actuellement : ${on ? 'activés' : 'coupés'}`),
-        run: () => saveNotificationRules({ ...notificationRules.value, default: { ...notificationRules.value.default, subagents: !on } }) },
-      { kind: 'separator' }, settings,
-    ], `${t('Notifications')} · ${p.title || p.id}`)
-  }
   const now = Date.now()
   const live = notificationException(notificationRules.value, notificationSource(p), now)
   const own = live && sameNotificationTarget(live, target) ? live : undefined
