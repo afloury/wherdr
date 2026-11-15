@@ -1,7 +1,6 @@
 <script setup lang="ts">
 // An agent in wherdr's compact list (app/components/AgentCard.vue, the 2.0
-// default): one line with its logo, a task's key, its title, a task's progress
-// and its state square. While it waits for you the line opens on its question
+// default): one line with its logo, its title and its state square. While it waits for you the line opens on its question
 // and, when it offers some, the answers (a tap answers).
 import { AGENT_ICON } from '~/utils/demoScript'
 import type { DemoAgent } from '~/utils/demoScript'
@@ -11,11 +10,9 @@ const open = computed(() => props.agent.state === 'blocked' && Boolean(props.age
 </script>
 
 <template>
-  <div class="card compact" :class="[agent.state, { sel: selected, open, 'task-row': agent.tag }]">
+  <div class="card compact" :class="[agent.state, { sel: selected, open }]">
     <span class="avatar" :class="agent.agent"><UIcon :name="AGENT_ICON[agent.agent]" /></span>
-    <span v-if="agent.tag" class="card-tag">{{ agent.tag }}</span>
     <span class="card-title">{{ agent.name }}</span>
-    <span v-if="agent.stats" class="home-task-stats">{{ agent.stats }}</span>
     <span class="card-state" :class="agent.state"><i /></span>
     <div v-if="open" class="card-more">
       <div v-if="agent.line" class="card-preview">{{ agent.line }}</div>

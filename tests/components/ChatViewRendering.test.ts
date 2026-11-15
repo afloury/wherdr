@@ -6,6 +6,8 @@ import { herdrState } from '~/composables/useHerdr'
 import type { ChatItem, Pane } from '#shared/types'
 import { parseLines } from '../../server/utils/transcripts'
 import ompErrors from '../fixtures/omp-errors.jsonl?raw'
+import devinAtif from '../fixtures/devin-atif-v1.7-real.json'
+import { parseDevin } from '../../server/utils/devinTranscripts'
 
 const pane: Pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'omp', name: null, label: null, status: 'blocked', title: null, cwd: '/tmp/demo', agentSession: null }
 let items: ChatItem[] = []
@@ -14,37 +16,24 @@ registerEndpoint('/api/chat', () => ({ available: true, token: 'rendering', file
 describe('conversation rendering', () => {
   afterEach(() => { lightboxSrc.value = null; lightboxSet.value = []; herdrState.value = { ok: false, workspaces: [], panes: [] } })
 
-  it('attributes both wake formats to Autopilot and keeps their complete text and labelled copy action together', async () => {
-    const wakes = ['Autopilot: Check ready work.\nBoard context: no pending replies.  ', 'Autopilot woke: Check older work.']
-    const human = 'Please explain Autopilot: and Autopilot woke:.'
-    items = [
-      ...wakes.map((text): ChatItem => ({ role: 'user', text, ts: null })),
-      { role: 'user', text: human, ts: null },
-      { role: 'user', text: '> Autopilot: a quotation', ts: null },
-      { role: 'assistant', text: 'Autopilot: an assistant reply', ts: null },
-    ]
-    const original = structuredClone(items)
-    const writeText = vi.fn().mockResolvedValue(undefined)
-    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
-    herdrState.value = { ok: true, workspaces: [], panes: [pane] }
-    const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] } })
+  it('renders the saved Devin checkpoint while the process works on its next turn', async () => {
+    const working = { ...pane, agent: 'devin', status: 'working' as const }
+    herdrState.value = { ok: true, workspaces: [], panes: [working] }
+    items = parseDevin(devinAtif.steps)
+    const w = await mountSuspended(ChatView, {
+      props: { pane: working, localQueued: [] },
+      global: { stubs: { UTooltip: { template: '<slot />' } } },
+    })
     try {
-      await expect.poll(() => w.findAll('.msg-autopilot').length).toBe(2)
-      for (const [i, block] of w.findAll('.msg-autopilot').entries()) {
-        expect(block.find('.msg-system').text()).toBe('Autopilot')
-        expect(block.find('.msg-fold').element.textContent).toBe(wakes[i])
-        expect(block.find('.msg-user').exists()).toBe(false)
-        const copy = block.find('.msg-autopilot-body button')
-        expect(copy.exists()).toBe(true)
-        expect(copy.attributes('aria-label')).toBe('Copy message')
-        await copy.trigger('click')
-        expect(writeText).toHaveBeenLastCalledWith(wakes[i])
-      }
+      await expect.poll(() => w.find('.chat').text()).toContain('all 12 tests pass')
       expect(w.findAll('.msg-user')).toHaveLength(2)
-      expect(w.find('.msg-user .msg-fold').element.textContent).toBe(human)
-      expect(w.find('.msg-ai').text()).toContain('Autopilot: an assistant reply')
-      expect(items).toEqual(original)
-    } finally { w.unmount(); vi.unstubAllGlobals() }
+      expect(w.find('.chat').text()).not.toContain('System instructions')
+      expect(w.find('.chat').text()).toContain('npm test')
+      // The first historical turn is finished; the tail is still working.
+      const order = [...w.find('.chat').element.querySelectorAll('.msg-user, .turn-end')]
+        .map(el => el.classList.contains('turn-end') ? 'finished' : 'user')
+      expect(order).toEqual(['user', 'finished', 'user'])
+    } finally { w.unmount() }
   })
 
   it('keeps an action awaiting approval live without a finished-turn line', async () => {
@@ -88,6 +77,29 @@ describe('conversation rendering', () => {
       await thumbs[0]!.trigger('click')
       expect(lightboxSrc.value).toBe(src)
       expect(lightboxSet.value).toEqual([src])
+    } finally { w.unmount() }
+  })
+  it('opens the full output of a local "/" command from its one-line summary', async () => {
+    const idle = { ...pane, agent: 'claude' as const, status: 'idle' as const }
+    herdrState.value = { ok: true, workspaces: [], panes: [idle] }
+    items = [
+      { role: 'cmd', text: '/context → claude-opus · 45k/200k tokens (22%)', ts: '2026-01-01T00:00:00Z', out: 'Context Usage\nclaude-opus · 45k/200k tokens (22%)\nSystem prompt: 3k tokens\nMessages: 40k tokens' },
+      { role: 'cmd', text: '/cost → Total cost: $0.12', ts: '2026-01-01T00:00:01Z' },
+    ]
+    const w = await mountSuspended(ChatView, { props: { pane: idle, localQueued: [] } })
+    try {
+      await expect.poll(() => w.find('.chat').text()).toContain('/cost → Total cost: $0.12')
+      // Nothing more to say: a plain line, not a button.
+      expect(w.findAll('div.msg-system').map(x => x.text())).toContain('/cost → Total cost: $0.12')
+      const line = w.find('.msg-cmd button.msg-system')
+      expect(line.text()).toContain('/context')
+      expect(line.attributes('aria-expanded')).toBe('false')
+      expect(w.find('.msg-cmd pre').exists()).toBe(false)
+      await line.trigger('click')
+      expect(line.attributes('aria-expanded')).toBe('true')
+      expect(w.find('.msg-cmd pre').text()).toBe('Context Usage\nclaude-opus · 45k/200k tokens (22%)\nSystem prompt: 3k tokens\nMessages: 40k tokens')
+      await line.trigger('click')
+      expect(w.find('.msg-cmd pre').exists()).toBe(false)
     } finally { w.unmount() }
   })
   it('keeps a scheduled prompt folded while rendering its Markdown on demand', async () => {
@@ -137,12 +149,12 @@ describe('conversation rendering', () => {
       // Raw provider JSON stays as written (no Markdown).
       expect(errors[0]!.find('.msg-error-text').element.textContent).toMatch(/^400 \{"type":"error"/)
       // Check-ins and actions are still there, around the errors.
-      expect(w.findAll('.msg-autopilot')).toHaveLength(5)
+      expect(w.findAll('.msg-user')).toHaveLength(5)
       expect(w.find('.omp-console .omp-tool-cmd').text()).toBe('tools/tasks.sh list')
       expect(w.find('.msg-ai').text()).toContain('Checking the board.')
       expect(w.findAll('.msg-system').map(s => s.text())).toEqual(expect.arrayContaining(['Retried after an error', 'Interrupted']))
       // Order: each error right after the check-in that hit it.
-      const order = [...w.find('.chat').element.querySelectorAll('.msg-autopilot, .msg-error')].map(el => el.classList.contains('msg-error') ? 'E' : 'A')
+      const order = [...w.find('.chat').element.querySelectorAll('.msg-user, .msg-error')].map(el => el.classList.contains('msg-error') ? 'E' : 'A')
       expect(order.join('')).toBe('AEAEAEAAE')
     } finally { w.unmount() }
   })

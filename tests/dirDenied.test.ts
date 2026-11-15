@@ -6,7 +6,7 @@ import { chmodSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { LIST_DIRS_SCRIPT, dirDeniedFromCode, dirDeniedFromError, parseDirList } from '../server/utils/fsx'
+import { LIST_DIRS_SCRIPT, dirDeniedFromCode, parseDirList } from '../server/utils/fsx'
 import { LIST_SCRIPT } from '../server/utils/files'
 
 const base = mkdtempSync(path.join(tmpdir(), 'wherdr-denied-'))
@@ -59,15 +59,6 @@ describe('folder listing refused by the system', () => {
     expect(r.code).toBe(1)
     expect(dirDeniedFromCode(r.code)).toBeNull()
     expect(dirDeniedFromCode(0)).toBeNull()
-  })
-
-  it('maps local readdir errors (EPERM is macOS privacy protection on a Mac)', () => {
-    const err = (code: string) => Object.assign(new Error(code), { code })
-    expect(dirDeniedFromError(err('EPERM'), 'darwin')).toBe('macos')
-    expect(dirDeniedFromError(err('EPERM'), 'linux')).toBe('permission')
-    expect(dirDeniedFromError(err('EACCES'), 'darwin')).toBe('permission')
-    expect(dirDeniedFromError(err('ENOENT'), 'darwin')).toBeNull()
-    expect(dirDeniedFromError(null)).toBeNull()
   })
 
   it('Files window: exits 8 for macOS, 7 for plain rights, lists otherwise', () => {

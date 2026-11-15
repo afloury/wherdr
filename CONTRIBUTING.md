@@ -1,6 +1,7 @@
 # Contributing to wherdr
 
 Thanks for your interest! Issues and pull requests are welcome.
+Before a large pull request, discuss it on [Discord](https://discord.gg/ky36WYmtVE) or in an issue first.
 
 ## Development setup
 
@@ -45,7 +46,7 @@ sent request, a stored value), not the wiring.
 | --- | --- | --- | --- |
 | Unit | `tests/*.test.ts` | `npx vitest run --project unit` | Pure modules of `server/`, `shared/`, `app/utils/`, in Node. |
 | Component | `tests/components/*.test.ts` | `npx vitest run --project components` | Vue components mounted in a Nuxt environment (auto-imports, Nuxt UI) on happy-dom, with `mountSuspended` and `registerEndpoint` from `@nuxt/test-utils/runtime`. |
-| End to end | `tests/e2e/*.spec.ts` | `npm run build && npm run test:e2e -- tests/e2e/<name>.spec.ts --project chromium-phone` | The built app in Chromium and WebKit (Safari's engine, for iOS bugs), at iPhone and desktop sizes, against a fake Herdr server with neutral data. |
+| End to end | `tests/e2e/*.spec.ts` | `npm run build && npx playwright test tests/e2e/<name>.spec.ts --project=chromium-phone` | The built app in Chromium at iPhone size (and the core smoke in WebKit), each spec with its own server and fake herdr-core socket (`tests/e2e/core.ts`). |
 
 **Where a test goes.** Browser tests are slow (2-3 s each, against milliseconds for a unit
 test) and they set the CI time, so each check goes to the fastest level that can catch it:
@@ -56,7 +57,7 @@ test) and they set the CI time, so each check goes to the fastest level that can
   its labels and translations).
 - **End to end**: only what nothing else can test: a real browser (layout, focus, scroll,
   overlays), touch or the iOS/Android keyboard, navigation and reload, the built server with
-  the fake Herdr end to end, WebSockets. One e2e test covers a user journey, not a variant of
+  the fake core end to end, WebSockets. Prefer extending an existing journey to a new spec. One e2e test covers a user journey, not a variant of
   a label, a style or a matrix: test one case in the browser and the variants below it.
 
 When you remove an e2e test because a faster one covers it, name that test in a comment
@@ -64,47 +65,20 @@ When you remove an e2e test because a faster one covers it, name that test in a 
 
 An e2e test never sits through an app timer (a poll, a toast, a debounced write): it moves
 Playwright's fake clock past it (`page.clock.install()` before the page opens, then
-`page.clock.fastForward`), or waits for the state itself. `tests/e2e/waits.ts` has the
-common cases: `boardServes` (the server's list of this test, not the previous one's) and
-`skipToast`.
+`page.clock.fastForward`), or waits for the state itself.
 
 `npx vitest run` runs the unit and component projects together. For the end-to-end tests,
-install the browsers once with `npx playwright install --with-deps chromium webkit`; a single
-project and spec run with `npm run test:e2e -- tests/e2e/<name>.spec.ts --project=webkit-phone`
-(names in `playwright.config.ts`),
-and `npx playwright show-report` opens the last report. They never touch a real Herdr session.
+install the browsers once with `npx playwright install --with-deps chromium webkit`, build, then run
+`npx playwright test --project=chromium-phone` (every spec); `npx playwright test tests/e2e/<name>.spec.ts --project=chromium-phone`
+runs one spec. The `webkit-phone` project (Safari's engine, iPhone 13) runs only
+`tests/e2e/core-smoke.spec.ts`, which checks that `/ws/events` opens and sends a state frame,
+for iOS-only breakage: `npx playwright test --project=webkit-phone`. They never touch a real herdr-core session.
 
-For a focused check of browser-test stability, build once, then run
-`npm run test:e2e:stability`. It covers Codex startup, held MCP navigation, legacy quote
-preferences, UTC midnight, and setup deep links on all four profiles, with retries disabled.
-Use this small set for a quick regression check; `npm run test:e2e` still runs the full suite.
-Repeated runs of entire files can take tens of minutes on a small machine.
-
-GitHub Actions (`.github/workflows/ci.yml`) runs all of them, the type check and the leak check
-(gitleaks only: your `.leak-patterns` stays local). Pull requests and pushes run a light
-end-to-end set: every test on `chromium-phone` (six shards) and, on the other three projects,
-only the tests tagged with that project's name (two shards for `webkit-phone`): `{ tag: '@webkit-phone' }` for a Safari/iOS
-journey, `'@chromium-desktop'` for a keyboard or split-view case, `'@webkit-desktop'` for iPad
-and desktop Safari. A test skipped on phones must carry one of these tags, or the run fails
-(`tests/e2e/scope.ts`). The whole suite on all four projects also runs nightly on develop (18:17 UTC), on a manual
-run of the workflow and on release tags `vX.Y.Z`. GitHub loads schedules from the default
-branch, so the schedule becomes active once this workflow reaches main; each nightly job
-checks out the same resolved develop commit. Browser jobs cache downloaded apt packages by
-Ubuntu release, Playwright version and browser; apt still installs and validates dependencies
-on each fresh runner.
-`E2E_SCOPE=light npm run test:e2e -- --project=webkit-phone` reproduces the light selection
-locally; without `E2E_SCOPE`, a local run is the whole suite. CI retries a failed test once (it
-then shows as flaky); local runs never retry.
-
-Engine inputs are selected by `scripts/engine-changes.mjs` in the existing `changes`
-job. Ordinary interface PRs skip Rust entirely. Engine sources and build, Board
-integration or distribution inputs run the upstream full Linux check and its macOS
-platform selection through `engine-ci.yml`, from `engine/`. Renames count both paths;
-an unavailable diff selects Rust conservatively. Manual runs and release tags also
-select it. Rust caches use `engine/target`, OS, host target, compiler version and
-`engine/Cargo.lock`. The always-present `engine-checks` result passes when Rust was
-intentionally skipped and fails for failed or cancelled required checks. Existing
-`checks` and `e2e` check names remain unchanged. No publishing is performed here.
+GitHub Actions (`.github/workflows/ci.yml`) runs the type check, all the Vitest tests, the leak
+check (gitleaks only: your `.leak-patterns` stays local), the build and the end-to-end specs on
+every pull request and push to v3: all specs on Chromium, then the core smoke on WebKit. CI retries a failed e2e test once (it then shows as flaky);
+local runs never retry. The v2 suite (fake Herdr, the full WebKit and desktop projects, nightly
+runs) lives on develop and main.
 
 
 ## Agent test rule
@@ -134,10 +108,9 @@ journeys for these broad changes. A missing base must be fetched before relying 
 
 Run typecheck and the configured lint checks for code changes. There is currently no lint
 script: do not invent a successful lint command. Do not run the full Playwright suite locally.
-Run only relevant specs on one project, `chromium-phone` by default; pass `--safari` to the
-selector for Safari-specific behavior (`webkit-phone`). The selector serializes heavy
+Run only relevant specs; v3 has one project, `chromium-phone`. The selector serializes heavy
 commands with `flock /tmp/wherdr-heavy.lock`, builds once only if e2e tests are selected,
-and finds a free port in 7690–7699. Its e2e tests use the existing isolated fake-data launcher.
+and finds a free port in 7690–7699. Each e2e spec starts its own isolated server and fake core.
 For manual commands, use the same lock, port range, isolated data and sessions.
 Never connect tests to a user's live agents.
 
@@ -145,7 +118,7 @@ For a new regression, demonstrate that the test fails with the broken behavior a
 with the fix. Assert observable output or effects, not only internal wiring. Do not use
 happy-dom to prove geometry, touch behavior or focus. Do not add arbitrary sleeps or retries
 to hide races. Report selected tests, results and any untested boundary. CI runs the complete
-reduced suite and required Safari selection; this local selector does not change CI.
+suite; this local selector does not change CI.
 
 ## Testing without touching your real agents
 
@@ -186,6 +159,13 @@ both change the account's default model. wherdr itself only uses "this session" 
   French dictionary and optional second argument inactive. Error messages the server
   sends to the UI are English keys too.
 - **Design**: follow the [design rules](docs/design.md) for every interface change.
+- **Docs**: add a new section where it belongs in its page, never at the end of the file,
+  and its line under the matching heading of `docs/llms.txt`. Parallel tasks that all append
+  to the same spot conflict at every merge. `docs/llms.txt` merges with `merge=union`
+  (`.gitattributes`); `npm install` adds a local driver (`scripts/llms-merge.mjs`, in the
+  clone's `info/attributes`) that also keeps one line per entry: yours when you changed it.
+  Keep each line unique: edit the existing line of your entry. After a merge without the
+  driver, run `node scripts/llms-merge.mjs fix`.
 - **iOS**: keep `apple-mobile-web-app-status-bar-style` on `black` (with `black-translucent`,
   iOS 26 shortens the installed app from the bottom), and mind the keyboard and safe areas.
 - **Terminal input and IME**: xterm's `onData` does not distinguish a keystroke from
