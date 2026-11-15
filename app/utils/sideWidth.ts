@@ -48,26 +48,36 @@ export function saveListCollapsed(collapsed: boolean) {
   } catch { /* stockage indisponible */ }
 }
 
-// Ticket panel: retain a usable Board alongside the navigation sidebar.
-export const PANEL_MIN = 320
-export const PANEL_MAX = 960
-export const BOARD_MIN = 640
-const PANEL_KEY = 'boardPanelWidth'
-export function clampPanelWidth(width: number, available: number): number {
-  return Math.round(Math.max(PANEL_MIN, Math.min(width, PANEL_MAX, available - BOARD_MIN)))
+// Width of the side panel beside the conversation (Settings, or a place an
+// agent opens), set with the handle on its left edge and kept on the device.
+// null: the CSS default, clamp(440px, 36vw, 560px).
+export const PANEL_MIN = 400
+// The conversation keeps at least this much beside the panel.
+export const CONVERSATION_MIN = 480
+const PANEL_KEY = 'sidePanelWidth'
+
+// Bounds: at least 400 px, and the conversation (between the list's right edge
+// and the panel) keeps 480 px; window too narrow: the minimum wins.
+export function clampPanelWidth(w: number, viewport: number, listRight: number): number {
+  const max = Math.max(PANEL_MIN, viewport - listRight - CONVERSATION_MIN)
+  return Math.round(Math.min(max, Math.max(PANEL_MIN, w)))
 }
-export function panelWidthCss(width: number | null): string {
-  return `clamp(${PANEL_MIN}px, ${width === null ? 'clamp(400px, 44vw, 720px)' : `${width}px`}, calc(100vw - var(--side) - ${BOARD_MIN}px))`
+
+// CSS value of --settings-panel: also clamped in CSS, the window or the list may change later.
+export function panelWidthCss(w: number): string {
+  return `clamp(${PANEL_MIN}px, ${w}px, calc(100vw - var(--side) - ${CONVERSATION_MIN}px))`
 }
+
 export function readPanelWidth(): number | null {
   try {
-    const value = Number(localStorage.getItem(PANEL_KEY))
-    return Number.isFinite(value) && value >= PANEL_MIN && value <= PANEL_MAX ? Math.round(value) : null
+    const v = Number(localStorage.getItem(PANEL_KEY))
+    return Number.isFinite(v) && v >= PANEL_MIN && v <= 4000 ? Math.round(v) : null
   } catch { return null }
 }
-export function savePanelWidth(width: number | null) {
+
+export function savePanelWidth(w: number | null) {
   try {
-    if (width === null) localStorage.removeItem(PANEL_KEY)
-    else localStorage.setItem(PANEL_KEY, String(width))
-  } catch { /* Storage unavailable. */ }
+    if (w === null) localStorage.removeItem(PANEL_KEY)
+    else localStorage.setItem(PANEL_KEY, String(w))
+  } catch { /* storage unavailable */ }
 }
