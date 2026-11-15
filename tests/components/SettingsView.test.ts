@@ -225,12 +225,12 @@ it('Conversation: tabs split Display, Dictation and Read aloud, the tab kept in 
 it('points at a target: opens its tab, highlights it until a click, and says so politely', async () => {
   desk.value = true
   coarse.value = false
-  const w = await mountSuspended(SettingsView, { route: '/settings?section=conversation&tab=display&target=conversation.reply-style', global })
+  const w = await mountSuspended(SettingsView, { route: '/settings?section=conversation&tab=display&target=conversation.typewriter', global })
   try {
-    const el = w.get('[data-ui-target="conversation.reply-style"]')
+    const el = w.get('[data-ui-target="conversation.typewriter"]')
     await vi.waitFor(() => expect(el.classes()).toContain('ui-halo'))
     expect(el.attributes('aria-describedby')).toBe('ui-target-note')
-    expect(w.get('#ui-target-note').text()).toBe('Pointing to Reply style')
+    expect(w.get('#ui-target-note').text()).toBe('Pointing to Typewriter')
     document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }))
     expect(el.classes()).not.toContain('ui-halo')
   } finally { w.unmount() }

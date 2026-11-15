@@ -26,8 +26,6 @@ import { readShowShells } from '~/utils/terminalVisibility'
 import { COMPACT_LIST_KEY, LEGACY_COMPACT_LIST_KEY, readCompactList } from '~/utils/compactCard'
 import { paneFallback } from '~/utils/viewMode'
 import { menuAsSheet } from '~/utils/menuRoute'
-import { DEFAULT_QUOTE_MODE, QUOTE_MODE_KEY, migrateQuoteMode, type QuoteMode } from '~/utils/quoteTokens'
-import { parseReplyStyle } from '~/utils/questionReply'
 import { DICTATION_KEY, parseDictationChoice } from '~/utils/dictation/compose'
 import { ENGINES } from '~/utils/dictation/registry'
 import { flag, settingsSync, syncedRef } from './useSyncedSettings'
@@ -126,18 +124,6 @@ if (import.meta.client) {
 export const typingSpeed = computed(() => effectiveTypingSpeed(typewriterSpeed.value, reducedMotion.value))
 export const typewriterActive = computed(() => typingSpeed.value !== 'off')
 export const encryptedActive = computed(() => encryptedTextActive(typewriterSpeed.value, encryptedText.value, reducedMotion.value))
-// Quoted replies (utils/quoteTokens.ts): one mode for this device, tokens in
-// the native field by default.
-function savedQuoteMode(): QuoteMode {
-  if (!import.meta.client) return DEFAULT_QUOTE_MODE
-  try { return migrateQuoteMode(localStorage) }
-  catch { return DEFAULT_QUOTE_MODE }
-}
-export const quoteMode = ref(savedQuoteMode())
-watch(quoteMode, v => ls.set(QUOTE_MODE_KEY, v))
-// How the questions and the points of an agent reply offer to be quoted
-// (utils/questionReply.ts): an icon by default.
-export const replyStyle = syncedRef('replyStyle', parseReplyStyle, v => v)
 // Dictation engine of this device (Settings › Conversation): off by default.
 export const dictationEngine = ref(parseDictationChoice(ls.get(DICTATION_KEY), Object.keys(ENGINES)))
 watch(dictationEngine, v => ls.set(DICTATION_KEY, v))

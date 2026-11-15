@@ -167,19 +167,6 @@ const compactOn = compactList
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
 const agentClipboardOn = agentClipboard
-// Quoted replies: the mode of this device.
-const quoteChoice = quoteMode
-const quoteItems = computed(() => [
-  { label: tl('Tokens, native field', 'Jetons, champ natif'), description: tl('Each “↳ … —” line is drawn as a token in the usual field. Typing, dictation and autocorrect unchanged. Default.', 'Chaque ligne « ↳ … — » est dessinée en jeton dans le champ habituel. Saisie, dictée et correction auto inchangées. Par défaut.'), value: 'native' },
-  { label: tl('Plain text', 'Texte simple'), description: tl('The same “↳ … —” lines, shown as plain text. A fallback if the tokens misbehave.', 'Les mêmes lignes « ↳ … — », affichées en texte simple. Un secours si les jetons se comportent mal.'), value: 'lines' },
-])
-// How questions and points offer to be quoted (utils/questionReply.ts).
-const replyStyleChoice = replyStyle
-const replyStyleItems = computed(() => [
-  { label: tl('Icon', 'Icône'), description: tl('A small ↳ after each question, and a grey one after each point (on hover on a computer). Default.', 'Un petit ↳ après chaque question, et un gris après chaque point (au survol sur ordinateur). Par défaut.'), value: 'icon' },
-  { label: tl('Tap the text', 'Toucher le texte'), description: tl('No button: a question is underlined, tap it. A point: click it on a computer; on a phone, tap it, then “↳ Discuss”.', 'Aucun bouton : une question est soulignée, touche-la. Un point : clique-le sur ordinateur ; sur téléphone, touche-le, puis « ↳ Discuter ».'), value: 'text' },
-  { label: tl('List under the message', 'Liste sous le message'), description: tl('A number after each question and the questions listed under the message; “+ Quote a point”, then the point.', 'Un numéro après chaque question et les questions listées sous le message ; « + Citer un point », puis le point.'), value: 'list' },
-])
 // Dictation: Off, then the engines this build has (utils/dictation/registry.ts). Per device.
 const dictationChoice = dictationEngine
 const dictationItems = computed(() => {
@@ -497,19 +484,6 @@ onMounted(() => {
                 <USwitch v-model="encryptedOn" :disabled="!typewriterActive" size="xl" />
               </label>
               <TypingPreview v-if="activeSection === 'conversation' && convTab === 'display'" />
-            </div>
-            <div data-ui-target="conversation.reply-style" class="settings-group">
-              <h3>{{ tl('Reply style', 'Style de réponse') }}</h3>
-              <p class="muted settings-lead">{{ tl('Each question an agent asks, and each point it lists, can be quoted in the field to answer them one by one. Choose how they offer it.', 'Chaque question d’un agent, et chaque point qu’il liste, peut être cité dans le champ pour y répondre un par un. Choisis comment ils le proposent.') }}</p>
-              <URadioGroup v-model="replyStyleChoice" :items="replyStyleItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio reply-style-radio" />
-              <p class="muted settings-hint">{{ tl('Follows you on every device.', 'Te suit sur tous tes appareils.') }}</p>
-            </div>
-            <div class="settings-group">
-              <h3>{{ tl('Quoted replies', 'Réponses citées') }}</h3>
-              <p class="muted settings-lead">{{ tl('Answer several questions, passages or decisions of an agent in one message: each one goes into the field as a “↳ … —” line that names the message and quotes it, your answer below. Choose how the field shows these lines; the message sent is the same.', 'Réponds à plusieurs questions, passages ou décisions d’un agent dans un seul message : chacun entre dans le champ sous la forme d’une ligne « ↳ … — » qui nomme le message et le cite, ta réponse en dessous. Choisis comment le champ affiche ces lignes ; le message envoyé est le même.') }}</p>
-              <QuoteTokensPreview v-if="activeSection === 'conversation' && convTab === 'display'" :mode="quoteChoice" />
-              <URadioGroup v-model="quoteChoice" :items="quoteItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio quote-mode-radio" />
-              <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
             </div>
           </div>
           <div v-show="convTab === 'dictation'" id="conversation-panel-dictation" role="tabpanel" aria-labelledby="conversation-tab-dictation" class="settings-group" data-testid="dictation-settings" data-ui-target="conversation.dictation">

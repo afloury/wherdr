@@ -267,30 +267,30 @@ describe('runAlfredCommand', () => {
   })
 
   it('proposes a setting as a card the user applies or cancels, only in the user\'s turn', async () => {
-    const turn = async (kind: 'user' | 'wake') => store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind, at: Date.now(), said: 'show questions as a list' } })
-    expect(await run('setting', 'set', 'replyStyle', 'list')).toMatchObject({ dryRun: true, change: ['setting replyStyle: (default) → "list"'] })
+    const turn = async (kind: 'user' | 'wake') => store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind, at: Date.now(), said: 'type the replies slower' } })
+    expect(await run('setting', 'set', 'typewriterSpeed', 'slow')).toMatchObject({ dryRun: true, change: ['setting typewriterSpeed: (default) → "slow"'] })
     await turn('wake')
-    await expect(run('setting', 'set', 'replyStyle', 'list', '--propose')).rejects.toThrow('never in a wake')
+    await expect(run('setting', 'set', 'typewriterSpeed', 'slow', '--propose')).rejects.toThrow('never in a wake')
     await turn('user')
-    const out = await run('setting', 'set', 'replyStyle', 'list', '--propose') as { note: string }
+    const out = await run('setting', 'set', 'typewriterSpeed', 'slow', '--propose') as { note: string }
     const card = (await store.coordinator(MAIN))!.cards![0]!
     expect(out.note).toContain(`action ${card.id}`)
-    expect(card).toMatchObject({ kind: 'setting', label: 'Conversation › Reply style', setting: { key: 'replyStyle', after: 'list', said: 'show questions as a list', target: 'conversation.reply-style' } })
+    expect(card).toMatchObject({ kind: 'setting', label: 'Conversation › Typewriter', setting: { key: 'typewriterSpeed', after: 'slow', said: 'type the replies slower', target: 'conversation.typewriter' } })
     expect(await run('settings')).toMatchObject({ settings: {} }) // nothing changed yet
     const act = (id: string, cancel = false) => actOnCard({ store, settingsFile: path.join(dir, 'settings.json') } as never, id, undefined, cancel)
     await expect(actOnCard({ store } as never, card.id, 'Bearer abc')).rejects.toThrow(/never a token/)
     expect(await act(card.id)).toMatchObject({ state: 'done', outcome: { text: 'Applied by you' } })
-    expect(await run('settings')).toMatchObject({ settings: { replyStyle: 'list' } })
+    expect(await run('settings')).toMatchObject({ settings: { typewriterSpeed: 'slow' } })
     // A second proposal over the old value goes stale once the setting moved; a cancelled one runs nothing.
     await run('setting', 'set', 'theme', 'nord', '--propose')
     const theme = (await store.coordinator(MAIN))!.cards![0]!.id
     expect(await act(theme, true)).toMatchObject({ state: 'dismissed' })
     expect(await act(theme)).toMatchObject({ state: 'dismissed' })
-    await run('setting', 'set', 'replyStyle', 'icon', '--propose')
+    await run('setting', 'set', 'typewriterSpeed', 'off', '--propose')
     const back = (await store.coordinator(MAIN))!.cards![0]!.id
-    await patchSettings({ replyStyle: 'text' }, { file: path.join(dir, 'settings.json') })
+    await patchSettings({ typewriterSpeed: 'fast' }, { file: path.join(dir, 'settings.json') })
     expect(await act(back)).toMatchObject({ state: 'stale' })
-    expect(await run('settings')).toMatchObject({ settings: { replyStyle: 'text' } })
+    expect(await run('settings')).toMatchObject({ settings: { typewriterSpeed: 'fast' } })
   })
 
   it('proposes a project change as a card: the user\'s Apply makes it while its dry run still holds', async () => {
