@@ -162,6 +162,8 @@ export function trustKeys(screen: string, folder: string): string[] | undefined 
   return [...Array<string>(Math.abs(yes - at)).fill(yes > at ? 'down' : 'up'), 'enter']
 }
 // An agent that stopped because it is not logged in.
+// A running agent stopped on its login prompt (Claude's /login, Codex's sign in again): the account's login expired.
+export const isLoginPrompt = (text: string) => /please run \/login|login reached its time limit|oauth token has expired|log out and sign in again/i.test(text)
 export const isAuthFailure = (text: string) => /not logged in|log ?in again|please (run )?\/?login|authenticat|unauthori[sz]ed|invalid api key|\b401\b/i.test(text)
 export { PROGRAMS, SAME_MODEL } from './workflow'
 

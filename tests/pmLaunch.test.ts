@@ -304,6 +304,30 @@ describe('startTask', () => {
     expect(runs).toHaveLength(1)
   })
 
+  it('agents on the login prompt: one login incident, not a permission; restarted one by one once the credentials file changes', async () => {
+    let mtime = 0
+    const { store, deps, runs } = await setup({ screen: 'Login reached its time limit · Please run /login', exec: s => (s.includes('.credentials.json') ? String(mtime) : undefined) })
+    const { syncWaits } = await import('../server/utils/pmMechanic')
+    await store.addTask({ project: 'WEB', title: 'Other', type: 'simple' })
+    await startTask(deps, 'WEB-1')
+    await startTask(deps, 'WEB-2')
+    const call = deps.call
+    deps.call = (async (m: string, p: Record<string, unknown>) => (m === 'terminal.list' ? { terminals: (await store.runs()).map(r => ({ address: r.terminal, status: { state: 'blocked' } })) } : m === 'terminal.kill' ? {} : call(m, p))) as never
+    await syncWaits(deps)
+    const [i, more] = await store.incidents()
+    expect(more).toBeUndefined()
+    expect(i).toMatchObject({ cause: 'login', program: 'claude', tasks: ['WEB-1', 'WEB-2'] })
+    for (const id of ['WEB-1', 'WEB-2']) expect(await store.task(id)).toMatchObject({ state: 'waiting', waiting: expect.stringMatching(/^Waiting for login: Claude login expired on m\d+: wherdr resumes it once the login is renewed$/), recovery: { cause: 'login', waits: true } })
+    expect((await store.task('WEB-1'))!.waitKind).toBeUndefined()
+    expect((await resumeInterrupted(deps)).resumed).toEqual([])
+    mtime = Math.ceil(Date.now() / 1000) + 1
+    expect((await resumeInterrupted(deps)).resumed).toEqual(['WEB-1'])
+    expect((await resumeInterrupted(deps)).resumed).toEqual(['WEB-2'])
+    expect((await resumeInterrupted(deps)).resumed).toEqual([])
+    expect(runs).toHaveLength(4)
+    expect((await store.task('WEB-2'))!.log!.at(-1)!.text).toMatch(new RegExp(`^resumed after incident ${i!.id} \\(login\\)`))
+  })
+
   it('a start once its files are free, its machine out of reach midway (herdr-core answers unreachable): held, started by the next tick once it is back', async () => {
     const { store, deps, runs } = await setup()
     const first = await store.saveTask({ ...(await store.task('WEB-1'))!, state: 'working', step: { at: 1, started: true, since: 1, proofs: {}, rounds: {} }, changed: ['app/x.vue'] })
