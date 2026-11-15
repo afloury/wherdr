@@ -19,6 +19,7 @@
 - [Requirements](docs/installation.md#requirements): hc, Linux or macOS, Node.js 22 and Git.
 - [The hc socket](docs/installation.md#the-hc-socket): the default `HC_SOCKET`: `$XDG_RUNTIME_DIR/herdr-core/<session>.sock` on Linux, `~/.local/state/herdr-core/<session>/<session>.sock` on macOS; session `default`.
 - [v2 and v3 on one computer](docs/installation.md#v2-and-v3-on-one-computer): v2 and a by-hand v3 both default to port 7683; start v3 with `PORT=7684`.
+- [A second v3 on one computer](docs/installation.md#a-second-v3-on-one-computer): a second v3 keeps its own pm folders (`WHERDR_PM_DIR`, `.wherdr/pm-<name>` from the install script for another `--name`); its uninstall removes them.
 - [On macOS](docs/installation.md#on-macos): install by hand (the script needs systemd), the macOS socket path, a LaunchAgent, Keep awake.
 - [Installation](docs/installation.md#installation): install v3 and run it as a service.
 - [Keep it running](docs/installation.md#keep-it-running): run wherdr as a service (a systemd --user unit, a macOS LaunchAgent).
@@ -32,7 +33,7 @@
 - [What is imported](docs/migrate-from-v2.md#what-is-imported): what the v2 import brings over (v2's own machine becomes v3's local one in the machine tabs and groups), and what to redo.
 - [Set up your v2 projects with Alfred](docs/migrate-from-v2.md#set-up-your-v2-projects-with-alfred): Alfred's first message offers to bring v2 projects over, reading the herdr-projects board then: one card lists them all (a checkbox each, a folder not found says why, Start their coordinators, and Turn on project management while it is off), and one Apply adds the checked ones and starts their coordinators, no workflow needed (each coordinator's first reply proposes a workflow); then per project its open tasks (under-way ones continue from their branch and PR); an optional handover note from the v2 coordinator and its autopilot goal go into the new coordinator's memory.md.
 - [Auto-deploy from a build machine](docs/migrate-from-v2.md#auto-deploy-from-a-build-machine): build elsewhere and deploy to the server.
-- [Fall back to v2](docs/migrate-from-v2.md#fall-back-to-v2): go back to v2, and [uninstall v3](docs/migrate-from-v2.md#uninstall-v3); on v3, `herdr plugin install|update` and the `curl … | sh` installer change nothing and say how to install v3.
+- [Fall back to v2](docs/migrate-from-v2.md#fall-back-to-v2): go back to v2, and [uninstall v3](docs/migrate-from-v2.md#uninstall-v3) (with an install's own pm folders); on v3, `herdr plugin install|update` and the `curl … | sh` installer change nothing and say how to install v3.
 - [Install as an app](docs/phone.md#install-it-as-an-app): add wherdr to a phone's home screen or a desktop browser.
 - [App start](docs/phone.md#app-start): Settings › Phone › App start, network first or saved copy first; after an update, a Reload banner and no reload by itself.
 
