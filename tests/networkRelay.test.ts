@@ -18,7 +18,7 @@ const state: { ctx: NetContext, passkey: boolean, live?: boolean } = {
 const STATUS = { ok: 200, network: 403, host: 403, origin: 403, locked: 401 } as const
 
 function decide(req: http.IncomingMessage, ws: boolean) {
-  const check = checkClient(req.socket.remoteAddress, req.headers, state.live ? netContext() : state.ctx)
+  const check = checkClient(req.socket.remoteAddress, req.headers, { ...(state.live ? netContext() : state.ctx), passkey: state.passkey })
   // No session cookie in these tests: unlocked only when no passkey exists.
   return { check, verdict: gateDecision({ check, unlocked: !state.passkey, hostOk: true, crossSite: false, path: ws ? '/ws' : req.url!, ws }) }
 }
@@ -77,7 +77,8 @@ function upgrade(port: number, headers: Record<string, string> = {}): Promise<nu
 }
 
 const reset = (funnel: boolean, passkey = false) => {
-  state.ctx = { trusted: parseTrustedNetworks(''), tailscale: { running: true, selfIps: [], peerIps: [], funnel } }
+  // The owner's devices, as Tailscale lists them.
+  state.ctx = { trusted: parseTrustedNetworks(''), tailscale: { running: true, selfIps: [], peerIps: ['100.101.102.103', '100.64.0.9'], funnel } }
   state.passkey = passkey
   state.live = false
 }

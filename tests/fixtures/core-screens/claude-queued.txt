@@ -1,0 +1,14 @@
+❯ Fix the page title, then run the tests
+
+⏺ Update(app/pages/index.vue)
+  ⎿  Added 1 line, removed 1 line
+
+✶ Pondering… (14s · ↓ 312 tokens · esc to interrupt)
+
+❯ Also update the changelog
+  ctrl+enter to send now
+
+────────────────────────────────────────────────────────────
+❯ Press up to edit queued messages
+────────────────────────────────────────────────────────────
+  ⏵⏵ accept edits on (shift+tab to cycle)

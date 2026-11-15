@@ -1,4 +1,3 @@
-import type { HerdrThemeConfig } from '#shared/types'
 
 // App themes: wherdr Titanium (default, defined in main.css), herdr.dev and
 // Herdr's built-in themes (official public palettes of each
@@ -333,8 +332,8 @@ export const themeSections = () => THEME_GROUPS.map(group => ({
 
 // Theme choice read from the device: an id that no longer exists (removed
 // theme) falls back to the default instead of showing a raw id in Settings.
-export const storedThemeChoice = (v: string | null | undefined, follow: string) =>
-  v && (v === follow || themeById(v)) ? v : DEFAULT_THEME
+export const storedThemeChoice = (v: string | null | undefined) =>
+  v && themeById(v) ? v : DEFAULT_THEME
 
 // CSS variables for the selected palette; main.css holds Titanium's first paint.
 export function themeVars(th: ThemeDef): Record<string, string> {
@@ -401,43 +400,4 @@ export function xtermTheme(th: ThemeDef) {
 function hexAlpha(hex: string, alpha: number) {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
   return m ? `rgba(${parseInt(m[1]!, 16)},${parseInt(m[2]!, 16)},${parseInt(m[3]!, 16)},${alpha})` : hex
-}
-
-// ------------------------------------------------------------ "Follow Herdr"
-// ~/.config/herdr/config.toml ([theme] name, auto_switch, dark_name, light_name,
-// [theme.custom], [theme.custom.light|dark]), read by the server.
-
-// App theme for the Herdr theme `name`; Herdr's light variants
-// that we do not have (tokyo-night-day, gruvbox-light…) fall back to Catppuccin Latte.
-export function mapHerdrTheme(name: string | null | undefined, preferLight: boolean): string {
-  const n = String(name || '').trim().toLowerCase()
-  if (themeById(n) && n !== 'herdr') return n
-  if (/-(day|light|dawn|lotus|latte)$/.test(n)) return 'catppuccin-latte'
-  if (!n) return preferLight ? 'catppuccin-latte' : 'catppuccin' // Herdr's default
-  return preferLight ? 'catppuccin-latte' : 'catppuccin'
-}
-
-export function resolveHerdrTheme(cfg: HerdrThemeConfig | null | undefined, systemLight: boolean) {
-  if (!cfg) return { id: 'catppuccin', custom: {} as Record<string, string> }
-  const name = cfg.autoSwitch ? (systemLight ? cfg.lightName || 'catppuccin-latte' : cfg.darkName || 'catppuccin') : cfg.name
-  const light = cfg.autoSwitch ? systemLight : false
-  const custom = { ...cfg.custom, ...(cfg.autoSwitch ? (systemLight ? cfg.customLight : cfg.customDark) : {}) }
-  return { id: mapHerdrTheme(name, light), custom }
-}
-
-// Herdr's [theme.custom] tokens -> app CSS variables.
-const CUSTOM_VARS: Record<string, string[]> = {
-  panel_bg: ['--bg'], sidebar_bg: ['--bg-2'], active_row_bg: ['--surface'], surface_dim: ['--surface-2'],
-  selection_bg: ['--selection'], accent: ['--accent', '--mauve'], text: ['--text'],
-  green: ['--green'], yellow: ['--ochre'], red: ['--rose'], peach: ['--coral'], blue: ['--blue'],
-}
-export function customVars(custom: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {}
-  for (const [k, v] of Object.entries(custom || {})) {
-    if (!v || v === 'reset' || !/^(#[0-9a-f]{3,8}|[a-z]+|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\))$/i.test(v)) continue
-    for (const cssVar of CUSTOM_VARS[k] || []) out[cssVar] = v
-  }
-  // `mauve` alone (without `accent`): it is the accent.
-  if (custom && custom.mauve && !out['--accent'] && /^(#[0-9a-f]{3,8}|[a-z]+)$/i.test(custom.mauve)) out['--accent'] = out['--mauve'] = custom.mauve
-  return out
 }
