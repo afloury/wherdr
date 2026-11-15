@@ -157,8 +157,11 @@ takes the workspace's settings unless it sets its own.
   (the default), Read or Act. See [Coordinators on other projects](#coordinators-on-other-projects).
 - **Base branch**: the project's working branch. New tasks start their worktree
   from it, and a step that names no branch opens its PR to it or merges into it.
-  Pick one of the repository's branches or type a name; unset, the repository's
-  current branch. A running task keeps the branch it started with.
+  Pick one of the repository's branches or type a name. Unset: the branch the
+  workflow opens its PRs to or merges into (a `github.pr` base, a `git.land` or
+  `git.verify-merged` target), which the tab names (*No working branch set: using
+  v3 from the workflow*, also written once in the project's log); with none, the
+  repository's default branch. A running task keeps the branch it started with.
 - **Branch name**: the template each new task's branch is named from, for
   repositories that require names such as `feature/PROJ-12-fix-login`. Fields:
   `{id}` (the task id), `{tag}` (the card's ticket key, such as `PROJ-12`, else
@@ -915,8 +918,9 @@ its work, the worker writes the files or folders it plans to change to
 `files.txt` beside its instructions file (a folder covers what is in it); the
 coordinator can name them ahead with `task add … --files app,docs/board.md`.
 Every 5 minutes wherdr reads, for each started task not done yet, those
-declared paths and the files its branch changed (`git diff` since the branch
-started, new files included). Only a task whose work or review is still ahead
+declared paths and the files its branch changed since its fork from its base
+(the base as on the remote now, so merging the base in never counts; new files
+included). Only a task whose work or review is still ahead
 or under way (stopped too) holds its files: once it only waits for its merge,
 the tasks behind it start. `docs/llms.txt`, whose conflicts wherdr solves
 itself, never makes a task wait.
