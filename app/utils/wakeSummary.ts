@@ -24,19 +24,21 @@ const EVENT: Record<string, WakeTone> = { done: 'done', ready: 'ready', decide: 
 const TASK_LINE = /^([A-Z][A-Z0-9-]*-\d+) \(.*\): (done|ready|decide|question|stuck|added)(?::|$)/
 const ABOUT = /^[^:]+: ([A-Z][A-Z0-9-]*-\d+) \(/
 
-export interface WakeSum { tone: WakeTone, tasks: string[], label: string, quiet: boolean }
+// `events`: each task line's task and kind (a tick may batch several).
+export interface WakeEvent { id: string, tone: WakeTone }
+export interface WakeSum { tone: WakeTone, tasks: string[], label: string, quiet: boolean, events: WakeEvent[] }
 
 export function wakeSum(text: string): WakeSum {
   const kind = wakeKindOf(text) ?? 'autopilot'
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean)
-  const events = lines.map(l => TASK_LINE.exec(l)).filter(m => !!m).map(m => ({ id: m[1]!, tone: EVENT[m[2]!]! }))
+  const events: WakeEvent[] = lines.map(l => TASK_LINE.exec(l)).filter(m => !!m).map(m => ({ id: m[1]!, tone: EVENT[m[2]!]! }))
   if (events.length) {
     const tone = TONE_ORDER.find(t => events.some(e => e.tone === t))!
-    return { tone, tasks: [...new Set(events.map(e => e.id))], label: LABEL[tone], quiet: false }
+    return { tone, tasks: [...new Set(events.map(e => e.id))], label: LABEL[tone], quiet: false, events }
   }
   const about = ABOUT.exec(lines[0] ?? '')?.[1]
   const tone: WakeTone = kind === 'autopilot' ? (lines.some(l => l.startsWith('The user asked you to run now')) ? 'run' : 'scheduled') : kind
-  return { tone, tasks: about ? [about] : [], label: LABEL[tone], quiet: tone === 'scheduled' || tone === 'health' }
+  return { tone, tasks: about ? [about] : [], label: LABEL[tone], quiet: tone === 'scheduled' || tone === 'health', events: [] }
 }
 
 // The reply's first sentence, for its row.
@@ -52,15 +54,18 @@ export const chipsOf = (ids: string[]): Chip[] => ids.map((id, i) => {
   return { id, text: prev && id.startsWith(prev) ? id.slice(prev.length) : id }
 })
 
-// The folded run's header: one part per tone, its count, its tasks; quiet ones counted.
+// The folded run's header: one part per tone. A task kind counts its tasks
+// across every wake's events (a wake batching a merge and a ready one counts
+// in both); another kind counts its wakes (quiet ones, a step check…).
 export interface RunPart { tone: WakeTone, n: number, text: string, chips: Chip[] }
 export interface RunSum { n: number, parts: RunPart[], forUser: boolean }
 export function runSum(sums: WakeSum[]): RunSum {
   const parts = TONE_ORDER.flatMap((tone) => {
-    const mine = sums.filter(s => s.tone === tone)
-    if (!mine.length) return []
-    const ids = [...new Set(mine.flatMap(s => s.tasks))]
-    const n = TASK_LABEL[tone] ? ids.length : mine.length
+    const task = !!TASK_LABEL[tone]
+    const mine = sums.filter(s => !s.events.length && s.tone === tone)
+    const ids = [...new Set(task ? sums.flatMap(s => s.events.filter(e => e.tone === tone).map(e => e.id)) : mine.flatMap(s => s.tasks))]
+    const n = task ? ids.length : mine.length
+    if (!n) return []
     return [{ tone, n, text: `${n} ${COUNT[tone]}${n > 1 && PLURAL.has(tone) ? 's' : ''}`, chips: chipsOf(ids) }]
   })
   return { n: sums.length, parts, forUser: sums.some(s => FOR_USER.has(s.tone)) }
