@@ -327,7 +327,7 @@ const FR: Record<string, string> = {
   // Themes
   'Change theme': 'Changer de thème', 'Hide themes': 'Masquer les thèmes',
   'Theme': 'Thème',
-  'default': 'par défaut', 'light': 'clair', 'The theme follows you on every device.': 'Le thème te suit sur tous tes appareils.',
+  'default': 'par défaut',
   // Machines
   'Run': 'Exécuter',
   'All': 'Toutes',

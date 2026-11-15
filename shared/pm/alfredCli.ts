@@ -9,14 +9,14 @@ import { MERGE_BY, type MergeBy, type Template } from './workflow'
 import { MEMORY_CAP, sameGuards, type Turn } from './coordinator'
 import { READY_SORTS } from '../spaces'
 import { NOTES_COMMANDS, NOTES_RULE, parseNotes, type NotesCommand } from '../notes'
-import { THEMES } from '../../app/utils/themes'
+import { THEMES, THEME_MODES } from '../../app/utils/themes'
 
 // The settings Alfred may change, each with the values the app reads (any
 // other value would be ignored by it). Lists (groups, hidden agents, folds…)
 // are changed in wherdr's Settings only.
 const ON_OFF = ['1', '0']
 export const SETTING_VALUES: Partial<Record<SyncedSetting, readonly string[]>> = {
-  'theme': THEMES.map(t => t.id),
+  'theme': THEMES.map(t => t.id), 'themeMode': THEME_MODES,
   'machineBar': ON_OFF, 'compactListV2': ON_OFF,
   'showShells': ON_OFF, 'showCounters': ON_OFF, 'showQuotas': ON_OFF, 'quotaDisplay': ['left', 'used'],
   'autoReorderReady': ON_OFF, 'readySort': READY_SORTS,
@@ -25,7 +25,7 @@ export const SETTING_VALUES: Partial<Record<SyncedSetting, readonly string[]>> =
 }
 // Where each one is in Settings: "Show me" on its proposal card highlights it.
 export const SETTING_TARGETS: Partial<Record<SyncedSetting, UiTargetId>> = {
-  theme: 'appearance.theme', machineBar: 'appearance.home-screen', compactListV2: 'appearance.home-screen',
+  theme: 'appearance.theme', themeMode: 'appearance.theme', machineBar: 'appearance.home-screen', compactListV2: 'appearance.home-screen',
   showShells: 'appearance.home-screen', showCounters: 'appearance.home-screen', showQuotas: 'appearance.home-screen',
   autoReorderReady: 'appearance.home-screen', quotaDisplay: 'appearance.quotas',
   typewriterSpeed: 'conversation.typewriter', encryptedText: 'conversation.typewriter',

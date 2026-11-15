@@ -1727,7 +1727,7 @@ body.kb .composer { padding-bottom: 8px; }
 .composer[data-agent="omp"], .tools.omp-console { --fx-base: var(--omp); --fx-2: var(--ring-2, var(--accent)); }
 /* omp themes: their accent is the omp magenta's neighbour; glide the cyan / blue instead. */
 :root[data-theme="omp"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--teal); }
-:root[data-theme="omp-light"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--blue); }
+:root[data-theme="omp"][data-mode="light"] :is(.composer[data-agent="omp"], .tools.omp-console) { --fx-2: var(--blue); }
 .prompt:focus-within { border-color: transparent; outline: none; }
 /* Both masks are as big as what they show (container units size the square): the square is
    at least as wide as the diagonal, so it covers them whatever its angle. */
@@ -2363,6 +2363,9 @@ body.kb .composer { padding-bottom: 8px; }
 /* Home: one discreet line while quiet mode is active, outside the header (which keeps
    its shape); a tap opens Settings › Notifications. */
 /* Themes: color swatches, selection marked by the accent. */
+/* Mode (Dark, Light, System) above the theme. */
+.segmented.theme-mode { margin-bottom: 12px; }
+.segmented.theme-mode .iconify { width: 16px; height: 16px; }
 .theme-list { display: flex; flex-direction: column; gap: 18px; padding-top: 18px; }
 .theme-grid { display: grid; grid-template-columns: 1fr; border: 1px solid var(--line); }
 .theme-opt {
