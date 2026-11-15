@@ -81,6 +81,18 @@ describe('message left in Claude\'s input field', () => {
     expect(inputShown(list, FIELD)).toBe(true)
   })
 
+  it('its photos left out when matching: two photos, one "[Image #N]" in the field, still one bubble', () => {
+    const two = { ...sent, text: `${PHOTO}\n${PHOTO.replace('a.jpg', 'b.jpg')}\nwhat is wrong here?` }
+    const field = '[Image #952]what is   wrong here?'
+    const list = pendingQueue({ mine: [two], claude: [], items: [], screen: null, input: field })
+    expect(list.map(q => [q.phase, q.inInput])).toEqual([['queued', true]])
+    expect(inputShown(list, field)).toBe(true)
+    // Photos alone are still told apart by their tags.
+    expect(fieldHolds('what is wrong here?', PHOTO, true, true)).toBe(false)
+    // Other text left in the field: its own "Not sent" bubble, with Send now.
+    expect(inputShown(list, 'something else')).toBe(false)
+  })
+
   it('a long multi-line message Claude shows as "[Pasted text #N +K lines]": waiting there too', () => {
     const long = `${PHOTO}\n${Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n')}`
     const field = '[Image #3] [Pasted text #1 +29 lines]'

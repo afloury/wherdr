@@ -651,10 +651,12 @@ reason (*Scheduled wake*, *WHR-9: stuck: …*) and its time; a tap opens the
 full text and the coordinator's whole turn. That turn ends at its own end,
 at your next message or `!`/`/` command, or where the coordinator speaks on
 its own (a background task it ran finished), which all show as usual below it.
-Once that turn is over, the coordinator's last answer in it sits under the row, smaller and muted, two lines at
-most. Consecutive routine wakes (no incident, nothing changed: no file edit
+Once that turn is over, a routine one-line answer (*Nothing new, …*) sits under the row, smaller and muted.
+Any other answer is a message to you and shows in full, under the row, like any
+message: one with a `wherdr` block (choices, task, status, action), a link,
+more than one line, or a question is never folded. Consecutive routine wakes (no incident, nothing changed: no file edit
 nor `wherdr pm` command beyond `ack`, `read`, `list`, `show`, `incidents`,
-`help`; an answer that asks nothing) fold into one row, *3 routine checks ·
+`help`; a one-line answer that asks nothing) fold into one row, *3 routine checks ·
 last: "WHR-12 merged"*, 08:00–11:00, with the first line of the last answer in
 it, that opens on tap. The fold holds only the wakes and their own turns. An incident, or a wake whose answer asks you
 something, keeps its row (in its stronger colour); an answer that asks you
@@ -1017,7 +1019,8 @@ agent that is not on screen here opens the sheet instead.
 
 <a id="tasks-to-review"></a>**Tasks to review.** To clear a morning's work in a
 few minutes, tap Home's **Tasks to review** card: it shows what waits for you
-one at a time. A task to approve shows its key, title and project, its
+one at a time. A task to approve shows its key (a tap copies it, as on the task
+sheet), title and project, its
 [TL;DR](#tldr), its newest screenshots (the sheet's viewer, before and after
 side by side), its PR and the review's verdict in one line, then:
 
@@ -1377,6 +1380,13 @@ engine decides the cause from facts it reads, never a guess:
   signal; **out of memory** when its last output says so;
 - **account limit reached**: only when the account's reading at that time
   says it was at its limit ([Quotas](quotas.md));
+- **login expired**: a running agent shows its program's login prompt
+  (Claude's *Login reached its time limit · Please run /login*, Codex's *log
+  out and sign in again*): not a permission, and its task leaves Tasks to
+  review. Every agent of that account and machine stopped on it joins **one**
+  incident, and Home shows one notice for them all (*Claude login expired on
+  host-b*), with *Open a terminal there* (a stuck agent's, to run `/login`
+  once) and *I logged in*;
 - **unknown**, said as such, when the facts do not decide (an agent that
   exited with 0, a terminal missing on a core older than it).
 
@@ -1400,7 +1410,10 @@ Once the cause is gone, the engine resumes it by itself, every minute:
 
 - **when**: a restart, a crash or an unknown cause at once; a machine offline
   once it is back (still offline, its tasks keep waiting); an account limit
-  once the account's reading says it reset;
+  once the account's reading says it reset; a login once it is renewed (the
+  account's credentials file on that machine changed, or you tapped *I logged
+  in*): each stuck agent ends and starts again, one per machine and minute,
+  its card meanwhile *Waiting for login*;
 - **how**: its worker starts again in its worktree. A Claude worker takes its
   conversation up again (`--resume`, its session id kept from its start) with
   *You were interrupted (…): check git status and continue*; Codex, or a
@@ -1522,7 +1535,9 @@ status says why (*Waits for its machine (offline)*, *Waits for its machine
 (paused)*, no room on the machine), wherdr tries again every 3 minutes, and at
 the second failure the project's coordinator is woken once (its autopilot on).
 A start wherdr refuses (the agent's program missing, say) puts the task in
-*Your turn* with the reason.
+*Your turn* with the reason. An agent stopped on its login prompt is not
+waiting for you: it waits for the login, as an
+[incident](#why-agents-are-gone), and wherdr starts it again once the login is renewed.
 
 When wherdr hands the worker work of its own (a catch-up with the base branch,
 a CI fix), the task leaves *Your turn* and its card says *the agent is

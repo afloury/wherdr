@@ -540,6 +540,7 @@ function resetListWidth() {
       <ReviewCard v-if="st.ok" />
       <CoordinatorsSection v-if="st.ok" />
 
+      <LoginIncidentBanner v-if="st.ok" />
       <OpenNetworkBanner />
       <UpdateBanner v-if="updateBanner" :info="updateBanner" dismissible />
 

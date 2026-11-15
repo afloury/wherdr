@@ -127,7 +127,8 @@ about six seconds for the box to hold that message alone, each photo as its plac
 presses Enter, and presses it once more if the message is still there, also during a turn.
 Until the send answers, the bubble reads **sending…**, not **Not sent**. While it stays there, its bubble reads **Not sent yet · waiting in
 the agent's input**, never **Read by the agent**, and the box's own bubble is not shown
-twice. A new message is never typed into a box that holds text: Claude would submit both
+twice: the box is matched to the message by its text alone, whitespace and `[Image #N]`
+placeholders left out, since the box may show fewer placeholders than the message has photos. A new message is never typed into a box that holds text: Claude would submit both
 as one message. The send is refused ("Not sent", with Retry): send or clear that text
 first (`server/utils/coreInput.ts`).
 

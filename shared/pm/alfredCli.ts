@@ -10,14 +10,13 @@ import { MEMORY_CAP, sameGuards, type Turn } from './coordinator'
 import { READY_SORTS } from '../spaces'
 import { NOTES_COMMANDS, NOTES_RULE, parseNotes, type NotesCommand } from '../notes'
 import { THEMES } from '../../app/utils/themes'
-import { BACKDROPS } from '../../app/utils/backdrop'
 
 // The settings Alfred may change, each with the values the app reads (any
 // other value would be ignored by it). Lists (groups, hidden agents, folds…)
 // are changed in wherdr's Settings only.
 const ON_OFF = ['1', '0']
 export const SETTING_VALUES: Partial<Record<SyncedSetting, readonly string[]>> = {
-  'theme': THEMES.map(t => t.id), 'backdrop': BACKDROPS, 'backdropPackets': ['on', 'off'],
+  'theme': THEMES.map(t => t.id),
   'machineBar': ON_OFF,
   'showCounters': ON_OFF, 'showQuotas': ON_OFF, 'quotaDisplay': ['left', 'used'],
   'autoReorderReady': ON_OFF, 'readySort': READY_SORTS,

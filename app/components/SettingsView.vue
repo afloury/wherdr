@@ -204,12 +204,6 @@ const quotaItems = computed(() => [
   { label: t('Remaining'), description: t('What is left in each window, like Codex.'), value: 'left' },
   { label: t('Used'), description: t('What has been used, like Claude.'), value: 'used' },
 ])
-const backdropMode = backdrop
-const packetsOn = backdropPackets
-const backdropItems = computed(() => [
-  { label: 'wherdr grid', description: t('Dotted grid with light packets, like wherdr.dev.'), value: 'wherdr' },
-  { label: 'herdr grid', description: t('Flat line grid, like herdr.dev.'), value: 'herdr' },
-])
 
 // ------------------------------------------------------------ notifications
 const subscribed = pushOn
@@ -436,15 +430,6 @@ onMounted(() => {
           <!-- Computer layout only (same threshold as the app: 900 px). -->
           <template v-if="desk">
             <div class="eyebrow settings-subhead"><span>{{ t('Desktop') }}</span></div>
-            <div class="settings-group">
-              <h3>{{ t('Background') }}</h3>
-              <URadioGroup v-model="backdropMode" :items="backdropItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
-              <label v-if="backdropMode === 'wherdr'" class="settings-toggle">
-                <span><b>{{ t('Animated packets') }}</b><small>{{ t('Small glowing squares running along the wherdr grid.') }}</small></span>
-                <USwitch v-model="packetsOn" size="xl" />
-              </label>
-              <p class="muted settings-hint">{{ t('In the margins of the conversation. Still when the system asks for reduced motion. Follows you on every device.') }}</p>
-            </div>
             <div class="settings-group settings-width">
               <h3>{{ t('Content width') }}</h3>
               <URadioGroup v-model="width" :items="widthItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
@@ -487,7 +472,7 @@ onMounted(() => {
           </div>
           <div v-show="convTab === 'read-aloud'" id="conversation-panel-read-aloud" role="tabpanel" aria-labelledby="conversation-tab-read-aloud" class="settings-group" data-testid="read-aloud-group" data-ui-target="conversation.read-aloud">
             <h3>{{ tl('Read aloud', 'Lecture à voix haute') }}</h3>
-            <p class="muted settings-lead">{{ tl('Play under each agent reply reads it aloud: the words only, with “code block” in place of code. One reply at a time; tap Stop to end it. On iPhone, iOS may stop reading when the screen locks or you leave the app.', 'Lire sous chaque réponse d’agent la lit à voix haute : les mots seulement, avec « bloc de code » à la place du code. Une réponse à la fois ; Arrêter y met fin. Sur iPhone, iOS peut arrêter la lecture quand l’écran se verrouille ou que tu quittes l’app.') }}</p>
+            <p class="muted settings-lead" data-testid="read-aloud-lead">{{ t('Turning it on adds a Play button under each reply, which reads it aloud: the words only, with “code block” in place of code. One reply at a time; tap Stop to end it. On iPhone, iOS may stop reading when the screen locks or you leave the app.') }}</p>
             <ReadAloudSettings />
             <p class="muted settings-hint">{{ tl('Saved on this device.', 'Enregistré sur cet appareil.') }}</p>
           </div>

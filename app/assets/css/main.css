@@ -563,6 +563,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .open-network-banner { margin-top: 0; border-color: color-mix(in srgb, var(--rose) 55%, transparent); }
 .settings-group .open-network-banner { margin: 12px 0 0; }
 .open-network-banner .update-banner-icon { color: var(--rose); }
+.login-banner .update-banner-icon { color: var(--blocked); }
 /* Settings › Security and the guide: network advice (NetworkTips.vue). */
 .network-tips { margin: 12px 0 0; padding: 12px 14px; border: 1px solid var(--line); }
 .network-tips-label { margin: 0 0 8px; font: 500 10.5px/1.2 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--text-3); }
@@ -2727,7 +2728,7 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .interactive-terminal #term .xterm { padding: 0; box-shadow: none; }
 .interactive-terminal .keybar { flex: none; padding: 8px; padding-bottom: max(8px, var(--safe-bottom)); border-top: 1px solid var(--line); justify-content: flex-start; background: var(--bg); }
 .interactive-terminal .keybar::before { display: none; }
-/* Settings › Appearance › Desktop › Background "wherdr grid" (components/GridBackdrop.vue):
+/* The wherdr grid behind the conversation on a computer (components/GridBackdrop.vue):
    the layer sits at z-index -1 inside this host, under its content and above its own
    background. Computer only. */
 .hw-backdrop-host { isolation: isolate; }
@@ -2838,10 +2839,13 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .choices, .composer { padding-left: max(12px, calc((100% - var(--read)) / 2 + 12px)); padding-right: max(12px, calc((100% - var(--read)) / 2 + 12px)); }
   /* An agent's opened place: in the reading column, as wide as the message field. */
   .ui-open-row { padding-left: max(12px, calc((100% - var(--read)) / 2 + 12px)); padding-right: max(12px, calc((100% - var(--read)) / 2 + 12px)); }
-  /* Reading column framed by thin lines, grid in the margins. */
+  /* Reading column framed by thin lines. */
   .chat, .composer, .keybar, .ui-open-row {
     --col-l: calc(50% - var(--read) / 2);
     --col-r: calc(50% + var(--read) / 2);
+  }
+  /* Key row (terminal mode, no GridBackdrop): a flat grid in the margins. */
+  .keybar {
     background-color: var(--bg);
     background-image:
       linear-gradient(90deg, transparent calc(var(--col-l) - 1px), var(--line) calc(var(--col-l) - 1px), var(--line) var(--col-l),
@@ -2853,21 +2857,19 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
     background-position: 0 0, -1px -1px, -1px -1px;
     background-repeat: no-repeat, repeat, repeat;
   }
-  /* Background "wherdr grid": the margins show GridBackdrop instead of the flat grid;
-     the reading column stays solid, nothing behind the text. */
-  html[data-backdrop='wherdr'] :is(.chat, .composer, .ui-open-row) {
+  /* Conversation: the margins show the wherdr grid (GridBackdrop); the reading
+     column stays solid, nothing behind the text. */
+  .chat, .composer, .ui-open-row {
     background-color: transparent;
     background-image:
       linear-gradient(90deg, transparent calc(var(--col-l) - 1px), var(--line) calc(var(--col-l) - 1px), var(--line) var(--col-l),
         var(--bg) var(--col-l), var(--bg) var(--col-r), var(--line) var(--col-r), var(--line) calc(var(--col-r) + 1px), transparent calc(var(--col-r) + 1px));
     background-size: 100% 100%;
-    background-attachment: scroll;
-    background-position: 0 0;
     background-repeat: no-repeat;
   }
   /* Same for a blocking prompt between the two: the column stays solid and framed
      under its tint, the grid does not run behind the question. */
-  html[data-backdrop='wherdr'] .view .choices {
+  .view .choices {
     --col-l: calc(50% - var(--read) / 2);
     --col-r: calc(50% + var(--read) / 2);
     background:
@@ -2907,10 +2909,8 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .cell-view .choices, .cell-view .composer { padding-left: 10px; padding-right: 10px; }
   .cell-view .composer { padding-bottom: 10px; }
   .cell-view .ui-open-row { padding-left: 10px; padding-right: 10px; }
-  /* Also over the "wherdr grid" rule above (html[data-backdrop] outweighs .cell-view):
-     a cell keeps a solid background, without the column lines. */
-  .cell-view .chat, .cell-view .composer, .cell-view .ui-open-row,
-  html[data-backdrop='wherdr'] .cell-view :is(.chat, .composer, .ui-open-row) { background-color: var(--bg); background-image: none; }
+  /* A cell keeps a solid background, without the column lines or the grid. */
+  .cell-view .chat, .cell-view .composer, .cell-view .ui-open-row { background-color: var(--bg); background-image: none; }
   /* Narrow cell: no reading column, the margins of its composer. */
   .cell-view .keybar { background-image: none; border-top: 1px solid var(--line-soft); padding-left: 10px; padding-right: 10px; }
   .cell-view .keybar::before { content: none; }

@@ -324,11 +324,6 @@ const FR: Record<string, string> = {
   'Change theme': 'Changer de thème', 'Hide themes': 'Masquer les thèmes',
   'Theme': 'Thème',
   'default': 'par défaut', 'light': 'clair', 'The theme follows you on every device.': 'Le thème te suit sur tous tes appareils.',
-  'Background': 'Fond',
-  'Dotted grid with light packets, like wherdr.dev.': 'Grille à points parcourue de paquets lumineux, comme wherdr.dev.',
-  'Flat line grid, like herdr.dev.': 'Grille de lignes plates, comme herdr.dev.',
-  'Animated packets': 'Paquets animés', 'Small glowing squares running along the wherdr grid.': 'Petits carrés lumineux qui parcourent la grille wherdr.',
-  'In the margins of the conversation. Still when the system asks for reduced motion. Follows you on every device.': 'Dans les marges de la conversation. Immobile quand le système demande moins d’animations. Te suit sur tous tes appareils.',
   // Machines
   'Run': 'Exécuter',
   'All': 'Toutes',

@@ -8,11 +8,6 @@ import { BOOT_THEME_KEY } from '#shared/bootTheme'
 
 export const themeChoice = syncedRef<string>('theme', storedThemeChoice, v => v)
 
-// Background in the conversation margins on a computer (utils/backdrop.ts).
-export const backdrop = syncedRef<Backdrop>('backdrop', parseBackdrop, v => v)
-// Light packets running on the wherdr grid; off: the grid stays still.
-export const backdropPackets = syncedRef('backdropPackets', raw => raw !== 'off', v => (v ? 'on' : 'off'))
-
 // Theme actually shown.
 export const activeTheme = computed(() => themeById(themeChoice.value) || themeById(DEFAULT_THEME)!)
 
@@ -38,7 +33,6 @@ export function installTheme() {
   }
   apply()
   watch(activeTheme, apply)
-  watch(backdrop, (v) => { document.documentElement.dataset.backdrop = v }, { immediate: true })
 }
 
 // xterm palette of the theme shown.
