@@ -3024,8 +3024,22 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .wake-run { flex-direction: row; font: 500 10.5px/1.4 var(--mono); letter-spacing: .06em; text-transform: uppercase; }
 .wake-head { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .wake-run .wake-head { font-size: inherit; }
-.wake-run:has(.wake-last) .wake-head { flex: none; }
-.wake-last { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 400 12.5px/1.4 var(--sans); letter-spacing: 0; text-transform: none; }
+/* A routine run's header: its count, then each kind's count, icon and task chips (they wrap on a phone). */
+.wake-run { flex-wrap: wrap; row-gap: 2px; }
+.wake-run .wake-time { margin-left: auto; }
+.wake-run.ask { padding-left: 8px; border-left: 2px solid var(--accent); color: var(--text-2); }
+.wake-toggle { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
+.wake-part { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.wake-icon { flex: none; width: 13px; height: 13px; }
+[data-tone="done"] > .wake-icon, .wake-icon[data-tone="done"] { color: var(--done); }
+[data-tone="ready"] > .wake-icon, .wake-icon[data-tone="ready"], [data-tone="question"] > .wake-icon, .wake-icon[data-tone="question"] { color: var(--accent); }
+[data-tone="stuck"] > .wake-icon, .wake-icon[data-tone="stuck"] { color: var(--blocked); }
+.wake-chip { flex: none; padding: 1px 5px; border: 1px solid var(--line); background: none; color: var(--text-2); font: 500 10.5px/1.4 var(--mono); letter-spacing: .04em; cursor: pointer; }
+.wake-chip:hover, .wake-chip:focus-visible { color: var(--text); border-color: var(--text-2); outline: none; }
+/* Open run: one line per wake; a quiet one dimmer. */
+.wake-line .wake-head { display: block; font: 400 13px/1.4 var(--sans); letter-spacing: 0; text-transform: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wake-label { color: var(--text-2); font-weight: 500; }
+.wake-line.quiet, .wake-quiet { color: var(--dim); }
 .wake-time { flex: none; font: 400 10.5px/1 var(--mono); color: var(--dim); letter-spacing: .04em; }
 .wake-chev { flex: none; width: 13px; height: 13px; }
 .wake-row:hover .wake-head, .wake-run:hover, .wake-row:focus-visible .wake-head, .wake-run:focus-visible { color: var(--text-2); outline: none; }
