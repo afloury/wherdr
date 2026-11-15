@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { individualAgentRows, individualAgentTitle } from '../app/utils/homeAgentRows'
 import { spaceRows, sortReady } from '../shared/spaces'
-import { boardSections } from '../shared/boardLinks'
-import { reduceSnapshot } from '../server/utils/snapshot'
+import { reduceSnapshot } from './helpers/snapshot'
 
 const state = reduceSnapshot({
   workspaces: [{ workspace_id: 'w1', label: 'Shared space', number: 1 }, { workspace_id: 'w2', label: 'Shells', number: 2 }],
@@ -33,14 +32,17 @@ describe('individual standalone-agent rows', () => {
     expect(individualAgentRows(spaceRows(remote, ''))).toEqual([])
     expect(individualAgentRows(spaceRows(remote, 'remote'))).toHaveLength(4)
   })
+})
 
-  it('leaves Board task rows together by expanding only the standalone section', () => {
-    const sections = boardSections(spaceRows(state), state.workspaces, [{ machine: '', coordinators: [], tasks: [{
-      id: 'demo/1', repo: 'demo', n: 1, key: 'DEMO-1', title: 'Example task', workspace: 'w1', stage: 'working', progress: null, msg: '', since: null, panes: [{ id: 'w1:p1', role: 'worker' }, { id: 'w1:p2', role: 'reviewer' }],
-    }], repos: [] }], new Set(state.panes.map(p => p.id)))
-    const task = sections.projects[0]!.members[0]!.row
-    expect(task.kind).toBe('space')
-    expect(individualAgentRows(sections.others).map(r => r.key)).toEqual(['w2:p1'])
-    expect(sections.projects[0]!.members).toHaveLength(1)
+describe('coordinator panes', () => {
+  const addressed = { ...state, panes: state.panes.map(p => ({ ...p, coreAddress: `core:${p.id}` })) }
+
+  it('leaves coordinator panes out and keeps every other row', () => {
+    const rows = individualAgentRows(spaceRows(addressed), new Set(['core:w1:p2']))
+    expect(rows.map(r => r.key)).toEqual(['w1:p1', 'w1:p3', 'w2:p1'])
+  })
+
+  it('drops a space whose only pane is a coordinator', () => {
+    expect(individualAgentRows(spaceRows(addressed), new Set(['core:w2:p1'])).map(r => r.key)).toEqual(['w1:p1', 'w1:p2', 'w1:p3'])
   })
 })

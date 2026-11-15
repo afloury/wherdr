@@ -1,7 +1,8 @@
 // File paths in agent replies: which inline code is a path, how it resolves
 // against the agent's folder, and the clickable markup in rendered markdown.
 import { describe, expect, it, vi } from 'vitest'
-import { pathCandidate, posixResolve, resolveAgentPath, runnablePath } from '../shared/filePaths'
+import { pathCandidate, posixResolve, resolveAgentPath } from '../shared/filePaths'
+import { chatFilesLevel } from '../shared/chatFiles'
 
 // markdown.ts runs in the browser: DOMPurify needs a DOM, `t` is auto-imported.
 vi.mock('dompurify', () => ({ default: { sanitize: (s: string) => s, addHook: () => {} } }))
@@ -70,6 +71,21 @@ describe('resolveAgentPath', () => {
     expect(resolveAgentPath('a.ts', null, 'relative')).toBeNull()
   })
 
+  it('accepts the other allowed folders, and the agent folder in one of them', () => {
+    expect(resolveAgentPath('/tmp/claude-1000/a.md', null, HOME, [HOME, '/tmp'])).toBe('/tmp/claude-1000/a.md')
+    expect(resolveAgentPath('a.md', '/tmp/claude-1000', HOME, [HOME, '/tmp'])).toBe('/tmp/claude-1000/a.md')
+    expect(resolveAgentPath('/etc/passwd', null, HOME, [HOME, '/tmp'])).toBeNull()
+    expect(resolveAgentPath('../../etc/passwd', '/srv/app', HOME, ['/'])).toBe('/etc/passwd')
+  })
+
+  it('defaults to everything unless wherdr is publicly exposed; a saved choice wins', () => {
+    expect(chatFilesLevel(null, false)).toBe('all')
+    expect(chatFilesLevel(null, true)).toBe('temp')
+    expect(chatFilesLevel('bogus', true)).toBe('temp')
+    expect(chatFilesLevel('all', true)).toBe('all')
+    expect(chatFilesLevel('home', false)).toBe('home')
+  })
+
   it('keeps absolute paths inside home as they are', () => {
     expect(resolveAgentPath('/home/demo/a/./b//c.txt', '/home/demo/project', HOME)).toBe('/home/demo/a/b/c.txt')
   })
@@ -78,13 +94,6 @@ describe('resolveAgentPath', () => {
     expect(posixResolve('/a/b', '../c/./d')).toBe('/a/c/d')
     expect(posixResolve('/a', '/x/../y')).toBe('/y')
     expect(posixResolve('/', '../..')).toBe('/')
-  })
-})
-
-describe('runnablePath', () => {
-  it('flags apps, scripts and installers', () => {
-    for (const p of ['/h/Tool.app', '/h/Tool.app/', '/h/run.command', '/h/x.sh', '/h/a.pkg', '/h/s.scpt', '/h/d.dmg']) expect(runnablePath(p), p).toBe(true)
-    for (const p of ['/h/a.html', '/h/notes.md', '/h/folder', '/h/photo.png', '/h/app.ts']) expect(runnablePath(p), p).toBe(false)
   })
 })
 

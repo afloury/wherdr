@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest'
+import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import AgentCard from '~/components/AgentCard.vue'
@@ -7,7 +7,6 @@ import { notificationRules } from '~/composables/useNotificationRules'
 import { menuState } from '~/composables/useUi'
 import { defaultNotifications } from '#shared/notificationRules'
 import type { Pane } from '#shared/types'
-import type { BoardCard } from '#shared/boardLinks'
 
 const pane: Pane = { id: 'w1:p1', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'claude', name: null, label: null, status: 'blocked', title: 'Example agent', cwd: '/tmp/demo', agentSession: null }
 afterEach(() => {
@@ -19,14 +18,12 @@ afterEach(() => {
 })
 
 for (const desktop of [false, true]) {
-  for (const kind of ['terminal', 'coordinator', 'project', 'task']) {
-    it(`${kind}: ${desktop ? 'desktop' : 'phone'} menu exposes mute state without changing the row`, async () => {
+    it(`${desktop ? 'desktop' : 'phone'} menu exposes mute state without changing the row`, async () => {
       desk.value = desktop
       coarse.value = !desktop
       herdrState.value = { ok: true, panes: [pane], workspaces: [] }
       notificationRules.value = { version: 2, default: { events: ['needs-you', 'finished'], subagents: false }, exceptions: [] }
-      const board = kind === 'terminal' ? undefined : { name: 'Example', coordinator: kind !== 'task', lead: kind === 'project', group: 'needs' } as BoardCard
-      const w = await mountSuspended(AgentCard, { props: { pane, board } })
+      const w = await mountSuspended(AgentCard, { props: { pane } })
       try {
         const before = w.find('.card').html()
         const open = async () => {
@@ -37,9 +34,14 @@ for (const desktop of [false, true]) {
             menuState.items = [{ label: first.label, run: first.onSelect }]
             menuState.open = true
           } else {
-            await w.find('.card').trigger('pointerdown', { pointerType: 'touch', button: 0, clientX: 0, clientY: 0 })
-            await new Promise(resolve => setTimeout(resolve, 720))
-            await w.find('.card').trigger('pointerup')
+            // The 700 ms long press on fake timers: real ones cost 2 s per run.
+            vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+            try {
+              await w.find('.card').trigger('pointerdown', { pointerType: 'touch', button: 0, clientX: 0, clientY: 0 })
+              vi.advanceTimersByTime(720)
+              await w.find('.card').trigger('pointerup')
+              vi.runOnlyPendingTimers()
+            } finally { vi.useRealTimers() }
           }
         }
         await open()
@@ -58,5 +60,4 @@ for (const desktop of [false, true]) {
         expect(menuState.items[0]?.label).toBe('Mute notifications')
       } finally { w.unmount() }
     })
-  }
 }

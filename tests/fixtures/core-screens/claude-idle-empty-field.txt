@@ -1,0 +1,25 @@
+
+ ▐▛███▛█   Claude Code v2.1.317
+▝▜██████▀  Opus 5.5 with medium effort · Claude Pro
+ ▝▝   ▝▝   ~/projects/demo
+
+❯ Reply with just: ok. Then I will ask you to push the branch.
+
+● ok
+
+✻ Churned for 2s · done 10:00 PM
+
+❯ Line one of a pasted note
+  line two
+  line three
+  line four
+
+● Your paste is just four lines of placeholder text ("Line one of a pasted note" through "line four") with no request in it. What should I do with it? Or do you want me to push the branch now?
+
+✻ Baked for 2s · done 10:03 PM
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  paste again to expand
