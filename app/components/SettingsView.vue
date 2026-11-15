@@ -610,7 +610,7 @@ onMounted(() => {
         </div>
 
         <div v-if="desk && !coarse" v-show="activeSection === 'shortcuts'" class="settings-section">
-          <ShortcutsReference />
+          <ShortcutsReference editable />
         </div>
 
         <div v-show="activeSection === 'about'" class="settings-section">
