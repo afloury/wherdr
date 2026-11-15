@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // wherdr on a computer (the app's desktop layout): the agent list on the left
-// (brand line, "Agents" and its buttons, Herdr session, the compact list of
+// (brand line, "Agents" and its buttons, hc session, the compact list of
 // components/demo/List.vue, New at the bottom), the
 // open agent's header (state pill · kind · title · folder, Conversation /
 // Terminal tabs, +, search, menu), the reading column framed by thin lines
@@ -8,11 +8,10 @@
 // right panel (`aside` slot). Laid out for a window `width` CSS pixels wide
 // (1440 by default; smaller = larger text); sets `--u` = one of those pixels.
 import { KIND_LABEL } from '~/utils/demoScript'
-import type { DemoAgent, DemoProject } from '~/utils/demoScript'
+import type { DemoAgent } from '~/utils/demoScript'
 
 const props = defineProps<{
   agents: readonly DemoAgent[]
-  project?: DemoProject
   active: string
   /** The agent whose line offers `choices`, and the answer tapped. */
   choicesFor?: string
@@ -25,24 +24,23 @@ const props = defineProps<{
   width?: number
 }>()
 // The open agent, wherever it is in the list.
-const open = computed(() => [...props.agents, ...(props.project?.tasks ?? [])].find(a => a.name === props.active))
+const open = computed(() => props.agents.find(a => a.name === props.active))
 </script>
 
 <template>
   <div class="dd app-ui desk" :style="{ '--u': `calc(100cqw / ${width ?? 1440})` }">
     <aside class="side">
-      <div class="eyebrow home-brand"><PixelMark class="home-logo" :boot="false" :glow="false" />wherdr 2.0.0 · herdr 0.9.1</div>
+      <div class="eyebrow home-brand"><PixelMark class="home-logo" :boot="false" :glow="false" />wherdr 3.0.0 · hc</div>
       <div class="home-title-row">
         <h3 class="home-title">Agents</h3>
         <div class="home-actions">
           <span class="icon-btn"><UIcon name="i-lucide-search" /></span>
-          <span class="icon-btn"><UIcon name="i-lucide-square-kanban" /></span>
           <span class="icon-btn"><UIcon name="i-lucide-settings-2" /></span>
           <span class="icon-btn"><UIcon name="i-lucide-panel-left-close" /></span>
         </div>
       </div>
       <div class="session-row"><span><UIcon name="i-lucide-layers" />devbox</span><b>default<UIcon name="i-lucide-chevron-right" /></b></div>
-      <DemoList :agents="agents" :project="project" :active="active" :choices-for="choicesFor" :choices="choices" :hit="hit" />
+      <DemoList :agents="agents" :active="active" :choices-for="choicesFor" :choices="choices" :hit="hit" />
       <span class="new-btn"><UIcon name="i-lucide-plus" />New</span>
     </aside>
 

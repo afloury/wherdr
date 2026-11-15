@@ -1,0 +1,16 @@
+╭──────────────────────────────────────────────────────────╮
+│ >_ OpenAI Codex (v0.170.0)                               │
+│                                                          │
+│ model:     gpt-6 medium   /model to change               │
+│ directory: ~/projects/demo-app                           │
+╰──────────────────────────────────────────────────────────╯
+
+  To get started, describe a task or try one of these commands:
+
+  /init - create an AGENTS.md file with instructions for Codex
+  /status - show current session configuration
+
+
+› Ask Codex to do anything
+
+  gpt-6 medium · 100% context left · ~/projects/demo-app
