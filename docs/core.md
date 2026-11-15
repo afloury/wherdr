@@ -127,7 +127,21 @@ WAL mode; locally it is opened in place, read-only, only while agy holds both
 `-wal` and `-shm` sidecars — a read-only open creates them otherwise and would
 leave them in agy's folder. Otherwise the database and its `-wal` sidecar are
 copied to a snapshot before `node:sqlite` opens them, so remote machines read a
-consistent view through `machine.exec`, and 256 MiB is the snapshot limit). Step
+consistent view through `machine.exec`, and 256 MiB is the snapshot limit). A remote conversation keeps
+one local base copy between reads: the main file ships over again only when
+its own identity moves, a WAL still under the same 32-byte header ships only
+its grown tail and is appended to the kept copy — but only after the last
+frame that copy holds is re-read unchanged, since a rewound savepoint can
+rewrite a spilled frame's header in place inside one generation; a restart or
+a stale kept frame rewrites the file once. A copy that ends mid-frame is cut
+back to the last whole frame (a frame's 24-byte header and its page are
+separate writes), so a partial frame is never trusted across reads — and both
+files are stat'ed fresh after the copy so a move under it retries rather than
+opening a torn pair.
+A WAL-mode checkpoint rewrites the database file, so the next read ships it
+in full again; a page-level delta would need a page-hash helper on the remote
+machine (no such primitive exists on `MachineFs` today), which is why the
+copy stays whole — bounded by the snapshot limit — until one lands. Step
 payloads are protobuf blobs decoded by a small bounds-checked reader
 (`server/utils/agyProtobuf.ts`).
 The session is resolved fail-closed from what the `agy` process holds open —
