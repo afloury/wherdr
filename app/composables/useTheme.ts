@@ -4,10 +4,26 @@
 // <html>, with the color of the iOS bar (theme-color) and the terminal palette.
 
 import { settingsSync, syncedRef } from './useSyncedSettings'
+import type { ThemeDef } from '~/utils/themes'
+import { readCustomThemes, writeCustomThemes } from '~/utils/customThemes'
 import { BOOT_THEME_KEY } from '#shared/bootTheme'
 
 export const themeChoice = syncedRef<string>('theme', storedThemeChoice, v => v)
 export const themeMode = syncedRef<ThemeMode>('themeMode', storedThemeMode, v => v)
+// The user's own themes (utils/customThemes.ts), synced like the choice.
+export const customThemes = syncedRef<ThemeDef[]>('customThemes', readCustomThemes, writeCustomThemes)
+export const findTheme = (id: string | null | undefined) => themeById(id) || customThemes.value.find(t => t.id === id)
+// Adds or replaces a custom theme (by id) and shows it.
+export function saveCustomTheme(th: ThemeDef) {
+  const list = customThemes.value
+  const at = list.findIndex(t => t.id === th.id)
+  customThemes.value = at < 0 ? [...list, th] : list.map((t, i) => (i === at ? th : t))
+  themeChoice.value = th.id
+}
+export function deleteCustomTheme(id: string) {
+  customThemes.value = customThemes.value.filter(t => t.id !== id)
+  if (themeChoice.value === id) themeChoice.value = DEFAULT_THEME
+}
 
 // A saved 2.x light theme (Catppuccin Latte, omp Light) becomes its family in
 // Light mode, saved once so it follows the other devices too.
@@ -33,7 +49,7 @@ if (import.meta.client) {
 
 // Theme actually shown, in the mode actually shown.
 export const activeTheme = computed(() =>
-  themeVariant(themeById(themeChoice.value) || themeById(DEFAULT_THEME)!, modeIsLight(themeMode.value, systemLight.value)))
+  themeVariant(findTheme(themeChoice.value) || themeById(DEFAULT_THEME)!, modeIsLight(themeMode.value, systemLight.value)))
 
 // Color of the iOS bar (meta theme-color, set by useHead in app.vue).
 export const themeColor = computed(() => activeTheme.value.c.bg)
@@ -56,6 +72,11 @@ export function installTheme() {
     style.textContent = themesCss()
     document.head.appendChild(style)
   }
+  const custom = document.createElement('style')
+  custom.id = 'hw-custom-themes'
+  document.head.appendChild(custom)
+  // Before apply: the custom theme's rules are in place when it is shown.
+  watch(customThemes, (list) => { custom.textContent = themesCss(list) }, { immediate: true })
   apply()
   watch(activeTheme, apply)
 }
