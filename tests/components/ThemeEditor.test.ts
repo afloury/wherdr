@@ -1,5 +1,5 @@
 // WHR-396: the custom theme editor starts from a theme, shows its colors live
-// in the preview, warns under WCAG AA, and saves a custom theme that is shown.
+// in the preview (the app in miniature), warns under WCAG AA, and saves a custom theme that is shown.
 // WHR-432: the JSON tab edits the same theme, validated like an import.
 import { afterEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
@@ -18,6 +18,14 @@ it('edits a copy of the theme with a live preview and contrast check, then saves
   await vi.waitFor(() => expect(document.querySelector('[data-testid="theme-editor"]')).not.toBeNull())
   const preview = document.querySelector<HTMLElement>('[data-testid="theme-preview"]')!
   expect(preview.style.getPropertyValue('--bg')).toBe(gruvbox.c.bg)
+  // WHR-431: the whole app in miniature: sidebar, conversation, settings, terminal.
+  for (const sel of ['.tp-side .card-state.working', '.tp-chat .msg-bubble', '.tp-chat .code-block', '.tp-set [role="switch"]', '.tp-term'])
+    expect(preview.querySelector(sel), sel).not.toBeNull()
+  const ansiRed = document.querySelector<HTMLInputElement>('input[aria-label="Terminal color 2"]')!
+  ansiRed.value = '#123456'
+  ansiRed.dispatchEvent(new Event('input'))
+  await nextTick()
+  expect(preview.querySelector<HTMLElement>('.tp-term .tp-swatches i:nth-child(2)')!.style.background).toBe('#123456')
   expect(document.querySelector('[data-testid="theme-contrast"]')!.textContent).toContain('Contrast meets WCAG AA')
 
   // Muted text as dark as the background: the preview follows, the check warns.
