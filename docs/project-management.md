@@ -167,8 +167,11 @@ its message under the field and keeps what you typed.
   (the default), Read or Act. See [Coordinators on other projects](#coordinators-on-other-projects).
 - **Base branch**: the project's working branch. New tasks start their worktree
   from it, and a step that names no branch opens its PR to it or merges into it.
-  Pick one of the repository's branches or type a name; unset, the repository's
-  current branch. A running task keeps the branch it started with.
+  Pick one of the repository's branches or type a name. Unset: the branch the
+  workflow opens its PRs to or merges into (a `github.pr` base, a `git.land` or
+  `git.verify-merged` target), which the tab names (*No working branch set: using
+  v3 from the workflow*, also written once in the project's log); with none, the
+  repository's default branch. A running task keeps the branch it started with.
 - **Branch name**: the template each new task's branch is named from, for
   repositories that require names such as `feature/PROJ-12-fix-login`. Fields:
   `{id}` (the task id), `{tag}` (the card's ticket key, such as `PROJ-12`, else
@@ -928,8 +931,9 @@ its work, the worker writes the files or folders it plans to change to
 `files.txt` beside its instructions file (a folder covers what is in it); the
 coordinator can name them ahead with `task add … --files app,docs/board.md`.
 Every 5 minutes wherdr reads, for each started task not done yet, those
-declared paths and the files its branch changed (`git diff` since the branch
-started, new files included). Only a task whose work or review is still ahead
+declared paths and the files its branch changed since its fork from its base
+(the base as on the remote now, so merging the base in never counts; new files
+included). Only a task whose work or review is still ahead
 or under way (stopped too) holds its files: once it only waits for its merge,
 the tasks behind it start. `docs/llms.txt`, whose conflicts wherdr solves
 itself, never makes a task wait.
@@ -1078,8 +1082,9 @@ motion); a failed action keeps the task with its error. After the last one:
 the middle (on a computer the window shrinks to them). On a computer it is a large window (960 px wide, up to 90 % of the
 screen's height, screenshots two per row): only the task's content scrolls, the
 filter, its title and the buttons stay. The filter at the top picks *Follow group tab* (the projects of the
-home tab), *All*, a group or a project (its key badge, then its name); it follows you across devices like the
-Board's picker.
+home tab), *All*, a group or a project (its key badge, then its name); each option shows right after its name, in a
+muted grey-bordered chip, how many tasks wait under it (none at 0; groups and projects with tasks listed first), the closed picker too;
+it follows you across devices like the Board's picker.
 
 - <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: its [TL;DR](#tldr); then its screenshots large (swipe between them on
   the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop),
@@ -1432,7 +1437,10 @@ Once the cause is gone, the engine resumes it by itself, every minute:
   *You were interrupted (…): check git status and continue*; Codex, or a
   conversation that cannot be resumed, gets a new agent that reads its
   instructions with a handover note saying the same. A task stopped at the
-  review gets its reviewer again;
+  review gets its reviewer again. After a login incident, the restarted agent
+  is told once, in its Log too: *Your login was renewed and you were
+  restarted. Continue where you stopped: finish the step you were on, then
+  report as usual* (a reviewer: *finish your review and write your verdict*);
 - **in order**: the tasks before it (`after`) first. A task that starts after
   one being resumed stays to do and *Waits for WEB-1 to resume*, never
   *stopped*; it starts once that one is done;

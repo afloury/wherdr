@@ -14,7 +14,9 @@
   ^C, y, n). When the column is too narrow the keys scroll sideways; the keyboard button
   stays at the end of the bar.
 - **Keyboard shortcuts** (`Mod` is ⌘ on macOS, Ctrl elsewhere; `Mod+/` or `?` lists them all,
-  also in Settings › Computer):
+  also in Settings › Shortcuts, where **Change** gives a shortcut new keys, **Reset** goes back
+  to its default; keys used by another shortcut or by the browser are refused, Escape and `?`
+  stay reserved; your keys follow you on every device and show in the help and tooltips):
   - `Ctrl/⌘+K` global search across agents and conversations, `Alt+↑/↓` previous / next agent
     in the list, `Mod+,` settings.
   - `Mod+Alt+N` new agent in a new space, `Mod+Alt+T` new tab in the current space,
@@ -67,7 +69,8 @@
   message field, or tap the key bar's keyboard button to type in the terminal.
   In **Settings › Terminal › Phone key bar**, reorder the keys and uncheck the ones you never
   use: a hidden key keeps its place for when you show it again, and the keyboard button is
-  always shown. **Reset to default** restores the order and shows every key. Saved on the device.
+  always shown. **Show me** unfolds a preview of the bar. **Reset to default** restores the order
+  and shows every key. Saved on the device.
   Terminal links back to this app stay in the current window on a phone; external
   links still open separately.
 - **Offline reading** of the last known state and of recently opened conversations.

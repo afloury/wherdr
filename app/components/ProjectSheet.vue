@@ -19,6 +19,7 @@ import { PROJECT_COLORS, shownKey } from '#shared/pm/projectKey'
 import { ARCHIVE_DAYS, archiveDays } from '#shared/pm/archive'
 import type { LogEntry } from '#shared/pm/templateText'
 import { SETUP_TIMEOUT, checkSetup, type Prefs, type Template, type WorkflowError, type WorktreeSetup } from '#shared/pm/workflow'
+import { workflowBase } from '#shared/pm/run'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import { PROJECT_TABS, PROJECT_TAB_LABEL as TAB_LABEL, type ProjectTab } from '~/utils/projectTabs'
@@ -148,6 +149,8 @@ const agentModel = (k: 'agent' | 'reviewAgent' | 'reviewFallbackAgent') => compu
 const agent = agentModel('agent')
 const reviewAgent = agentModel('reviewAgent')
 const fallbackAgent = agentModel('reviewFallbackAgent')
+// No working branch set: the branch its workflow opens PRs to, where tasks then start.
+const fromWorkflow = computed(() => (form.base ? undefined : Object.keys(workflow.value?.taskTypes ?? {}).map(k => workflowBase(workflow.value, k)).find(Boolean)))
 const base = computed({ get: () => orNone(form.base), set: (v: string) => { form.base = fromNone(String(v)) } })
 
 // The workflow changed (saved, started over): reload it here and the list.
@@ -246,7 +249,8 @@ async function remove() {
             :aria-label="tl('Base branch')" data-testid="pm-base" @update:open="o => o && loadBranches()" @create="v => (form.base = v.trim())"
           />
           <small v-if="auto.errors.base" class="form-error pm-field-error" role="alert">{{ t(auto.errors.base) }}</small>
-          <small class="muted">{{ tl('New tasks start their worktree from it, and a step that names no branch opens its PR to it or merges into it. Unset: the repo\'s current branch. Running tasks keep theirs.') }}</small>
+          <small class="muted">{{ tl('New tasks start their worktree from it, and a step that names no branch opens its PR to it or merges into it. Unset: the branch the workflow opens its PRs to, else the repo\'s default branch. Running tasks keep theirs.') }}</small>
+          <small v-if="fromWorkflow" class="muted" data-testid="pm-base-workflow">{{ tl(`No working branch set: using ${fromWorkflow} from the workflow.`) }}</small>
           </span>
 
           <span class="field-label">{{ tl('Branch name') }}<SavedMark :s="auto.state.branchName" /></span>

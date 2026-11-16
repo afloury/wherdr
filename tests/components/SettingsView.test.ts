@@ -7,6 +7,7 @@ import { useRouter } from '#app'
 import SettingsView from '~/components/SettingsView.vue'
 import ShortcutsSheet from '~/components/ShortcutsSheet.vue'
 import ShortcutsReference from '~/components/ShortcutsReference.vue'
+import { shortcutBindings, shortcutKbds } from '~/composables/useShortcuts'
 import { coarse, defaultViewMode, desk, encryptedText, reducedMotion, sidePanelRoom, smoothTouchScrolling, typewriterSpeed } from '~/composables/useHerdr'
 
 const global = { stubs: { UTooltip: { template: '<span><slot /></span>' } } }
@@ -73,9 +74,38 @@ it('shows the same reference component in Settings and the shortcut sheet', asyn
   const sheet = await mountSuspended(ShortcutsSheet, { global: { stubs: { AppSheet: { template: '<div><slot /></div>' } } } })
   try {
     expect(w.getComponent(ShortcutsReference).isVisible()).toBe(true)
-    expect(w.getComponent(ShortcutsReference).findAll('.shortcut-row')).toHaveLength(18)
+    expect(w.getComponent(ShortcutsReference).findAll('.shortcut-row')).toHaveLength(19)
     expect(sheet.findComponent(ShortcutsReference).exists()).toBe(true)
   } finally { w.unmount(); sheet.unmount() }
+})
+
+it('Shortcuts: Change records new keys, refuses a conflict, Reset and Reset all go back', async () => {
+  desk.value = true
+  coarse.value = false
+  shortcutBindings.value = {}
+  const w = await mountSuspended(SettingsView, { route: '/settings?section=shortcuts', global })
+  const row = (label: string) => w.findAll('.shortcut-row').find(r => r.text().startsWith(label))!
+  const button = (label: string, text: string) => row(label).findAll('button').find(b => b.text() === text)
+  const mod = /Macintosh|Mac OS X|iPhone|iPad/.test(navigator.userAgent) ? 'metaKey' : 'ctrlKey'
+  const press = (init: KeyboardEventInit) => window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }))
+  try {
+    expect(row('Stop the agent').text()).toContain('Reserved')
+    expect(button('Stop the agent', 'Change')).toBeUndefined()
+    await button('Notes', 'Change')!.trigger('click')
+    press({ key: 'f', code: 'KeyF', [mod]: true })
+    await nextTick()
+    expect(row('Notes').text()).toContain('Already used by “Search this conversation”')
+    press({ key: 'j', code: 'KeyJ', [mod]: true, altKey: true })
+    await nextTick()
+    expect(shortcutKbds('notes')).toEqual(['meta', 'alt', 'J'])
+    expect(row('Notes').text()).toContain('Default:')
+    await button('Notes', 'Reset')!.trigger('click')
+    expect(shortcutKbds('notes')).toEqual(['meta', 'alt', 'P'])
+    shortcutBindings.value = { settings: { mods: ['alt'], key: 'k' } }
+    await nextTick()
+    await w.findAll('button').find(b => b.text() === 'Reset all')!.trigger('click')
+    expect(shortcutBindings.value).toEqual({})
+  } finally { w.unmount(); shortcutBindings.value = {} }
 })
 
 it('Terminal: smooth touch scrolling defaults to off and the switch persists across remounts', async () => {
@@ -96,7 +126,7 @@ it('Terminal: smooth touch scrolling defaults to off and the switch persists acr
   } finally { w.unmount() }
 })
 
-it('Conversation: replays the encrypted preview from glyphs to the complete plain reply when enabled', async () => {
+it('Conversation: the preview opens under Show me, plays, replays encrypted from glyphs to the plain reply, and hides', async () => {
   desk.value = true
   reducedMotion.value = false
   typewriterSpeed.value = 'slow'
@@ -111,6 +141,16 @@ it('Conversation: replays the encrypted preview from glyphs to the complete plai
   try {
     const toggle = w.find('.encrypted-toggle [role="switch"]')
     expect(toggle.attributes('aria-checked')).toBe('true')
+    // Folded by default; Show me opens it and plays it once.
+    const fold = w.find('[data-testid="settings-preview-toggle"]')
+    expect(fold.text()).toBe('Show me')
+    expect(w.find('.typing-sample').exists()).toBe(false)
+    await fold.trigger('click')
+    expect(fold.text()).toBe('Hide')
+    now += 1000
+    frame?.(now)
+    await nextTick()
+    expect(w.find('.typing-sample .tw-trail [data-g]').exists()).toBe(true)
     // Finish the initial preview so this check requires the setting to replay it.
     now += 30_000
     frame?.(now)
@@ -134,6 +174,9 @@ it('Conversation: replays the encrypted preview from glyphs to the complete plai
     expect(preview.findAll('.tw-trail [data-g]')).toHaveLength(0)
     expect(preview.text()).toContain('Found the cause: the cache was never invalidated after an update.')
     expect(preview.text()).toContain('All tests pass.')
+    await fold.trigger('click')
+    expect(fold.text()).toBe('Show me')
+    expect(w.find('.typing-sample').exists()).toBe(false)
   } finally { w.unmount() }
 })
 
@@ -174,6 +217,22 @@ it('Wide computer: Settings open beside the conversation, on the linked section,
     const agents = w.findAll('.settings-section').find(s => s.find('#settings-pace').exists())!
     await vi.waitFor(() => expect(shown(agents)).toBe(true))
     expect(w.get('#settings').classes()).toContain('settings-panel')
+    // Icon rail (a narrow panel, main.css container query): every icon names its section,
+    // on hover and to screen readers; the toggle under it shows the names, kept on the device.
+    for (const b of w.findAll('.settings-nav-item')) {
+      expect(b.attributes('title')).toBeTruthy()
+      expect(b.attributes('aria-label')).toBe(b.attributes('title'))
+    }
+    const toggle = w.get('.settings-rail-toggle')
+    expect(toggle.attributes('aria-pressed')).toBe('false')
+    await toggle.trigger('click')
+    expect(w.get('.settings-nav').classes()).toContain('rail-labels')
+    expect(toggle.attributes('aria-pressed')).toBe('true')
+    expect(localStorage.getItem('settingsRailLabels')).toBe('1')
+    await toggle.trigger('click')
+    expect(w.get('.settings-nav').classes()).not.toContain('rail-labels')
+    expect(localStorage.getItem('settingsRailLabels')).toBe('0')
+    localStorage.removeItem('settingsRailLabels')
     // Another section stays in the panel.
     await w.findAll('.settings-nav-item').find(b => b.attributes('title') === 'Terminal')!.trigger('click')
     await vi.waitFor(() => expect(path()).toBe('/a/w1:p1?section=terminal'))
