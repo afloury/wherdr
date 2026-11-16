@@ -13,7 +13,7 @@ chips on the same line (`Codex a0fa` `machine-a` `machine-b`, the chips wrapping
 is full), then its 5-hour and weekly bars with their reset times, or
 **Limit reached · resets …**. Right after a Claude 5-hour window ends, Claude reports only the
 week: the 5-hour bar then reads **new window**. A Claude Ultra account has no 5-hour window, so it
-shows its week alone (and Pace counts only the week). The plan comes from Claude Code's own
+shows its week alone, one bar across the row (and Pace counts only the week). The plan comes from Claude Code's own
 account record, copied by wherdr's status line (the plan name only); with an older status line,
 a 5-hour bar is only kept for an account that reported one within its last 5 hours. A machine whose account is unknown (Claude on API billing, an older
 reading without an account key) keeps a block of its own, titled with the machine's name.
