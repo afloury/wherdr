@@ -240,7 +240,7 @@ describe('runAlfredCommand', () => {
     expect(Buffer.from(write.input!, 'base64').toString()).toBe('- Goal from v2\'s autopilot: Ship it\n- Squash merges only\n')
   })
 
-  it('Alfred\'s wherdr script sends the note on stdin with project memory, shown or applied', async () => {
+  it('Alfred\'s wherdr script sends stdin with project memory (shown or applied) and theme propose', async () => {
     const http = await import('node:http')
     const { execFile } = await import('node:child_process')
     const { WHERDR_SCRIPT } = await import('../shared/pm/coordinator')
@@ -254,9 +254,10 @@ describe('runAlfredCommand', () => {
     try {
       await send('project', 'memory', 'APP')
       await send('project', 'memory', 'APP', '--apply')
+      await send('theme', 'propose')
     }
     finally { server.close() }
-    expect(bodies.map(b => Buffer.from(b.input64 ?? '', 'base64').toString())).toEqual(['- Squash merges only\n', '- Squash merges only\n'])
+    expect(bodies.map(b => Buffer.from(b.input64 ?? '', 'base64').toString())).toEqual(['- Squash merges only\n', '- Squash merges only\n', '- Squash merges only\n'])
   })
 
   it('shows the project\'s guards and changes them after its dry run', async () => {
