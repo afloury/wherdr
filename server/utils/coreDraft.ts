@@ -31,6 +31,18 @@ export function readDraft(text: string, agent: string | null | undefined): CoreD
   return { text: box, lines: box.split('\n').length }
 }
 
+/**
+ * Pure: Claude is still taking in a paste ("Pasting…" under its field). Its
+ * field stays empty meanwhile: photos are read and resized first, several
+ * seconds for three large ones (WHR-419). Plain screen (terminal.read).
+ */
+export function pasting(text: string): boolean {
+  const lines = String(text || '').split('\n')
+  const at = lines.findLastIndex(l => l.startsWith('❯'))
+  const end = at < 0 ? -1 : lines.findIndex((l, i) => i > at && /^\s*─{3,}/.test(l))
+  return end > 0 && lines.slice(end + 1).some(l => l.trim().startsWith('Pasting…'))
+}
+
 const norm = (t: string) => t.replace(/\s+/g, '')
 export const sameText = (a: string, b: string) => norm(a) === norm(b)
 
