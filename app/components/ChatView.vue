@@ -1598,7 +1598,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   <span class="wake-head">{{ tl(`${b.n} checks`) }}</span>
                 </button>
                 <span v-for="p in b.sum.parts" :key="p.tone" class="wake-part" :data-tone="p.tone" data-testid="wake-part">
-                  <UIcon :name="TONE_ICON[p.tone]" class="wake-icon" />{{ tl(p.text) }}
+                  <UIcon :name="TONE_ICON[p.tone]" class="wake-icon" /><span class="wake-count">{{ tl(p.text) }}</span>
                   <button v-for="c in p.chips" :key="c.id" type="button" class="wake-chip" :title="c.id" :aria-label="c.id" @click.stop="openTaskSheet(c.id)">{{ c.text }}</button>
                 </span>
                 <span v-if="b.from" class="wake-time">{{ b.from === b.to ? b.from : `${b.from}–${b.to}` }}</span>
@@ -1622,7 +1622,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <!-- A routine one: its kind's icon, its tasks, a short label and the reply's first sentence. -->
                 <div v-if="b.answer && !b.loud" class="wake-row wake-line" :class="{ quiet: b.sum.quiet }" @click="setOpen(b.key, !isOpen(b.key))">
                   <UIcon :name="TONE_ICON[b.sum.tone]" class="wake-icon" :data-tone="b.sum.tone" />
-                  <button v-for="id in b.sum.tasks" :key="id" type="button" class="wake-chip" @click.stop="openTaskSheet(id)">{{ id }}</button>
+                  <span v-if="b.sum.tasks.length" class="wake-chips">
+                    <button v-for="id in b.sum.tasks" :key="id" type="button" class="wake-chip" @click.stop="openTaskSheet(id)">{{ id }}</button>
+                  </span>
                   <button type="button" class="wake-toggle wake-head" :aria-expanded="isOpen(b.key)" @click.stop="setOpen(b.key, !isOpen(b.key))">
                     <span class="wake-label">{{ tl(b.sum.label) }}</span> {{ firstSentence(b.answer) }}
                   </button>

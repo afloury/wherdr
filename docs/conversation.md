@@ -127,7 +127,7 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   folder (`wherdr pm ui show file docs/plan.md`, a path relative to its folder: never `~`, `..`
   or a path outside it) or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task
   has some). On a wide computer they open in the side panel, in place of Settings: the file
-  read-only as in Files, the screenshots by step, before and after side by side, with a button
+  read-only as in Files (an HTML page runs as a page: see [Files](files.md)), the screenshots by step, before and after side by side, with a button
   to open the task. On a phone a card shows above the message field, and a tap opens a sheet
   (before and after toggled). A tap on a shown image (the file, an image of a shown Markdown
   file, a screenshot) opens the full-screen viewer, with zoom and pan, through the images shown
@@ -139,7 +139,8 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   Step check) is a compact muted row, not one of your bubbles, with the coordinator's answer under
   it; routine runs fold into one row that counts them by kind with their tasks
   (*5 checks · ✓ 3 merged WHR-352 354 355 · ⏳ 1 waits for you · 1 quiet*; a chip opens the
-  task's sheet), read from each wake's first line and task lines, standing out when one waits
+  task's sheet; many chips wrap onto the next lines inside the row, so the conversation never
+  scrolls sideways, on a phone too), read from each wake's first line and task lines, standing out when one waits
   for you. Open, each wake is one line: an icon, its task, a short label (*merged*,
   *Scheduled*, *Health check*) and the reply's first sentence, a tap showing the full reply;
   quiet checks are dimmer, two or more in a row fold into *N quiet checks*. See
