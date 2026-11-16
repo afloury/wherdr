@@ -105,7 +105,7 @@ async function remove() {
 <style scoped>
 .te { display: grid; gap: 12px; min-width: 0; }
 .te-names { display: grid; gap: 12px; }
-.te-body { display: grid; gap: 16px; min-width: 0; }
+.te-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
 .te-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; }
 .te-fields .field-label { grid-column: 1 / -1; margin-top: 8px; }
 .te-color { display: flex; align-items: center; gap: 8px; min-height: 44px; min-width: 0; }
