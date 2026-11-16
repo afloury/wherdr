@@ -44,7 +44,7 @@ describe('terminal fallback after native recognition', () => {
   it.each(['pi', 'gemini', 'opencode', 'kimi', null])('does not infer a menu from an unsupported agent %s', agent => {
     expect(classifyScreen({ text: 'A normal reply without a known input marker', agent })).toBe('unknown')
   })
-  it.each(['devin-idle.txt', 'devin-status-plain.txt', 'devin-idle-edits.txt', 'devin-idle-narrow.txt'])(
+  it.each(['devin-idle-quota.txt', 'devin-status-plain.txt', 'devin-idle-edits.txt', 'devin-idle-narrow.txt'])(
     'confirms the Devin field in %s whatever its footer says', name => {
       const text = fx(name)
       expect(confirmedInput(text, 'devin')).toBe(true)
@@ -55,6 +55,10 @@ describe('terminal fallback after native recognition', () => {
   )
   it.each(['devin-fusion-lead.txt', 'devin-fusion-sidekick.txt', 'devin-menu.txt'])('never reads the Devin picker %s as the field', name => {
     expect(confirmedInput(fx(name), 'devin')).toBe(false)
+  })
+  it.each(['devin-fusion-lead.txt', 'devin-fusion-sidekick.txt'])('excludes the Fusion picker %s by its legend, whatever its slider is drawn with', name => {
+    // Drawn with ─ instead of ━, the slider would pass for the field's lower rule.
+    expect(confirmedInput(fx(name).replaceAll('━', '─'), 'devin')).toBe(false)
   })
   it('never reads normal working output as an interactive fallback', () => {
     expect(classifyScreen({ text: 'Thinking…', agent: 'codex', status: 'working' })).toBe('working')

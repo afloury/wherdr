@@ -87,12 +87,13 @@ export function createCoreScreens(deps: CoreScreenDeps) {
   // omp's status line and context gauge, kept between reads (an unviewed resting omp
   // is read at the background pace).
   const omps = new Map<string, { at: number, status: OmpStatus | null }>()
-  // Consecutive 'terminal' observations per pane, keyed to the read that
-  // produced them (at): a TUI mid-redraw (footer or rule not yet painted)
-  // classifies 'terminal' for one read, and the overlay that opens on it
-  // flaps. Only a reading seen in two consecutive reads is published; while
-  // unconfirmed the pane keeps its last published interaction instead of
-  // dropping to 'unknown'. Re-parsing the same cached text never counts.
+  // Consecutive 'terminal' observations per Devin pane, keyed to the read
+  // that produced them (at): Devin mid-redraw (footer or rule not yet
+  // painted) classifies 'terminal' for one read, and the overlay that opens
+  // on it flaps. Only a reading seen in two consecutive reads is published;
+  // while unconfirmed the pane keeps its last published interaction instead
+  // of dropping to 'unknown'. Re-parsing the same cached text never counts.
+  // Other agents publish every read at once.
   const terms = new Map<string, { at: number, streak: number, published?: NonNullable<Pane['interaction']> }>()
   const terminalPending = (id: string) => {
     const t = terms.get(id)
@@ -163,8 +164,12 @@ export function createCoreScreens(deps: CoreScreenDeps) {
       for (const id of terms.keys()) if (!alive.has(id)) terms.delete(id)
       for (const id of omps.keys()) if (!alive.has(id) || panes.find(p => p.id === id)?.agent !== 'omp') omps.delete(id)
       for (const p of panes) if (p.agent === 'omp') readOmpStatus(p)
-      // Work redraws the whole screen: a terminal streak never spans it.
-      for (const p of panes) if (p.status === 'working') terms.delete(p.id)
+      // Work redraws the whole screen: a terminal streak never spans it. The
+      // last published interaction stays (the first read after it is unconfirmed).
+      for (const p of panes) {
+        const t = p.status === 'working' ? terms.get(p.id) : undefined
+        if (t) t.streak = 0
+      }
       for (const p of agents) {
         const c = cache.get(p.id)
         if (!c) continue
@@ -184,12 +189,17 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         if (error) p.error = error
         else delete p.error
         const raw = failed.has(p.id) ? 'unknown' : r.interaction
-        const prev = terms.get(p.id)
-        // Only a new read (another c.at) advances the streak.
-        const streak = raw !== 'terminal' ? 0 : prev?.at === c.at && prev.streak ? prev.streak : (prev?.streak ?? 0) + 1
-        const published = raw === 'terminal' && streak < 2 ? prev?.published ?? 'unknown' : raw
-        terms.set(p.id, { at: c.at, streak, published })
-        p.interaction = published
+        if (p.agent !== 'devin') {
+          terms.delete(p.id)
+          p.interaction = raw
+        } else {
+          const prev = terms.get(p.id)
+          // Only a new read (another c.at) advances the streak.
+          const streak = raw !== 'terminal' ? 0 : prev?.at === c.at && prev.streak ? prev.streak : (prev?.streak ?? 0) + 1
+          const published = raw === 'terminal' && streak < 2 ? prev?.published ?? 'unknown' : raw
+          terms.set(p.id, { at: c.at, streak, published })
+          p.interaction = published
+        }
         if (choices && r.interaction === 'native') p.prompt = choices
         if (parsed.sendNow) p.queueSendNow = true
         // A working Claude's screen: the "!" command running (its output so far)
