@@ -17,6 +17,8 @@ Reading:
 | `wherdr alfred coordinators` | each coordinator, its agent and whether it runs (`stopped`: its terminal ended, see `--resume`) |
 | `wherdr alfred coordinator open <KEY>` | the link that opens a running project coordinator |
 | `wherdr alfred last <KEY>` | what the project's coordinator last said (its last message, else the bottom of its screen), and whether it is still working |
+| `wherdr alfred groups` | your home tabs (tab groups, and machines shown as their own tab) with the projects each one shows, and the tab you have open (`open`, sent with each message you write to Alfred, not shown in the chat) |
+| `wherdr alfred brief [--group <name> \| --all] [--since <YYYY-MM-DD>]` | the facts of a [brief](#briefs) for the open tab's group, another group, or all |
 | `wherdr alfred v2` | when you come from wherdr v2: its projects, read then from the herdr-projects board of this machine, their open tasks, the v3 project made from each, and the migration report ([set up your v2 projects](migrate-from-v2.md#set-up-your-v2-projects-with-alfred)) |
 | `wherdr alfred settings` | the synced settings, their values, and the values each setting Alfred may change accepts (`1` on, `0` off) |
 | `wherdr alfred help` | this list |
@@ -63,6 +65,19 @@ $ wherdr alfred project template WEB company
 { "dryRun": true, "change": ["project WEB template: none → company"],
   "next": "Show this to the user; only after their yes, run: wherdr alfred project template WEB company --apply" }
 ```
+
+## Briefs
+
+Ask Alfred "how is it going", "brief" or "what's new": it answers for the home tab you have
+open, one short line per project, the tasks waiting for you first. Its facts come from
+`wherdr alfred brief`, read from the engine with no model call: per project, the tasks merged
+since the last brief of that tab (a day back for the first one, or since `--since`), the tasks
+waiting for you and for what (*Merge*, a question, a block), the tasks stuck for over an hour,
+a coordinator idle, stopped or not started, and its open incidents; then the tab's machines
+offline or full (every agent slot taken) and the quotas near their limit (80 % of a window
+used, or limited). Tasks show as `task` cards and machines and quotas as live
+[status cards](conversation.md#live-status-cards), never numbers copied into the text. The reply
+ends with buttons for the other scopes (*All*, another group), and a tap gives that one's brief.
 
 ## Notes
 

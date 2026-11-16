@@ -1424,7 +1424,10 @@ Once the cause is gone, the engine resumes it by itself, every minute:
   *You were interrupted (…): check git status and continue*; Codex, or a
   conversation that cannot be resumed, gets a new agent that reads its
   instructions with a handover note saying the same. A task stopped at the
-  review gets its reviewer again;
+  review gets its reviewer again. After a login incident, the restarted agent
+  is told once, in its Log too: *Your login was renewed and you were
+  restarted. Continue where you stopped: finish the step you were on, then
+  report as usual* (a reviewer: *finish your review and write your verdict*);
 - **in order**: the tasks before it (`after`) first. A task that starts after
   one being resumed stays to do and *Waits for WEB-1 to resume*, never
   *stopped*; it starts once that one is done;

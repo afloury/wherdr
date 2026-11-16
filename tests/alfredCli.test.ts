@@ -22,6 +22,8 @@ vi.mock('../server/utils/pmCoordinator', async orig => ({
   ...(await orig<object>()),
   startCoordinator: vi.fn(async (_d: unknown, key: string) => { if (key === 'APP') throw new Error('agent missing'); started.push(key); return { terminal: `t-${key}` } }),
 }))
+// Machine '' has every agent slot taken; Claude's week is near its limit.
+vi.mock('../server/utils/pmMemory', async orig => ({ ...(await orig<object>()), memoryState: vi.fn(async (_d: unknown, key: string) => ({ agents: key ? 0 : 2, cap: 2 })) }))
 vi.mock('../server/utils/pmReady', () => ({ checkMachine: vi.fn(async () => ({ items: [], at: 1, refused: 'gh login: not logged in' })) }))
 
 describe('parseAlfredCommand', () => {
@@ -31,6 +33,12 @@ describe('parseAlfredCommand', () => {
     expect(parseAlfredCommand(['coordinator', 'open', 'WEB'])).toEqual({ name: 'coordinator open', key: 'WEB' })
     expect(parseAlfredCommand(['settings', 'x'])).toMatchObject({ error: /^unknown command/ })
     expect(parseAlfredCommand(['projects', '--apply'])).toEqual({ error: '--apply is for a change only' })
+    expect(parseAlfredCommand(['groups'])).toEqual({ name: 'groups' })
+    expect(parseAlfredCommand(['brief'])).toEqual({ name: 'brief' })
+    expect(parseAlfredCommand(['brief', '--group', 'Work', '--since', '2026-11-01'])).toEqual({ name: 'brief', group: 'Work', since: Date.parse('2026-11-01') })
+    expect(parseAlfredCommand(['brief', '--all', '--group', 'Work'])).toMatchObject({ error: /^usage: wherdr alfred brief/ })
+    expect(parseAlfredCommand(['brief', '--since', 'monday'])).toEqual({ error: '--since is a date: YYYY-MM-DD' })
+    expect(parseAlfredCommand(['projects', '--all'])).toEqual({ error: '--all is for brief only' })
   })
 
   it('reads the changes, a dry run unless --apply', () => {
@@ -95,6 +103,7 @@ describe('runAlfredCommand', () => {
   let herdrProjects = ''
   const deps = () => ({
     store, machines: () => machines, panes: () => [], urls: { local: 'http://127.0.0.1:7690' }, settingsFile: path.join(dir, 'settings.json'), dataDir: dir, herdrProjects,
+    quotas: async () => ({ claude: { five: null, week: { used: 92, resetsAt: null, minutes: 10080 }, at: 1 }, codex: null }),
     check: async (m: string, f: string) => { if (failCheck) throw new Error('path: a folder inside the home folder'); if (f.endsWith('/gone')) throw new Error('This folder does not exist'); checked.push(`${m}:${f}`); return { path: f.replace(/^~/, '/home/user'), git: true } },
   }) as unknown as Parameters<typeof runAlfredCommand>[0]
   const run = (...argv: string[]) => runAlfredCommand(deps(), token, { argv })
@@ -338,6 +347,31 @@ describe('runAlfredCommand', () => {
     expect(await run('coordinators')).toMatchObject({ coordinators: [{ project: '_main' }, { project: 'WEB', agent: 'codex' }] })
     expect(await run('coordinator', 'start', 'WEB', '--program', 'claude')).toMatchObject({ change: ['start the coordinator of WEB with claude on this machine'] })
     await expect(run('coordinator', 'start', 'WEB', '--program', 'codex', '--model', 'gpt-6')).rejects.toThrow()
+  })
+
+  // WHR-387: the tab open at the user's message, the tabs with their projects, a brief per tab or all.
+  it('knows the open tab, lists the groups and briefs one group or all', async () => {
+    const groups = [{ id: '*group:perso', name: 'Perso', machines: [''] }, { id: '*group:work', name: 'Work', machines: ['mac'] }]
+    await fs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ v: 1, settings: { machineGroups: JSON.stringify(groups), machineBarHidden: JSON.stringify(['', 'mac']) } }))
+    await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--apply')
+    await run('project', 'add', 'API', '--machine', 'mac', '--path', '/src/api', '--apply')
+    await store.saveTask({ id: 'WEB-1', project: 'WEB', title: 'Login page', description: '', type: 'feature', state: 'working', step: { at: 1, yourTurn: { reason: 'action', badge: 'Merge' } } as never })
+    await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, terminal: 'host/t1' })
+    await userMessageTo(store, 'host/t1', 'How is it going?', '*group:work')
+    expect(await run('groups')).toEqual({ open: 'Work', groups: [{ name: 'Perso', kind: 'group', projects: ['WEB'] }, { name: 'Work', kind: 'group', projects: ['API'] }] })
+    expect(await run('brief')).toMatchObject({ scope: 'Work', open: 'Work', projects: [{ project: 'API', merged: [], waiting: [], coordinator: 'not started' }], machines: [], quotas: [{ status: 'quota:claude', near: ['week 92% used'] }], others: ['all', 'Perso'] })
+    // A machine's status line names it by key; a label with a space never makes one (it would not parse).
+    const [local, mac] = machines as { label: string, status: string }[]
+    local!.label = 'Mac Studio'
+    mac!.status = 'offline'
+    try {
+      expect((await run('brief', '--group', 'work') as { machines: unknown[] }).machines).toEqual([{ name: 'Mac', state: 'offline', status: 'machine:mac' }])
+      expect((await run('brief', '--group', 'perso') as { machines: unknown[] }).machines).toEqual([{ name: 'Mac Studio', state: 'full' }])
+    } finally { local!.label = 'this'; mac!.status = 'online' }
+    expect(await run('brief', '--group', 'perso')).toMatchObject({ scope: 'Perso', projects: [{ project: 'WEB', waiting: [{ id: 'WEB-1', what: 'Merge' }] }], machines: [{ name: 'this', state: 'full', status: 'machine:this' }] })
+    expect((await run('brief', '--all') as { projects: unknown[] }).projects).toHaveLength(2)
+    expect((await store.coordinator(MAIN))!.briefs).toEqual({ '*group:work': expect.any(Number), '*group:perso': expect.any(Number), 'all': expect.any(Number) })
+    await expect(run('brief', '--group', 'Home')).rejects.toThrow('Unknown scope Home')
   })
 })
 

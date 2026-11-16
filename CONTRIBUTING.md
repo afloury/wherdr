@@ -195,12 +195,12 @@ then removed is still published. `scripts/check-leaks.mjs` combines two checks:
   message.
 - **Your forbidden patterns** for what no generic tool knows: your user name, host names,
   e-mail addresses, tailnet, private IPs, project and client names. They live in `.leak-patterns`,
-  which git ignores (format in `.leak-patterns.example`: one case-insensitive regex per line,
+  which git ignores (format in `scripts/leak-patterns.example`: one case-insensitive regex per line,
   `regex !! glob, glob` to allow it in some files, `! glob` to never scan a file). In a linked
   worktree, the main checkout's file is used when the worktree has none.
 
 ```sh
-cp .leak-patterns.example .leak-patterns          # then list your own private values
+cp scripts/leak-patterns.example .leak-patterns          # then list your own private values
 npm run check:leaks                               # every file of the git index
 npm run check:leaks -- --staged                   # staged files only
 npm run check:leaks -- --range origin/main..HEAD  # every commit you are about to push

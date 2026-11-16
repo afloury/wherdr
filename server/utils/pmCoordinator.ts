@@ -129,11 +129,12 @@ export async function alfredTokenOk(store: PmStore, token: unknown) {
 // look: a look-for-new-work wake, whose turn counts the tasks it adds.
 // The user's message is kept whole (a long one too) for the proposal it may lead to.
 const SAID_MAX = 8000
-export async function noteTurn(store: PmStore, key: string, kind: 'user' | 'wake', said?: string, look = false) {
+// tab: the home tab the user has open (Alfred's `groups` and `brief` read it).
+export async function noteTurn(store: PmStore, key: string, kind: 'user' | 'wake', said?: string, look = false, tab?: string) {
   const c = await store.coordinator(key)
   if (!c) throw new HerdrError('not_found', 'No coordinator for this project')
   const at = Date.now()
-  await store.saveCoordinator({ ...c, turn: { kind, at, ...(kind === 'user' && said ? { said: said.slice(0, SAID_MAX) } : {}), ...(kind === 'wake' && look ? { look: true as const } : {}) }, ...(kind === 'user' ? { userAt: at } : {}) })
+  await store.saveCoordinator({ ...c, turn: { kind, at, ...(kind === 'user' && said ? { said: said.slice(0, SAID_MAX) } : {}), ...(kind === 'wake' && look ? { look: true as const } : {}) }, ...(kind === 'user' ? { userAt: at } : {}), ...(tab ? { openTab: tab } : {}) })
 }
 
 const TURN_MS = 3_600_000
@@ -141,10 +142,11 @@ const TURN_MS = 3_600_000
 // The user's message sent from the interface to a terminal: when that
 // terminal is a coordinator, its turn now comes from the user. Alfred's too
 // with project management off (it then helps the user switch it on).
-export async function userMessageTo(store: PmStore, terminal: string | undefined, text: string) {
+export async function userMessageTo(store: PmStore, terminal: string | undefined, text: string, tab?: unknown) {
   if (!terminal) return
   const c = (await store.coordinators()).find(x => x.terminal === terminal)
-  if (c && (c.project === MAIN || await store.enabled())) await noteTurn(store, c.project, 'user', text)
+  const open = c?.project === MAIN && typeof tab === 'string' && tab.length <= 200 ? tab : undefined
+  if (c && (c.project === MAIN || await store.enabled())) await noteTurn(store, c.project, 'user', text, false, open)
 }
 
 // The branch tasks start from, open their PR to and merge into when a step names none.
