@@ -117,6 +117,14 @@ current session stops), and *Stop the coordinator*, after a short confirm: its a
 starts again on the next message or wake. Mute and Stop show while it runs. Alfred's row keeps
 its own menu. A coordinator shows only in its own row, never again among the agents.
 
+A [workspace](workspaces.md)'s coordinator is its **workspace row**, in the same list (its
+members have none of their own): its key badge and name, its coordinator's state, then how many
+of its members' tasks are *working* and *waiting for you* (*Claude · Idle · 2 working · 1
+waiting for you*). Under its name, its members' key badges; a tap lists them, each opening its
+member's board. Its menu is a coordinator's, with *Workspace settings* for *Project settings*;
+*Open the board* shows the workspace's features and every member's tasks. It reorders and hides
+like any coordinator.
+
 Their order is yours and follows you to every device: drag a row by the ⠿ handle that shows on
 hover (or with the up and down arrows on it), or long press it on a phone, then drag. The menu's
 *Move to hidden* puts a coordinator in the **Hidden** group at the end of the section, as does
@@ -127,7 +135,8 @@ needs you (a question, a block), its row comes back in the main list until you a
 
 Coordinators and **Tasks to review** follow the [machine tab](#machines-as-tabs): a tab shows the
 projects whose allowed machines it holds (a project on machines of several groups shows on each
-of those tabs), **All** shows every project, and Alfred shows on every tab. An open coordinator
+of those tabs), **All** shows every project, and Alfred shows on every tab. A workspace shows
+under its tab group (unless its *Shown in* says otherwise). An open coordinator
 conversation stays open on the tabs that show its project. The board follows the tab too when
 its picker is on *Follow machine tab* ([Board](project-management.md#board)); notifications stay
 global.
