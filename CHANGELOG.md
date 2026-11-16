@@ -43,6 +43,9 @@ wherdr 3.1 adds workspaces (one coordinator for several repositories), lets Alfr
 - A photo message sent to Claude, while it works or after a long idle, is submitted instead of staying in its input, and is not shown twice.
 - A run's task badges wrap inside the row, and the conversation never scrolls sideways.
 - A refused remote read keeps herdr-core's reason in the logs, and transcript caches of agents that are gone are dropped.
+### Fixed
+
+- **Search reaches past large transcript records.** A conversation search stopped at the first line larger than its read window (a screenshot or another large record): nothing older was searched and the result came back limited. The search now moves past such a line.
 
 ## [3.0.0] — 2026-11-14
 
