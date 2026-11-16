@@ -38,8 +38,12 @@ import { type ExecResult, type MachineFs, type ShellExec, boundedOutput, createS
 import { SessionGate, isRefused } from './sshgate'
 import { SocketRelay, bridgeCommand, socketTransport } from './socketRelay'
 import { type Transcripts, createTranscripts } from './transcripts'
+import { createCodexDaemonHistory } from './codexDaemon'
+import { createCodexDaemonRpc } from './codexDaemonRpc'
 import { fmt } from '../../shared/message'
 import { ATTACH_SUBDIR } from '../../shared/attachments'
+
+const codexHistory = createCodexDaemonHistory({ rpc: createCodexDaemonRpc(process.env.CODEX_HOME || path.join(HOME, '.codex')) })
 
 const fsp = fs.promises
 const LOCAL_LABEL_FILE = path.join(DATA_DIR, 'machine-label.txt')
@@ -103,7 +107,7 @@ export const localMachine: Machine = {
   home: HOME,
   os: localOs(),
   fs: localFs,
-  transcripts: createTranscripts({ home: HOME, herdr }),
+  transcripts: createTranscripts({ home: HOME, herdr, codexHistory }),
   exec: null,
   sock: () => HERDR_SOCK,
   clientSock: () => HERDR_CLIENT_SOCK,
@@ -684,7 +688,7 @@ export async function openSession(baseKey: string, name: string): Promise<NamedS
       sock: () => path.join(sockDir, 'herdr.sock'),
       clientSock: () => path.join(sockDir, 'herdr-client.sock'),
       spawnHerdr: args => spawn(HERDR_BIN, ['--session', name, ...args], { stdio: ['pipe', 'pipe', 'pipe'], env: HERDR_CHILD_ENV }),
-      transcripts: createTranscripts({ home: HOME, herdr }),
+      transcripts: createTranscripts({ home: HOME, herdr, codexHistory }),
       info: () => ({ key: found.key, baseKey, session: name, label: localMachine.label, local: true, status: 'online', error: null, os: localMachine.os }),
     }
     sessions.set(found.key, machine)

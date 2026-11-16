@@ -33,7 +33,20 @@ vi.mock('../server/utils/herdr', () => {
   }
 })
 
-import { listEfforts, setEffort } from '../server/utils/modelctl'
+import { currentModel, forgetModel, listEfforts, noteScreen, setEffort } from '../server/utils/modelctl'
+import type { Pane } from '../shared/types'
+
+describe('daemon model metadata', () => {
+  it('uses the history model as a source while retaining newer footer precedence', async () => {
+    const p = { id: 'w2:p1', agent: 'codex' } as Pane
+    const model = { id: 'gpt-6-sol', label: 'GPT-6-Sol', effort: 'medium' }
+    expect(await currentModel(p, model)).toEqual(model)
+    noteScreen(p.id, 'codex', '› Ask anything\n  GPT-6-Terra high · /work/demo')
+    expect(await currentModel(p, model)).toMatchObject({ label: 'GPT-6-Terra', effort: 'high' })
+    forgetModel(p.id)
+    expect(await currentModel(p)).toMatchObject({ label: 'Opus 5.5' })
+  })
+})
 
 describe('Claude /effort sequence', () => {
   beforeEach(() => { calls.sent = []; calls.screen = '' })

@@ -78,10 +78,10 @@ export function forgetModel(paneId: string) {
   ompScreens.delete(paneId)
 }
 
-export async function currentModel(p: Pane): Promise<ModelInfo | null> {
+export async function currentModel(p: Pane, historyModel?: ModelInfo | null): Promise<ModelInfo | null> {
   if (!p.agent || !['claude', 'codex', 'omp'].includes(p.agent)) return null
   // A failed read throws: the state keeps the model it showed (refreshModel).
-  let fromFile = await transcripts.model(p)
+  let fromFile = historyModel ?? await transcripts.model(p)
   const f = footers.get(p.id)
   if (f && (!fromFile || !sameModel(fromFile.label, f.info.label) || fromFile.effort !== f.info.effort)) {
     // The status line wins over a lagging rollout (change not yet followed by a turn).

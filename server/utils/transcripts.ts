@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import path from 'node:path'
+import { codexDaemonReplyKey, type CodexHistory } from './codexDaemon'
 import { imageTagCount } from '../../shared/queuedMatch'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
 import { ompToolCall, ompToolResult, ompUserRun } from './ompTools'
@@ -13,6 +14,7 @@ import { type CommandTemplate, ompCommandTemplates } from './slash'
 import { fmt } from '../../shared/message'
 import { pastedBlocks } from '../../shared/pastedText'
 import { createActivity } from '../../shared/integrations'
+import { clip, isNoise } from './transcriptText'
 
 // Backward reading by windows until there are enough messages: Claude's
 // transcripts embed images in base64, a few screenshots
@@ -21,7 +23,6 @@ const WINDOW_BYTES = 2 * 1024 * 1024
 const MAX_READ_BYTES = 24 * 1024 * 1024 // per request
 const PAGE_ITEMS = 120
 const PREVIEW_BYTES = 256 * 1024 // card previews read this much first (latestReply)
-const MAX_TEXT = 20000
 
 export interface TranscriptPane {
   id: string
@@ -30,6 +31,7 @@ export interface TranscriptPane {
   agentSession?: string | null
   bornAt?: number
   status?: string | null
+  title?: string | null
   // A conversation the board recorded (a finished task's agent): its session
   // file only, never one guessed from a process or a folder's latest file.
   fixed?: boolean
@@ -85,7 +87,6 @@ type HerdrCall = (method: string, params?: Record<string, unknown>, timeoutMs?: 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
 
-const clip = (s: string, n = MAX_TEXT) => (s.length > n ? s.slice(0, n) + '…' : s)
 // Keep notification identities server-side. Absolute line offsets survive a
 // moving tail window; lengths and text can change while a reply streams.
 const replyKeys = new WeakMap<ChatItem, string>()
@@ -95,9 +96,6 @@ function replyItem(item: ChatItem, ref: string | undefined, block = 0): ChatItem
 }
 const firstLine = (s: unknown) => String(s || '').split('\n').find(l => l.trim()) || ''
 
-// "Technical" messages injected into the thread (system reminders, outputs of
-// local commands…): not real user messages.
-const isNoise = (t: string) => /^\s*<(?!command-name)[a-z_-]+[\s>]/i.test(t) || /^\s*Caveat:/.test(t)
 // "[Image #1]" (Claude Code), "[Image #1, 756x477]" (omp).
 const stripImageTags = (t: unknown) => String(t || '').replace(/\[Image #\d+(?:, \d+x\d+)?\]\s*/g, '').trim()
 // Pasted text (a multi-line send from wherdr is one): Claude Code
@@ -498,7 +496,7 @@ export function claudeParser(home = '') {
   function result(): Parsed {
     const out: Parsed = items.map((it) => {
       const c = { ...it }
-      const key = replyKeys.get(it)
+      const key = replyKeys.get(it) || codexDaemonReplyKey(it)
       if (key) replyKeys.set(c, key)
       return c
     })
@@ -995,7 +993,7 @@ export function isMissing(e: unknown): boolean {
   return err.code === 'remote' && /no such file|not a directory|introuvable/i.test(err.message || '')
 }
 
-export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }: { home: string, herdr: HerdrCall, fs?: MachineFs, now?: () => number }) {
+export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, codexHistory }: { home: string, herdr: HerdrCall, fs?: MachineFs, now?: () => number, codexHistory?: CodexHistory }) {
   // File -> state (size, generation) and when this server first saw it, for
   // whole-second mtimes (see SETTLE_MS); `file|size|gen` -> checksum of the
   // file at first sight (null: could not be taken).
@@ -1518,6 +1516,10 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   // opts.signal: the request was given up (client gone): reads stop
   async function chat(pane: TranscriptPane, opts: { since?: string, from?: number | null, before?: number | null, fresh?: boolean, anchor?: string, signal?: AbortSignal } = {}): Promise<ChatResponse> {
     if (!hasTranscript(pane.agent)) return { available: false, reason: 'unsupported' }
+    if (pane.agent === 'codex' && !pane.fixed && codexHistory) {
+      const history = await codexHistory.chat(pane, opts)
+      if (history) return history
+    }
     const loc = await locate(pane, Boolean(opts.fresh))
     if (!loc) return { available: false, reason: 'not_found' }
     let st
@@ -1615,7 +1617,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
       const it = items[i]!
       if (it.role === 'assistant' && it.text.trim()) {
         const text = it.text.replace(/```[\s\S]*?```/g, ' ').replace(/[#*_`>|]/g, '').replace(/\s+/g, ' ').trim().slice(0, 180)
-        const key = replyKeys.get(it)
+        const key = replyKeys.get(it) || codexDaemonReplyKey(it)
         if (key) return { key, text }
       }
     }

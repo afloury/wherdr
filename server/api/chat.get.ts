@@ -58,7 +58,7 @@ export default defineApi(async (event) => {
   }
   if (r.queue && r.queue.length) r.queue = withSentText(p.id, r.queue)
   // Current model ("Opus 5.5", "GPT-6-Sol"): cached by file size.
-  const out = r.available && !gone.signal.aborted ? { ...r, model: await currentModel(p).catch(() => null) } : r
+  const out = r.available && !gone.signal.aborted ? { ...r, model: await currentModel(p, r.model).catch(() => r.model ?? null) } : r
   res.off('close', onClose)
   return out
 })

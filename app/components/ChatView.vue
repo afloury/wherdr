@@ -310,7 +310,7 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     savedAt.value = null
     // New session (/clear, new agent), or a bottom read from another byte:
     // we start again from the bottom (utils/chatTail.ts).
-    if (restartsTail(chat.value, r)) {
+    if (r.reload || restartsTail(chat.value, r)) {
       chat.value = fresh()
       synced = false
       return true
@@ -369,6 +369,13 @@ async function loadOlder() {
   try {
     const r = await api<ChatResponse>(chatUrl(new URLSearchParams({ pane, before: String(before) })), undefined, AbortSignal.timeout(CHAT_READ_MS))
     if (pane !== props.pane.id || r.file !== file || chat.value.olderCursor !== before) return
+    if (r.stale) return
+    if (r.reload) {
+      chat.value = fresh()
+      synced = false
+      await loadChat()
+      return
+    }
     const b = box.value
     const fromBottom = b ? b.scrollHeight - b.scrollTop : 0
     await apply(() => {
@@ -376,8 +383,8 @@ async function loadOlder() {
       chat.value = {
         ...chat.value,
         older: (r.items || []).concat(chat.value.older),
-        // no progress: stop there
-        olderCursor: (r.start ?? 0) < before ? (r.start ?? 0) : 0,
+        // Rewritten JSONL may return a later byte offset: stop, as before.
+        olderCursor: (r.cursorKind === 'opaque' ? (r.start ?? 0) !== before : (r.start ?? 0) < before) ? (r.start ?? 0) : 0,
       }
     }, true)
     saveChat(pane, items.value, chat.value.file)

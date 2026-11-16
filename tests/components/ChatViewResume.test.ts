@@ -136,6 +136,81 @@ describe('re-read that keeps the current blocks', () => {
     vi.unstubAllGlobals()
   })
 
+  it('reloads an expired history cursor and can load earlier messages again', async () => {
+    let expired = false
+    reply = q => {
+      if (q.before && !expired) {
+        expired = true
+        return { available: true, file: FILE, reload: true }
+      }
+      if (q.before) return { available: true, file: FILE, older: true, start: 0, items: [{ role: 'user', text: 'The earlier question.', ts: null }] }
+      return { available: true, file: FILE, token: expired ? 'fresh-tail' : 'old-tail', start: expired ? 8 : 10, items: structuredClone(ITEMS) }
+    }
+    const w = await mount()
+    try {
+      const older = () => w.findAll('button').find(b => b.text().includes('Load earlier messages'))!
+      await older().trigger('click')
+      await expect.poll(() => view(w).chat.token).toBe('fresh-tail')
+      expect(asks.some(q => q.before === '10')).toBe(true)
+      await expect.poll(() => older().attributes('disabled')).toBeUndefined()
+      await older().trigger('click')
+      await expect.poll(() => w.find('.chat').text()).toContain('The earlier question.')
+      expect(asks.some(q => q.before === '8')).toBe(true)
+      expect(w.find('.chat').text()).toContain('keeps')
+    } finally { w.unmount() }
+  })
+
+  it('keeps paging when opaque daemon cursor tokens increase', async () => {
+    reply = q => {
+      if (q.before === '1') return { available: true, file: FILE, cursorKind: 'opaque', older: true, start: 2, items: [{ role: 'user', text: 'The middle question.', ts: null }] }
+      if (q.before === '2') return { available: true, file: FILE, cursorKind: 'opaque', older: true, start: 0, items: [{ role: 'user', text: 'The first question.', ts: null }] }
+      return { available: true, file: FILE, token: 'opaque-tail', start: 1, items: structuredClone(ITEMS) }
+    }
+    const w = await mount()
+    try {
+      const older = () => w.findAll('button').find(b => b.text().includes('Load earlier messages'))!
+      await older().trigger('click')
+      await expect.poll(() => w.find('.chat').text()).toContain('The middle question.')
+      expect(older()).toBeDefined()
+      await older().trigger('click')
+      await expect.poll(() => w.find('.chat').text()).toContain('The first question.')
+    } finally { w.unmount() }
+  })
+
+  it('stops JSONL scroll-back when a rewritten file returns a larger byte offset', async () => {
+    reply = q => q.before
+      ? { available: true, file: FILE, older: true, start: 20, items: [{ role: 'user', text: 'A rewritten slice.', ts: null }] }
+      : { available: true, file: FILE, token: 'jsonl-tail', start: 10, items: structuredClone(ITEMS) }
+    const w = await mount()
+    try {
+      const older = () => w.findAll('button').find(b => b.text().includes('Load earlier messages'))
+      await older()!.trigger('click')
+      await expect.poll(() => w.find('.chat').text()).toContain('A rewritten slice.')
+      expect(older()).toBeUndefined()
+      expect(asks.filter(q => q.before)).toHaveLength(1)
+    } finally { w.unmount() }
+  })
+
+  it('retains its older-page cursor when the pinned daemon is temporarily unavailable', async () => {
+    let available = false
+    reply = q => q.before
+      ? available
+        ? { available: true, file: FILE, cursorKind: 'opaque', older: true, start: 0, items: [{ role: 'user', text: 'Recovered history.', ts: null }] }
+        : { available: true, file: FILE, stale: true, unchanged: true }
+      : { available: true, file: FILE, cursorKind: 'opaque', token: 'pinned-tail', start: 10, items: structuredClone(ITEMS) }
+    const w = await mount()
+    try {
+      const older = () => w.findAll('button').find(b => b.text().includes('Load earlier messages'))!
+      await older().trigger('click')
+      await expect.poll(() => older().attributes('disabled')).toBeUndefined()
+      expect(view(w).chat.token).toBe('pinned-tail')
+      available = true
+      await older().trigger('click')
+      await expect.poll(() => w.find('.chat').text()).toContain('Recovered history.')
+      expect(asks.filter(q => q.before).map(q => q.before)).toEqual(['10', '10'])
+    } finally { w.unmount() }
+  })
+
   it('an equal answer keeps tail, items, blocks and nodes, and only the token advances', async () => {
     let token = 'tok-1'
     reply = () => ({ available: true, file: FILE, token, start: 0, items: structuredClone(ITEMS) })
