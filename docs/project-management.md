@@ -1094,6 +1094,13 @@ it follows you across devices like the Board's picker.
 - <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: its [TL;DR](#tldr); then its screenshots large (swipe between them on
   the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop),
   *Full reports in Comments*, then *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
+  Telling the coordinator what to change does the same: it runs
+  `wherdr pm step back <task> "<what to change>" --user-said "<your words>"`
+  (only in a turn that comes from you, never in a wake, and only on a step
+  that waits for you). The step goes back to the worker, the approval drops,
+  the screenshots follow the same rules as *Send back*, and the task leaves
+  Tasks to review at once, back when its next review is done; the log keeps
+  your words.
   With no TL;DR yet, the **Worker's note** (its closing report: what
   was done, why it is done, what was tested) and the **Reviewer's note** (the
   verdict, what it sent back and was fixed during the rounds, what it left as

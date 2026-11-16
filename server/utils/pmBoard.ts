@@ -309,7 +309,8 @@ export async function userShot(store: PmStore, id: unknown, data: Buffer, ctype:
   return { file }
 }
 
-export async function userEvent(store: PmStore, id: unknown, ev: StepEvent, by = 'user') {
+// why: added to the log (the coordinator's step back: the user's words).
+export async function userEvent(store: PmStore, id: unknown, ev: StepEvent, by = 'user', why = '') {
   const task = await store.task(id)
   if (!task) throw new HerdrError('not_found', 'Unknown task')
   const p = (await store.projects()).find(x => x.key === task.project)
@@ -318,7 +319,7 @@ export async function userEvent(store: PmStore, id: unknown, ev: StepEvent, by =
   const r = onEvent(planOf(t, task, p), task.step ?? initialState(), ev, Date.now())
   if (r.refused) throw new HerdrError('refused', r.refused)
   // The step sent back answers a reported problem.
-  return store.logTask({ ...task, step: r.state, ...(ev.kind === 'back' ? { report: undefined } : {}) }, by, r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])).join('; '))
+  return store.logTask({ ...task, step: r.state, ...(ev.kind === 'back' ? { report: undefined } : {}) }, by, [...r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])), ...(why ? [why] : [])].join('; '))
 }
 
 const sameKey = (a: string | undefined, b: unknown) =>
