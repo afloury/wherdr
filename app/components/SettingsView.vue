@@ -304,9 +304,9 @@ async function importFile(e: Event) {
   importError.value = file && file.size > THEME_FILE_MAX ? tl(`The file is larger than ${THEME_FILE_MAX / 1024} KB`) : ''
 }
 function importTheme() {
-  const th = customThemes.value.length >= CUSTOM_THEMES_MAX ? tl(`At most ${CUSTOM_THEMES_MAX} custom themes`) : importThemeText(importText.value)
+  const th = importThemeText(importText.value)
   if (typeof th === 'string') { importError.value = tl(th); return }
-  saveCustomTheme(th)
+  if (!saveCustomTheme(th)) return
   importOpen.value = false
   toast(tl(`Theme ${th.label} imported`))
 }

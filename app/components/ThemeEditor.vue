@@ -47,12 +47,10 @@ function download() {
 }
 function save() {
   if (!draft.value?.label.trim()) return
-  saveCustomTheme({ ...draft.value, label: draft.value.label.trim().slice(0, 40), author: draft.value.author?.trim().slice(0, 60) || undefined })
-  open.value = false
+  if (saveCustomTheme({ ...draft.value, label: draft.value.label.trim().slice(0, 40), author: draft.value.author?.trim().slice(0, 60) || undefined })) open.value = false
 }
 function duplicate() {
-  saveCustomTheme(copy(draft.value!, true))
-  open.value = false
+  if (saveCustomTheme(copy(draft.value!, true))) open.value = false
 }
 async function remove() {
   if (!(await askConfirm(tl(`Delete the theme ${draft.value!.label}?`), tl('Delete')))) return

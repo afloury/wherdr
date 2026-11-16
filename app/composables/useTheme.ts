@@ -5,7 +5,7 @@
 
 import { settingsSync, syncedRef } from './useSyncedSettings'
 import type { ThemeDef } from '~/utils/themes'
-import { readCustomThemes, writeCustomThemes } from '~/utils/customThemes'
+import { CUSTOM_THEMES_MAX, readCustomThemes, writeCustomThemes } from '~/utils/customThemes'
 import { BOOT_THEME_KEY } from '#shared/bootTheme'
 
 export const themeChoice = syncedRef<string>('theme', storedThemeChoice, v => v)
@@ -13,12 +13,18 @@ export const themeMode = syncedRef<ThemeMode>('themeMode', storedThemeMode, v =>
 // The user's own themes (utils/customThemes.ts), synced like the choice.
 export const customThemes = syncedRef<ThemeDef[]>('customThemes', readCustomThemes, writeCustomThemes)
 export const findTheme = (id: string | null | undefined) => themeById(id) || customThemes.value.find(t => t.id === id)
-// Adds or replaces a custom theme (by id) and shows it.
+// Adds or replaces a custom theme (by id) and shows it. A new one past
+// CUSTOM_THEMES_MAX is refused (false): it would be dropped on the next read.
 export function saveCustomTheme(th: ThemeDef) {
   const list = customThemes.value
   const at = list.findIndex(t => t.id === th.id)
+  if (at < 0 && list.length >= CUSTOM_THEMES_MAX) {
+    toast(tl(`At most ${CUSTOM_THEMES_MAX} custom themes: delete one first`), true)
+    return false
+  }
   customThemes.value = at < 0 ? [...list, th] : list.map((t, i) => (i === at ? th : t))
   themeChoice.value = th.id
+  return true
 }
 export function deleteCustomTheme(id: string) {
   customThemes.value = customThemes.value.filter(t => t.id !== id)
