@@ -120,14 +120,21 @@ async function draftAction(deps: CoreDraftDeps, b: Body): Promise<{ ok: true, st
       throw new HerdrError('clear_failed', 'Claude’s input could not be emptied — check the terminal.')
     }
     // Send now: Enter, then the box must empty and a turn start (spinner,
-    // core's working status or a new turn number).
+    // core's working status or a new turn number). Claude may ignore an Enter
+    // for a few seconds (after a long idle, WHR-413): pressed again while the
+    // box still holds that text alone, never on anything else.
     const before = (await turn())?.turn
     await keys(['enter'])
     let emptied = false
     let started = false
-    for (let i = 0; i < 8 && !(emptied && started); i++) {
+    for (let i = 0; i < 12 && !(emptied && started); i++) {
       await sleep(400)
-      if (!emptied) emptied = await field().then(d => !d || !sameText(d.text, draft.text), () => false)
+      if (!emptied) {
+        const d = await field().catch(() => undefined) // undefined: not read
+        const same = Boolean(d && sameText(d.text, draft.text))
+        if (d !== undefined) emptied = !same
+        if (same && i % 3 === 2) await keys(['enter'])
+      }
       const now = await deps.read(p).catch(() => '')
       const t = await turn()
       const state = typeof t?.status === 'string' ? t.status : t?.status?.state
