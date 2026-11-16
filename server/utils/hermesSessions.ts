@@ -115,7 +115,8 @@ export function parseEnviron(raw: string): HermesEnv {
  */
 export const HERMES_ENVIRON_SH = `[ -r /proc/self/environ ] || exit 0
 for p in $(pgrep -P "$1" 2>/dev/null) "$1"; do
-  case "$(cat "/proc/$p/comm" 2>/dev/null)" in node|node.*) ;; *) continue ;; esac
+  # Not /proc/<pid>/comm: Node 24+ names its main thread "MainThread".
+  case "$(basename "$(readlink "/proc/$p/exe" 2>/dev/null)")" in node|node[0-9]*|nodejs) ;; *) continue ;; esac
   e=$(head -c 262144 "/proc/$p/environ" 2>/dev/null | base64 | tr -d '\\n') || continue
   [ -n "$e" ] && printf '%s %s\\n' "$p" "$e"
 done`

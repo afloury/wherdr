@@ -1,5 +1,6 @@
+import { execFileSync, spawn } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
-import { hermesHome, hermesNodeEnviron, hermesToolbarSession, hermesTuiSession, parseEnviron } from '../server/utils/hermesSessions'
+import { HERMES_ENVIRON_SH, hermesHome, hermesNodeEnviron, hermesToolbarSession, hermesTuiSession, parseEnviron } from '../server/utils/hermesSessions'
 
 const H = '/home/user'
 const LOCAL = 'local-' + 'a'.repeat(64)
@@ -88,5 +89,24 @@ describe('environ', () => {
     const two = one + `14 ${b64(`HERMES_TUI_ACTIVE_SESSION_FILE=${FILE}\0`)}\n`
     expect(hermesNodeEnviron(two, 'linux')).toBeNull()
     expect(hermesNodeEnviron('', 'linux')).toBeNull()
+  })
+})
+
+describe.runIf(process.platform === 'linux')('HERMES_ENVIRON_SH', () => {
+  it('finds a real Node child of the launcher (Node 24+ comm is MainThread)', async () => {
+    const node = JSON.stringify(process.execPath)
+    const launcher = spawn('sh', ['-c', `${node} -e "setTimeout(() => {}, 10000)" & wait`], {
+      env: { PATH: process.env.PATH, HERMES_TUI_ACTIVE_SESSION_FILE: FILE }, stdio: 'ignore',
+    })
+    try {
+      let out = ''
+      for (let i = 0; i < 50 && !out; i++) {
+        await new Promise(r => setTimeout(r, 100))
+        out = execFileSync('sh', ['-c', HERMES_ENVIRON_SH, 'sh', String(launcher.pid)], { encoding: 'utf8' })
+      }
+      expect(hermesNodeEnviron(out, 'linux')).toMatchObject({ HERMES_TUI_ACTIVE_SESSION_FILE: FILE })
+    } finally {
+      execFileSync('sh', ['-c', `pkill -P ${launcher.pid}; kill ${launcher.pid}`])
+    }
   })
 })
