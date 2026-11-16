@@ -33,6 +33,8 @@ wherdr 3.1 adds workspaces (one coordinator for several repositories), lets Alfr
 - **Visual tasks.** Screenshots of the result are tied to the task's final commit; a send-back asks the worker to retake only the screens its changes affect.
 - **Step back.** A coordinator's step back sends a task waiting for you back to its worker with your words.
 - **Task base.** With no working branch set, a task starts from, and is compared to, the branch its workflow opens PRs to.
+- **Claude quotas.** Claude Ultra accounts no longer show a 5-hour window, which they do not have; Pro and Max keep it.
+- **Workflow proposals.** A coordinator's workflow proposal no longer opens Settings by itself: accept it from the card in the conversation, or from the proposal row on the project's Workflow tab.
 - **A second v3 install** keeps its own project-management folders, and its uninstall removes them.
 
 ### Fixed
@@ -40,7 +42,8 @@ wherdr 3.1 adds workspaces (one coordinator for several repositories), lets Alfr
 - **Blank home list with the old *Compact list* setting** (reported in [#857](https://github.com/afloury/wherdr/issues/857)). The *Compact list* and *Show terminals* settings are gone, and their stored values are cleared, so every home row shows its default look.
 - **Codex conversations on the shared daemon** (reported in [#810](https://github.com/afloury/wherdr/issues/810)). A local Codex attached to the shared app-server no longer shows *No conversation* on an older thread: wherdr reads that daemon's history page by page. Thanks to [@Ovalene2333](https://github.com/Ovalene2333) for the fix (#813, ported in #864).
 - A remote agent's turn no longer disappears after a very long line, such as a large screenshot.
-- A photo message sent to Claude, while it works or after a long idle, is submitted instead of staying in its input, and is not shown twice.
+- A message with several photos sent to Claude, working or idle, is submitted instead of staying in its input (even while Claude still shows *Pasting…*, and after a wherdr restart mid-send), and is not shown twice.
+- A '!' command run while Claude works runs once and shows once.
 - A run's task badges wrap inside the row, and the conversation never scrolls sideways.
 - A refused remote read keeps herdr-core's reason in the logs, and transcript caches of agents that are gone are dropped.
 - **Search reaches past large transcript records.** A conversation search no longer stops at the first line larger than its read window, such as a screenshot: older messages are searched too. Thanks to [@followcat](https://github.com/followcat) for the fix (#861).
