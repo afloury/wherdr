@@ -3271,8 +3271,8 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 }
 
 /* ================================================================
-   Compact list (Settings › Appearance › Compact list): one line per
-   card, thinner group headers, counters and quotas on a single strip.
+   Home list card: one line per card (a task or an activity line adds
+   a second one).
    ================================================================ */
 .card.compact { flex-wrap: nowrap; align-items: center; gap: 8px; min-height: 30px; padding: 4px 10px 4px 12px; }
 .card.compact .avatar { width: 18px; height: 18px; font-size: 9px; }
@@ -3320,30 +3320,6 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 @media (prefers-reduced-motion: reduce) {
   .card.compact .card-more.card-more-enter-active, .card.compact .card-more.card-more-leave-active { transition: none; }
 }
-
-.list-compact .agent-group { margin-bottom: 14px; }
-.list-compact .group-title { margin-bottom: 6px; font-size: 9.5px; }
-
-/* Counters on one strip: "3 YOUR TURN" per cell. */
-.list-compact .stats { margin-bottom: 12px; }
-.list-compact .stat { display: flex; align-items: center; gap: 7px; padding: 6px 9px; }
-.list-compact .stat b { display: inline; font-size: 15px; }
-.list-compact .stat span { margin-top: 0; font-size: 8.5px; letter-spacing: .1em; }
-/* Quotas: numbers and bars only (reset time and footnote in the normal list). */
-.list-compact .quotas { margin-bottom: 12px; }
-.list-compact .quotas.after-stats { margin-top: -4px; }
-.list-compact .quota-row { grid-template-columns: 34px 1fr 1fr; }
-.list-compact .quota-who .avatar { width: 20px; height: 20px; }
-.list-compact .quota-who .avatar .iconify { width: 13px; height: 13px; }
-.list-compact .quota-who small { display: none; }
-.list-compact .quota-who { gap: 2px; }
-.list-compact .quota { display: block; padding: 5px 9px 5px; }
-.list-compact .quota-top { justify-content: space-between; gap: 8px; }
-.list-compact .quota-label { letter-spacing: .14em; }
-.list-compact .quota-top b { font-size: 14px; letter-spacing: -.04em; }
-.list-compact .quota-top b small { font-size: 11px; }
-.list-compact .quota-bar { height: 3px; margin: 4px 0 0; }
-.list-compact .quota-reset { display: none; }
 
 /* Touch tablet (iPad, shortest side ≥ 700 px, also by its screen while the
    on-screen keyboard shortens the window): 44 px targets, like on the

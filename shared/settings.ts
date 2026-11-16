@@ -13,10 +13,10 @@ export const SYNCED_SETTINGS = [
   'machineBar', 'machineBarOrder', 'machineBarHidden', 'machineGroups',
   // Which home tab shows each project (see readProjectTabs)
   'projectTabs',
-  // Home list (compactListV2: 2.0's key, see app/utils/compactCard.ts; the
-  // 1.x `compactList` is no longer read)
-  'compactListV2', 'homeGrouping', 'individualAgentList', 'collapsedMachines', 'collapsedRepos',
-  'showShells', 'showCounters', 'showQuotas', 'quotaDisplay',
+  // Home list (the removed compactList, compactListV2 and showShells are
+  // no longer read)
+  'homeGrouping', 'individualAgentList', 'collapsedMachines', 'collapsedRepos',
+  'showCounters', 'showQuotas', 'quotaDisplay',
   'autoReorderReady', 'readySort', 'hiddenAgents', 'agentOrder',
   // Coordinators section: their order and Hidden group (shared/pm/coordinatorOrder.ts)
   'coordinatorOrder', 'coordinatorsHidden',
