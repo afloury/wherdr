@@ -458,6 +458,8 @@ body.short-bottom { --safe-bottom: 0px; }
    time under them. On a very narrow sidebar the bar wraps to its own line. */
 .quota { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; padding: 4px 8px 4px; min-width: 0; }
 .quota + .quota { border-left: 1px solid var(--line); }
+/* Only one window (Claude Ultra, Codex Plus: no 5 h): one bar across the row. */
+.quota.quota-wide { grid-column: span 2; }
 .quota-top { flex: none; display: flex; align-items: baseline; gap: 6px; }
 .quota-label { flex: none; font: 500 9.5px/1.2 var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
 .quota-top b { flex: none; font: 850 13px/1 var(--display); letter-spacing: -.02em; color: var(--text); }
