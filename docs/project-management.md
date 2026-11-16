@@ -390,8 +390,11 @@ its action), and its Log says so.
 
 When the project's coordinator proposes a change to the workflow (only after
 your request), a square marks the project's row (*1 to review*) and the
-**Workflow** tab, whose first row, *Change proposed by the coordinator*, opens
-the review: the change in one line, who proposed it (the project's coordinator,
+**Workflow** tab, whose first row, *Change proposed by the coordinator*, has
+*Refuse* and *Accept*, as its card in the chat, and *See all changes*, which opens
+the review. A proposal never opens Settings by itself: you accept or refuse it
+from the card in the coordinator's reply, and the coordinator opens the Workflow
+tab only when you ask to see the current workflow. The review shows the change in one line, who proposed it (the project's coordinator,
 with the project's colored key, or Alfred), your request that led to it, in
 full (*Show all* unfolds a long one) with its time, then the change, *Refuse*
 or *Accept*. The review opens on *Diagram*: the proposed workflow drawn as in

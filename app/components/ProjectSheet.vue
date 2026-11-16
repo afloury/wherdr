@@ -11,7 +11,8 @@
 // coordinator window (both read the shared coordinators, so a save in one
 // shows in the other), and a link to the pace of every account. A
 // coordinator's proposed workflow change: a badge on Workflow, its first row
-// there opens the review (ProposalReview), at once when the URL asks (`review=1`).
+// there with Accept / Refuse (as the chat's card) and See all changes, the
+// review (ProposalReview), opened at once when the URL asks (`review=1`).
 // Workflow and Autopilot start with their name, what each is and a link to the
 // other (PartHead).
 import type { Project, TemplateInfo } from '#shared/pm/project'
@@ -191,6 +192,8 @@ watch(() => `${props.tab}|${route.query.target}|${!!sheet.value}`, async () => {
 }, { immediate: true })
 onBeforeUnmount(() => endHalo())
 const reviewed = (accepted: boolean) => { if (accepted) workflowChanged() }
+// Accept / Refuse on the Workflow tab's proposal row, as on its card in the chat.
+const { busy: answerBusy, error: answerError, answer } = useProposalAnswer(() => p.value.key, reviewed)
 const menu = (): MenuItem[] => [
   ...(props.tab === 'workflow' && workflowTab.value ? [...workflowTab.value.menu(), { kind: 'separator' as const }] : []),
   { label: tl(`Remove ${p.value.name}`), icon: 'i-lucide-trash-2', danger: true, run: remove },
@@ -389,12 +392,19 @@ async function remove() {
         <template v-if="tab === 'workflow'">
           <PartHead part="workflow" :project="p.key" class="pm-part" />
         </template>
-        <button v-if="tab === 'workflow' && coordinator?.proposal" type="button" class="settings-card pm-proposal" data-testid="workflow-proposal" @click="reviewOpen = true">
-          <span class="card-state blocked" aria-hidden="true"><i /></span>
-          <span class="pm-proposal-text">{{ tl('Change proposed by the coordinator') }}</span>
-          <span class="mono-label">{{ tl('Review') }}</span>
-          <UIcon name="i-lucide-chevron-right" />
-        </button>
+        <div v-if="tab === 'workflow' && coordinator?.proposal" class="settings-card pm-proposal" data-testid="workflow-proposal">
+          <span class="pm-proposal-head">
+            <span class="card-state blocked" aria-hidden="true"><i /></span>
+            <span class="pm-proposal-text">{{ tl('Change proposed by the coordinator') }}</span>
+          </span>
+          <span class="pm-proposal-actions">
+            <UButton color="neutral" variant="ghost" size="lg" data-testid="workflow-proposal-review" @click="reviewOpen = true">{{ tl('See all changes') }}</UButton>
+            <span class="pm-proposal-gap" />
+            <UButton color="neutral" variant="outline" size="lg" :loading="answerBusy === 'refuse'" :disabled="answerBusy !== ''" data-testid="workflow-proposal-refuse" @click="answer(false)">{{ tl('Refuse') }}</UButton>
+            <UButton color="primary" size="lg" :loading="answerBusy === 'accept'" :disabled="answerBusy !== ''" data-testid="workflow-proposal-accept" @click="answer(true)">{{ tl('Accept') }}</UButton>
+          </span>
+          <p v-if="answerError" class="form-error" role="alert">{{ t(answerError) }}</p>
+        </div>
         <p v-if="(tab === 'workflow' || tab === 'guards') && loaded && inherited" class="muted settings-hint" data-testid="pm-inherited">{{ tl(`Runs the workflow of workspace ${inherited}, whose guards apply too. A change saved here gives this project its own.`) }}</p>
         <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" data-ui-target="project.workflow" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
         <template v-else-if="tab === 'guards' && loaded">
@@ -450,7 +460,11 @@ async function remove() {
 .pm-agent .field-label { margin-bottom: 0; }
 .pm-part { margin-bottom: 12px; }
 .project-tab-badge { margin-left: 6px; }
-.pm-proposal { display: flex; align-items: center; gap: 10px; width: 100%; margin-bottom: 12px; padding: 12px 16px; text-align: left; color: var(--blocked); }
+.pm-proposal { display: grid; gap: 8px; width: 100%; margin-bottom: 12px; padding: 12px 16px; }
+.pm-proposal-head { display: flex; align-items: center; gap: 10px; color: var(--blocked); }
 .pm-proposal-text { flex: 1; min-width: 0; color: var(--text); }
+.pm-proposal-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.pm-proposal-gap { flex: 1 1 0; }
+@media (max-width: 599px) { .pm-proposal-actions > :not(.pm-proposal-gap) { flex: 1 1 auto; } .pm-proposal-gap { display: none; } }
 .pm-vis { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 </style>
