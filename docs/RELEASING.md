@@ -62,7 +62,7 @@ The plan: `v3` and `main` stay as they are until v2's last release has reached i
      `herdr-plugin.toml` and `tests/herdrPlugin.test.ts`: `blob/v3` to `blob/main`;
    - `grep -rnE -- '-b v3|origin/v3|branch=v3|blob/main|blob/v3' README.md docs scripts .github website/public/install herdr-plugin.toml tests/herdrPlugin.test.ts`
      must then list nothing left to move.
-8. The site: wherdr.dev stays v2's as it is, because v3's `site.yml` runs by hand only, so
+8. The site: wherdr.dev stays v2's as it is, because v3's `site.yml` deploys only when run by hand, so
    merging v3 into `main` deploys nothing (to redeploy v2's site, run `site.yml` on `2.x`).
    On v3, `website/public/install` and the Herdr plugin (`herdr-plugin.toml`) only print
    how to install v3 beside v2: a failed plugin build

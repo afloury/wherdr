@@ -93,6 +93,19 @@ describe('message left in Claude\'s input field', () => {
     expect(inputShown(list, 'something else')).toBe(false)
   })
 
+  it('a photo Claude left in its field as a path, not "[Image #N]": still one bubble', () => {
+    const core = '/home/user/.local/state/herdr-core/default/files/t1/2026-11-15T15-00-18-537Z-deeecd.jpg'
+    const msg = { ...sent, text: `what changed?\n${core}` }
+    for (const field of [`what changed? ${core}`, 'what changed? ~/.local/state/herdr-core/default/files/t1/2026-11-15T15-00-18-537Z-deeecd.jpg', `${PHOTO} what is wrong here?`]) {
+      const one = field.startsWith(PHOTO) ? sent : msg
+      const list = pendingQueue({ mine: [one], claude: [], items: [], screen: null, idle: true, input: field })
+      expect(list.map(q => [q.phase, q.inInput])).toEqual([['queued', true]])
+      expect(inputShown(list, field)).toBe(true)
+    }
+    // Another photo's path with other text: not ours.
+    expect(fieldHolds(`something else ${PHOTO}`, MSG, true, true)).toBe(false)
+  })
+
   it('a long multi-line message Claude shows as "[Pasted text #N +K lines]": waiting there too', () => {
     const long = `${PHOTO}\n${Array.from({ length: 30 }, (_, i) => `line ${i}`).join('\n')}`
     const field = '[Image #3] [Pasted text #1 +29 lines]'
