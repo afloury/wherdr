@@ -1020,9 +1020,11 @@ body.short-bottom { --safe-bottom: 0px; }
    Conversation (UChatMessages, UChatMessage, UChatTool, UChatShimmer)
    ================================================================ */
 .chat-wrap { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.chat { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.chat { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
 .chat-msgs { padding: 0; gap: 0; min-height: 100%; }
-.chat-list { padding: 18px 16px 8px; display: flex; flex-direction: column; gap: 14px; }
+.chat-list { padding: 18px 16px 8px; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+/* Never wider than its column: a row that cannot shrink must not make the whole conversation scroll sideways (code blocks and tables keep their own scroll). */
+.chat-msgs, .chat-list > * { min-width: 0; max-width: 100%; }
 .chat-note {
   align-self: center; font: 500 10.5px/1 var(--mono); letter-spacing: .16em; text-transform: uppercase; color: var(--dim);
   padding: 6px 0;
@@ -3031,7 +3033,10 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .wake-run .wake-time { margin-left: auto; }
 .wake-run.ask { padding-left: 8px; border-left: 2px solid var(--accent); color: var(--text-2); }
 .wake-toggle { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; text-align: left; cursor: pointer; }
-.wake-part { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+/* A part's task badges wrap under it instead of widening the row (10+ merged tasks on a phone). */
+.wake-part { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; max-width: 100%; }
+.wake-count { white-space: nowrap; }
+.wake-chips { display: flex; flex-wrap: wrap; gap: 4px; flex: 0 1 auto; min-width: 0; max-width: 60%; }
 .wake-icon { flex: none; width: 13px; height: 13px; }
 [data-tone="done"] > .wake-icon, .wake-icon[data-tone="done"] { color: var(--done); }
 [data-tone="ready"] > .wake-icon, .wake-icon[data-tone="ready"], [data-tone="question"] > .wake-icon, .wake-icon[data-tone="question"] { color: var(--accent); }
