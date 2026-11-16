@@ -31,6 +31,7 @@ export interface Card {
   title: string
   description: string
   specNotes?: SpecNote[] // spec changes after the description, newest last
+  wsFiles?: string[] // the workspace instructions files its agents got last (names only)
   column: string // the step's column in its project's view
   phase: Phase // the column in the all-projects view
   step?: string // the current step's id, once started
@@ -125,6 +126,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
   return {
     id: task.id, shown: task.id, project: task.project, title: task.title, description: task.description,
     ...(task.specNotes?.length ? { specNotes: task.specNotes } : {}),
+    ...(task.wsFiles?.names.length ? { wsFiles: task.wsFiles.names } : {}),
     column: plan.length ? columnOf((s?.done ? plan.at(-1) : step) ?? plan[0]!) : 'To do',
     phase: s?.done ? 'done' : started || running ? 'working' : 'todo',
     ...(step ? { step: step.id } : {}),
