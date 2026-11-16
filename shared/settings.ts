@@ -32,6 +32,8 @@ export const SYNCED_SETTINGS = [
   'wherdr.files.hidden', 'wherdr.files.md',
   // Security: files shown from conversations (shared/chatFiles.ts), read by the server
   'chatFilesLevel', 'chatFilesProtected',
+  // Keyboard shortcuts changed by the user (app/utils/shortcuts.ts)
+  'shortcutBindings',
 ] as const
 
 export type SyncedSetting = typeof SYNCED_SETTINGS[number]

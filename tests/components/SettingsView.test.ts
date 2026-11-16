@@ -7,6 +7,7 @@ import { useRouter } from '#app'
 import SettingsView from '~/components/SettingsView.vue'
 import ShortcutsSheet from '~/components/ShortcutsSheet.vue'
 import ShortcutsReference from '~/components/ShortcutsReference.vue'
+import { shortcutBindings, shortcutKbds } from '~/composables/useShortcuts'
 import { coarse, defaultViewMode, desk, encryptedText, reducedMotion, sidePanelRoom, smoothTouchScrolling, typewriterSpeed } from '~/composables/useHerdr'
 
 const global = { stubs: { UTooltip: { template: '<span><slot /></span>' } } }
@@ -73,9 +74,38 @@ it('shows the same reference component in Settings and the shortcut sheet', asyn
   const sheet = await mountSuspended(ShortcutsSheet, { global: { stubs: { AppSheet: { template: '<div><slot /></div>' } } } })
   try {
     expect(w.getComponent(ShortcutsReference).isVisible()).toBe(true)
-    expect(w.getComponent(ShortcutsReference).findAll('.shortcut-row')).toHaveLength(18)
+    expect(w.getComponent(ShortcutsReference).findAll('.shortcut-row')).toHaveLength(19)
     expect(sheet.findComponent(ShortcutsReference).exists()).toBe(true)
   } finally { w.unmount(); sheet.unmount() }
+})
+
+it('Shortcuts: Change records new keys, refuses a conflict, Reset and Reset all go back', async () => {
+  desk.value = true
+  coarse.value = false
+  shortcutBindings.value = {}
+  const w = await mountSuspended(SettingsView, { route: '/settings?section=shortcuts', global })
+  const row = (label: string) => w.findAll('.shortcut-row').find(r => r.text().startsWith(label))!
+  const button = (label: string, text: string) => row(label).findAll('button').find(b => b.text() === text)
+  const mod = /Macintosh|Mac OS X|iPhone|iPad/.test(navigator.userAgent) ? 'metaKey' : 'ctrlKey'
+  const press = (init: KeyboardEventInit) => window.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }))
+  try {
+    expect(row('Stop the agent').text()).toContain('Reserved')
+    expect(button('Stop the agent', 'Change')).toBeUndefined()
+    await button('Notes', 'Change')!.trigger('click')
+    press({ key: 'f', code: 'KeyF', [mod]: true })
+    await nextTick()
+    expect(row('Notes').text()).toContain('Already used by “Search this conversation”')
+    press({ key: 'j', code: 'KeyJ', [mod]: true, altKey: true })
+    await nextTick()
+    expect(shortcutKbds('notes')).toEqual(['meta', 'alt', 'J'])
+    expect(row('Notes').text()).toContain('Default:')
+    await button('Notes', 'Reset')!.trigger('click')
+    expect(shortcutKbds('notes')).toEqual(['meta', 'alt', 'P'])
+    shortcutBindings.value = { settings: { mods: ['alt'], key: 'k' } }
+    await nextTick()
+    await w.findAll('button').find(b => b.text() === 'Reset all')!.trigger('click')
+    expect(shortcutBindings.value).toEqual({})
+  } finally { w.unmount(); shortcutBindings.value = {} }
 })
 
 it('Terminal: smooth touch scrolling defaults to off and the switch persists across remounts', async () => {
