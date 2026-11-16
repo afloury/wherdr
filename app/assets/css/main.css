@@ -2377,6 +2377,11 @@ body.kb .composer { padding-bottom: 8px; }
 /* A custom theme: the radio and its Edit button side by side. */
 .theme-custom { display: flex; align-items: center; min-width: 0; border-top: 1px solid var(--line-soft); }
 .theme-custom .theme-opt { flex: 1; min-width: 0; border-top: 0; }
+/* Its name (and the current theme's) takes the room left and ends with an ellipsis,
+   never under the Edit button or the chevron; the full name is in its title. */
+.theme-label { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The Edit button: a 44 px target, its pencil where the other rows' check mark sits. */
+.theme-custom .icon-btn { width: 44px; height: 44px; margin-right: 1px; }
 .theme-grid .theme-custom:first-child { border-top: 0; }
 .theme-tools { display: flex; flex-wrap: wrap; gap: 8px; }
 @media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) { .theme-grid { grid-template-columns: 1fr 1fr; } .theme-grid > :nth-child(2) { border-top: 0; } .theme-grid > :nth-child(even) { border-left: 1px solid var(--line-soft); } }
