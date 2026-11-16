@@ -49,9 +49,9 @@ describe('parseAlfredCommand', () => {
     expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'codex'])).toEqual({ name: 'coordinator start', apply: false, key: 'WEB', program: 'codex' })
     expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--resume', '--apply'])).toEqual({ name: 'coordinator start', apply: true, key: 'WEB', resume: true })
     expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--resume', '--program', 'codex'])).toEqual({ error: expect.stringContaining('no --program') })
-    expect(parseAlfredCommand(['setting', 'set', 'theme', 'catppuccin-latte', '--propose'])).toEqual({ name: 'setting set', propose: true, key: 'theme', value: 'catppuccin-latte' })
+    expect(parseAlfredCommand(['setting', 'set', 'theme', 'gruvbox', '--propose'])).toEqual({ name: 'setting set', propose: true, key: 'theme', value: 'gruvbox' })
     // Alfred never applies a setting itself.
-    expect(parseAlfredCommand(['setting', 'set', 'theme', 'nord', '--apply'])).toEqual({ error: expect.stringContaining('--propose puts a card the user applies') })
+    expect(parseAlfredCommand(['setting', 'set', 'theme', 'vesper', '--apply'])).toEqual({ error: expect.stringContaining('--propose puts a card the user applies') })
     expect(parseAlfredCommand(['projects', '--propose'])).toEqual({ error: expect.stringContaining('--propose is for setting set and the changes') })
     expect(parseAlfredCommand(['project', 'template', 'WEB', 'common', '--propose'])).toEqual({ name: 'project template', apply: false, propose: true, key: 'WEB', template: 'common' })
     expect(parseAlfredCommand(['project', 'template', 'WEB', 'common', '--propose', '--apply'])).toEqual({ error: '--propose or --apply, not both' })
@@ -67,7 +67,7 @@ describe('parseAlfredCommand', () => {
     expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'omp'])).toEqual({ error: '--program is claude or codex' })
     expect(parseAlfredCommand(['setting', 'set', 'password', 'x'])).toMatchObject({ error: /^password is not a setting Alfred changes/ })
     // Only a value the app reads: no theme "light", no list setting.
-    expect(parseAlfredCommand(['setting', 'set', 'theme', 'light'])).toMatchObject({ error: /^light is not a value of theme: one of herdr, claude-code/ })
+    expect(parseAlfredCommand(['setting', 'set', 'theme', 'light'])).toMatchObject({ error: /^light is not a value of theme: one of wherdr-titanium, wherdr-neon/ })
     expect(parseAlfredCommand(['setting', 'set', 'showQuotas', 'yes'])).toEqual({ error: 'yes is not a value of showQuotas: one of 1, 0' })
     expect(parseAlfredCommand(['setting', 'set', 'hiddenAgents', '[]'])).toMatchObject({ error: /^hiddenAgents is not a setting Alfred changes/ })
     expect(parseAlfredCommand(['project', 'remove', 'WEB'])).toMatchObject({ error: /^unknown command: project remove WEB/ })
@@ -308,7 +308,7 @@ describe('runAlfredCommand', () => {
     expect(await act(card.id)).toMatchObject({ state: 'done', outcome: { text: 'Applied by you' } })
     expect(await run('settings')).toMatchObject({ settings: { typewriterSpeed: 'slow' } })
     // A second proposal over the old value goes stale once the setting moved; a cancelled one runs nothing.
-    await run('setting', 'set', 'theme', 'nord', '--propose')
+    await run('setting', 'set', 'theme', 'vesper', '--propose')
     const theme = (await store.coordinator(MAIN))!.cards![0]!.id
     expect(await act(theme, true)).toMatchObject({ state: 'dismissed' })
     expect(await act(theme)).toMatchObject({ state: 'dismissed' })
