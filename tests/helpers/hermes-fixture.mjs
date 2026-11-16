@@ -11,7 +11,8 @@ import { DatabaseSync } from 'node:sqlite'
 //   local-chat --compression--> seg-2 --/reset--> seg-3   (receipt in state_meta)
 // It holds a rewind, a model_only summary, "\x00json:" multimodal content, a tool
 // call and its result, and a reasoning-only answer. `legacy: true` writes an old
-// schema (v30) without message_uid and without the state_meta receipt.
+// schema (v30) without message_uid and without the state_meta receipt (then
+// only compression links segments: seg-3 stands alone).
 const J = '\x00json:'
 const T0 = 1767268800 // 2026-01-01T12:00:00Z
 

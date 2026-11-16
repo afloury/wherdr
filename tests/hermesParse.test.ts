@@ -9,14 +9,14 @@ const dirs: string[] = []
 afterAll(() => { for (const d of dirs) fs.rmSync(d, { recursive: true, force: true }) })
 
 // What the reader will do: open read-only, follow the lineage, select by name.
-function read(legacy = false) {
+function read(legacy = false, from?: string) {
   const fx = writeHermesFixture({ legacy })
   dirs.push(fx.dir)
   const db = new DatabaseSync(fx.file, { readOnly: true })
   try {
     const sessions = db.prepare('SELECT * FROM sessions').all() as unknown as HermesSession[]
     const receipt = (db.prepare('SELECT value FROM state_meta WHERE key = ?').get(HERMES_POLICY_PREFIX + fx.id) as { value?: string } | undefined)?.value
-    const lineage = hermesLineage(fx.current, sessions, receipt)
+    const lineage = hermesLineage(from || fx.current, sessions, receipt)
     const rows = db.prepare(`SELECT * FROM messages WHERE session_id IN (${lineage.map(() => '?').join(',')})`).all(...lineage) as unknown as HermesMessage[]
     return { fx, lineage, items: parseHermes(hermesVisible(rows), sessions) }
   } finally { db.close() }
@@ -45,11 +45,13 @@ describe('hermesParse', () => {
     expect(items[1]).toMatchObject({ name: 'terminal', ts: '2026-01-01T12:00:01.000Z' })
   })
 
-  it('reads an old schema without message_uid or receipt, deduplicating by id only', () => {
-    const { lineage, items } = read(true)
-    expect(lineage).toEqual(['local-chat', 'seg-2', 'seg-3'])
+  it('reads an old schema without message_uid or receipt: compression only, deduplicating by id', () => {
+    // No receipt: a /reset child is its own conversation.
+    expect(read(true).lineage).toEqual(['seg-3'])
+    const { lineage, items } = read(true, 'seg-2')
+    expect(lineage).toEqual(['local-chat', 'seg-2'])
     expect(brief(items).filter(i => i[0] === 'assistant')).toEqual([
-      ['assistant', 'Two files.'], ['assistant', 'Two files: a and b.'], ['assistant', 'Hello again.'],
+      ['assistant', 'Two files.'], ['assistant', 'Two files: a and b.'],
     ])
   })
 

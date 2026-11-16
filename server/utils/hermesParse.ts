@@ -46,7 +46,9 @@ function parseJson(s: unknown): unknown {
 
 // Segments of one conversation, oldest first. `receipt` is the state_meta value
 // under HERMES_POLICY_PREFIX + id, when there is one; otherwise follow
-// parent_session_id up while the parent ended by compression or /reset.
+// parent_session_id up while the parent ended by compression. Only the receipt
+// crosses a /reset: without it, a reset child is its own conversation, as in
+// Hermes' session picker.
 export function hermesLineage(id: string, sessions: HermesSession[], receipt?: string | null): string[] {
   const r = parseJson(receipt) as Json | null
   const known = new Set(sessions.map(s => s.id))
@@ -59,7 +61,7 @@ export function hermesLineage(id: string, sessions: HermesSession[], receipt?: s
   while (cur && !chain.includes(cur.id)) {
     chain.unshift(cur.id)
     const parent = cur.parent_session_id ? byId.get(cur.parent_session_id) : undefined
-    cur = parent && (parent.end_reason === 'compression' || parent.end_reason === 'session_reset') ? parent : undefined
+    cur = parent?.end_reason === 'compression' ? parent : undefined
   }
   return chain
 }
