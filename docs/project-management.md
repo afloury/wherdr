@@ -867,7 +867,9 @@ action), standard otherwise. The coordinator does the same with `task add
 
 A done task leaves the board some time after it is done: 7 days by default, set
 per project in [General](#general). The engine checks at start and every 6 hours
-and writes *archived after 7 days done* in the task's log. An archived task keeps
+and writes *archived after 7 days done* in the task's log. A sub-task of a
+[feature](workspaces.md#features-on-the-board) stays until its feature is closed, so the
+feature's card keeps counting it. An archived task keeps
 everything: its description, history, log, PR link, number and `wherdr pm show`;
 its branch and PR are left alone. The Done column shows only done tasks not
 archived, newest done first; at its bottom, a muted line, **142 archived · show**, opens the list

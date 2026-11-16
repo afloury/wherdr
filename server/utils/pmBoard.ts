@@ -104,10 +104,13 @@ export async function unarchiveTask(store: PmStore, id: unknown) {
 }
 
 // The engine's pass: archives each done task past its project's delay, once at
-// start (older done tasks too) then with the other periodic sweeps.
+// start (older done tasks too) then with the other periodic sweeps. A feature's
+// sub-task waits for its feature to be closed: its card counts it (featureCard.ts).
 export async function archiveDone(store: Pick<PmStore, 'projects' | 'tasks' | 'logTask'>, now = Date.now()) {
-  const projects = await store.projects()
-  for (const t of await store.tasks()) {
+  const projects = await store.projects(), tasks = await store.tasks()
+  const open = new Set(tasks.filter(t => t.kind === 'feature' && !t.closed).map(t => t.id))
+  for (const t of tasks) {
+    if (t.feature && open.has(t.feature)) continue
     const days = archiveDays(projects.find(p => p.key === t.project))
     if (archiveDue(t, days, now)) await store.logTask({ ...t, archived: now }, 'engine', archivedText(days))
   }

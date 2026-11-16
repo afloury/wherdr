@@ -175,7 +175,8 @@ the feature's.
 
 The card sits in the column of the feature's state: *To do*, *Working*, *Done*
 once closed, and **Your turn** while a sub-task waits for you, with that
-sub-task's badge (*WEB-1: Merge the PR*).
+sub-task's badge (*WEB-1: Merge the PR*). A merged sub-task is not archived
+while its feature is open, so the card keeps counting it.
 
 Pick the workspace in the board's project picker to see the features and the
 tasks of all its members together. Its sub-tasks then fold into their feature's
