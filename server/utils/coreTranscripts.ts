@@ -18,7 +18,7 @@ export interface CoreTranscriptDeps {
   codexHistory?: CodexHistory
 }
 
-interface CoreProcess { pid?: number, name?: string, argv?: string[], cwd?: string, startedAt?: number, argvExact?: boolean }
+interface CoreProcess { pid?: number, name?: string, argv?: string[], cwd?: string, startedAt?: number, argvExact?: boolean, childPids?: number[] }
 interface CoreDetail { pid?: number, argv?: string[], created_ms?: number, foreground?: CoreProcess | null }
 
 // The machine part of a core address (`mac/t7` -> `mac`; local ones have none).
@@ -96,12 +96,23 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
     const d = await detail(address)
     const info = processInfo(d)
     const procs = info.process_info.foreground_processes
+    // One process table per lookup, read only when something needs it.
+    let table: Promise<string> | null = null
+    const psTable = () => table ??= deps.call<{ stdout?: string }>('machine.exec', {
+      argv: ['ps', '-e', '-o', 'pid=,ppid=,args='], ...(machineOfAddress(address) ? { on: machineOfAddress(address) } : {}), timeout: 5,
+    }, 8000).catch(() => null).then(ps => Buffer.from(ps?.stdout || '', 'base64').toString('utf8'))
     if (!procs.some(p => AGENT_PROGRAMS.has(baseName(p.argv?.[0] || p.name))) && typeof d.pid === 'number') {
-      const on = machineOfAddress(address)
-      const ps = await deps.call<{ stdout?: string }>('machine.exec', { argv: ['ps', '-e', '-o', 'pid=,ppid=,args='], ...(on ? { on } : {}), timeout: 5 }, 8000).catch(() => null)
-      procs.unshift(...agentDescendants(Buffer.from(ps?.stdout || '', 'base64').toString('utf8'), d.pid))
+      procs.unshift(...agentDescendants(await psTable(), d.pid))
     }
-    const devin = procs.filter(p => [baseName(p.name), ...(p.argv?.slice(0, 2).map(baseName) || [])].includes('devin') && Number.isSafeInteger(p.pid) && p.pid! > 0)
+    const isDevin = (p: CoreProcess) => [baseName(p.name), ...(p.argv?.slice(0, 2).map(baseName) || [])].includes('devin')
+    const devin = procs.filter(p => isDevin(p) && Number.isSafeInteger(p.pid) && p.pid! > 0)
+    // Devin 3000.12 runs a launcher (the foreground) and its engine `devin acp`
+    // as a child; the session lock names the engine, so a launcher carries the
+    // PIDs of the Devin processes under it.
+    for (const p of devin) {
+      const kids = agentDescendants(await psTable(), p.pid!).filter(isDevin).map(k => k.pid!)
+      if (kids.length) p.childPids = kids
+    }
     if (devin.length) {
       // Exact argv and a conservative birth bound, read together on the agent's machine.
       const on = machineOfAddress(address)
