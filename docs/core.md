@@ -87,6 +87,18 @@ machine. A terminal that is not an agent shows only its terminal. Claude Code mu
 saving transcripts: a core started from inside a Claude Code session inherits
 `CLAUDE_CODE_CHILD_SESSION`, which turns saving off; start core from a plain shell.
 
+A local Codex attached to the shared app-server (`~/.codex/app-server-control/`) is read
+from that daemon's paginated history first, so an older thread selected there shows its
+whole conversation. wherdr only reads (`thread/list`, `thread/read`, `thread/items/list`):
+it never starts the daemon, resumes a thread or types in the terminal. The terminal title
+must match exactly one thread name in the same folder; repeated names are not guessed. A
+missing or ambiguous match, another folder, or a failed first read falls back to the
+rollout lookup above. Once a terminal has read a daemon thread, a failed read keeps that
+thread and its last known messages until the daemon recovers or the conversation changes.
+Each read has 1.5 s, a whole request 3 s, and a refused connection is retried after 5 s.
+An expired paging cursor reloads the conversation's end. Daemon image attachments are not
+shown yet; remote machines keep the rollout reader.
+
 Devin CLI (tested with 3000.11.234) is read through its saved ATIF-v1.7 files at
 `~/.local/share/devin/cli/transcripts/<session>.json` (24 MiB maximum, transferred
 in chunks of at most 4 MiB so remote replies stay below core's transport limit). The reader

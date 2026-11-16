@@ -7,12 +7,15 @@ import { createTranscripts, type TranscriptPane, type Transcripts } from './tran
 import { CoreError } from './core'
 import type { Pane } from '../../shared/types'
 import { DEVIN_PROCESS_SCRIPT, devinProcesses } from './devinProcesses'
+import type { CodexHistory } from './codexDaemon'
 
 type Call = <T>(method: string, params: object, timeout: number) => Promise<T>
 export interface CoreTranscriptDeps {
   call: Call
   pane: (id: string) => Pane | undefined
   localHome: string
+  // This machine's shared Codex app-server (codexDaemon.ts): paginated history read first.
+  codexHistory?: CodexHistory
 }
 
 interface CoreProcess { pid?: number, name?: string, argv?: string[], cwd?: string, startedAt?: number, argvExact?: boolean }
@@ -117,7 +120,7 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
     let t = machines.get(name)
     if (!t) {
       t = (async () => {
-        if (!name) return createTranscripts({ home: deps.localHome, herdr, fs: localFs })
+        if (!name) return createTranscripts({ home: deps.localHome, herdr, fs: localFs, codexHistory: deps.codexHistory })
         const shell = coreShell(deps.call, name)
         const home = (await shell('printf %s "$HOME"')).stdout.toString('utf8').trim()
         if (!home.startsWith('/')) throw new CoreError('unreachable', 'machine home unknown')
