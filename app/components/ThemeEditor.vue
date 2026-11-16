@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Custom theme editor (Settings › Appearance): start from any theme, change
 // its colors for Dark and Light with a live preview and the WCAG AA contrast
-// check (ThemeSample); a custom theme is also duplicated, exported or deleted here.
+// check (ThemeSample: the whole app in miniature); a custom theme is also duplicated, exported or deleted here.
 import type { ThemeColors, ThemeDef } from '~/utils/themes'
 import { newCustomId, themeFile } from '~/utils/customThemes'
 
@@ -85,7 +85,7 @@ async function remove() {
             </div>
           </template>
         </div>
-        <ThemeSample :variant="variant" />
+        <ThemeSample :variant="variant" full />
       </div>
     </div>
     <template #footer>

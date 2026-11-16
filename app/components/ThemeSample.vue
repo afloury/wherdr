@@ -1,15 +1,17 @@
 <script setup lang="ts">
-// A theme's palette at work (a few rows, a message, a button) and its WCAG AA
-// contrast check: the theme editor's preview, and a proposed theme's card.
+// A theme's palette at work and its WCAG AA contrast check: a few rows, a message
+// and a button in a proposed theme's card; the whole app in miniature (ThemePreview)
+// in the theme editor (`full`).
 import type { ThemeVariant } from '~/utils/themes'
 
-const props = defineProps<{ variant: ThemeVariant }>()
+const props = defineProps<{ variant: ThemeVariant, full?: boolean }>()
 const issues = computed(() => contrastIssues(props.variant.c))
 </script>
 
 <template>
   <div>
-    <div class="te-preview" :style="themeVars(variant)" data-testid="theme-preview">
+    <ThemePreview v-if="full" :variant="variant" />
+    <div v-else class="te-preview" :style="themeVars(variant)" data-testid="theme-preview">
       <div class="te-row"><i class="te-sq working" /><b>api-server</b><small>{{ tl('Working') }}</small></div>
       <div class="te-row"><i class="te-sq blocked" /><b>docs</b><small>{{ tl('Your turn') }}</small></div>
       <p class="te-user">{{ tl('Can you fix the failing test?') }}</p>
