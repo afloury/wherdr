@@ -166,11 +166,17 @@ watch([rendered, doc, readSerial], async ([html, el]) => {
   loadImages(el, preview.value.path)
 }, { flush: 'post' })
 
-// A tap in the document: Copy on a code block, an anchor of the page, or a
+// A tap in the document: an image enlarged, Copy on a code block, an anchor of the page, or a
 // relative link to another file of the folder, opened here. Web links open
 // in a new tab (the renderer's target="_blank").
 function onDocClick(e: MouseEvent) {
   const target = e.target as HTMLElement
+  // An image of the document: the zoomable viewer, through all of its images.
+  if (target instanceof HTMLImageElement && target.src && !target.closest('a[href]')) {
+    const srcs = Array.from(doc.value?.querySelectorAll<HTMLImageElement>('img') ?? []).map(i => i.src).filter(Boolean)
+    openLightbox(srcs, srcs.indexOf(target.src))
+    return
+  }
   const copy = target.closest?.('.code-copy') as HTMLElement | null
   if (copy) {
     const text = copy.closest('.code-block')?.querySelector('pre')?.textContent
@@ -257,7 +263,9 @@ function icon(e: FileEntry) {
           <iframe :key="`${inlineUrl}:${reloads}`" class="files-page" :src="inlineUrl" sandbox="allow-scripts" referrerpolicy="no-referrer" :title="preview.path" />
           <p class="files-page-note">{{ t('Self-contained pages only: files next to it are not loaded; https scripts, styles and images are.') }}</p>
         </template>
-        <img v-else-if="preview.kind === 'image'" class="files-image" :src="preview.dataUrl" :alt="preview.path">
+        <button v-else-if="preview.kind === 'image'" type="button" class="files-image-open" :aria-label="t('Enlarge image')" @click="preview.dataUrl && openLightbox([preview.dataUrl])">
+          <img class="files-image" :src="preview.dataUrl" :alt="preview.path">
+        </button>
         <PdfPreview v-else-if="preview.kind === 'pdf'" :key="`${inlineUrl}:${reloads}`" :src="inlineUrl" :title="preview.path" />
         <template v-else-if="preview.kind === 'video'">
           <p v-if="videoFailed" class="changes-notice" role="alert">{{ t('This video cannot be played here. Use Open or Download.') }}</p>

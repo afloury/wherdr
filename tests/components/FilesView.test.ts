@@ -4,6 +4,7 @@ import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import { getQuery } from 'h3'
 import FilesView from '~/components/FilesView.vue'
 import { setToaster } from '~/composables/useHerdr'
+import { lightboxSrc } from '~/composables/useUi'
 
 vi.mock('~/components/PdfPreview.vue', () => ({ default: { props: ['src', 'title'], template: '<div class="files-pdf" :data-src="src" :title="title" />' } }))
 
@@ -54,6 +55,7 @@ const DOCS: Record<string, string> = {
   '/home/user/notes/todo.md': 'Sample.\n\n# Todo\n',
   'mockup.html': '<h1>Mockup</h1>\n<script>document.title = "x"</script>\n',
 }
+const PNG = 'data:image/png;base64,iVBORw0KGgo='
 let hold: Promise<void> | null = null
 const reads: Record<string, unknown>[] = []
 registerEndpoint('/api/files/read', async (event) => {
@@ -63,6 +65,7 @@ registerEndpoint('/api/files/read', async (event) => {
   // A path written in the conversation comes back absolute.
   const path = String(q.path).replace(/^~(?=\/)/, '/home/user')
   if (path.endsWith('.pdf')) return { path, size: 11_000_000, kind: 'pdf', truncated: false }
+  if (path.endsWith('.png')) return { path, size: 68, kind: 'image', dataUrl: PNG, truncated: false }
   if (path.endsWith('.zip')) return { path, size: 40, kind: 'binary', truncated: false }
   const doc = DOCS[path] ?? DOCS[path.replace('/home/user/demo/', '')]
   if (doc !== undefined) return { path, size: doc.length, kind: 'text', text: doc, truncated: false }
@@ -193,6 +196,14 @@ describe('FilesView', () => {
     await w.findAll('.files-md-mode button')[1]!.trigger('click')
     expect(w.find('iframe').exists()).toBe(false)
     expect(w.find('.files-text').text()).toContain('<h1>Mockup</h1>')
+  })
+
+  it('opens an image an agent shows in the zoomable viewer', async () => {
+    const w = await mountSuspended(FilesView, { props: { paneId: 'w1:p1', file: 'design/mockup.png', inFolder: true } })
+    await flushPromises()
+    await w.find('button[aria-label="Enlarge image"]').trigger('click')
+    expect(lightboxSrc.value).toBe(PNG)
+    lightboxSrc.value = null
   })
 
   it('shows a PDF in the canvas viewer from the download path, with Open; other binaries stay a notice', async () => {

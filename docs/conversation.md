@@ -129,7 +129,9 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   has some). On a wide computer they open in the side panel, in place of Settings: the file
   read-only as in Files (an HTML page runs as a page: see [Files](files.md)), the screenshots by step, before and after side by side, with a button
   to open the task. On a phone a card shows above the message field, and a tap opens a sheet
-  (before and after toggled). The card also stays in the reply (a ```wherdr block of
+  (before and after toggled). A tap on a shown image (the file, an image of a shown Markdown
+  file, a screenshot) opens the full-screen viewer, with zoom and pan, through the images shown
+  together. The card also stays in the reply (a ```wherdr block of
   `show file|shots …` lines), and a tap shows it again. Showing approves nothing: the agent adds
   the step's button (*Approve screenshots*) with `ui action step`. Only in a turn that follows
   your message, and a coordinator shows its own project's tasks only.

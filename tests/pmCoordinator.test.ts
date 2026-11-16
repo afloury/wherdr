@@ -21,6 +21,7 @@ import { defaultWorkflow, isDefaultWorkflow, type Template } from '../shared/pm/
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 import { runNow, wakeCoordinators, wakeTick } from '../server/utils/pmWakes'
 import { askCoordinator } from '../server/utils/pmReport'
+import { userSendBack } from '../server/utils/pmBoard'
 import { answerQuestion } from '../server/utils/pmAnswer'
 import { cardOf, toHandle } from '../shared/pm/board'
 import { WAKE } from '../shared/pm/wakes'
@@ -469,6 +470,28 @@ describe('step done', () => {
     const saved = (await store.task(task.id))!
     expect(saved.step).toMatchObject({ done: true })
     expect(saved.log!.at(-1)).toMatchObject({ by: 'coordinator ST', text: 'pick: done on the user\'s message "Yes, create them"' })
+  })
+
+  it('step back: the sheet\'s Send back on the user\'s words, only in a user turn and on a step that waits for them', async () => {
+    expect(parseCommand(['step', 'back', 'ST-1', 'Bigger', 'button'])).toEqual({ error: '--user-said needs the user\'s words' })
+    const task = await store.addTask({ project: 'ST', title: 'Split', type: 'feature-split' })
+    const waiting = { ...task, state: 'working' as const, step: state(1, { approved: true, yourTurn: { reason: 'user' as const, badge: 'Create these tasks' } }) }
+    await store.saveTask(waiting)
+    const st = await issueToken(store, 'ST')
+    const back = ['step', 'back', task.id, 'Split the API part', '--user-said', 'Make it two tasks']
+    await noteTurn(store, 'ST', 'wake')
+    await refused(cli(back, undefined, st), 'not a wake')
+    await noteTurn(store, 'ST', 'user', 'Make it two tasks')
+    await cli(back, undefined, st)
+    const saved = (await store.task(task.id))!
+    // The same state as the sheet's Send back (userSendBack without screenshots).
+    await store.saveTask(waiting)
+    const sheet = await userSendBack(store, task.id, 'Split the API part')
+    expect(saved.step).toEqual({ ...sheet.step, since: saved.step!.since, lastBack: { ...sheet.step!.lastBack!, at: saved.step!.lastBack!.at } })
+    expect(saved.step).toMatchObject({ at: 0 })
+    expect(saved.step!.approved).toBeUndefined()
+    expect(saved.log!.at(-1)).toMatchObject({ by: 'coordinator ST', text: expect.stringContaining('on the user\'s message "Make it two tasks"') })
+    await refused(cli(back, undefined, st), 'does not wait for the user')
   })
 
   it('ends only a step the coordinator holds; its recheck reminds it', async () => {
