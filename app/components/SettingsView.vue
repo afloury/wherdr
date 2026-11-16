@@ -484,7 +484,9 @@ onMounted(() => {
                 <span><b>{{ t('Encrypted text') }}</b><small>{{ t('Writing advances in glyphs, then the text decrypts behind it.') }}</small></span>
                 <USwitch v-model="encryptedOn" :disabled="!typewriterActive" size="xl" />
               </label>
-              <TypingPreview v-if="activeSection === 'conversation' && convTab === 'display'" />
+              <SettingsPreview v-if="activeSection === 'conversation' && convTab === 'display'">
+                <TypingPreview />
+              </SettingsPreview>
             </div>
           </div>
           <div v-show="convTab === 'dictation'" id="conversation-panel-dictation" role="tabpanel" aria-labelledby="conversation-tab-dictation" class="settings-group" data-testid="dictation-settings" data-ui-target="conversation.dictation">
