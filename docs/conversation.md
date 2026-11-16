@@ -13,7 +13,13 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   row or of its end-of-turn line (`✓ 27 s · 1 action … 21:39`), with the day for an earlier one (*Yesterday 21:39*, then a short
   date); hover or tap it for the full date and time. Reading a conversation never
   touches the terminal, so it never resizes it. A command the agent proposes (shell code block,
-  or inline `! command`) can be copied without its prompt.
+  or inline `! command`) can be copied without its prompt, and, with Claude Code, Codex or omp,
+  run in the agent's shell mode with **▷ Run** (shown on every such block, after a confirmation).
+  The button then says *Running…*, and *Ran at 16:42* once it has finished; it stays a button, to
+  run the command again. The run shows at once in the conversation as omp shows its actions: a
+  *! · You ran* card with the command, the elapsed time and the working ring (in the agent's colors, as the message field's halo), its output so far
+  underneath (Claude Code: read from its screen); when the transcript writes the command, that
+  entry takes the card's place (shown once), with its run time and its output folded.
 - **Following new messages**: a new or growing reply (typed in as it arrives, or shown at once)
   keeps the view at the bottom only if you were at the bottom. Scroll up (wheel, touch, keyboard
   or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the
@@ -129,7 +135,12 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   your message, and a coordinator shows its own project's tasks only.
 - **Wakes**: in a coordinator's conversation, a wake (Autopilot, Engine, Incident,
   Step check) is a compact muted row, not one of your bubbles, with the coordinator's answer under
-  it; routine runs fold into one row. See
+  it; routine runs fold into one row that counts them by kind with their tasks
+  (*5 checks · ✓ 3 merged WHR-352 354 355 · ⏳ 1 waits for you · 1 quiet*; a chip opens the
+  task's sheet), read from each wake's first line and task lines, standing out when one waits
+  for you. Open, each wake is one line: an icon, its task, a short label (*merged*,
+  *Scheduled*, *Health check*) and the reply's first sentence, a tap showing the full reply;
+  quiet checks are dimmer, two or more in a row fold into *N quiet checks*. See
   [Who sends a wake](project-management.md#who-sends-a-wake).
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the

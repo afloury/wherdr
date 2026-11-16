@@ -36,7 +36,8 @@ export interface Incident {
 // A task whose agent an incident took (recovery.ts): waits (the engine resumes
 // it once the cause is gone) while `run` is still its run; n: times in a row
 // for this cause; resumedAt: the engine's last resume.
-export interface Recovery { incident: string, cause: Cause, machine: string, label: string, run?: string, at: number, n: number, waits?: true, resumedAt?: number }
+export interface Recovery { incident: string, cause: Cause, machine: string, label: string, run?: string, at: number, n: number, waits?: true, resumedAt?: number, say?: true }
+// say: a reviewer restarted after a login incident, not yet told to go on (loginRestartText).
 // Waiting for the engine to resume it, not for the user.
 export const recovering = (t: Pick<Task, 'state' | 'run' | 'recovery' | 'stopped' | 'waitKind'>) =>
   t.state === 'waiting' && !t.waitKind && !t.stopped && !!t.recovery?.waits && t.recovery.run === t.run

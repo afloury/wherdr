@@ -17,16 +17,16 @@ import { THEMES, THEME_MODES } from '../../app/utils/themes'
 const ON_OFF = ['1', '0']
 export const SETTING_VALUES: Partial<Record<SyncedSetting, readonly string[]>> = {
   'theme': THEMES.map(t => t.id), 'themeMode': THEME_MODES,
-  'machineBar': ON_OFF, 'compactListV2': ON_OFF,
-  'showShells': ON_OFF, 'showCounters': ON_OFF, 'showQuotas': ON_OFF, 'quotaDisplay': ['left', 'used'],
+  'machineBar': ON_OFF,
+  'showCounters': ON_OFF, 'showQuotas': ON_OFF, 'quotaDisplay': ['left', 'used'],
   'autoReorderReady': ON_OFF, 'readySort': READY_SORTS,
   'typewriterSpeed': ['off', 'fast', 'medium', 'slow'], 'encryptedText': ON_OFF, 'defaultViewMode': ['chat', 'term'],
   'wherdr.files.hidden': ON_OFF, 'wherdr.files.md': ['rendered', 'source'],
 }
 // Where each one is in Settings: "Show me" on its proposal card highlights it.
 export const SETTING_TARGETS: Partial<Record<SyncedSetting, UiTargetId>> = {
-  theme: 'appearance.theme', themeMode: 'appearance.theme', machineBar: 'appearance.home-screen', compactListV2: 'appearance.home-screen',
-  showShells: 'appearance.home-screen', showCounters: 'appearance.home-screen', showQuotas: 'appearance.home-screen',
+  theme: 'appearance.theme', themeMode: 'appearance.theme', machineBar: 'appearance.home-screen',
+  showCounters: 'appearance.home-screen', showQuotas: 'appearance.home-screen',
   autoReorderReady: 'appearance.home-screen', quotaDisplay: 'appearance.quotas',
   typewriterSpeed: 'conversation.typewriter', encryptedText: 'conversation.typewriter',
   defaultViewMode: 'conversation.default-pane',
@@ -52,6 +52,8 @@ export type AlfredCommand =
   | { name: 'project workflow edit', key: string }
   // Changes: a dry run unless apply; propose: a card in the reply, the user clicks Apply.
   | { name: 'project add', apply: boolean, propose?: true, input: { key: string, machine: string, path: string, name?: string, template?: string } }
+  // roots: the clone root on each machine (by key or label), its home first.
+  | { name: 'workspace add', apply: boolean, propose?: true, input: { key: string, name?: string, group?: string, roots: [string, string][] } }
   | { name: 'project template', apply: boolean, propose?: true, key: string, template: string } // '' clears it
   // Lines added to the end of the project coordinator's memory.md (the text comes as
   // the call's input, so no card: the parser refuses --propose).
@@ -85,6 +87,7 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'v2 import [--only <KEY,KEY>] [--start no]', does: 'bring over every v2 project not made yet, in one change: each added on this machine with its v2 folder (one whose folder cannot be added is listed with why), then its coordinator started (no workflow needed: it starts with the minimal default and its first reply proposes a workflow). With --propose, one card: a checkbox per project and one for starting their coordinators; --only: the keys to add; --start no: add only. The outcome lists each project' },
   { usage: 'settings', does: 'the synced settings, their values, and the values each one Alfred may change accepts (1 = on, 0 = off)' },
   { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]', does: 'add a project: a git folder on a machine' },
+  { usage: 'workspace add <KEY> --root <folder,folder> [--machine <key,key>] [--name <name>] [--group <tab group>]', does: 'add a workspace (docs/workspaces.md): a project with no git whose coordinator runs the repositories cloned under its root folder (~/work); --machine and --root pair up, the first machine its home (none: this machine); --group: the tab group (id or name) it shows in. Once applied, its coordinator starts and offers to build the map' },
   { usage: 'project template <KEY> <id|none>', does: 'replace the project\'s workflow with a copy of a template or example:<id> (its guards come with it), or none' },
   { usage: 'project workflow edit <KEY> < workflow.json', does: 'propose a new workflow for the project (the whole JSON on stdin, guards unchanged): the user accepts or refuses it in wherdr, like a coordinator\'s proposal. Only in a turn that comes from the user' },
   { usage: 'project memory <KEY> < note.md', does: 'add the lines on stdin (at most 30, blank ones left out) to the end of the project coordinator\'s memory.md, on its machine; it is created when missing. For what the user wants it to know (a v2 handover note, a goal)' },
@@ -92,7 +95,7 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'project machine add <KEY> <machine> --clone <folder>', does: 'let the project\'s tasks run on another machine (its key or label), in its clone of the repo there; once applied, the machine\'s readiness check runs and its result is in the answer' },
   { usage: 'project machine remove <KEY> <machine>', does: 'the project\'s tasks no longer start on that machine (tasks already there stay)' },
   { usage: 'coordinator start <KEY> [--program claude|codex] [--resume]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one); --resume takes up its last conversation again, with the agent that ran it' },
-  { usage: '<change> --propose', does: 'instead of --apply, any change above (project add, template, guards, machine, coordinator start, v2 import): a card in your reply (the change, Show me, Cancel, Apply) the user applies with one click. Only in a turn that comes from the user' },
+  { usage: '<change> --propose', does: 'instead of --apply, any change above (project add, workspace add, template, guards, machine, coordinator start, v2 import): a card in your reply (the change, Show me, Cancel, Apply) the user applies with one click. Only in a turn that comes from the user' },
   { usage: 'setting set <key> <value> [--propose]', does: 'propose a setting change, to one of the values `settings` lists for it: without --propose it only shows the change; with it, a card in your reply (before → after, Show me, Cancel, Apply) the user applies. Only in a turn that comes from the user; you never apply it yourself' },
 ]
 
@@ -100,6 +103,7 @@ const KEY_RE = /^[A-Za-z][A-Za-z0-9]{1,9}$/
 const ID_RE = /^(example:)?[a-z0-9][a-z0-9-]{0,39}$/
 const FLAGS: Record<string, string[]> = {
   'project add': ['machine', 'path', 'name', 'template'],
+  'workspace add': ['machine', 'root', 'name', 'group'],
   'coordinator start': ['program'],
   'project guards': ['protect', 'merge-protected', 'merge-others', 'contributor-prs'],
   'project machine': ['clone'],
@@ -108,7 +112,7 @@ const FLAGS: Record<string, string[]> = {
   'brief ': ['group', 'since'],
 }
 
-export const CHANGES = ['project add', 'project template', 'project memory', 'project guards', 'project machine', 'coordinator start', 'v2 import']
+export const CHANGES = ['project add', 'workspace add', 'project template', 'project memory', 'project guards', 'project machine', 'coordinator start', 'v2 import']
 const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMANDS.filter(c => c.usage.startsWith(verb)).map(c => c.usage).join(' | ')}${CHANGES.some(v => verb.startsWith(v)) ? ' [--apply]' : ''}` })
 
 // argv after `wherdr alfred` → a command, or the reason it is not one.
@@ -179,6 +183,13 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
     if (!key(w2) || w3 || machine === undefined || !path) return usage(verb)
     if (template !== undefined && !ID_RE.test(template)) return { error: '--template is a template id or example:<id> (see wherdr alfred templates)' }
     return { name: verb, apply, input: { key: key(w2), machine, path, ...(name ? { name } : {}), ...(template ? { template } : {}) } }
+  }
+  if (verb === 'workspace add') {
+    const { machine = '', root, name, group } = flags
+    if (!key(w2) || w3 || !root) return usage(verb)
+    const ms = machine.split(','), roots = root.split(',').map(r => r.trim())
+    if (ms.length !== roots.length || roots.some(r => !r)) return { error: '--machine and --root pair up: one root folder per machine, in the same order' }
+    return { name: verb, apply, input: { key: key(w2), ...(name ? { name } : {}), ...(group ? { group } : {}), roots: ms.map((m, i) => [m.trim(), roots[i]!]) } }
   }
   if (verb === 'project template') {
     if (!key(w2) || !w3 || rest.length) return usage(verb)

@@ -47,4 +47,7 @@ export const isResumeWait = (s?: string) => !!s && /^Waits for \S+ to resume$/.t
 // The first message of a resumed conversation; why a new agent's handover says it stopped.
 export const resumeText = (r: Pick<Recovery, 'cause'>, instructions: string) =>
   `You were interrupted (${CAUSE_TEXT[r.cause]}). Check git status and continue where you left off; your instructions are in ${instructions}.`
+// The one message to an agent restarted after a login incident: it goes on where it stopped.
+export const loginRestartText = (role: 'worker' | 'reviewer') =>
+  `Your login was renewed and you were restarted. Continue where you stopped: ${role === 'reviewer' ? 'finish your review and write your verdict.' : 'finish the step you were on, then report as usual.'}`
 export const interruptedWhy = (r: Pick<Recovery, 'cause'>) => `its agent was interrupted (${CAUSE_TEXT[r.cause]}); check git status and continue where it left off`

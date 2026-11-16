@@ -24,9 +24,9 @@
 - **Quick answers**: a waiting agent's card shows its question and options; **answer in one tap**
   without opening it. The question is read again before the answer is sent; if it changed, the
   answer is refused.
-- **Compact list**: Settings › Appearance › Home screen › **Compact list** shows one line per
-  card; Normal adds the current activity on a second line. It follows you across devices.
-  Every agent terminal is its own row, with its pane or tab label.
+- **Rows**: one line per card; an agent outside a task adds its current activity on a second
+  line, and terminal spaces are filed under Ready. Every agent terminal is its own row, with its
+  pane or tab label.
 - **Task agents**: an agent the [project engine](project-management.md) started for a task keeps
   its own status, but its row is named after its task: the state square, the task id badge, the
   task title (cut when long; a pane you renamed keeps your name, in the conversation header and
