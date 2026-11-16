@@ -7,7 +7,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
 import { notesStore, runNotes, type NotesStore } from './notesStore'
-import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepBackRefusal, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, PROPOSAL_ANSWERS, workspaceView } from '../../shared/pm/coordinator'
+import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, ROOT_RULE_FILES, isPlainFolder, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepBackRefusal, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, PROPOSAL_ANSWERS, workspaceView } from '../../shared/pm/coordinator'
 import { FEATURE, WORKSPACE_FIRST, coordinatorKey, handledBy, isWorkspace, membersOf, ownWorkflow } from '../../shared/pm/workspace'
 import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
@@ -780,7 +780,16 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   const home = await homeOf(deps, on)
   if (!home) throw new HerdrError('core', 'Home folder not found on the project\'s machine')
   const folder = `${home}/${pmDir()}/coordinators/${key}`
-  for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES, m.local ? docsDir() : undefined, k => { const x = projects.find(y => y.key === k); return x && shownKey(x) }, membersOf(key, projects).map(shownKey))))
+  // A workspace: its members' folders (rewritten at each start, so an adopted member is
+  // covered from the next one) and the root's own instructions, read on its machine.
+  const ws = isWorkspace(p) ? {
+    members: membersOf(key, projects).map(x => ({ key: shownKey(x), path: x.path })),
+    rules: (await Promise.all(ROOT_RULE_FILES.map(async file => {
+      const r = await exec(deps, on, '[ -f "$1" ] && cat "$1"', [`${p.path.replace(/\/$/, '')}/${file}`])
+      return r.code === 0 && r.out ? { file, text: r.out } : undefined
+    }))).filter(r => !!r),
+  } : {}
+  for (const [file, text] of Object.entries(roleFiles(p, t, EXAMPLES, m.local ? docsDir() : undefined, k => { const x = projects.find(y => y.key === k); return x && shownKey(x) }, ws)))
     if ((await exec(deps, on, WRITE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not write ${file}`)
   for (const [file, text] of Object.entries(OWN_ROLE_FILES))
     if ((await exec(deps, on, CREATE_SCRIPT, [`${folder}/${file}`], text)).code !== 0) throw new HerdrError('core', `Could not create ${file}`)
@@ -892,7 +901,7 @@ export async function prepareCoordinator(deps: Deps, key: string, program: Coord
   if (key === MAIN) await issueAlfredToken(deps.store, folder!)
   // Alfred starts with its greeting (startPrompt); a resumed conversation had it already.
   const prompt = key === MAIN && !resume ? [startPrompt(first, await readAlfredName(deps), v2, none)] : []
-  return { on, folder, argv: coordinatorArgs(program, folder, p?.path, p?.git === false, resume, model), prompt, env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
+  return { on, folder, argv: coordinatorArgs(program, folder, p?.path, isPlainFolder(p), resume, model), prompt, env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
 }
 
 // Starts the coordinator in its folder, with its model (else its harness's default), token in its environment,
