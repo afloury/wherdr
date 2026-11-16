@@ -7,7 +7,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
 import { notesStore, runNotes, type NotesStore } from './notesStore'
-import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, PROPOSAL_ANSWERS } from '../../shared/pm/coordinator'
+import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepBackRefusal, stepDoneEvent,templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, PROPOSAL_ANSWERS } from '../../shared/pm/coordinator'
 import { FEATURE, WORKSPACE_FIRST, coordinatorKey, handledBy, isWorkspace, membersOf, ownWorkflow } from '../../shared/pm/workspace'
 import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
@@ -338,6 +338,13 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       const r = onEvent(plan, state, ev, Date.now())
       if (r.refused) throw new HerdrError('refused', r.refused)
       return { task: await store.logTask({ ...task, step: r.state }, by, `${step}: done`) }
+    }
+    case 'step back': {
+      // The sheet's Send back (same event, same screenshot rules), on the user's words.
+      const task = await taskOf(cmd.task)
+      const why = stepBackRefusal(currentStep(planOf(needPlan(), task, p), task.step ?? initialState()), turn)
+      if (why) throw new HerdrError('refused', why)
+      return { task: await userEvent(store, task.id, { kind: 'back', note: cmd.text }, by, `on the user's message "${(rec?.turn?.said || cmd.userSaid).slice(0, 500)}"`) }
     }
     case 'step wait': {
       const task = await taskOf(cmd.task)
