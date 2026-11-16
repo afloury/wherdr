@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Custom theme editor (Settings › Appearance): start from any theme, change
 // its colors for Dark and Light with a live preview and the WCAG AA contrast
-// check; a custom theme is also duplicated, exported or deleted here.
+// check (ThemeSample); a custom theme is also duplicated, exported or deleted here.
 import type { ThemeColors, ThemeDef } from '~/utils/themes'
 import { newCustomId, themeFile } from '~/utils/customThemes'
 
@@ -10,10 +10,11 @@ const open = defineModel<boolean>('open', { default: false })
 const props = defineProps<{ base: ThemeDef | null }>()
 
 const draft = ref<ThemeDef | null>(null)
-const editing = computed(() => props.base?.group === 'custom')
+// Editing a saved custom theme; any other (a built-in one, a theme Alfred proposed) starts a new one.
+const editing = computed(() => !!props.base && customThemes.value.some(t => t.id === props.base!.id))
 const light = ref(false)
 const copy = (th: ThemeDef, asNew: boolean): ThemeDef => ({
-  ...th, id: asNew ? newCustomId() : th.id, group: 'custom', label: asNew ? tl(`${th.label} copy`) : th.label,
+  ...th, id: asNew ? newCustomId() : th.id, group: 'custom', label: asNew && findTheme(th.id) ? tl(`${th.label} copy`) : th.label,
   c: { ...th.c }, light: { ...th.light }, ansi: [...th.ansi],
 })
 watch(open, (o) => {
@@ -33,7 +34,6 @@ const FIELDS: [keyof ThemeColors, string][] = [
 ]
 const palette = computed(() => (light.value ? draft.value!.light : draft.value!.c))
 const variant = computed(() => themeVariant(draft.value!, light.value))
-const issues = computed(() => contrastIssues(variant.value.c))
 const modes = computed(() => [{ value: false, label: t('Dark') }, { value: true, label: t('Light') }])
 
 const fileName = computed(() => `${(draft.value?.label || 'theme').replace(/[^\w-]+/g, '-').toLowerCase()}.wherdr-theme.json`)
@@ -85,19 +85,7 @@ async function remove() {
             </div>
           </template>
         </div>
-        <div>
-          <div class="te-preview" :style="themeVars(variant)" data-testid="theme-preview">
-            <div class="te-row"><i class="te-sq working" /><b>api-server</b><small>{{ tl('Working') }}</small></div>
-            <div class="te-row"><i class="te-sq blocked" /><b>docs</b><small>{{ tl('Your turn') }}</small></div>
-            <p class="te-user">{{ tl('Can you fix the failing test?') }}</p>
-            <p>{{ tl('Fixed: the date was parsed in the wrong time zone.') }}</p>
-            <div class="te-actions"><span class="te-btn">{{ tl('Send') }}</span><span class="te-badge">{{ tl('Done') }}</span></div>
-          </div>
-          <p v-if="issues.length" class="te-check warn" role="status" data-testid="theme-contrast">
-            <UIcon name="i-lucide-triangle-alert" /> {{ tl('Below WCAG AA:') }} {{ issues.join(', ') }}
-          </p>
-          <p v-else class="te-check" role="status" data-testid="theme-contrast"><UIcon name="i-lucide-check" /> {{ tl('Contrast meets WCAG AA') }}</p>
-        </div>
+        <ThemeSample :variant="variant" />
       </div>
     </div>
     <template #footer>
@@ -126,19 +114,6 @@ async function remove() {
 input[type="color"] { flex: none; width: 44px; height: 44px; padding: 2px; border: 1px solid var(--line); background: var(--bg); }
 .te-ansi { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(8, minmax(0, 44px)); gap: 4px; }
 .te-ansi input { width: 100%; }
-.te-preview { display: grid; gap: 8px; padding: 12px; background: var(--bg); color: var(--text); border: 1px solid var(--line); }
-.te-row { display: flex; align-items: center; gap: 8px; padding: 8px; background: var(--surface); border: 1px solid var(--line-soft); }
-.te-row small { margin-left: auto; color: var(--muted); }
-.te-sq { width: 7px; height: 7px; flex: none; }
-.te-sq.working { background: var(--working); }
-.te-sq.blocked { background: var(--blocked); }
-.te-preview p { margin: 0; }
-.te-user { justify-self: end; padding: 6px 10px; background: var(--surface-2); }
-.te-actions { display: flex; align-items: center; gap: 8px; }
-.te-btn { padding: 8px 14px; background: var(--accent); color: var(--on-accent); font-weight: 600; }
-.te-badge { padding: 2px 6px; border: 1px solid var(--done); color: var(--done); font: 500 11px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .12em; }
-.te-check { margin: 8px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
-.te-check.warn { color: var(--ochre); }
 .te-foot { display: flex; flex-wrap: wrap; gap: 8px; }
 .te-foot .hw-cta { flex: 1 1 100%; }
 @media (min-width: 900px) {

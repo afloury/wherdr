@@ -65,6 +65,8 @@ export type AlfredCommand =
   | { name: 'project guards', apply: boolean, propose?: true, key: string, change: { protect?: string[], mergeProtected?: MergeBy, mergeOthers?: MergeBy, contributorPrs?: 'off' | 'others' | 'all' } }
   // Proposal only: --propose puts a card in the reply, the user clicks Apply.
   | { name: 'setting set', propose: boolean, key: SyncedSetting, value: string }
+  // A custom theme (the theme file on stdin): a card in the reply, the user applies it.
+  | { name: 'theme propose' }
   // Another machine its tasks may run on (by key or label), with its clone; or no longer.
   | { name: 'project machine', apply: boolean, propose?: true, key: string, machine: string } & ({ action: 'add', clone: string } | { action: 'remove' })
 
@@ -97,6 +99,7 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'coordinator start <KEY> [--program claude|codex] [--resume]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one); --resume takes up its last conversation again, with the agent that ran it' },
   { usage: '<change> --propose', does: 'instead of --apply, any change above (project add, workspace add, template, guards, machine, coordinator start, v2 import): a card in your reply (the change, Show me, Cancel, Apply) the user applies with one click. Only in a turn that comes from the user' },
   { usage: 'setting set <key> <value> [--propose]', does: 'propose a setting change, to one of the values `settings` lists for it: without --propose it only shows the change; with it, a card in your reply (before → after, Show me, Cancel, Apply) the user applies. Only in a turn that comes from the user; you never apply it yourself' },
+  { usage: 'theme propose < theme.json', does: 'propose a custom theme the user described: the theme file on stdin, the format of an imported one ({ "wherdr": "theme", "version": 1, "name", "dark": { bg, bg2, surface, line, text, muted, dim, accent, green, coral, ochre, rose, blue, teal, "ansi": [16 colors] }, "light": { the same colors, no ansi } }, every color #rrggbb, 8 KB at most). A refused file says why: fix it and run again. Accepted: a card in your reply (name, preview, contrast check, Apply, Edit in editor, Cancel); the answer lists the colors below WCAG AA in each mode, to fix first when you can. Only in a turn that comes from the user; you never save or apply a theme yourself' },
 ]
 
 const KEY_RE = /^[A-Za-z][A-Za-z0-9]{1,9}$/
@@ -230,6 +233,7 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
     const keys = only?.split(',').map(k => k.trim().toUpperCase()).filter(Boolean)
     return { name: verb, apply, ...(keys ? { only: keys } : {}), start: start !== 'no' }
   }
+  if (verb === 'theme propose') return w2 ? usage(verb) : { name: verb }
   if (verb === 'setting set') {
     if (!w2 || w3 === undefined || rest.length) return usage(verb)
     if (!settable(w2)) return { error: `${w2} is not a setting Alfred changes: one of ${Object.keys(SETTING_VALUES).join(', ')}; the others are changed in wherdr's Settings` }

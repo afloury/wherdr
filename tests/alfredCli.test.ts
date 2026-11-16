@@ -11,7 +11,9 @@ import { ALFRED_TOKEN_FILE, answerProposal, issueAlfredToken, userMessageTo } fr
 import { MAIN } from '../shared/pm/coordinator'
 import { createPmStore } from '../server/utils/pmStore'
 import { actOnCard } from '../server/utils/uiActions'
-import { patchSettings } from '../server/utils/settings'
+import { patchSettings, readSettings } from '../server/utils/settings'
+import { CUSTOM_THEMES_MAX, readCustomThemes, themeFile, writeCustomThemes } from '../app/utils/customThemes'
+import { THEMES } from '../app/utils/themes'
 import { cliTokenCall } from '../server/utils/network'
 import { common } from '../shared/pm/examples'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
@@ -317,6 +319,37 @@ describe('runAlfredCommand', () => {
     await patchSettings({ typewriterSpeed: 'fast' }, { file: path.join(dir, 'settings.json') })
     expect(await act(back)).toMatchObject({ state: 'stale' })
     expect(await run('settings')).toMatchObject({ settings: { typewriterSpeed: 'fast' } })
+  })
+
+  // WHR-427: a custom theme, checked as an import is; only the user's Apply saves and picks it.
+  it('proposes a custom theme as a card: a bad file is refused with why, Apply saves and picks it, the limit refuses', async () => {
+    const file = { ...themeFile(THEMES[0]!), name: 'Navy Ember' }
+    const propose = (input: unknown) => runAlfredCommand(deps(), token, { argv: ['theme', 'propose'], input })
+    const settingsFile = path.join(dir, 'settings.json')
+    expect(parseAlfredCommand(['theme', 'propose', 'x'])).toEqual({ error: expect.stringContaining('theme propose < theme.json') })
+    await expect(propose('{')).rejects.toThrow('Not valid JSON: fix the theme file and run it again')
+    await expect(propose(JSON.stringify({ ...file, light: { ...file.light, bg: 'navy' } }))).rejects.toThrow('"light.bg" is not a #rrggbb color')
+    await expect(propose(JSON.stringify({ ...file, dark: { ...file.dark, ansi: [] } }))).rejects.toThrow('"dark.ansi" must be 16 #rrggbb colors')
+    await expect(propose(JSON.stringify({ ...file, name: 'x'.repeat(9000) }))).rejects.toThrow('larger than 8 KB')
+    await expect(propose(JSON.stringify({ ...file, name: 'Navy Ember' }))).rejects.toThrow('never in a wake')
+    await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind: 'user', at: Date.now(), said: 'a navy theme' } })
+    const out = await propose(JSON.stringify({ ...file, dark: { ...file.dark, muted: file.dark.bg } })) as { note: string, belowWcagAA: { dark: string[], light: string[] } }
+    expect(out.belowWcagAA).toEqual({ dark: expect.arrayContaining([expect.stringMatching(/^muted on bg 1.00/)]), light: [] })
+    const card = (await store.coordinator(MAIN))!.cards![0]!
+    expect(out.note).toContain(`action ${card.id}`)
+    expect(card).toMatchObject({ kind: 'theme', label: 'Navy Ember', theme: { file: { name: 'Navy Ember' }, said: 'a navy theme' } })
+    expect(await readSettings(settingsFile)).toEqual({}) // nothing saved yet
+    const act = (id: string) => actOnCard({ store, settingsFile } as never, id, undefined)
+    expect(await act(card.id)).toMatchObject({ state: 'done', outcome: { text: 'Applied by you' } })
+    const s = await readSettings(settingsFile), saved = readCustomThemes(s.customThemes ?? null)
+    expect(saved).toMatchObject([{ label: 'Navy Ember', group: 'custom' }])
+    expect(s.theme).toBe(saved[0]!.id)
+    // At the limit: refused, the card stays open for a later Apply.
+    await patchSettings({ customThemes: writeCustomThemes(Array.from({ length: CUSTOM_THEMES_MAX }, (_, i) => ({ ...saved[0]!, id: `custom-${i}` }))) }, { file: settingsFile })
+    await propose(JSON.stringify({ ...file, name: 'Second' }))
+    const next = (await store.coordinator(MAIN))!.cards![0]!.id
+    await expect(act(next)).rejects.toThrow(`At most ${CUSTOM_THEMES_MAX} custom themes`)
+    expect((await store.coordinator(MAIN))!.cards![0]).toMatchObject({ id: next, state: 'open' })
   })
 
   it('proposes a project change as a card: the user\'s Apply makes it while its dry run still holds', async () => {

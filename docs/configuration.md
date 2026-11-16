@@ -16,6 +16,8 @@
   you across devices, and are edited, duplicated, exported or deleted from their pencil button.
   **Export** downloads a JSON file or copies it; **Import theme** takes a pasted or picked file
   (8 KB at most), refused with the reason if invalid. There is no sharing service: share the file.
+  Alfred makes one on request: describe it and it answers with a card to preview, edit or apply
+  (`wherdr alfred theme propose`, [Alfred's command](alfred.md)).
   The format, every color `#rrggbb`:
   ```json
   { "wherdr": "theme", "version": 1, "name": "My theme", "author": "optional",
