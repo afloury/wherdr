@@ -245,7 +245,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
 .task-md :deep(:is(h1, h2, h3, h4, h5, h6)) { font-size: 15px; margin: 1em 0 .4em; }
 .task-sheet .task-md :deep(p) { margin: 0 0 .75em; }
 .task-spec-notes { display: grid; gap: 6px; }
-.task-ws-files { overflow-wrap: anywhere; }
+.task-ws-files { display: grid; gap: 4px; overflow-wrap: anywhere; }
 .task-spec-note { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; color: var(--text-2); }
 .task-sheet-actions { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px; }
 .task-sheet-actions:empty { display: none; }
