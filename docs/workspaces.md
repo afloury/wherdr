@@ -78,6 +78,7 @@ A workspace holds the settings its members take:
 - the base branch and the branch name template;
 - the agents, models and [reviewer fallback](project-management.md#reviewer-fallback);
 - the worktree setup;
+- the [workspace instructions files](#workspace-instructions-files);
 - *Archive done tasks after* and *Delete the task's branch after its merge*.
 
 A member stores only its key, name, color, machine, folder, workspace and
@@ -87,6 +88,30 @@ in its `overrides`). Clearing the member's base branch or branch name template
 gives the workspace's back. Everything that reads a project's settings, the
 engine and the coordinator's commands included, reads them with the overrides
 applied.
+
+## Workspace instructions files
+
+A member's task runs in a worktree outside the workspace's root, so its agents
+never see the root's own rules. **Workspace instructions files** (the General
+tab of the workspace's sheet) are files under the root whose text the worker
+and the reviewer of every member's task get, after the workflow's own
+instructions, each under a heading naming it (`## Workspace instructions (AGENTS.md)`):
+
+- *Default*: the root's `AGENTS.md`, else its `CLAUDE.md`, when one is there;
+- *These files*: up to 10 paths under the root, one per line, checked like the
+  worktree setup's (relative, no `..`, no `*`);
+- *None*.
+
+They are read again, on the workspace's home machine, at each worker start,
+each step sent to the worker and each review round, so an edit reaches the
+next one: a worker whose files changed gets them again with its next step.
+Each file is cut at 16,000 characters; a cut file, and a listed file that is
+missing (skipped), get a line in the task's log. The task sheet's Description
+tab names the files its agents got.
+
+A member **inherits** them (*Workspace WS's*), turns them off (*None*) or
+replaces them with its own paths under the root (*These files*), in its own
+General tab.
 
 ## Adopting a repository
 
