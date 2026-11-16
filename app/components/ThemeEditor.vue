@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Custom theme editor (Settings › Appearance): start from any theme, change
 // its colors for Dark and Light with a live preview and the WCAG AA contrast
-// check (ThemeSample); a custom theme is also duplicated, exported or deleted here.
+// check (ThemeSample: the whole app in miniature); a custom theme is also duplicated, exported or deleted here.
 import type { ThemeColors, ThemeDef } from '~/utils/themes'
 import { newCustomId, themeFile } from '~/utils/customThemes'
 
@@ -85,7 +85,7 @@ async function remove() {
             </div>
           </template>
         </div>
-        <ThemeSample :variant="variant" />
+        <ThemeSample :variant="variant" full />
       </div>
     </div>
     <template #footer>
@@ -105,7 +105,7 @@ async function remove() {
 <style scoped>
 .te { display: grid; gap: 12px; min-width: 0; }
 .te-names { display: grid; gap: 12px; }
-.te-body { display: grid; gap: 16px; min-width: 0; }
+.te-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
 .te-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; align-content: start; }
 .te-fields .field-label { grid-column: 1 / -1; margin-top: 8px; }
 .te-color { display: flex; align-items: center; gap: 8px; min-height: 44px; min-width: 0; }
