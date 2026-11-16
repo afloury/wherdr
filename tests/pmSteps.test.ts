@@ -3,7 +3,7 @@ import { EXAMPLES, common, company, github, vibe, wherdr } from '../shared/pm/ex
 import { currentStep, initialState, nextRecheck, type News, onEvent, pauseClock, planSteps, recheckNews, waitStep, stepLabels, withBase, type Effect, type StepEvent, type StepState } from '../shared/pm/steps'
 import { validateTemplate, type Template } from '../shared/pm/workflow'
 import type { Finding } from '../shared/pm/verdict'
-import { taskBase } from '../shared/pm/run'
+import { startBase, taskBase } from '../shared/pm/run'
 import { guardAction } from '../shared/pm/actions'
 import { runsNow } from '../shared/pm/advance'
 import { coordinatorWake } from '../shared/pm/coordinator'
@@ -242,6 +242,16 @@ describe('working branch', () => {
     expect(taskBase({}, { base: 'v3' })).toBe('v3')
     expect(taskBase({ base: 'main' }, { base: 'v3' })).toBe('main')
     expect(taskBase({ base: '' }, { base: 'v3' })).toBeUndefined()
+  })
+
+  it('with no working branch, starts from and compares to the workflow\'s PR base, else origin\'s default', () => {
+    const wf = (action: Record<string, string>) => ({ taskTypes: { task: { steps: [{ id: 'work', holder: 'worker' }, { id: 'pr', ends: 'action', action }] } } }) as unknown as Template
+    const pr = wf({ kind: 'github.pr', base: 'v3' })
+    expect(startBase(pr, { type: 'task' }, { base: 'develop' })).toEqual({ base: 'develop' })
+    expect(startBase(pr, { type: 'task' }, {})).toEqual({ base: 'v3', fromWorkflow: true })
+    expect(startBase(wf({ kind: 'git.verify-merged', target: 'next' }), { type: 'task', base: '' }, { base: 'v3' })).toEqual({ base: 'next', fromWorkflow: true })
+    expect(startBase(wf({ kind: 'github.pr' }), { type: 'task' }, {})).toEqual({})
+    expect(startBase(null, { type: 'task' })).toEqual({})
   })
 })
 
