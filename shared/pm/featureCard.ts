@@ -16,7 +16,11 @@ const chipState = (c: Card): ChipState => (c.state?.abandoned ? 'abandoned' : c.
 const open = (s: ChipState) => s !== 'done' && s !== 'abandoned'
 
 export function featureView(f: Pick<Card, 'id'>, cards: Card[]): FeatureView {
-  const subs = cards.filter(c => c.feature === f.id)
+  // In start order: each after the sub-tasks it waits for (after, then mergeAfter).
+  const all = cards.filter(c => c.feature === f.id)
+  const depth = (c: Card, seen: string[] = []): number => Math.max(0, ...[...c.after ?? [], ...c.mergeAfter ?? []]
+    .map(id => all.find(x => x.id === id)).filter(x => !!x && !seen.includes(x.id)).map(x => 1 + depth(x!, [...seen, c.id])))
+  const subs = all.map(c => ({ c, d: depth(c) })).sort((a, b) => a.d - b.d).map(x => x.c)
   const shown = (id: string) => cards.find(c => c.id === id)?.shown ?? id
   const chips = subs.map(c => ({ id: c.id, shown: c.shown, ...(c.color ? { color: c.color } : {}), ...(c.step ? { step: c.step } : {}), state: chipState(c) }))
   const waits = subs.flatMap((c, i) => {

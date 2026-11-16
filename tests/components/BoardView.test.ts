@@ -412,9 +412,9 @@ it('a workspace picked: each feature is one card with its sub-tasks as chips, fo
   board.projects.push({ key: 'WS', name: 'Payroll', kind: 'workspace', columns: [], types: [] }, ...['PAY', 'WEB', 'MOB'].map(key => ({ key, name: key, workspace: 'WS', columns: columns(company), types: types(company) })))
   board.cards.push(
     cardOf(task('WS-1', initialState(), { title: 'Payslips as PDF', kind: 'feature', state: 'todo', plan: { order: 'The API first: the app calls it' } }), [], []),
-    sub('PAY-1', at(4, { done: true })),
-    sub('WEB-1', at(4, { yourTurn: { reason: 'user', badge: 'Merge the PR' } })),
     sub('MOB-1', initialState(), { state: 'todo', after: 'WEB-1' }),
+    sub('WEB-1', at(4, { yourTurn: { reason: 'user', badge: 'Merge the PR' } }), { after: 'PAY-1' }),
+    sub('PAY-1', at(4, { done: true })),
   )
   const w = await mountSuspended(BoardView)
   mounted = w
@@ -427,6 +427,7 @@ it('a workspace picked: each feature is one card with its sub-tasks as chips, fo
   expect(f.find('[data-testid="board-badge"]').text()).toBe('WEB-1: Merge the PR')
   expect(f.find('[data-testid="feature-progress"]').text()).toBe('1/3 merged')
   expect(f.findAll('[data-testid="feature-chip"]').map(c => c.attributes('data-state'))).toEqual(['done', 'waiting', 'todo'])
+  expect(f.findAll('[data-testid="feature-chip"] .project-badge').map(b => b.text())).toEqual(['PAY-1', 'WEB-1', 'MOB-1'])
   expect(f.find('[data-testid="feature-order"]').text()).toBe('Order: The API first: the app calls it')
   expect(f.find('[data-testid="feature-waits"]').text()).toBe('MOB-1 waits for WEB-1')
   // A chip opens its sub-task's sheet.

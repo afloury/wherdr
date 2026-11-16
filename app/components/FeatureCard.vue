@@ -44,9 +44,9 @@ const SAID: Record<ChipState, string> = { todo: 'To do', working: 'Working', wai
 .feature-card :deep(.project-badge.copy), .feature-chip { position: relative; }
 .feature-chips { display: flex; flex-wrap: wrap; gap: 4px; }
 /* A chip: 44 px of hit height (docs/design.md) around a smaller drawn chip. */
-.feature-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; background: var(--surface); cursor: pointer; }
-.feature-chip::after { content: ''; position: absolute; inset: -9px 0; }
-.feature-chips { row-gap: 18px; padding: 9px 0; margin: -5px 0; }
+.feature-chip { display: inline-flex; align-items: center; gap: 6px; min-width: 0; max-width: 100%; min-height: 32px; background: var(--surface); cursor: pointer; }
+.feature-chip::after { content: ''; position: absolute; inset: -6px 0; }
+.feature-chips { row-gap: 12px; padding: 6px 0; }
 .feature-step { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .feature-chip[data-state="abandoned"] .feature-step { text-decoration: line-through; }
 .feature-line { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
