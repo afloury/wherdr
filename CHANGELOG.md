@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **An idle Devin keeps its conversation.** Devin's input field was recognized only when its footer showed the token quota, which real footers rarely do (model only, `· smart`, an edits hint, a footer cut short on a phone), so an idle Devin opened the interactive terminal over the conversation. The field is now recognized by its frame, whatever the footer says. A screen caught mid-redraw also no longer opens the interactive terminal for a single read: it opens once two reads in a row agree.
+
 ## [3.0.0] — 2026-11-14
 
 wherdr 3 runs on herdr-core (`hc`) instead of Herdr and adds built-in project management: you talk to a project's coordinator, agents carry its tasks through your workflow on a board, and Alfred helps you set it up. It installs from source beside wherdr v2, imports v2's machines and settings, and leaves v2 untouched. Release notes: [docs/release-notes-3.0.0.md](docs/release-notes-3.0.0.md).
