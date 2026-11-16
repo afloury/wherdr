@@ -5,7 +5,7 @@
 // screen re-checked.
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { coreDraft, queueSendNow, readDraft, type CoreDraftDeps } from '../server/utils/coreDraft'
+import { coreDraft, pasting, queueSendNow, readDraft, type CoreDraftDeps } from '../server/utils/coreDraft'
 import { createCoreScreens } from '../server/utils/coreScreen'
 import { HerdrError } from '../server/utils/herdr'
 import type { Pane } from '../shared/types'
@@ -48,6 +48,14 @@ describe('readDraft', () => {
   })
   it('only for Claude', () => {
     expect(readDraft(TYPED, 'codex')).toBeNull()
+  })
+})
+
+describe('pasting', () => {
+  it('Claude 2.1.319 taking in three large photos: empty field, "Pasting…" under it', () => {
+    expect(pasting(['● OK', '', RULE, '❯ ', RULE, '  Pasting…'].join('\n'))).toBe(true)
+    expect(pasting(field('❯ [Image #9] [Image #10] [Image #11][Pasted text #12 +6 lines]'))).toBe(false)
+    expect(pasting(['  Pasting… was slow', RULE, '❯ ', RULE, '  ? for shortcuts'].join('\n'))).toBe(false)
   })
 })
 
