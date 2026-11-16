@@ -27,7 +27,7 @@ import { isStartPrompt } from '#shared/pm/alfred'
 import type { ProposalAnswer } from '#shared/pm/coordinator'
 import type { AutomationProposal } from '#shared/pm/automations'
 import { proposalSpot, type PlacedBlock } from '~/utils/proposalPlace'
-import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall } from '~/utils/ompTool'
+import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall, shellView } from '~/utils/ompTool'
 import { keepIfSame, keyedMemo, weakMemo } from '~/utils/keepIfSame'
 import { duplicateImages } from '#shared/imageDupes'
 import { stripPosition } from '#shared/filePaths'
@@ -500,7 +500,6 @@ type Block = ({ k: 'day', key: string, label: string }
   | { k: 'notice', key: string, label: string, icon: string, html: string, long: boolean, scheduled?: boolean, ms?: number }
   // The agent's turn failed (omp: usage limit, credit balance, stalled stream…).
   | { k: 'error', key: string, text: string, long: boolean }
-  | { k: 'shell', key: string, bash: boolean, text: string, out: string, err: string, lines: number, long: boolean, ms?: number }
   | { k: 'ompRun', key: string, tool: ChatItem & { omp: OmpToolView }, ms?: number }
   | { k: 'tools', key: string, list: ChatItem[], live: boolean }
   | { k: 'turn', key: string, text: string, ts: string | null, copy: string | null, reply: string | null }
@@ -719,13 +718,8 @@ const blocks = computed<Block[]>(() => {
       out.push(lazyHtml({ k: 'thinking' as const, key, id: replyId(it), text: it.text, ms: it.ms }, () => md(it.text)))
     } else if (it.role === 'job' && it.job) {
       out.push({ k: 'job', key, id: it.job.id, tool: it.job.tool, out: it.job.out, ms: it.ms, error: Boolean(it.error) })
-    } else if (it.role === 'bash' && it.omp) {
-      out.push({ k: 'ompRun', key: `s:${it.ts}:${it.text.slice(0, 40)}`, tool: { ...it, omp: it.omp }, ...msOf(it) })
     } else if (it.role === 'bash') {
-      const o = it.out || ''
-      const e = it.err || ''
-      const lines = (o ? o.split('\n').length : 0) + (e ? e.split('\n').length : 0)
-      out.push({ k: 'shell', key: `s:${it.ts}:${it.text.slice(0, 40)}`, bash: it.role === 'bash', text: it.text, out: o, err: e, lines, long: lines > SHELL_LINES || o.length + e.length > 1500, ...msOf(it) })
+      out.push({ k: 'ompRun', key: `s:${it.ts}:${it.text.slice(0, 40)}`, tool: { ...it, omp: it.omp || shellView(it) }, ...msOf(it) })
     } else if (it.role === 'notice' && it.name === 'error' && it.error) {
       // The provider's own message (often raw JSON): shown as plain text.
       out.push({ k: 'error', key, text: it.text, long: it.text.split('\n').length > SHELL_LINES || it.text.length > 1200 })
@@ -778,7 +772,7 @@ const changes = (it: ChatItem) => /^(Edit|Write|MultiEdit|NotebookEdit)$/.test(i
 // Its answer asks the user: a question line, or questions the reply bar offers.
 const asks = (b: Block & { k: 'assistant' }) => /\?\s*$/m.test(b.text) || replyTargets(b.html).questions.length > 0
 // A block the user started: it ends a wake's turn.
-const fromUser = (b: Block) => b.k === 'user' || b.k === 'card' || b.k === 'shell' || b.k === 'ompRun' || (b.k === 'notice' && !!b.scheduled) || (b.k === 'system' && !!b.cmd)
+const fromUser = (b: Block) => b.k === 'user' || b.k === 'card' || b.k === 'ompRun' || (b.k === 'notice' && !!b.scheduled) || (b.k === 'system' && !!b.cmd)
 const plainLine = (text: string) => text.replace(/[*_`#>]+/g, '').replace(/\s+/g, ' ').trim()
 // Ends a wake's turn: the user's input, or a turn the agent took by itself.
 const endsWakeTurn = (b: Block) => fromUser(b) || (b.k === 'who' && !!b.own)
@@ -1102,8 +1096,32 @@ function onListClick(e: MouseEvent) {
 // Never from a message of the user's (their messages are not markdown) nor on its own.
 async function runCommand(cmd: string) {
   const queued = await runInAgent(props.pane.id, cmd)
-  if (queued !== false) emit('sent', queued)
+  if (queued === false) return
+  // Sent at once: a live card until the transcript writes it. Held by the
+  // server instead: its queued bubble says so.
+  if (queued === null) addRun(props.pane.id, cmd)
+  emit('sent', queued)
 }
+// Runs of this pane, marked done as their entries land in the transcript.
+const runsHere = computed(() => codeRuns.value[props.pane.id] || [])
+watch([runsHere, items], ([runs, list]) => {
+  const next = settleRuns(runs, list, Date.now())
+  if (next.some((r, i) => r !== runs[i])) codeRuns.value = { ...codeRuns.value, [props.pane.id]: next }
+}, { immediate: true })
+const runButtons = computed(() => runMarks(runsHere.value))
+// The "!" command running now, as the card the transcript will show: what the
+// screen reads (Claude: its output so far), or else the command just sent
+// with Run, timed from the click.
+const liveRun = computed<(ChatItem & { omp: OmpToolView }) | null>(() => {
+  const run = runsHere.value.findLast(r => r.doneAt === undefined)
+  // The screen a moment behind a transcript that already has it: shown once.
+  const landed = (cmd: string) => runsHere.value.some(r => r.doneAt !== undefined && Date.now() - r.doneAt < 10_000 && sameCmd(r.cmd, cmd))
+  const s = liveShell.value && !(run && sameCmd(run.cmd, liveShell.value.command)) && landed(liveShell.value.command) ? null : liveShell.value
+  if (!s && !run) return null
+  const since = s?.since ?? run?.at ?? Date.now()
+  const omp = s ? { ...shellView({ text: s.command, out: s.lines.join('\n') }, s.hidden), ...(s.python ? { title: 'Python' } : {}) } : shellView({ text: run!.cmd })
+  return { role: 'bash', text: omp.target || '', ts: new Date(since).toISOString(), omp: { ...omp, intent: tl('Running…') } }
+})
 function cmdMenuItems(cmd: string, runnable: boolean): MenuItem[] {
   const items: MenuItem[] = []
   if (runnable) items.push({ label: tl('Run…', 'Lancer…'), icon: 'i-lucide-play', run: () => runCommand(cmd) })
@@ -1252,7 +1270,7 @@ function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' 
   }
 }
 watch(() => queuedList.value.map(q => `${q.id}:${q.phase}`).join(','), () => nextTick(() => scrollToEnd(false)))
-watch(() => liveShell.value && liveShell.value.lines.join('\n'), () => nextTick(() => scrollToEnd(false)))
+watch(() => liveRun.value && `${liveRun.value.text}\n${liveRun.value.omp.out || ''}`, () => nextTick(() => scrollToEnd(false)))
 watch(() => props.pane.draft?.text, () => nextTick(() => scrollToEnd(false)))
 
 // No conversation yet but a waiting screen (key legend):
@@ -1279,7 +1297,7 @@ function statusNow() {
   }
   // Claude: its current verb ("✻ Orbiting…"), read from the screen by the server;
   // the spinning star in front is animated on the app side (ClaudeSpinner).
-  if (liveShell.value) return { typing: true, text: tl('Command running…', 'Commande en cours…') }
+  if (liveRun.value) return { typing: true, text: tl('Command running…', 'Commande en cours…') }
   if (p.status === 'working' && p.agent === 'claude' && p.activity) return { typing: true, verb: true, text: `${p.activity}…` }
   // omp: its running step ("⠧ Finding Fixed section") and the turn's time, read
   // from the screen; braille spinner animated on the app side (OmpSpinner).
@@ -1456,8 +1474,8 @@ function focusSearch() {
 // `asked`: that message, whatever the draft says (the list keeps room for the
 // reminder as long as it may show, so answering moves nothing).
 const asked = computed(() => {
-  if (readOnly.value || working.value || blocked.value || queuedList.value.length || liveShell.value) return null
-  const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'shell' || b.k === 'ompRun')
+  if (readOnly.value || working.value || blocked.value || queuedList.value.length || liveRun.value) return null
+  const last = blocks.value.findLast(b => b.k === 'assistant' || b.k === 'user' || b.k === 'ompRun')
   if (!last || last.k !== 'assistant' || typingAt(last.id) !== null) return null
   const targets = replyTargets(last.html)
   return targets.questions.length + targets.rows.length ? { key: last.key, time: last.time, rid: last.rid, targets } : null
@@ -1645,7 +1663,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   :ui="aiUi(`msg msg-ai tw-${agent || 'agent'}${canRun ? ' can-run' : ''}`)"
                 >
                   <template #content>
-                    <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" @done="typingDone(b.id)" />
+                    <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" :runs="runButtons" @done="typingDone(b.id)" />
                   </template>
                 </UChatMessage>
                 <div v-if="!b.endsTurn && (b.ts || !readOnly || readAloudEngine !== 'off')" class="msg-actions">
@@ -1678,31 +1696,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </div>
               </div>
 
-              <div v-else-if="b.k === 'shell'" class="msg-shell" :class="{ bash: b.bash, long: b.long, open: isOpen(b.key) }">
-                <div class="msg-shell-cmd">
-                  <span class="msg-shell-sign" aria-hidden="true">{{ b.bash ? '!' : '❯' }}</span>
-                  <code>{{ b.text }}</code>
-                  <UTooltip :text="t('Copy command')" :disabled="!desk">
-                    <UButton icon="i-lucide-copy" color="neutral" variant="ghost" size="xs" class="msg-shell-copy" :aria-label="t('Copy command')" @click="copyText(b.bash ? `!${b.text}` : b.text)" />
-                  </UTooltip>
-                </div>
-                <div v-if="b.out || b.err" class="msg-shell-body">
-                  <pre v-if="b.out" class="msg-shell-out">{{ b.out }}</pre>
-                  <pre v-if="b.err" class="msg-shell-out err">{{ b.err }}</pre>
-                </div>
-                <div v-else-if="b.bash" class="msg-shell-empty">{{ t('No output') }}</div>
-                <button v-if="b.long" type="button" class="msg-shell-more" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
-                  <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" />
-                  <span>{{ isOpen(b.key) ? t('Collapse') : tl(`Show all · ${b.lines} lines`, `Tout afficher · ${b.lines} lignes`) }}</span>
-                </button>
-              </div>
-              <div v-else-if="b.k === 'ompRun'" class="tools omp-console omp-run">
-                <div class="omp-console-head">
-                  <span class="omp-console-title">{{ b.tool.omp.title === 'Python' ? '$' : '!' }}</span>
-                  <span>{{ tl('You ran', 'Lancé par toi') }}</span>
-                </div>
-                <OmpTool :tool="b.tool" run />
-              </div>
+              <ChatShellRun v-else-if="b.k === 'ompRun'" :tool="b.tool" :agent="agent" />
               <div v-else-if="b.k === 'system' && b.full" class="msg-cmd" :class="{ open: isOpen(b.key) }">
                 <button type="button" class="msg-system" :aria-expanded="isOpen(b.key)" :title="isOpen(b.key) ? t('Collapse') : t('Show all')" @click="setOpen(b.key, !isOpen(b.key))">
                   <span>{{ b.text }}</span><UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="msg-cmd-chev" />
@@ -1805,7 +1799,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <UIcon name="i-lucide-reply" /><span>{{ t('Reply') }}</span>
           </button>
         </Teleport>
-        <div v-if="queuedList.length || liveShell || (!readOnly && hasDraft)" class="queued-list">
+        <div v-if="queuedList.length || liveRun || (!readOnly && hasDraft)" class="queued-list">
           <!-- Already sent (visible as sent on screen), not yet in the transcript. -->
           <div v-for="q in queuedList.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
@@ -1825,22 +1819,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ queuedLabel(q) }}</span></div>
           </div>
           <!-- "!" command running: live output read from the screen. -->
-          <div v-if="liveShell" class="msg-user-wrap">
-            <div class="msg-shell bash running">
-              <div class="msg-shell-cmd">
-                <span class="msg-shell-sign" aria-hidden="true">{{ agent !== 'omp' ? '!' : liveShell.python ? '>>>' : '$' }}</span>
-                <code>{{ liveShell.command }}</code>
-              </div>
-              <div v-if="liveShell.lines.length" class="msg-shell-body">
-                <div v-if="liveShell.hidden" class="msg-shell-hidden">{{ tl(`+ ${liveShell.hidden} lines above`, `+ ${liveShell.hidden} lignes au-dessus`) }}</div>
-                <pre class="msg-shell-out">{{ liveShell.lines.join('\n') }}</pre>
-              </div>
-              <div v-else class="msg-shell-empty">{{ t('No output yet') }}</div>
-            </div>
-            <div class="queued-tag running">
-              <UIcon name="i-lucide-loader-circle" class="spin" /><ChatRunningTime :since="liveShell.since" />
-            </div>
-          </div>
+          <ChatShellRun v-if="liveRun" :tool="liveRun" :agent="agent" live />
           <div v-for="q in queuedList.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
