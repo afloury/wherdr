@@ -15,8 +15,9 @@ async function fallbackModel(p: Pane): Promise<ModelInfo | null> {
   catch { return null }
 }
 
-export async function currentModel(p: Pane): Promise<ModelInfo | null> {
+// historyModel: the model a daemon-backed history already read (codexDaemon.ts).
+export async function currentModel(p: Pane, historyModel?: ModelInfo | null): Promise<ModelInfo | null> {
   if (!hasTranscript(p.agent)) return null
   // A failed read throws: the state keeps the model it showed (refreshModel).
-  return (await transcripts.model(p)) || fallbackModel(p)
+  return historyModel || (await transcripts.model(p)) || fallbackModel(p)
 }
