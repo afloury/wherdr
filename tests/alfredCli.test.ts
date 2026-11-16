@@ -426,16 +426,33 @@ describe('Alfred and a project\'s workflow and coordinator', () => {
     panes = [{ id: 'p1', coreAddress: 't-web', status: 'idle' }]
     await turn('user', 'ask WEB for a workflow')
     expect(await run(['tell', 'WEB', 'propose a workflow'])).toMatchObject({ told: 'WEB' })
-    // Its own "From Alfred:" is not doubled.
-    await run(['tell', 'WEB', 'From Alfred: propose a workflow'])
-    expect(sent).toEqual([['terminal.send', { terminal: 't-web', text: 'From Alfred: propose a workflow' }], ['terminal.send', { terminal: 't-web', text: 'From Alfred: propose a workflow' }]])
+    // The user's message relayed is marked as theirs; Alfred's own prefix is not doubled.
+    await run(['tell', 'WEB', 'From Alfred, for the user: propose a workflow'])
+    const relayed = { terminal: 't-web', text: 'From Alfred, for the user: propose a workflow' }
+    expect(sent).toEqual([['terminal.send', relayed], ['terminal.send', relayed]])
     expect((await store.coordinator('WEB'))!.turn).toMatchObject({ kind: 'user', said: 'ask WEB for a workflow' })
     expect((await store.projectLog('WEB')).at(-1)).toMatchObject({ by: 'Alfred', text: 'told the coordinator: propose a workflow' })
     // In Alfred's wake, the coordinator's turn is a wake too.
     await turn('wake')
     await run(['tell', 'WEB', 'anything blocked?'])
     expect((await store.coordinator('WEB'))!.turn).toMatchObject({ kind: 'wake' })
+    expect(sent.at(-1)).toEqual(['terminal.send', { terminal: 't-web', text: 'From Alfred: anything blocked?' }])
     expect(await run(['last', 'WEB'])).toEqual({ project: 'WEB', working: false, from: 'conversation', text: 'Proposed: see the review', at: null })
+  })
+
+  it('routes a request to the right coordinator and reports the task it added', async () => {
+    await run(['project', 'add', 'TV', '--machine', '', '--path', '/src/tv', '--name', 'Living room TV', '--apply'])
+    await store.saveCoordinator({ project: 'TV', tokenHash: '', terminal: 't-tv' })
+    panes = [{ id: 'p2', coreAddress: 't-tv', status: 'idle' }]
+    await store.addTask({ project: 'TV', title: 'Older task', type: 'simple' })
+    await new Promise(r => setTimeout(r, 5))
+    await turn('user', 'on the TV, the progress bar does not show')
+    await run(['tell', 'TV', 'The progress bar under an episode does not show'])
+    expect(sent).toEqual([['terminal.send', { terminal: 't-tv', text: 'From Alfred, for the user: The progress bar under an episode does not show' }]])
+    // The coordinator adds the task, as if the user had written to it.
+    const added = await store.addTask({ project: 'TV', title: 'Show the progress bar under an episode', type: 'simple' })
+    await store.addTask({ project: 'WEB', title: 'Another project', type: 'simple' })
+    expect(await run(['last', 'TV'])).toMatchObject({ project: 'TV', tasks: [{ id: added.id, title: 'Show the progress bar under an episode' }] })
   })
 })
 
