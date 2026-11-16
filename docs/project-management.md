@@ -1556,6 +1556,17 @@ commits need a review), wherdr starts the worker or the reviewer again in the
 same worktree, with a note on where the work stands. The task's log says when
 its agents were ended and started again.
 
+An agent you talk to stays: your last message to one of the task's agents
+(from its chat or its terminal) keeps them for 30 minutes after it instead of
+10, and while you have that conversation open in wherdr they are not ended at
+all. Only a machine short of memory for a task waiting to start cuts that
+grace (the plain 10 minutes then apply), and the log says so. Once the worker
+is released, *Open the agent* stays on the task, with one muted line under it
+(*Released at 12:43 to free memory: opening it starts it again.*): opening it
+starts the worker again in its worktree with its conversation taken up again,
+whose first line says *Restarted: it was released to free memory at 12:43*,
+and you write to it as before.
+
 The same goes when you answer and the task moves on: a review decision (*pass*,
 say), *Send back*, *Try again* or a merge you confirm hands the next step to
 its worker or reviewer, which wherdr starts again at once, also a worker that
