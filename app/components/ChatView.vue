@@ -1130,7 +1130,7 @@ const liveRun = computed<(ChatItem & { omp: OmpToolView }) | null>(() => {
   const landed = (cmd: string) => runsHere.value.some(r => r.doneAt !== undefined && Date.now() - r.doneAt < 10_000 && sameCmd(r.cmd, cmd))
   const s = liveShell.value && !(run && sameCmd(run.cmd, liveShell.value.command)) && landed(liveShell.value.command) ? null : liveShell.value
   if (!s && !run) return null
-  const since = s?.since ?? run?.at ?? Date.now()
+  const since = s?.since ?? (run ? run.startedAt ?? run.at : Date.now())
   const omp = s ? { ...shellView({ text: s.command, out: s.lines.join('\n') }, s.hidden), ...(s.python ? { title: 'Python' } : {}) } : shellView({ text: run!.cmd })
   return { role: 'bash', text: omp.target || '', ts: new Date(since).toISOString(), omp: { ...omp, intent: tl('Running…') } }
 })

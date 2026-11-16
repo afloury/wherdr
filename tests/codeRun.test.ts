@@ -50,8 +50,11 @@ describe('runs of a command', () => {
     expect(holdRuns(held, ['echo hi'], at + 9000)[0]).toBe(held[0])
     expect(settleRuns(held, [], at + RUN_MAX_MS + 1)[0]!.doneAt).toBeUndefined()
     const started = holdRuns(held, [], at + 40_000)[0]!
-    expect(started).toMatchObject({ held: false, at: at + 40_000 })
+    expect(started).toMatchObject({ held: false, at, startedAt: at + 40_000 })
     expect(settleRuns([started], [entry('echo hi', at + 40_500)], at + 41_000)[0]!.doneAt).toBe(at + 40_500)
+    // Seen late (phone locked at the turn's end): the queue empties as the entry lands, which settles it.
+    const late = at + 300_000
+    expect(settleRuns(holdRuns(held, [], late), [entry('echo hi', at + 40_000, 100)], late)[0]!.doneAt).toBe(at + 40_100)
     const two: CodeRun[] = [{ cmd: 'echo hi', at }, { cmd: 'echo hi', at: at + 1 }]
     expect(holdRuns(two, ['! echo hi'], at + 2).map(r => Boolean(r.held))).toEqual([false, true])
   })
