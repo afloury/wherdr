@@ -17,6 +17,8 @@ import { startingState } from '../../shared/stateReady'
 import { type TranscriptPane } from './transcripts'
 import { type CoreTranscripts, createCoreTranscripts } from './coreTranscripts'
 import { coreCall } from './core'
+import { createCodexDaemonHistory } from './codexDaemon'
+import { createCodexDaemonRpc } from './codexDaemonRpc'
 import { createCorePreviews } from './corePreview'
 import { agentNotificationTitle, pushSend } from './push'
 import { machineOfPane } from './machines'
@@ -34,7 +36,10 @@ const hcCall = <T>(method: string, params: object, timeout: number) => coreCall<
 // machine's disk through its exec.
 let coreTr: CoreTranscripts | null = null
 function coreTranscriptsOf(): CoreTranscripts {
-  return coreTr ||= createCoreTranscripts({ call: hcCall, pane: findPane, localHome: HOME })
+  return coreTr ||= createCoreTranscripts({
+    call: hcCall, pane: findPane, localHome: HOME,
+    codexHistory: createCodexDaemonHistory({ rpc: createCodexDaemonRpc(process.env.CODEX_HOME || path.join(HOME, '.codex')) }),
+  })
 }
 let coreSubtitles: ReturnType<typeof createCorePreviews> | null = null
 const corePreviews = () => coreSubtitles ||= createCorePreviews({

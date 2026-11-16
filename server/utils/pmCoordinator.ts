@@ -313,7 +313,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       const proposal = { template: next, diff: templateDiff(t, next), at: Date.now(), base: t?.version ?? 1, by: main ? 'main' : scope, changes, ...(rec?.turn?.said ? { said: rec.turn.said, saidAt: rec.turn.at } : {}) }
       // One still waiting is replaced: its card says so.
       await store.saveCoordinator({ ...withAnswer(rec!, rec?.proposal && answerOf(rec.proposal, 'replaced', rec.proposal.by === 'main' ? ALFRED : coordinatorBy(scope))), proposal })
-      return { proposed: true, changes: templateChanges(t, next), diff: proposal.diff, next: `The user accepts or refuses this diff in ${projectPlace(key, 'workflow', true)}; template show tells you what they chose` }
+      return { proposed: true, changes: templateChanges(t, next), diff: proposal.diff, next: 'Its card shows at the end of your reply, where the user accepts or refuses it: do not open the Workflow tab (ui open) for it. template show tells you what they chose' }
     }
     case 'task tag': {
       const task = await taskOf(cmd.task)
