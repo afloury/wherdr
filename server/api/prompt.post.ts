@@ -1,6 +1,7 @@
 import { userMessageTo } from '../utils/pmCoordinator'
 import { pmStore } from '../utils/pmStore'
 import { keepPastes } from '../utils/pastes'
+import { userWrote } from '../utils/pmTalk'
 
 // The user's message. To a project coordinator, it also starts a user turn
 // (what --user-said and template edit need), noted before it is sent; to
@@ -19,6 +20,7 @@ export default defineApi(async (_event, b) => {
     deps.refresh()
     return { ok: true, queued }
   }
+  if (text.trim()) userWrote(p?.coreAddress)
   if (text.trim()) await userMessageTo(pmStore(), p?.coreAddress, text, b.tab).catch(() => {})
   return coreSend(deps, b)
 })
