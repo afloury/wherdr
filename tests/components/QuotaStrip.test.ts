@@ -82,7 +82,7 @@ describe('QuotaStrip', () => {
     quotaNow.value = now
     const w = await mountSuspended(QuotaStrip, { props: { rows: [{ key: 'claude', agent: 'claude', q: { five: win(10, 30, 300), week: null, at: now } }] } })
     expect(w.findAll('.quota')).toHaveLength(2)
-    expect(w.find('.quota.empty').exists()).toBe(true)
+    expect(w.find('.quota.quota-none').exists()).toBe(true)
   })
 })
 

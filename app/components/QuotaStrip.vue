@@ -103,7 +103,7 @@ function ago(at: number) {
           <div class="quota-bar"><i :style="{ width: `${shown(w)}%` }" /></div>
           <div class="quota-reset"><UIcon name="i-lucide-rotate-cw" />{{ resetLabel(w) }}</div>
         </div>
-        <div v-else class="quota empty" />
+        <div v-else class="quota quota-none" />
       </template>
       </template>
       <p v-if="note(r)" class="quota-note" data-testid="quota-note">{{ note(r) }}</p>
