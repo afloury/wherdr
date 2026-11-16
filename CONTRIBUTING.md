@@ -27,10 +27,15 @@ conversations or personal paths**: use neutral names such as `host-a`, `laptop`,
 path, with no `server/` code and no service worker. `app/demo/plugin.client.ts` (added only to
 that build) replaces `fetch` and `WebSocket` before the app starts: `app/demo/server.ts` answers
 `/api/*` and the live state from the invented session of `app/demo/scenario.ts`, scripted turns
-included; files under `/demo/` load normally; every other request is refused. Serve the folder
-under `/demo/` to try it (for example `.output-demo/public` copied to `<root>/demo`). The site
-workflow (`.github/workflows/site.yml`) builds it and deploys it with the site. Demo content stays
-invented and in English, like the test fixtures.
+included; `app/demo/pm.ts` draws Alfred, the coordinators, the board and Tasks to review from the
+made-up projects and tasks of `app/demo/projects.ts` with the app's own `shared/pm` code (Approve
+and an answer move a task as the engine would); a task's screenshots load from
+`app/demo/public/shots/` (the demo build's public folder); files under `/demo/` load normally;
+every other request is refused. Serve the folder under `/demo/` to try it (for example
+`.output-demo/public` copied to `<root>/demo`), or run `npx playwright test tests/e2e/demo.spec.ts`
+after the build: it walks home → board → task sheet → Tasks to review → Notes. The site workflow
+(`.github/workflows/site.yml`) builds it, runs that test and deploys it with the site. Demo content
+stays invented and in English, like the test fixtures.
 
 The README screenshots (`docs/screenshots/`) are taken from that build: `npm run build:demo`, then
 `npm run shots:readme` (computer at 1440×900, phone as an iPhone 13). The launch film in `assets/`

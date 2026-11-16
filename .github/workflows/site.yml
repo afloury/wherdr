@@ -70,6 +70,12 @@ jobs:
       - name: Build the demo
         run: npm run build:demo
 
+      # Home → board → task sheet → Tasks to review → Notes, on the built demo.
+      - name: Demo smoke test
+        run: |
+          npx playwright install chromium
+          npx playwright test tests/e2e/demo.spec.ts --project=chromium-phone
+
       - uses: actions/upload-artifact@v7
         with:
           name: demo
