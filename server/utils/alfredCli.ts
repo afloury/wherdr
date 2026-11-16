@@ -288,13 +288,12 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       const p = projectOf(cmd.key)
       const pane = await coordinatorPane(p.key)
       const started = !pane
-      // Alfred's text may already start with it: never "From Alfred: From Alfred:".
-      const said = cmd.text.replace(new RegExp(`^\\s*From ${ALFRED}:\\s*`, 'i'), '')
-      const text = `From ${ALFRED}: ${said}`
-      // Not running: started with the message, typed once it is ready (coordinatorFirst.ts).
-      const terminal = pane?.coreAddress ?? (await startCoordinator(deps, p.key, await projectAgent(p.key), deps.urls, [text])).terminal
       // The coordinator's turn is the user's when Alfred relays the user's message; a wake's otherwise.
       const turn = await alfredTurn()
+      const said = tellText(cmd.text)
+      const text = `From ${ALFRED}${turn?.kind === 'user' ? ', for the user' : ''}: ${said}`
+      // Not running: started with the message, typed once it is ready (coordinatorFirst.ts).
+      const terminal = pane?.coreAddress ?? (await startCoordinator(deps, p.key, await projectAgent(p.key), deps.urls, [text])).terminal
       await noteTurn(store, p.key, turn?.kind === 'user' ? 'user' : 'wake', turn?.said)
       if (!started) await deps.call('terminal.send', { terminal, text }, 30000)
       await store.logProject(p.key, { by: ALFRED, text: `told the coordinator: ${said.slice(0, 300)}`, ...(turn?.said ? { said: turn.said } : {}) })
@@ -306,7 +305,10 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       if (!pane) throw new HerdrError('not_found', `The coordinator of ${p.key} is not running: wherdr alfred tell ${p.key} "<text>" starts it`)
       const said = await lastWords(deps, pane.coreAddress!)
       if (!said) throw new HerdrError('unreachable', `Nothing to read from the coordinator of ${p.key}: its conversation and its terminal are out of reach`)
-      return { project: p.key, working: pane.status === 'working', ...said }
+      // The tasks its coordinator added since Alfred last told it: the reply names them.
+      const told = (await store.projectLog(p.key)).findLast(e => e.by === ALFRED && e.text.startsWith('told the coordinator'))
+      const tasks = told ? (await store.tasks()).filter(t => t.project === p.key && (t.createdAt ?? 0) >= told.at).map(t => ({ id: t.id, title: t.title })) : []
+      return { project: p.key, working: pane.status === 'working', ...said, ...(tasks.length ? { tasks, next: 'Name each in your reply as a task line of a ```wherdr block' } : {}) }
     }
     case 'project guards': {
       await needPm()
@@ -363,3 +365,6 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
     }
   }
 }
+
+// Alfred's text may already carry the prefix: never "From Alfred: From Alfred:".
+export const tellText = (text: string) => text.replace(new RegExp(`^\\s*From ${ALFRED}(?:, for the user)?:\\s*`, 'i'), '')

@@ -2,7 +2,13 @@
 
 [Documentation](README.md) · [Project](../README.md)
 
-- **Themes**: wherdr Titanium (default), herdr.dev and Herdr's built-in themes. English interface.
+- <a id="appearance"></a>**Appearance** (Settings › Appearance › Theme): the theme, from wherdr's own
+  (Titanium, the default, Neon, Graphite), the coding agents' (Claude Code, Codex, omp) and three
+  classics (Vesper, Gruvbox, Kanagawa), and its mode: **Dark** (default), **Light**, or **System**,
+  which follows the device's light or dark setting live. Every theme has a dark and a light palette,
+  both checked for WCAG AA text contrast; the terminal follows them too. Theme and mode follow you
+  across devices; a removed theme falls back to Titanium, and a former light theme (Catppuccin
+  Latte, omp Light) opens as its theme in Light mode. English interface.
 
 ## Configuration
 
