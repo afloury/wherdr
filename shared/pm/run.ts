@@ -209,6 +209,29 @@ export function agentLine(program: string, model: string, instructions: string, 
 export const taskBase = (task: Pick<Task, 'base'>, p?: Pick<Project, 'base'>) =>
   (task.base !== undefined ? task.base : p?.base) || undefined
 
+// The branch a task type's workflow opens its PR to or merges into (github.pr
+// base, git.land or git.verify-merged target), when a step names one.
+export function workflowBase(t: Template | null | undefined, type: string): string | undefined {
+  for (const s of t ? typeSteps(t, type) : []) {
+    const a = s.action
+    const b = a?.kind === 'github.pr' ? a.base : a?.kind === 'git.land' || a?.kind === 'git.verify-merged' ? a.target : undefined
+    if (b) return b
+  }
+}
+
+// Where a task's branch starts and what its files are compared to: its working
+// branch (taskBase), else, with no working branch set, its workflow's PR base;
+// else undefined (origin's default branch). `fromWorkflow` says the base came from the workflow.
+export function startBase(t: Template | null | undefined, task: Pick<Task, 'base' | 'type'>, p?: Pick<Project, 'base'>): { base?: string, fromWorkflow?: true } {
+  const own = taskBase(task, p)
+  if (own) return { base: own }
+  const wf = workflowBase(t, task.type)
+  return wf ? { base: wf, fromWorkflow: true } : {}
+}
+
+// The project log line when a base comes from the workflow (once per project and branch).
+export const workflowBaseNote = (base: string) => `no working branch set: using ${base} from the workflow`
+
 // A task's planned steps, with its working branch.
 export const taskPlan = (t: Template, task: Pick<Task, 'type' | 'prefs' | 'base'>, p?: Pick<Project, 'base'>) =>
   planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }, taskBase(task, p))
