@@ -1035,7 +1035,10 @@ side by side), its PR and the review's verdict in one line, then:
   with your note, and each picked screenshot as a download with the task's key.
   It leaves the list too. The screenshots stay: the worker redoes the ones you
   picked (and any screen its new commits change) in place, so the next look
-  shows the same screens, each in its latest version.
+  shows the same screens, each in its latest version. Above them, **Since your
+  last look** quotes your note and shows each screenshot taken since, beside
+  the version it redoes (*Before* / *Redone*; a screen added since is *New
+  screen*); a tap opens the pair full size. The To do tab shows the same.
 
 An agent's question shows its [summary](#tldr), the options of the agent's
 `choices` line as buttons and *Another answer* with *Send*: either goes to the

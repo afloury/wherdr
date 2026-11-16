@@ -3,7 +3,7 @@ import { boardColumns, cardOf, shownTexts, type Board, type BoardMachine, type C
 import { initialState, onEvent, planSteps, reviewedCommit, reworkSince, waitsToMerge, type StepEvent } from '../../shared/pm/steps'
 import { endsMerged, taskGuards, type ActionResult } from '../../shared/pm/actions'
 import type { MergeBy, Template } from '../../shared/pm/workflow'
-import { addShot, isImage, needsShots, SHOT_FILE_RE, SHOT_TOKEN_HEADER, SHOT_TYPES, shotUrl, type Shot } from '../../shared/pm/shots'
+import { addShot, isImage, needsShots, POINTED_SHOTS, SHOT_FILE_RE, SHOT_TOKEN_HEADER, SHOT_TYPES, shotUrl, type Shot } from '../../shared/pm/shots'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { taskPlan, type Task } from '../../shared/pm/run'
 import { boardOrder } from '../../shared/pm/boardOrder'
@@ -294,7 +294,7 @@ export async function userSendBack(store: PmStore, id: unknown, note: unknown, s
     : store.shotPath(task.id, f))
   // The worker's own shots among them are redone in place (the send-back lists them for replaces=).
   const own = new Set(Object.values(task.step?.shots ?? {}).flat().map(s => s.file))
-  return userEvent(store, id, { kind: 'back', note: [note.trim(), '', 'Screenshots the user points at:', ...kept.map(f => `- ${where(f)}`)].join('\n'), redo: kept.filter(f => own.has(f)) })
+  return userEvent(store, id, { kind: 'back', note: [note.trim(), '', POINTED_SHOTS, ...kept.map(f => `- ${where(f)}`)].join('\n'), redo: kept.filter(f => own.has(f)) })
 }
 
 // A screenshot the user adds to a send-back (POST /api/pm/user-shot): kept with

@@ -7,13 +7,16 @@ import type { PlannedStep, StepState } from './steps'
 export type ShotPhase = 'before' | 'after'
 // rework: the commit the review passed, for a shot taken after new commits since.
 // commit: the task's head when a shot of the result was uploaded (unknown when it could not be read).
-export interface Shot { file: string, phase: ShotPhase, at: number, rework?: string, commit?: string }
+// replaced: the file of the shot it redoes (kept in earlierShots).
+export interface Shot { file: string, phase: ShotPhase, at: number, rework?: string, commit?: string, replaced?: string }
 
 export const SHOT_TYPES: Record<string, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp' }
 export const SHOT_FILE_RE = /^[a-f0-9]{12}\.(png|jpg|webp)$/
 export const MAX_SHOTS = 24 // per step
 export const SHOT_MAX_BYTES = 10 * 1024 * 1024
 export const SHOT_TOKEN_HEADER = 'x-wherdr-shot-token'
+// Heads the list of screenshots a send-back points at, after the user's own note.
+export const POINTED_SHOTS = 'Screenshots the user points at:'
 
 // The body is an image of the declared type (its first bytes), not any bytes.
 export function isImage(data: Uint8Array, ext: string) {
@@ -39,6 +42,19 @@ export function shotsMissing(step: Pick<Step, 'evidence' | 'screenshots'>, shots
 // A shot of the result taken before the step's newest commit (shotsHead): still
 // shown, marked as from an earlier commit (the worker retakes only what changed).
 export const earlierCommit = (s: Shot, head?: string) => s.phase === 'after' && !!s.commit && !!head && s.commit !== head
+
+// What changed since the user's last look (their last send-back): its note, and
+// each shot uploaded since, beside the version it redoes when it redoes one.
+export function sinceLastLook(state: StepState | undefined, step: string): { note: string, pairs: { before?: Shot, after: Shot }[] } | undefined {
+  const back = state?.lastBack
+  if (!back) return
+  const earlier = state.earlierShots?.[step] ?? []
+  const pairs = (state.shots?.[step] ?? []).filter(s => s.at > back.at).map((s) => {
+    const before = s.replaced ? earlier.find(e => e.file === s.replaced) : undefined
+    return { ...(before ? { before } : {}), after: s }
+  })
+  return { note: back.note, pairs }
+}
 
 // What the holder is told to give, or what is still missing.
 export const shotsText = (phases: ShotPhase[]) =>
@@ -74,6 +90,7 @@ export function addShot(plan: PlannedStep[], state: StepState | undefined, shot:
   if (replaces) {
     const old = list.find(s => s.file === replaces)
     if (!old || old.phase !== shot.phase) return { refused: `Step "${step.id}" has no ${shot.phase} screenshot ${replaces} to replace` }
+    shot = { ...shot, replaced: old.file }
     list = list.map(s => (s === old ? shot : s))
     earlier = { ...earlier, [step.id]: [...(earlier?.[step.id] ?? []), old].slice(-MAX_SHOTS * 2) }
   }

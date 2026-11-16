@@ -58,6 +58,7 @@ describe('the user sends a visual merge back', () => {
     expect(r.state).toMatchObject({ at: 1, yourTurn: undefined, fix: expect.stringContaining('The button is cut on the phone') })
     // The screens stay; the worker is told which to redo in place, and that the others stay.
     expect(r.state.shots?.work).toEqual(merge.shots!.work)
+    expect(r.state.lastBack).toEqual({ note: 'The button is cut on the phone', at: 0 })
     expect(r.state.fix).toContain('each uploaded with &replaces=<its file>: aaaaaaaaaaaa.png. Your other screenshots stay shown')
     expect(r.effects).toMatchObject([{ kind: 'instruct', step: 'work', holder: 'worker' }, { kind: 'log' }])
     expect(onEvent(plan, merge, { kind: 'back', note: ' ' }, 0).refused).toBe('Say what to change')

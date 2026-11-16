@@ -6,7 +6,7 @@
 import { WATCH, actionField, type Evidence, type Holder, type Step, type StepAction, type Template, type TaskInput } from './workflow'
 import { mayMerge } from './guards'
 import { taskGuards, type Unapproved } from './actions'
-import { needsShots, shotsMissing, shotsText, shotMode, type Shot } from './shots'
+import { needsShots, POINTED_SHOTS, shotsMissing, shotsText, shotMode, type Shot } from './shots'
 import { advise, blocking, weight, reviewText, sendBackText, type Advice, type Choice, type Finding, type Round } from './verdict'
 
 // text: what the holder is told at the start. guarded: a merge only the user may do.
@@ -49,6 +49,7 @@ export interface StepState {
   earlierShots?: Record<string, Shot[]> // the shots a redone one replaced, oldest first
   shotsHead?: Record<string, string> // per step id: the task's newest commit seen with its shots (an upload, the worker's done)
   shotsShown?: Record<string, number> // per step id: how many shots of the result its last round ended with
+  lastBack?: { note: string, at: number } // the user's last send-back: their note (without the shot downloads), when
   rounds: Record<string, number> // send-backs per verdict step id
   tries?: Record<string, number> // engine actions started per step id: one receipt each
   reviews?: Record<string, Round[]> // the send-backs of each verdict step
@@ -473,7 +474,8 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       effects.push({ kind: 'instruct', step: plan[back]!.id, holder: 'worker', text: fix }, { kind: 'log', text: `${step.id}: sent back by the user${state.approved ? ', approval dropped' : ''}. ${ev.note.trim()}` })
       // The screenshots stay: the worker redoes those pointed at (and those its new commits change)
       // in place (addShot's replaces). The reworked task waits for the user's look again: an earlier Merge click no longer counts.
-      return { state: { ...enter(plan, { ...state, approved: undefined }, back, now, []), fix }, effects }
+      const lastBack = { note: ev.note.split(`\n\n${POINTED_SHOTS}`)[0]!.trim(), at: now }
+      return { state: { ...enter(plan, { ...state, approved: undefined, lastBack }, back, now, []), fix }, effects }
     }
     case 'catch-up': {
       if (!waitsToMerge(step) || state.acting || state.catchUp) return refuse('No merge waits to be updated')

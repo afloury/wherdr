@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { addShot, earlierCommit, isImage, shotRows, shotsMissing, type Shot } from '../shared/pm/shots'
+import { addShot, earlierCommit, sinceLastLook, isImage, shotRows, shotsMissing, type Shot } from '../shared/pm/shots'
 import { initialState, onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import { shotsForReview } from '../shared/pm/advance'
 import { validateTemplate, type Template } from '../shared/pm/workflow'
@@ -68,10 +68,14 @@ describe('screenshots evidence', () => {
     const redone = { ...shot('after', 5), commit: 'b'.repeat(40) }
     const r = addShot(plan, { ...working(), shots: { work: four } }, redone, undefined, four[1]!.file)
     if ('refused' in r) throw new Error(r.refused)
-    expect(r.state.shots?.work).toEqual([four[0], redone, four[2], four[3]])
+    expect(r.state.shots?.work).toEqual([four[0], { ...redone, replaced: four[1]!.file }, four[2], four[3]])
     expect(r.state.earlierShots).toEqual({ work: [four[1]] })
     // The others, from the earlier commit, stay shown with a mark.
     expect(r.state.shots!.work!.map(s => earlierCommit(s, r.state.shotsHead?.work))).toEqual([true, false, true, true])
+    // Since the user's last look: their note, the redone shot beside the version it redoes.
+    const looked = { ...r.state, lastBack: { note: 'The button is cut off', at: 4 } }
+    expect(sinceLastLook(looked, 'work')).toEqual({ note: 'The button is cut off', pairs: [{ before: four[1], after: { ...redone, replaced: four[1]!.file } }] })
+    expect(sinceLastLook(r.state, 'work')).toBeUndefined()
     expect(addShot(plan, working(), shot('after', 6), undefined, 'ffffffffffff.png')).toEqual({ refused: 'Step "work" has no after screenshot ffffffffffff.png to replace' })
   })
 

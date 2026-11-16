@@ -77,6 +77,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       <LookAgainBanner v-if="card.state?.lookAgain" :look="card.state.lookAgain" />
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
       <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="emit('comments')">
+        <ShotsSince v-if="shotSteps(card)[0]" :task="card.id" :state="card.state" :step="shotSteps(card)[0]!.id" />
         <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
         <ul class="todo-shots" data-testid="todo-shots">
           <li v-for="(src, i) in shots" :key="src">
