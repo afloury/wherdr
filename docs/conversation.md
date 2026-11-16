@@ -275,7 +275,8 @@ field, so nothing moves when it comes or goes.
 **Settings › Conversation** has three tabs, each kept in the address so a link opens it:
 
 - **Display** (`#/settings?section=conversation&tab=display`, the default): default pane view,
-  typewriter, reply style and quoted replies.
+  typewriter, reply style and quoted replies. The typewriter's sample reply sits under **Show me**
+  (closed by default; it plays once on opening, ↻ replays it, **Hide** folds it).
 - **Dictation** (`#/settings?section=conversation&tab=dictation`): off, on this device (its
   models), online, and the rewrite pass ([Dictation design](dictation.md)). A dictation error's
   **Settings** button opens this tab.
