@@ -40,7 +40,9 @@ merges, settings and workflow stay with you. Its instructions (`AGENTS.md`)
 list the members.
 
 A member has **no coordinator**: none is started for it, and none shows in the
-sidebar. Every wake about a member's task goes to the workspace's coordinator,
+sidebar: the workspace's **row** does, under its tab group, with its
+coordinator's state, its members' tasks working and waiting for you, and its
+members' key badges ([Coordinators](home.md#coordinators)). Every wake about a member's task goes to the workspace's coordinator,
 its first line naming the task (`PAY-3: stuck: …`), and *Ask the coordinator*
 on a member's task asks it too. Its scheduled wakes' health summaries cover all the members' tasks.
 

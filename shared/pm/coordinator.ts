@@ -12,7 +12,7 @@ import pkg from '../../package.json'
 type AgentRole = Run['role']
 import type { WorkflowChanges } from './workflowChanges'
 import type { ProjectColor } from './projectKey'
-import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, type Autopilot, type FixKind, type limitsLeft } from './autopilot'
+import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, taskStatus, type Autopilot, type FixKind, type limitsLeft } from './autopilot'
 import type { Wake, WakeSkip } from './wakes'
 import type { PaceGauge } from './pace'
 import type { AutomationProposal } from './automations'
@@ -110,6 +110,22 @@ export interface CoordinatorView {
   // Since yesterday's midnight, for the Autopilot tab's timeline: the wakes not sent and
   // why, the tasks started (first worker run); and the worker's account pace.
   skips?: WakeSkip[], started?: { task: string, title: string, at: number }[], pace?: PaceGauge
+  // A workspace's coordinator (workspace.ts): its tab group, its members and their tasks at work or waiting for the user.
+  workspace?: WorkspaceView
+}
+export interface WorkspaceView { group?: string, members: { key: string, name: string, label?: string, color?: ProjectColor }[], working: number, waiting: number }
+
+// The sidebar's workspace row: its members (in the order they were added), and
+// how many of their tasks work (stalled ones too) or wait for the user.
+export function workspaceView(ws: Pick<Project, 'key' | 'group'>, projects: Project[], tasks: Task[]): WorkspaceView {
+  const members = projects.filter(p => p.workspace === ws.key)
+  const states = tasks.filter(t => members.some(m => m.key === t.project)).map(taskStatus)
+  return {
+    ...(ws.group ? { group: ws.group } : {}),
+    members: members.map(m => ({ key: m.key, name: m.name, ...(m.label ? { label: m.label } : {}), ...(m.color ? { color: m.color } : {}) })),
+    working: states.filter(s => s === 'working' || s === 'stalled').length,
+    waiting: states.filter(s => s === 'waiting' || s === 'ready').length,
+  }
 }
 
 // Where the coordinator's current turn comes from: a message the user sent
