@@ -36,7 +36,7 @@ wherdr 3.1 adds **workspaces**, one coordinator for several repositories. Alfred
 
 **Codex conversations on the shared daemon** ([#810](https://github.com/afloury/wherdr/issues/810)). A local Codex attached to the shared app-server no longer shows *No conversation* on an older thread: wherdr reads that daemon's history page by page. Thanks to [@Ovalene2333](https://github.com/Ovalene2333) for the fix.
 
-**Conversations.** A remote agent's turn no longer disappears after a very long line, such as a large screenshot. A photo message sent to Claude while it works or after a long idle is submitted instead of staying in its input, and is not shown twice. A run's task badges wrap inside the row, and the conversation never scrolls sideways.
+**Conversations.** A remote agent's turn no longer disappears after a very long line, such as a large screenshot. A conversation search no longer stops at the first line larger than its read window, such as a screenshot (thanks to [@followcat](https://github.com/followcat)). A photo message sent to Claude while it works or after a long idle is submitted instead of staying in its input, and is not shown twice. A run's task badges wrap inside the row, and the conversation never scrolls sideways.
 
 [Full changelog](https://github.com/afloury/wherdr/blob/v3.1.0/CHANGELOG.md)
 
