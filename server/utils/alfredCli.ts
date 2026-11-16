@@ -19,7 +19,9 @@ import { resendFirst } from './coordinatorFirst'
 import { lastWords } from './pmRead'
 import type { FolderCheck, PmStore } from './pmStore'
 import { readSettings } from './settings'
-import { addChangeCard, addSettingCard } from './uiActions'
+import { addChangeCard, addSettingCard, addThemeCard } from './uiActions'
+import { importThemeText, themeFile } from '../../app/utils/customThemes'
+import { contrastIssues } from '../../app/utils/themes'
 import { CHANGE_PLACES, choiceArgv, type CardChoice } from '../../shared/uiActions'
 import { UI_TARGETS } from '../../shared/uiTargets'
 import { saveProjectGuards } from './pmProject'
@@ -192,6 +194,14 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       if (!cmd.propose) return { dryRun: true, change: [line], next: `To propose it, run the same command with --propose: the user applies it from the card in your reply` }
       const turn = await alfredTurn(), target = SETTING_TARGETS[cmd.key]
       return addSettingCard(store, { turn: turn?.kind ?? 'none', by: ALFRED, label: target ? UI_TARGETS[target].label : cmd.key, change: { key: cmd.key, ...(old === undefined ? {} : { before: old }), after: cmd.value, ...(turn?.said ? { said: turn.said } : {}), ...(target ? { target } : {}) } })
+    }
+    case 'theme propose': {
+      // Checked as an import is; the card keeps the file, the Apply gives it its id.
+      const th = importThemeText(typeof input === 'string' ? input : input === undefined ? '' : JSON.stringify(input))
+      if (typeof th === 'string') throw new HerdrError('bad_input', `${th}: fix the theme file and run it again`)
+      const turn = await alfredTurn()
+      const note = await addThemeCard(store, { turn: turn?.kind ?? 'none', by: ALFRED, theme: { file: themeFile(th), ...(turn?.said ? { said: turn.said } : {}) } })
+      return { proposed: true, belowWcagAA: { dark: contrastIssues(th.c), light: contrastIssues(th.light) }, note }
     }
     case 'project add': {
       await needPm()

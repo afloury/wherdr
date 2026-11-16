@@ -539,7 +539,7 @@ b64() { base64 | tr -d '\\n'; }
 body='{"argv64":[' sep=
 for a in "$@"; do body="$body$sep\\"$(printf %s "$a" | b64)\\"" sep=,; done
 body="$body]"
-case "$route $1 $2 $3 $4" in "pm/cli template edit"*|"alfred/cli project workflow edit"*|"alfred/cli project memory "*|"pm/cli automation propose"*|*" notes add"*|*" notes edit "*|*" notes file put "*) case " $* " in *" --remove "*) ;; *) body="$body,\\"input64\\":\\"$(b64)\\"" ;; esac ;; esac
+case "$route $1 $2 $3 $4" in "pm/cli template edit"*|"alfred/cli project workflow edit"*|"alfred/cli project memory "*|"alfred/cli theme propose"*|"pm/cli automation propose"*|*" notes add"*|*" notes edit "*|*" notes file put "*) case " $* " in *" --remove "*) ;; *) body="$body,\\"input64\\":\\"$(b64)\\"" ;; esac ;; esac
 out=$(mktemp) hdr=$(mktemp) || exit 1
 code=$(printf '%s}' "$body" | curl -sS -D "$hdr" -o "$out" -w '%{http_code}' -X POST --data-binary @- \\
   -H 'content-type: application/json' -H "origin: $WHERDR_URL" -H "authorization: Bearer $tok" "$WHERDR_URL/api/$route")
