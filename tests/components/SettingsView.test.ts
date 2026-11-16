@@ -174,6 +174,22 @@ it('Wide computer: Settings open beside the conversation, on the linked section,
     const agents = w.findAll('.settings-section').find(s => s.find('#settings-pace').exists())!
     await vi.waitFor(() => expect(shown(agents)).toBe(true))
     expect(w.get('#settings').classes()).toContain('settings-panel')
+    // Icon rail (a narrow panel, main.css container query): every icon names its section,
+    // on hover and to screen readers; the toggle under it shows the names, kept on the device.
+    for (const b of w.findAll('.settings-nav-item')) {
+      expect(b.attributes('title')).toBeTruthy()
+      expect(b.attributes('aria-label')).toBe(b.attributes('title'))
+    }
+    const toggle = w.get('.settings-rail-toggle')
+    expect(toggle.attributes('aria-pressed')).toBe('false')
+    await toggle.trigger('click')
+    expect(w.get('.settings-nav').classes()).toContain('rail-labels')
+    expect(toggle.attributes('aria-pressed')).toBe('true')
+    expect(localStorage.getItem('settingsRailLabels')).toBe('1')
+    await toggle.trigger('click')
+    expect(w.get('.settings-nav').classes()).not.toContain('rail-labels')
+    expect(localStorage.getItem('settingsRailLabels')).toBe('0')
+    localStorage.removeItem('settingsRailLabels')
     // Another section stays in the panel.
     await w.findAll('.settings-nav-item').find(b => b.attributes('title') === 'Terminal')!.trigger('click')
     await vi.waitFor(() => expect(path()).toBe('/a/w1:p1?section=terminal'))
