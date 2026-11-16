@@ -14,7 +14,7 @@ import { adviceChoices } from '#shared/pm/decisions'
 import { canStart, coordinatorWait, mayAccept, mergeGoesNow, mergeStuck, mergeWaits, prLink, prUpdating, type Card } from '#shared/pm/board'
 import { stepLabels } from '#shared/pm/steps'
 import { RESUMES, stoppedText, type Resume } from '#shared/pm/stop'
-import { shotUrl } from '#shared/pm/shots'
+import { earlierCommit, shotUrl } from '#shared/pm/shots'
 import { reviewNote, workerNote } from '#shared/pm/report'
 import { agentCatchingUp } from '#shared/pm/refusal'
 import type { Choice } from '#shared/pm/verdict'
@@ -44,6 +44,8 @@ const choices = computed(() => (advice.value ? adviceChoices(advice.value) : { o
 // Visual merge: the newest step's screenshots of the result (after a rework, its new set).
 const latest = computed(() => { const s = shotSteps(props.card)[0]; return s ? props.card.state!.shots![s.id]!.filter(x => x.phase === 'after') : [] })
 const shots = computed(() => latest.value.map(x => shotUrl(props.card.id, x.file)))
+// Shots of the result taken before the step's newest commit: marked, not hidden.
+const older = computed(() => { const s = shotSteps(props.card)[0]; const head = s && props.card.state!.shotsHead?.[s.id]; return latest.value.map(x => earlierCommit(x, head)) })
 const reworked = computed(() => latest.value.some(x => x.rework))
 // Phone or desktop, from the image's shape once loaded.
 const shape = ref<Record<string, 'phone' | 'desktop'>>({})
@@ -75,6 +77,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       <LookAgainBanner v-if="card.state?.lookAgain" :look="card.state.lookAgain" />
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
       <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="emit('comments')">
+        <ShotsSince v-if="shotSteps(card)[0]" :task="card.id" :state="card.state" :step="shotSteps(card)[0]!.id" />
         <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
         <ul class="todo-shots" data-testid="todo-shots">
           <li v-for="(src, i) in shots" :key="src">
@@ -82,6 +85,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
               <img :src="src" alt="" decoding="async" @load="loaded(src, $event)">
             </button>
             <span v-if="shape[src]" class="mono-label muted">{{ shape[src] === 'phone' ? tl('Phone', 'Téléphone') : tl('Desktop', 'Ordinateur') }}</span>
+            <span v-if="older[i]" class="mono-label muted" data-testid="todo-earlier">{{ tl('Earlier commit') }}</span>
           </li>
         </ul>
       </TaskTldr>

@@ -213,7 +213,8 @@ function onKey(e: KeyboardEvent) {
         <template v-if="approves">
           <LookAgainBanner v-if="card.state?.lookAgain" :look="card.state.lookAgain" />
           <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="answer()">
-            <TaskShots v-if="shots.length && shotStep" :task="card.id" :shots="shots" :mode="shotMode(shotStep)" />
+            <ShotsSince v-if="shotStep" :task="card.id" :state="state" :step="shotStep.id" />
+            <TaskShots v-if="shots.length && shotStep" :task="card.id" :shots="shots" :mode="shotMode(shotStep)" :head="state?.shotsHead?.[shotStep.id]" />
           </TaskTldr>
           <p class="review-meta">
             <a v-if="pr" :href="pr.url" target="_blank" rel="noopener" data-testid="review-pr">{{ linkLabel(pr) }}</a>
