@@ -805,7 +805,9 @@ with one project picked, its [Autopilot](#autopilot) button. The picker offers
 *Follow machine tab* (the projects the [home tab](home.md#machines-as-tabs) picked
 shows; **All** shows every one, and changing the tab updates the board in place),
 *All projects*, or one project, shown as its key badge in its color then its name
-(as in every project picker). Your pick is kept and follows you across devices;
+(as in every project picker). A [workspace](workspaces.md) picked shows its
+features and the tasks of all its members, in *To do*, *Working* and *Done*
+(see [Features on the board](workspaces.md#features-on-the-board)). Your pick is kept and follows you across devices;
 until you pick, it is *Follow machine tab* once machine groups exist, else *All
 projects*. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects. A done

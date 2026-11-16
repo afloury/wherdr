@@ -164,6 +164,24 @@ A task of a member may start after tasks of the workspace's other members
 (`after`), never after a task outside the workspace or a feature, and never
 in a cycle. A task others wait for cannot be removed.
 
+### Features on the board
+
+A feature shows on the board as **one card**: its title and id, its progress
+(*2/3 merged*), one chip per sub-task (its id badge, its step and a square for
+its state: to do, working, waits for you, merged, abandoned), its merge order
+line (the plan's `order`) and what its sub-tasks still wait for (*MOB-1 waits
+for WEB-1*). A tap on a chip opens that sub-task's sheet; a tap elsewhere opens
+the feature's.
+
+The card sits in the column of the feature's state: *To do*, *Working*, *Done*
+once closed, and **Your turn** while a sub-task waits for you, with that
+sub-task's badge (*WEB-1: Merge the PR*).
+
+Pick the workspace in the board's project picker to see the features and the
+tasks of all its members together. Its sub-tasks then fold into their feature's
+card; the switch *Sub-tasks in their columns too* shows them in their columns
+as well, each tagged with its feature's id.
+
 ### Merge order
 
 `after` orders the starts; `mergeAfter` orders the merges. A sub-task whose
