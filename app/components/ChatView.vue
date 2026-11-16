@@ -1110,10 +1110,14 @@ async function runCommand(cmd: string) {
   if (queued === null) addRun(props.pane.id, cmd)
   emit('sent', queued)
 }
-// Runs of this pane, marked done as their entries land in the transcript.
+// Runs of this pane, held while in Claude's queue, marked done as their
+// entries land in the transcript.
 const runsHere = computed(() => codeRuns.value[props.pane.id] || [])
-watch([runsHere, items], ([runs, list]) => {
-  const next = settleRuns(runs, list, Date.now())
+// Claude's queue, as queuedNow reads it: empty once the agent is idle.
+const claudeQueued = computed(() => (waitFor.value === 'sending' ? '' : (chat.value.queue || []).map(q => q.text || '').join('\0')))
+watch([runsHere, items, claudeQueued], ([runs, list, queued]) => {
+  const now = Date.now()
+  const next = settleRuns(holdRuns(runs, queued ? queued.split('\0') : [], now), list, now)
   if (next.some((r, i) => r !== runs[i])) codeRuns.value = { ...codeRuns.value, [props.pane.id]: next }
 }, { immediate: true })
 const runButtons = computed(() => runMarks(runsHere.value))
@@ -1121,12 +1125,12 @@ const runButtons = computed(() => runMarks(runsHere.value))
 // screen reads (Claude: its output so far), or else the command just sent
 // with Run, timed from the click.
 const liveRun = computed<(ChatItem & { omp: OmpToolView }) | null>(() => {
-  const run = runsHere.value.findLast(r => r.doneAt === undefined)
+  const run = runsHere.value.findLast(r => r.doneAt === undefined && !r.held)
   // The screen a moment behind a transcript that already has it: shown once.
   const landed = (cmd: string) => runsHere.value.some(r => r.doneAt !== undefined && Date.now() - r.doneAt < 10_000 && sameCmd(r.cmd, cmd))
   const s = liveShell.value && !(run && sameCmd(run.cmd, liveShell.value.command)) && landed(liveShell.value.command) ? null : liveShell.value
   if (!s && !run) return null
-  const since = s?.since ?? run?.at ?? Date.now()
+  const since = s?.since ?? (run ? run.startedAt ?? run.at : Date.now())
   const omp = s ? { ...shellView({ text: s.command, out: s.lines.join('\n') }, s.hidden), ...(s.python ? { title: 'Python' } : {}) } : shellView({ text: run!.cmd })
   return { role: 'bash', text: omp.target || '', ts: new Date(since).toISOString(), omp: { ...omp, intent: tl('Running…') } }
 })

@@ -20,6 +20,8 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   *! · You ran* card with the command, the elapsed time and the working ring (in the agent's colors, as the message field's halo), its output so far
   underneath (Claude Code: read from its screen); when the transcript writes the command, that
   entry takes the card's place (shown once), with its run time and its output folded.
+  Run while Claude is working: Claude Code queues the command and runs it once, when its turn
+  ends; until then it shows only as its queued bubble, and the card starts when Claude runs it.
 - **Following new messages**: a new or growing reply (typed in as it arrives, or shown at once)
   keeps the view at the bottom only if you were at the bottom. Scroll up (wheel, touch, keyboard
   or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the
