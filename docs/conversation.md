@@ -129,7 +129,12 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   your message, and a coordinator shows its own project's tasks only.
 - **Wakes**: in a coordinator's conversation, a wake (Autopilot, Engine, Incident,
   Step check) is a compact muted row, not one of your bubbles, with the coordinator's answer under
-  it; routine runs fold into one row. See
+  it; routine runs fold into one row that counts them by kind with their tasks
+  (*5 checks · ✓ 3 merged WHR-352 354 355 · ⏳ 1 waits for you · 1 quiet*; a chip opens the
+  task's sheet), read from each wake's first line and task lines, standing out when one waits
+  for you. Open, each wake is one line: an icon, its task, a short label (*merged*,
+  *Scheduled*, *Health check*) and the reply's first sentence, a tap showing the full reply;
+  quiet checks are dimmer, two or more in a row fold into *N quiet checks*. See
   [Who sends a wake](project-management.md#who-sends-a-wake).
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the
