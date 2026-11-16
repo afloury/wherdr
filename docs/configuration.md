@@ -12,7 +12,10 @@
 - <a id="custom-themes"></a>**Custom themes** (Settings › Appearance › Theme › **Create theme**): start
   from any theme and change its colors (background, sidebar, surface, borders, text, muted text,
   accent, success, warning, danger, and the 16 terminal colors) for Dark and Light, with a live
-  preview and the WCAG AA contrast check. Custom themes form a **Custom** group (up to 10), follow
+  preview and the WCAG AA contrast check. The **JSON** tab beside Dark and Light shows the theme as
+  its file (the format below) to edit or paste whole: checked as you type like an import, a valid
+  edit updates the swatches and the preview; an invalid one shows the reason and its line, keeps the
+  last valid theme in the preview and disables Save. Custom themes form a **Custom** group (up to 10), follow
   you across devices, and are edited, duplicated, exported or deleted from their pencil button; a
   name too long for its row ends with an ellipsis (the full name shows on hover).
   **Export** downloads a JSON file or copies it; **Import theme** takes a pasted or picked file
