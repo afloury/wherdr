@@ -131,6 +131,7 @@ export interface Run {
   state: 'starting' | 'running' | 'ended'
   endedBy?: 'exit' | 'lost' | 'stopped' | 'released' // released: idle while its task waited for the user (release.ts)
   startedAt: number
+  endedAt?: number // when the engine released it (release.ts)
   peakMb?: number // the most its worktree's processes took, sampled each tick (peaks.ts)
   session?: string // Claude's conversation id, pinned at launch: a resume takes it up again
 }
@@ -300,6 +301,8 @@ export function shotsSection(step: Step, task: Pick<Task, 'id'>, shots: { base: 
     both
       ? 'Step "' + step.id + '" needs screenshots before and after your change: take the before ones first, on the unchanged code, then the same screens after.'
       : 'Step "' + step.id + '" needs screenshots of the result.',
+    'Take the screenshots of the result last, once the code is finished and committed (after your last fix and the merge of the base branch): each one records the commit it shows, and one taken before your last commit is marked as from an earlier commit.',
+    'After a send-back or new commits, retake only the screens your new commits change. To redo one screenshot, add `&replaces=<its file>` to its upload: it takes that one\'s place, the others stay shown.',
     'Upload each one (PNG, JPEG or WebP, 10 MB max; set Content-Type to match) with:', '',
     ...(both ? ['    ' + cmd('before')] : []), '    ' + cmd('after'), '',
   ]

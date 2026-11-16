@@ -4,12 +4,13 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { startTask, type PmLaunchDeps } from '../server/utils/pmLaunch'
-import { releaseIdle } from '../server/utils/pmRelease'
+import { releaseIdle, wakeReleased } from '../server/utils/pmRelease'
+import { chatPolled, forgetTalk, userWrote } from '../server/utils/pmTalk'
 import { advanceTick } from '../server/utils/pmAdvance'
 import { mechanicTick } from '../server/utils/pmMechanic'
 import { forgetMemory } from '../server/utils/pmMemory'
 import { askAgentFix } from '../server/utils/pmFix'
-import { FIX_QUIET_MS, RELEASE_IDLE_MS, ROOM_WAKE_MS, agentBack, agentsAtWork, fixAskText, fixAskedStep, fixWatch, fixableBlock, handFix, handToAgent, idleSince, releaseDue, retriesAction } from '../shared/pm/release'
+import { FIX_QUIET_MS, RELEASE_IDLE_MS, RELEASE_TALK_MS, ROOM_WAKE_MS, agentBack, agentsAtWork, fixAskText, fixAskedStep, fixWatch, fixableBlock, handFix, handToAgent, idleSince, releaseDue, retriesAction, roomWanted } from '../shared/pm/release'
 import { cardStatus } from '../shared/pm/board'
 import { initialState, onEvent, type PlannedStep } from '../shared/pm/steps'
 import { wherdr } from '../shared/pm/examples'
@@ -33,7 +34,22 @@ describe('the release rules', () => {
     const late = task({ step: { ...task().step!, yourTurn: { reason: 'timeout', badge: 'Check work: over 2h' } } })
     expect(idleSince(undefined, late, false, 10)).toBeUndefined() // its agent is to be looked at
     expect(releaseDue(10, 10 + RELEASE_IDLE_MS - 1)).toBe(false)
-    expect(releaseDue(10, 10 + RELEASE_IDLE_MS)).toBe(true)
+    expect(releaseDue(10, 10 + RELEASE_IDLE_MS)).toBe('idle')
+  })
+
+  it('keeps an agent the user talks to: 30 minutes after their last message, never while its conversation is open, unless memory is short', () => {
+    const idle = 0, said = 5 * 60_000
+    expect(releaseDue(idle, RELEASE_IDLE_MS, { at: said })).toBe(false)
+    expect(releaseDue(idle, said + RELEASE_TALK_MS - 1, { at: said })).toBe(false)
+    expect(releaseDue(idle, said + RELEASE_TALK_MS, { at: said })).toBe('idle')
+    expect(releaseDue(idle, 10 * RELEASE_TALK_MS, { open: true })).toBe(false)
+    // A task waiting to start needs the memory: the grace is cut, the plain 10 minutes apply.
+    expect(releaseDue(idle, RELEASE_IDLE_MS, { at: said, open: true }, true)).toBe('cut')
+    expect(releaseDue(idle, RELEASE_IDLE_MS - 1, { open: true }, true)).toBe(false)
+    const room = 'Waits for room (Home first): standard (≈3.4 GB) fits nowhere — m1: 1.0 GB free'
+    expect(roomWanted([{ state: 'todo', held: room }], 'm1')).toBe(true)
+    expect(roomWanted([{ state: 'todo', held: room, machine: 'm2' }], 'm1')).toBe(false)
+    expect(roomWanted([{ state: 'todo', held: 'paused by the pace' }, { state: 'working', held: room }], 'm1')).toBe(false)
   })
 
   it('work handed to the agent takes the task out of Your turn until it is in', () => {
@@ -89,7 +105,7 @@ describe('release and restart on the server', () => {
   beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-release-')) })
   afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
-  it('ends the idle agents of a task waiting for the user, then starts the worker again on a send-back', async () => {
+  async function setup() {
     const store = createPmStore(dir)
     await store.setEnabled(true)
     await store.saveTemplate(wherdr)
@@ -113,15 +129,25 @@ describe('release and restart on the server', () => {
     const deps = { call, store, machines: () => [{ key: 'm1', label: 'm1', local: false, status: 'online' }], launchWatchMs: 0 } as unknown as PmLaunchDeps
     await startTask(deps, 'WH-1')
     await store.saveTask(yourTurn((await store.task('WH-1'))!))
+    return { store, calls, files, deps }
+  }
+
+  it('ends the idle agents of a task waiting for the user, then starts the worker again on a send-back', async () => {
+    const { store, calls, files, deps } = await setup()
 
     expect(await releaseIdle(deps, 0)).toEqual([])
+    // The user wrote to it, then its conversation stays open: kept.
+    userWrote('m1/t1', 0)
+    chatPolled('m1/t1', RELEASE_TALK_MS)
+    expect(await releaseIdle(deps, RELEASE_TALK_MS)).toEqual([])
+    forgetTalk('m1/t1')
     expect(await releaseIdle(deps, RELEASE_IDLE_MS)).toEqual(['WH-1'])
     expect(calls.filter(c => c[0] === 'terminal.kill')).toEqual([['terminal.kill', { terminal: 'm1/t1' }]])
     expect((await store.runs())[0]).toMatchObject({ state: 'ended', endedBy: 'released' })
     const t = (await store.task('WH-1'))!
     expect(t).toMatchObject({ state: 'working', step: { yourTurn: { badge: 'Merge: guarded' } } }) // the board shows it as before
     expect(t.log!.slice(-2).map(e => e.text)).toEqual([
-      'released its agents: idle for 10 minutes while the task waits for you; they start again when it needs them',
+      'released its agents: idle for 10 minutes while the task waits for you; they start again when it needs them, or when you open the worker\'s conversation',
       'ended the worker (claude claude-opus-5-5) to free memory; its worktree stays',
     ])
 
@@ -137,6 +163,21 @@ describe('release and restart on the server', () => {
     expect(back.step).toMatchObject({ at: 1, told: 50 }) // the handover gave it: not sent again
     expect(back.log!.at(-1)!.text).toBe('started the worker again in its worktree: work needs it')
     expect(calls.some(c => c[0] === 'terminal.send')).toBe(false)
+  })
+
+  it('opening a released worker starts it again with its conversation, saying so', async () => {
+    const { store, calls, deps } = await setup()
+    await releaseIdle(deps, 0)
+    await expect(wakeReleased(deps, 'WH-1')).rejects.toThrow('not released')
+    expect(await releaseIdle(deps, RELEASE_IDLE_MS)).toEqual(['WH-1'])
+    const ended = (await store.runs())[0]!
+    expect(ended.endedAt).toBeTypeOf('number')
+    const t = await wakeReleased(deps, 'WH-1')
+    expect(t.state).toBe('working')
+    const line = String(calls.filter(c => c[0] === 'terminal.run')[1]![1].line)
+    expect(line).toContain(`'--resume' '${ended.session}'`)
+    expect(line).toMatch(/Restarted: it was released to free memory at \d\d:\d\d\./)
+    expect(t.log!.at(-1)!.text).toBe('started the worker again in its worktree: the user opened its conversation')
   })
 })
 
@@ -208,7 +249,7 @@ describe('work the engine handed the worker', () => {
     expect(env.calls.some(c => c[0] === 'terminal.kill')).toBe(false)
     env.push = { code: 0, out: 'pushed' }
     expect(await releaseIdle(deps, 2 * RELEASE_IDLE_MS)).toEqual(['WH-1'])
-    expect((await log()).slice(-3, -1)).toEqual(['pushed the branch\'s unpushed commits before releasing its agents', 'released its agents: idle for 10 minutes while the task waits for you; they start again when it needs them'])
+    expect((await log()).slice(-3, -1)).toEqual(['pushed the branch\'s unpushed commits before releasing its agents', 'released its agents: idle for 10 minutes while the task waits for you; they start again when it needs them, or when you open the worker\'s conversation'])
 
     // The engine needs the worker again: started in its worktree, told what to do, the board says it updates the PR.
     env.prHead = 'abc1234'
