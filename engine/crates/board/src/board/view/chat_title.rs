@@ -78,21 +78,28 @@ pub fn edge(t: &Title, width: usize, right: Inked) -> Inked {
     let mut suffix = if right.is_empty() { Inked::new() } else { Inked::plain(" ").add(right).add(Inked::plain(" ")) };
     let room = avail.saturating_sub(4 + suffix.width());
     let mut from = 0;
-    let mut ladder = steps_from(t, 0);
-    while ladder.width() > room && from + 1 < t.steps.len() { from += 1; ladder = steps_from(t, from); }
+    let mut ladder = steps_from(t, 0, true);
+    while ladder.width() > room && from + 1 < t.steps.len() { from += 1; ladder = steps_from(t, from, true); }
+    // Still too wide with the lit step alone (a long machine name): the kind goes, then the lit step is cut with …, so
+    // the edge still names who it talks to.
+    if ladder.width() > room { ladder = steps_from(t, from, false); }
+    if ladder.width() > room && room > 4 {
+        let step = t.steps.last().map(|x| crate::text::cut(x, room - 2)).unwrap_or_default();
+        ladder = Inked::of(format!(" {step} "), t.edge).inv();
+    }
     let mut inner = if ladder.width() <= room && room > 0 { e("─").add(Inked::plain(" ")).add(ladder).add(Inked::plain(" ")) } else { e("─") };
     if inner.width() + suffix.width() > avail { inner = e("─"); suffix = suffix.cut(avail.saturating_sub(1)); }
     let fill = avail.saturating_sub(inner.width() + suffix.width());
     e("╭").add(inner).add(e(&"─".repeat(fill))).add(suffix).add(e("╮"))
 }
-/// The ladder's steps from the `from`th on (`…` for those left out), the last one lit.
-fn steps_from(t: &Title, from: usize) -> Inked {
+/// The ladder's steps from the `from`th on (`…` for those left out), the last one lit, then the kind if `kind`.
+fn steps_from(t: &Title, from: usize, kind: bool) -> Inked {
     let mut ladder = if from > 0 { Inked::of("… ›", Ink::Muted).add(Inked::plain(" ")) } else { Inked::new() };
     for (n, step) in t.steps.iter().enumerate().skip(from) {
         let last = n + 1 == t.steps.len();
         ladder = ladder.add(if last { Inked::of(format!(" {step} "), t.edge).inv() } else { Inked::of(format!("{step} ›"), Ink::Muted) }).add(if last { Inked::new() } else { Inked::plain(" ") });
         // After the lit step, dim: the kind of agent it is (`· Project coordinator`).
-        if last { ladder = ladder.add(Inked::of(format!(" · {}", t.kind), Ink::Muted)); }
+        if last && kind { ladder = ladder.add(Inked::of(format!(" · {}", t.kind), Ink::Muted)); }
     }
     ladder
 }

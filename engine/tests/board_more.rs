@@ -32,6 +32,8 @@ fn a_long_message_wraps_inside_the_box_and_takes_the_rows_it_needs_never_the_tex
     let mut s = open(&w.root, 30); s.s.side = false;
     let said: Vec<String> = (1..=20).map(|i| format!("Line {i} of **what** it said, long enough to wrap in a narrow window.")).collect();
     coordinator_says(&mut s, &said.join("\n"));
+    // A set machine name, whatever this machine's is: the edge's room depends on it.
+    s.s.data.host = "test-host".into();
     let me = sw::board::update::heads::label(&s.s, "");
     for width in [44, 80, 200] {
         let c = crate::board_chat::chat(&mut s, width);
@@ -47,12 +49,17 @@ fn a_long_message_wraps_inside_the_box_and_takes_the_rows_it_needs_never_the_tex
         let rows = c.lines.iter().filter(|l| has(l, r"Task number \d+")).count();
         assert!(rows >= 1, "the list keeps rows (under the top row and the filter row): {:?}", c.lines);
     }
+    // A machine name too long for a narrow edge: the kind goes, then the name is cut, but the edge still names it.
+    s.s.data.host = "a-machine-with-a-name-far-too-long-for-the-edge".into();
+    let c = crate::board_chat::chat(&mut s, 44);
+    assert!(c.lines.iter().any(|l| l.starts_with("╭─  a-machine-with-a-name") && l.contains("… ")), "{:?}", c.lines);
+    s.s.data.host = "test-host".into();
     // A window too short for all of it: the message gives up its lines first; who you talk to and the line you type on stay.
     s.rows = 10;
     let c = crate::board_chat::chat(&mut s, 80);
     // folded: the box's edge names who (its ladder), and the line you type on stays
     assert_eq!(c.lines.len(), 10); assert_eq!(c.boxed, vec!["❯ Send message to the machine coordinator".to_string()], "{:?}", c.lines);
-    assert!(c.lines.iter().any(|l| l.starts_with("╭─") && l.contains(&sw::shown::words::clean(&sw::remote::check::hostname()))), "{:?}", c.lines);
+    assert!(c.lines.iter().any(|l| l.starts_with("╭─") && l.contains(&me)), "{:?}", c.lines);
     // The colours: an agent's message is in the brighter of the two greys (it has to be read), your own in the text colour.
     use sw::board::view::chat::{chat_message, Who};
     use sw::board::view::talk::Part;
@@ -70,7 +77,7 @@ fn a_very_narrow_window_keeps_the_box_whole_with_the_message_in_it() {
     w.script(json!({ "coordinator": [{ "said": "Six tasks are in progress and nothing waits on you." }] }));
     let mut s = open(&w.root, 34);
     // Nothing said yet: the box's edge says who it is, and the placeholder is cut with …, inside the box.
-    for width in [27, 24, 16] { let c = crate::board_chat::chat(&mut s, width); assert!(c.framed, "at {width}"); assert_eq!(c.boxed.len(), 1); assert!(has(&c.boxed[0], "^❯ A.*…$"), "at {width}: {:?}", c.boxed); }
+    for width in [27, 24, 16] { let c = crate::board_chat::chat(&mut s, width); assert!(c.lines.iter().any(|l| l.starts_with("╭─ ") && l.ends_with('╮')), "at {width}: {:?}", c.lines); assert_eq!(c.boxed.len(), 1); assert!(has(&c.boxed[0], "^❯ A.*…$"), "at {width}: {:?}", c.boxed); }
     let me = sw::board::update::heads::label(&s.s, "");
     assert!(crate::board_chat::chat(&mut s, 80).boxed[0] == "❯ Ask it something, e.g. \"what's left to do here?\"" && crate::board_chat::chat(&mut s, 80).lines.iter().any(|l| l.starts_with("╭─") && l.contains(&format!(" {me} "))), "never ran: {:?}", crate::board_chat::chat(&mut s, 80).lines);
     s.typed("hi"); s.press(&["enter"]); drain(); s.load();
