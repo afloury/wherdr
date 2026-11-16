@@ -8,7 +8,7 @@ import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
 import { notesStore, runNotes, type NotesStore } from './notesStore'
 import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, PROPOSAL_ANSWERS } from '../../shared/pm/coordinator'
-import { FEATURE, coordinatorKey, handledBy, isWorkspace, membersOf, ownWorkflow } from '../../shared/pm/workspace'
+import { FEATURE, WORKSPACE_FIRST, coordinatorKey, handledBy, isWorkspace, membersOf, ownWorkflow } from '../../shared/pm/workspace'
 import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
@@ -912,7 +912,10 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const notes = cardNotesMessage(before)
   // Its very first start on a git project with no accepted workflow: its first reply proposes one.
   const git = key !== MAIN && projects.find(x => x.key === key)?.git !== false
-  const proposes = git && !resume && !before?.ran && isDefaultWorkflow(await deps.store.workflow(key)) ? [FIRST_REPLY] : []
+  // A new workspace's: its first reply offers to build the map.
+  const fresh = !resume && !before?.ran
+  const proposes = fresh && isWorkspace(projects.find(x => x.key === key)) ? [WORKSPACE_FIRST]
+    : git && fresh && isDefaultWorkflow(await deps.store.workflow(key)) ? [FIRST_REPLY] : []
   // First messages its last session never got (coordinatorFirst.ts): given again, once.
   // Alfred's start prompt is made anew at each start: an old one is not given again.
   const pending = c.prompt.length ? [] : (before?.undelivered?.texts ?? []).filter(x => !c.prompt.includes(x) && !first.includes(x) && !proposes.includes(x))

@@ -23,6 +23,7 @@ import { addChangeCard, addSettingCard } from './uiActions'
 import { CHANGE_PLACES, choiceArgv, type CardChoice } from '../../shared/uiActions'
 import { UI_TARGETS } from '../../shared/uiTargets'
 import { saveProjectGuards } from './pmProject'
+import { workspaceInput } from '../../shared/pm/workspace'
 import { checkMachine } from './pmReady'
 import { projectPlace } from '../../shared/pm/places'
 import { EXAMPLES } from '../../shared/pm/examples'
@@ -112,7 +113,7 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
     if ('apply' in cmd && cmd.apply) return { applied: true, change: plan.change, result: await make() }
     if (!('propose' in cmd && cmd.propose)) return dryRun(argv as string[], plan)
     const key = 'input' in cmd ? cmd.input.key : 'key' in cmd ? cmd.key : '', place = CHANGE_PLACES[cmd.name]!, turn = await alfredTurn()
-    const target = cmd.name === 'project add' ? undefined : place.target
+    const target = cmd.name === 'project add' || cmd.name === 'workspace add' ? undefined : place.target
     return addChangeCard(store, { turn: turn?.kind ?? 'none', by: ALFRED, label: place.label(key), change: { argv: cardArgv(argv as string[], !!plan.picks), lines: plan.change, project: key, ...(plan.picks ? { picks: plan.picks, ...(plan.on ? { on: plan.on } : {}), start: plan.start, ...(plan.pm ? { pm: plan.pm } : {}) } : {}), ...(turn?.said ? { said: turn.said } : {}), ...(target ? { target } : {}) } })
   }
 
@@ -215,6 +216,34 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
           `template ${project.template ?? 'none'}`],
         remote,
       }, () => store.addProject(project, deps.check))
+    }
+    case 'workspace add': {
+      await needPm()
+      const roots = cmd.input.roots.map(([name, root]): [string, string] => {
+        const m = machines.find(x => x.key === name) ?? machines.find(x => x.label === name)
+        if (!m && name) throw new HerdrError('not_found', `Unknown machine ${name} (see wherdr alfred machines)`)
+        return [m?.key ?? '', root]
+      })
+      // The tab group by its id or its name (Settings › Machines › Groups).
+      let groups: { id: string, name: string }[] = []
+      try { groups = JSON.parse(String((await readSettings(deps.settingsFile)).machineGroups ?? '[]')) } catch {}
+      const g = cmd.input.group && (groups.find(x => x.id === cmd.input.group) ?? groups.find(x => x.name === cmd.input.group))
+      if (cmd.input.group && !g) throw new HerdrError('not_found', `No tab group ${cmd.input.group}: ${groups.map(x => x.name).join(', ') || 'none yet'}`)
+      const raw = workspaceInput({ ...cmd.input, roots, ...(g ? { group: g.id } : {}) })
+      const { project, errors } = cleanProjectInput(raw)
+      if (!project) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
+      if (keyClash(projects, project.key)) throw new HerdrError('exists', 'A project already has this key')
+      const remote = roots.map(([m]) => remoteOf(m)).find(Boolean)
+      return change({
+        change: [`add workspace ${project.key} "${project.name}"${g ? ` in tab group ${g.name}` : ''}`,
+          ...roots.map(([m, root], i) => `${i ? 'clone root' : 'root folder'} ${root} on ${machineName(m)}${i ? '' : ' (its home: checked when applied, it must exist)'}`),
+          'then its coordinator starts and offers to build the map of the repositories under the root'],
+        remote,
+      }, async () => {
+        const added = await store.addProject(raw, deps.check, { plain: true })
+        try { await startCoordinator(deps, added.key, await projectAgent(added.key), deps.urls); return { project: added, outcome: [`${added.key}: added, coordinator started (it offers to build the map)`] } }
+        catch (e) { return { project: added, outcome: [`${added.key}: added; coordinator not started: ${(e as Error).message}`] } }
+      })
     }
     case 'project template': {
       await needPm()

@@ -13,6 +13,22 @@ project, with its own key, tasks and board, but **no coordinator of its own**.
 The workspace's coordinator handles it. A repository belongs to one workspace
 at most, and a workspace is never itself in a workspace.
 
+## Creating a workspace
+
+In Settings › Projects, *Add workspace* (next to *Add project*) asks for:
+
+- its **name** and **key** (proposed from the name, as for a project);
+- its **tab group** (optional): the home tab group it belongs to;
+- its **machines and root folders**: each machine it runs on, with the root
+  folder there under which the repositories are cloned (`~/work`). The first
+  one checked is its home; its root must exist there. Nothing is cloned for you.
+
+*Create* adds it and starts its coordinator, whose first reply runs
+`wherdr pm map list` and offers to build the [map](#the-workspace-map) from
+the repositories it found. A coordinator that does not start is said in the
+window; the workspace stays added. Alfred adds one too:
+`wherdr alfred workspace add` ([Alfred's command](alfred.md)).
+
 ## The workspace's coordinator
 
 The workspace's coordinator handles its members as its own projects: its
