@@ -63,6 +63,11 @@ conversation keeps at least 480 px. With the edge focused, the left and right ar
 is kept on this device and comes back the next time the panel opens; places an agent opens beside
 its conversation use the same panel and width.
 
+The section menu follows the panel's own width: at least 560 px wide, it shows each section's
+icon and name; narrower, icons only, each naming its section on hover. The button under the icons
+shows the names anyway (a second click hides them), a choice kept on this device. The current
+section stays highlighted either way.
+
 A Settings link can also point at one setting with `&target=<id>` (for example
 `#/settings?section=conversation&tab=display&target=conversation.typewriter`): Settings
 opens the section and tab, scrolls to that setting and outlines it. The outline pulses twice

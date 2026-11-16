@@ -39,7 +39,10 @@ const fieldForm = (t: string) => String(t || '').replace(IMAGE_TAG, '[Image]').r
 // (a photo it did not turn into an image, or a tag drawn on another line);
 // counting them would show the same message twice, once sent, once "Not sent".
 // The server keeps counting them: it waits for every photo before Enter.
-const looseForm = (t: string) => String(t || '').replace(IMAGE_TAG, '').replace(/\s+/g, '')
+// Claude may also leave a photo there as its path, not yet (or never) turned
+// into "[Image #N]", from the home folder or as "~/…" (WHR-398): left out too.
+const PHOTO_PATH = /(?:~|\/)\S*\/(?:\.cache\/herdr-web\/uploads\/\S+|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{6}\.(?:jpg|png|webp|gif|heic))/g
+const looseForm = (t: string) => String(t || '').replace(IMAGE_TAG, '').replace(PHOTO_PATH, '').replace(/\s+/g, '')
 const PASTE_TAG = /\[Pasted text #\d+(?: \+\d+ lines)?\]/
 export function fieldHolds(field: string | null | undefined, text: string, exact = false, loose = false): boolean {
   // Photos alone: only their tags tell them apart, so they are counted.
