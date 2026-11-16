@@ -139,7 +139,8 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   Step check) is a compact muted row, not one of your bubbles, with the coordinator's answer under
   it; routine runs fold into one row that counts them by kind with their tasks
   (*5 checks · ✓ 3 merged WHR-352 354 355 · ⏳ 1 waits for you · 1 quiet*; a chip opens the
-  task's sheet), read from each wake's first line and task lines, standing out when one waits
+  task's sheet; many chips wrap onto the next lines inside the row, so the conversation never
+  scrolls sideways, on a phone too), read from each wake's first line and task lines, standing out when one waits
   for you. Open, each wake is one line: an icon, its task, a short label (*merged*,
   *Scheduled*, *Health check*) and the reply's first sentence, a tap showing the full reply;
   quiet checks are dimmer, two or more in a row fold into *N quiet checks*. See
