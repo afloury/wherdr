@@ -137,13 +137,19 @@ Claude may keep a paste there; a large photo is read and resized before its `[Im
 shows, and an Enter pressed before that is lost; after a long idle, Claude may also ignore
 Enter for a few seconds with the placeholder already shown) is submitted by wherdr. After
 every send to Claude, idle or busy, whatever core reports, wherdr looks at the box: empty,
-the message was taken; otherwise it waits up to about 24 seconds for the box to hold that
+the message was taken (but an empty box with *Pasting…* under it is Claude still reading
+the photos, several seconds for three large ones: wherdr keeps waiting); otherwise it waits up to about 24 seconds for the box to hold that
 message alone, each photo as its placeholder, presses Enter, and presses it again while the
 message is still there (up to ten times over about 16 seconds). This also holds for a
 message sent while Claude works or ends its turn: Enter then puts it in Claude's own queue.
 Enter is only pressed on a box that holds that message alone, so it is never sent twice. A
 send that needed more than one Enter, or stayed in the box, leaves one line in the server
-log (terminal and Enter count, no message text).
+log (terminal and Enter count; when it failed, the sizes of what the box held and of what
+was expected: characters, images, lines, never the text). A send in progress is noted in
+`data/submitting.json` until it ends: if wherdr restarts meanwhile (an update), it resumes
+it at startup, the same way and only on a box that holds that message alone.
+A message another terminal sent with `hc send` (wrapped in `<hc from="…">`) is shown
+without that wrapper, its photos as photos.
 Until the send answers, the bubble reads **sending…**, not **Not sent**. While it stays there, its bubble reads **Not sent yet · waiting in
 the agent's input**, never **Read by the agent**, and the box's own bubble is not shown
 twice: the box is matched to the message by its text alone, whitespace, `[Image #N]`
