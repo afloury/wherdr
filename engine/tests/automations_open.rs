@@ -111,7 +111,9 @@ fn an_automations_settings_are_the_page_a_task_has_its_own_rows_marked_a_row_cha
 #[test]
 fn a_task_an_automation_made_says_so_and_with_the_board_open_a_schedule_fires_by_the_boards_own_tick() {
     let w = world();
-    let t0 = sw::clock::now(); sw::clock::set(Some(t0));
+    // Today at noon, local time: the two hours that follow never reach the nightly audit's 03:00, whenever this runs.
+    let noon = chrono::Local::now().date_naive().and_hms_opt(12, 0, 0).unwrap().and_local_timezone(chrono::Local).earliest().unwrap();
+    sw::clock::set(Some(noon.timestamp_millis()));
     let a = three(&w).remove(0);
     let mut s = open(&w.root, 40); s.s.side = false;
     // The board's own tick, as its loader runs it when no keeper is alive (board/run/start.rs).
