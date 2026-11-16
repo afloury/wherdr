@@ -8,7 +8,7 @@ import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
 import { notesStore, runNotes, type NotesStore } from './notesStore'
 import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, PROPOSAL_ANSWERS } from '../../shared/pm/coordinator'
-import { FEATURE, coordinatorKey, handledBy, isWorkspace, membersOf, ownWorkflow } from '../../shared/pm/workspace'
+import { FEATURE, WORKSPACE_FIRST, coordinatorKey, handledBy, isWorkspace, membersOf, ownWorkflow } from '../../shared/pm/workspace'
 import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
@@ -129,11 +129,12 @@ export async function alfredTokenOk(store: PmStore, token: unknown) {
 // look: a look-for-new-work wake, whose turn counts the tasks it adds.
 // The user's message is kept whole (a long one too) for the proposal it may lead to.
 const SAID_MAX = 8000
-export async function noteTurn(store: PmStore, key: string, kind: 'user' | 'wake', said?: string, look = false) {
+// tab: the home tab the user has open (Alfred's `groups` and `brief` read it).
+export async function noteTurn(store: PmStore, key: string, kind: 'user' | 'wake', said?: string, look = false, tab?: string) {
   const c = await store.coordinator(key)
   if (!c) throw new HerdrError('not_found', 'No coordinator for this project')
   const at = Date.now()
-  await store.saveCoordinator({ ...c, turn: { kind, at, ...(kind === 'user' && said ? { said: said.slice(0, SAID_MAX) } : {}), ...(kind === 'wake' && look ? { look: true as const } : {}) }, ...(kind === 'user' ? { userAt: at } : {}) })
+  await store.saveCoordinator({ ...c, turn: { kind, at, ...(kind === 'user' && said ? { said: said.slice(0, SAID_MAX) } : {}), ...(kind === 'wake' && look ? { look: true as const } : {}) }, ...(kind === 'user' ? { userAt: at } : {}), ...(tab ? { openTab: tab } : {}) })
 }
 
 const TURN_MS = 3_600_000
@@ -141,10 +142,11 @@ const TURN_MS = 3_600_000
 // The user's message sent from the interface to a terminal: when that
 // terminal is a coordinator, its turn now comes from the user. Alfred's too
 // with project management off (it then helps the user switch it on).
-export async function userMessageTo(store: PmStore, terminal: string | undefined, text: string) {
+export async function userMessageTo(store: PmStore, terminal: string | undefined, text: string, tab?: unknown) {
   if (!terminal) return
   const c = (await store.coordinators()).find(x => x.terminal === terminal)
-  if (c && (c.project === MAIN || await store.enabled())) await noteTurn(store, c.project, 'user', text)
+  const open = c?.project === MAIN && typeof tab === 'string' && tab.length <= 200 ? tab : undefined
+  if (c && (c.project === MAIN || await store.enabled())) await noteTurn(store, c.project, 'user', text, false, open)
 }
 
 // The branch tasks start from, open their PR to and merge into when a step names none.
@@ -910,7 +912,10 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const notes = cardNotesMessage(before)
   // Its very first start on a git project with no accepted workflow: its first reply proposes one.
   const git = key !== MAIN && projects.find(x => x.key === key)?.git !== false
-  const proposes = git && !resume && !before?.ran && isDefaultWorkflow(await deps.store.workflow(key)) ? [FIRST_REPLY] : []
+  // A new workspace's: its first reply offers to build the map.
+  const fresh = !resume && !before?.ran
+  const proposes = fresh && isWorkspace(projects.find(x => x.key === key)) ? [WORKSPACE_FIRST]
+    : git && fresh && isDefaultWorkflow(await deps.store.workflow(key)) ? [FIRST_REPLY] : []
   // First messages its last session never got (coordinatorFirst.ts): given again, once.
   // Alfred's start prompt is made anew at each start: an old one is not given again.
   const pending = c.prompt.length ? [] : (before?.undelivered?.texts ?? []).filter(x => !c.prompt.includes(x) && !first.includes(x) && !proposes.includes(x))

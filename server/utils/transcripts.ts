@@ -292,7 +292,7 @@ export function claudeParser(home = '') {
     pendingCmd = it.role === 'cmd' ? it : null
   }
   // Output of the command just before; elsewhere (/model, /effort menus…) ignored.
-  const output = (text: string) => {
+  const output = (text: string, ts: string | null = null) => {
     const o = commandOutput(text)
     if (!o) return false
     if (open && !open.text) {
@@ -303,6 +303,9 @@ export function claudeParser(home = '') {
       touch(open)
       open.out = o.out
       open.err = o.err
+      // A "!" command's run time: from its input to its output.
+      const ms = open.role === 'bash' && open.ts && ts ? Date.parse(ts) - Date.parse(open.ts) : NaN
+      if (ms >= 0) open.ms = ms
     }
     open = null
     return true
@@ -321,7 +324,7 @@ export function claudeParser(home = '') {
       said(bash, ts)
       return true
     }
-    return output(text)
+    return output(text, ts)
   }
   // Last user message typed by the user, with its place in the message tree.
   // Stop before any reply puts the prompt back into Claude's field: the next

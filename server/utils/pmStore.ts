@@ -67,6 +67,8 @@ export interface CoordinatorRecord {
   cardNotes?: string[] // what the user did with its cards while it did not run, said at its next start (cardOutcome.ts)
   visits?: { at: number, by: string, what: string }[] // what other coordinators did on its project since its last wake (reach.ts)
   undelivered?: { texts: string[], why: string, at: number } // first messages its session never got (coordinatorFirst.ts)
+  openTab?: string // Alfred's: the home tab the user had open at their last message (a note scope: all, *group:…, machine:…)
+  briefs?: Record<string, number> // Alfred's: when it last ran `brief` for each scope
 }
 
 export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark>, proposals?: AutomationProposal[] }

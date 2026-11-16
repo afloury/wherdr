@@ -143,6 +143,16 @@ takes the workspace's settings unless it sets its own.
 
 ### General
 
+There is no *Save* button: every field saves by itself. A switch, a pick or a
+color saves at once; typed text (name, models, branch name, the worktree
+setup's fields) once you pause typing for a moment or leave the field. The key
+saves only when you leave its field or press Enter, never on a pause: a
+half-typed key would become a real rename. A
+discreet *Saved ✓* shows next to the field's label, then fades; a small spinner
+while it saves. An invalid value (a time limit over 10m) says why under the
+field and nothing is saved until it is fixed; a save the server refuses shows
+its message under the field and keeps what you typed.
+
 - **Name**, **Key** and **Color**. Task ids start with the key. Change it and every task,
   old ones too, shows the new key: on the board, and in what wherdr writes for you
   and its agents (wakes, notifications, task logs, PR titles, `wherdr pm` outputs,
@@ -157,8 +167,11 @@ takes the workspace's settings unless it sets its own.
   (the default), Read or Act. See [Coordinators on other projects](#coordinators-on-other-projects).
 - **Base branch**: the project's working branch. New tasks start their worktree
   from it, and a step that names no branch opens its PR to it or merges into it.
-  Pick one of the repository's branches or type a name; unset, the repository's
-  current branch. A running task keeps the branch it started with.
+  Pick one of the repository's branches or type a name. Unset: the branch the
+  workflow opens its PRs to or merges into (a `github.pr` base, a `git.land` or
+  `git.verify-merged` target), which the tab names (*No working branch set: using
+  v3 from the workflow*, also written once in the project's log); with none, the
+  repository's default branch. A running task keeps the branch it started with.
 - **Branch name**: the template each new task's branch is named from, for
   repositories that require names such as `feature/PROJ-12-fix-login`. Fields:
   `{id}` (the task id), `{tag}` (the card's ticket key, such as `PROJ-12`, else
@@ -186,8 +199,8 @@ takes the workspace's settings unless it sets its own.
 - **Worktree setup**: what wherdr prepares in a new task's worktree before its
   worker first starts, so the worker does not rebuild it. Short help lines sit
   above its fields, laid out in two columns on a computer and one on the phone.
-  Saved with *Save*, on its own row under the fields and enabled once a field of
-  the General tab changed, in the workflow's `worktree` block (shown in Workflow › JSON):
+  Saved by itself, like every General field, in the workflow's `worktree` block
+  (shown in Workflow › JSON):
   - *Files to copy*: ignored files taken from the project's clone, such as `.env`
     or a local config, one path per line. Literal paths only; a file git tracks
     (it is already there) or the clone does not have is skipped, and the log says so.
@@ -422,7 +435,7 @@ the task's machine. Any pair works, and nothing is picked for you:
 
 or a Claude reviewer with a Codex fallback:
 `"reviewModel": "claude-sonnet-5-5", "reviewFallbackAgent": "codex", "reviewFallbackModel": "gpt-6.1-sol"`.
-The fallback follows the reviewer's rules; *Save* refuses one that breaks them,
+The fallback follows the reviewer's rules; saving refuses one that breaks them,
 or one of the two prefs without the other.
 
 Before it starts a reviewer, wherdr reads the review agent's account (the
@@ -485,7 +498,10 @@ In the **Guards** tab:
   runs again, at most twice, then waits for you. A restart waits up to 20 s
   for a merge that runs.
 - **Effect**: what each task type adds and, for each step that merges, whether
-  it is left to you. It follows your changes before you save.
+  it is left to you.
+
+Each change saves at once (no *Save* button), with a discreet *Saved ✓* next to
+its heading; a refused save shows the server's message under it.
 
 Only you, or Alfred (with [`wherdr alfred project guards`](alfred.md) after
 your yes), can change guards: a project coordinator never can.
@@ -915,8 +931,9 @@ its work, the worker writes the files or folders it plans to change to
 `files.txt` beside its instructions file (a folder covers what is in it); the
 coordinator can name them ahead with `task add … --files app,docs/board.md`.
 Every 5 minutes wherdr reads, for each started task not done yet, those
-declared paths and the files its branch changed (`git diff` since the branch
-started, new files included). Only a task whose work or review is still ahead
+declared paths and the files its branch changed since its fork from its base
+(the base as on the remote now, so merging the base in never counts; new files
+included). Only a task whose work or review is still ahead
 or under way (stopped too) holds its files: once it only waits for its merge,
 the tasks behind it start. `docs/llms.txt`, whose conflicts wherdr solves
 itself, never makes a task wait.
@@ -1065,8 +1082,9 @@ motion); a failed action keeps the task with its error. After the last one:
 the middle (on a computer the window shrinks to them). On a computer it is a large window (960 px wide, up to 90 % of the
 screen's height, screenshots two per row): only the task's content scrolls, the
 filter, its title and the buttons stay. The filter at the top picks *Follow group tab* (the projects of the
-home tab), *All*, a group or a project (its key badge, then its name); it follows you across devices like the
-Board's picker.
+home tab), *All*, a group or a project (its key badge, then its name); each option shows right after its name, in a
+muted grey-bordered chip, how many tasks wait under it (none at 0; groups and projects with tasks listed first), the closed picker too;
+it follows you across devices like the Board's picker.
 
 - <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: its [TL;DR](#tldr); then its screenshots large (swipe between them on
   the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop),
@@ -1419,7 +1437,10 @@ Once the cause is gone, the engine resumes it by itself, every minute:
   *You were interrupted (…): check git status and continue*; Codex, or a
   conversation that cannot be resumed, gets a new agent that reads its
   instructions with a handover note saying the same. A task stopped at the
-  review gets its reviewer again;
+  review gets its reviewer again. After a login incident, the restarted agent
+  is told once, in its Log too: *Your login was renewed and you were
+  restarted. Continue where you stopped: finish the step you were on, then
+  report as usual* (a reviewer: *finish your review and write your verdict*);
 - **in order**: the tasks before it (`after`) first. A task that starts after
   one being resumed stays to do and *Waits for WEB-1 to resume*, never
   *stopped*; it starts once that one is done;

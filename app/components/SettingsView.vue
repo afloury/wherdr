@@ -118,6 +118,15 @@ const openedBy = computed(() => {
   return props.panel && o && o.section === route.query.section ? o.by : null
 })
 if (props.panel) onBeforeUnmount(() => { uiOpenedBy.value = null })
+// Side panel too narrow for labels (main.css container query): the rail can show them
+// anyway, a choice kept on the device.
+const RAIL_LABELS_KEY = 'settingsRailLabels'
+const railLabels = ref(false)
+onMounted(() => { try { railLabels.value = localStorage.getItem(RAIL_LABELS_KEY) === '1' } catch {} })
+function toggleRailLabels() {
+  railLabels.value = !railLabels.value
+  try { localStorage.setItem(RAIL_LABELS_KEY, railLabels.value ? '1' : '0') } catch {}
+}
 function closePanel() {
   const { section: _s, project: _p, tab: _t, review: _r, library: _l, group: _g, target: _x, ...query } = route.query
   router.replace({ query })
@@ -160,10 +169,8 @@ onMounted(async () => {
   await router.push(here)
 })
 // Global refs bound in the template: local (assignable) aliases.
-const shellsOn = showShells
 const countersOn = showCounters
 const quotasOn = showQuotas
-const compactOn = compactList
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
 const agentClipboardOn = agentClipboard
@@ -364,13 +371,20 @@ onMounted(() => {
       </template>
     </header>
     <div class="settings-layout" :class="{ 'section-open': activeSection }">
-      <nav class="settings-nav" :aria-label="t('Settings sections')">
+      <nav class="settings-nav" :class="{ 'rail-labels': panel && railLabels }" :aria-label="t('Settings sections')">
         <button
           v-for="item in sections" :key="item.id" type="button" class="settings-nav-item"
-          :class="{ selected: activeSection === item.id }" :title="panel ? item.label : undefined" :aria-current="activeSection === item.id ? 'page' : undefined"
+          :class="{ selected: activeSection === item.id }" :title="panel ? item.label : undefined" :aria-label="panel ? item.label : undefined" :aria-current="activeSection === item.id ? 'page' : undefined"
           @click="openSection(item.id)"
         >
           <UIcon :name="item.icon" /><span>{{ item.label }}</span><UIcon name="i-lucide-chevron-right" class="settings-nav-arrow" />
+        </button>
+        <button
+          v-if="panel" type="button" class="settings-rail-toggle" :aria-pressed="railLabels"
+          :aria-label="t('Show section names')" :title="t('Show section names')"
+          @click="toggleRailLabels"
+        >
+          <UIcon :name="railLabels ? 'i-lucide-chevrons-left' : 'i-lucide-chevrons-right'" />
         </button>
       </nav>
       <div v-show="activeSection" ref="body" class="settings-body">
@@ -409,16 +423,8 @@ onMounted(() => {
           <div data-ui-target="appearance.home-screen" class="settings-group">
             <h3>{{ t('Home screen') }}</h3>
             <label class="settings-toggle">
-              <span><b>{{ t('Compact list') }}</b><small>{{ t('Cards: one line in Compact, two in Normal with current activity. Follows you on every device.') }}</small></span>
-              <USwitch v-model="compactOn" size="xl" />
-            </label>
-            <label class="settings-toggle">
               <span><b>{{ t('Reorder automatically') }}</b><small>{{ t('In Ready, show unread agents before read ones. Follows you on every device.') }}</small></span>
               <USwitch v-model="autoReorderOn" size="xl" />
-            </label>
-            <label class="settings-toggle">
-              <span><b>{{ t('Show terminals') }}</b><small>{{ t('Show terminal spaces in the list, filed under Ready.') }}</small></span>
-              <USwitch v-model="shellsOn" size="xl" />
             </label>
             <label class="settings-toggle">
               <span><b>{{ t('Show counters') }}</b><small>{{ t('Show agent counters on the home screen.') }}</small></span>
@@ -468,7 +474,9 @@ onMounted(() => {
                 <span><b>{{ t('Encrypted text') }}</b><small>{{ t('Writing advances in glyphs, then the text decrypts behind it.') }}</small></span>
                 <USwitch v-model="encryptedOn" :disabled="!typewriterActive" size="xl" />
               </label>
-              <TypingPreview v-if="activeSection === 'conversation' && convTab === 'display'" />
+              <SettingsPreview v-if="activeSection === 'conversation' && convTab === 'display'">
+                <TypingPreview />
+              </SettingsPreview>
             </div>
           </div>
           <div v-show="convTab === 'dictation'" id="conversation-panel-dictation" role="tabpanel" aria-labelledby="conversation-tab-dictation" class="settings-group" data-testid="dictation-settings" data-ui-target="conversation.dictation">
@@ -489,13 +497,6 @@ onMounted(() => {
         </div>
 
         <div v-show="activeSection === 'terminal'" class="settings-section">
-          <div class="settings-group">
-            <h3>{{ t('Home screen') }}</h3>
-            <label class="settings-toggle">
-              <span><b>{{ t('Show terminals') }}</b><small>{{ t('Show terminal spaces in the list, filed under Ready.') }}</small></span>
-              <USwitch v-model="shellsOn" size="xl" />
-            </label>
-          </div>
           <div data-ui-target="terminal.text-size" class="settings-group">
             <h3>{{ t('Text') }}</h3>
             <div class="settings-stepper">
@@ -610,7 +611,7 @@ onMounted(() => {
         </div>
 
         <div v-if="desk && !coarse" v-show="activeSection === 'shortcuts'" class="settings-section">
-          <ShortcutsReference />
+          <ShortcutsReference editable />
         </div>
 
         <div v-show="activeSection === 'about'" class="settings-section">
