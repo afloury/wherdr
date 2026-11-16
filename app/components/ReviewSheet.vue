@@ -27,7 +27,7 @@
 import { linkLabel, mayAccept, prLink, taskRow, type Board, type Card, type ToHandle } from '#shared/pm/board'
 import { reviewLine, reviewNote, workerNote } from '#shared/pm/report'
 import { shotMode } from '#shared/pm/shots'
-import { projectOption } from '~/utils/projectOption'
+import { projectOption, type ProjectOption } from '~/utils/projectOption'
 
 const emit = defineEmits<{ closed: [] }>()
 const open = ref(true)
@@ -39,11 +39,15 @@ onBeforeUnmount(() => { clearInterval(timer); removeEventListener('keydown', onK
 watch(taskSheetTick, load)
 
 const projects = computed(() => data.value?.projects ?? [])
+// Each filter option counts what waits under it (the list's own cards, before the
+// filter); groups then projects, those with tasks first.
+const counted = (o: ProjectOption) => ({ ...o, count: waiting.value.filter(c => reviewShows(o.value, c.project)).length })
+const busyFirst = (os: ProjectOption[]) => [...os.filter(o => o.count), ...os.filter(o => !o.count)]
 const filterItems = computed(() => [
-  { label: tl('Follow group tab'), value: REVIEW_FOLLOW },
-  { label: tl('All'), value: REVIEW_ALL },
-  ...machineGroups.value.map(g => ({ label: g.name, value: g.id })),
-  ...projects.value.map(p => projectOption(p, `p:${p.key}`)),
+  counted({ label: tl('Follow group tab'), value: REVIEW_FOLLOW }),
+  counted({ label: tl('All'), value: REVIEW_ALL }),
+  ...busyFirst(machineGroups.value.map(g => counted({ label: g.name, value: g.id }))),
+  ...busyFirst(projects.value.map(p => counted(projectOption(p, `p:${p.key}`)))),
 ])
 const known = (v: string) => filterItems.value.some(i => i.value === v) || (!data.value && v.startsWith('p:'))
 const filter = computed({ get: () => reviewPick(known), set: (v: string) => { reviewFilter.value = v } })
@@ -55,7 +59,8 @@ const fixing = ref<Record<string, string>>({})
 // Answered here from its To do (Try again, a choice): it leaves as the board says, not as handled
 // elsewhere. Only the task on screen, after an action that went through (a refusal clears it).
 let acted = ''
-const live = computed(() => (data.value?.cards ?? []).filter(c => c.yourTurn && !c.state?.done && !handled.value.includes(c.id) && fixing.value[c.id] !== c.yourTurn && reviewShows(filter.value, c.project)))
+const waiting = computed(() => (data.value?.cards ?? []).filter(c => c.yourTurn && !c.state?.done && !handled.value.includes(c.id) && fixing.value[c.id] !== c.yourTurn))
+const live = computed(() => waiting.value.filter(c => reviewShows(filter.value, c.project)))
 // The list while the sheet is open, in a stable order (the board's again once
 // closed): a task that arrives goes at the end, one that leaves drops out, but
 // the one on screen stays, as last read, with its Handled elsewhere line until
