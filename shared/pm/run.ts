@@ -199,9 +199,10 @@ const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 // The shell line that starts the agent: model pinned, first message points at the file.
 // session (Claude only): the conversation's id, new (--session-id), or taken
 // up again (--resume) with `resume` as its first message.
-export function agentLine(program: string, model: string, instructions: string, session?: { id: string, resume?: string }) {
+// then: said after the instructions, in the same first message.
+export function agentLine(program: string, model: string, instructions: string, session?: { id: string, resume?: string }, then?: string) {
   const own = program === 'claude' && session ? (session.resume ? ['--resume', session.id] : ['--session-id', session.id]) : []
-  const first = own[0] === '--resume' ? session!.resume! : `Read ${instructions} and follow it.`
+  const first = own[0] === '--resume' ? session!.resume! : `Read ${instructions} and follow it.${then ? ` ${then}` : ''}`
   return ['exec', program, ...(program === 'codex' ? CODEX_NO_UPDATE : []), '--model', model, ...own, first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
 }
 

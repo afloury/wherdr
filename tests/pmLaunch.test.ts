@@ -13,6 +13,7 @@ import { dueText } from '../shared/pm/advance'
 import { startFileWaits } from '../server/utils/pmFiles'
 import { startHeld } from '../server/utils/pmMechanic'
 import { resumeInterrupted } from '../server/utils/pmRecovery'
+import { loginRestartText } from '../shared/pm/recovery'
 import { CoreError } from '../server/utils/core'
 
 const template: Template = {
@@ -302,6 +303,7 @@ describe('startTask', () => {
     expect([t.held, t.waiting]).toEqual([undefined, undefined])
     expect(t.log!.at(-1)!.text).toBe(`started after incident ${i!.id}: ${machine} is back`)
     expect(runs).toHaveLength(1)
+    expect(runs[0]!.line).not.toContain('Your login was renewed')
   })
 
   it('agents on the login prompt: one login incident, not a permission; restarted one by one once the credentials file changes', async () => {
@@ -325,7 +327,10 @@ describe('startTask', () => {
     expect((await resumeInterrupted(deps)).resumed).toEqual(['WEB-2'])
     expect((await resumeInterrupted(deps)).resumed).toEqual([])
     expect(runs).toHaveLength(4)
-    expect((await store.task('WEB-2'))!.log!.at(-1)!.text).toMatch(new RegExp(`^resumed after incident ${i!.id} \\(login\\)`))
+    // Each restarted worker is told once to go on: its resumed conversation's first message, in its log too.
+    const said = loginRestartText('worker')
+    for (const r of runs.slice(2)) expect(r.line).toMatch(new RegExp(`'--resume' '[^']+' '${said}'$`))
+    expect((await store.task('WEB-2'))!.log!.at(-1)!.text).toMatch(new RegExp(`^resumed after incident ${i!.id} \\(login\\).*; told it: ${said}$`))
   })
 
   it('a start once its files are free, its machine out of reach midway (herdr-core answers unreachable): held, started by the next tick once it is back', async () => {
