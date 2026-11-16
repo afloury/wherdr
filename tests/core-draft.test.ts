@@ -96,9 +96,13 @@ describe('coreDraft', () => {
     const f = fake([TYPED, EMPTY], { turns: [3] })
     await expect(coreDraft(f.deps, { pane_id: pane.id, action: 'send', text: 'hello there' })).resolves.toEqual({ ok: true, started: false })
   })
-  it('Send now: text still in the field is an error', async () => {
-    const f = fake([TYPED])
-    expect(await code(coreDraft(f.deps, { pane_id: pane.id, action: 'send', text: 'hello there' }))).toBe('not_submitted')
+  it('Send now: Enter ignored by Claude is pressed again while the field holds that text; still there is an error', async () => {
+    const f = fake([TYPED], { colors: [TYPED, TYPED, TYPED, TYPED, EMPTY] })
+    await expect(coreDraft(f.deps, { pane_id: pane.id, action: 'send', text: 'hello there' })).resolves.toEqual({ ok: true, started: true })
+    expect(f.keys).toEqual([['enter'], ['enter']])
+    const g = fake([TYPED])
+    expect(await code(coreDraft(g.deps, { pane_id: pane.id, action: 'send', text: 'hello there' }))).toBe('not_submitted')
+    expect(g.keys).toHaveLength(5)
   })
   it('a field that changed since it was shown is refused, nothing pressed', async () => {
     const f = fake([TYPED])

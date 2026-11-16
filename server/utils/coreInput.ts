@@ -114,8 +114,9 @@ async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknow
     // during a turn, where Enter queues it): Enter, again while it stays.
     // `started` is "went working within a few seconds": sent while Claude was
     // already working (or ending its turn), it is true whether or not Claude
-    // took the message, so it proves nothing then (WHR-398).
-    if (field && (started !== true || r?.status === 'working')) {
+    // took the message (WHR-398). So the field is always looked at: empty, the
+    // message was taken; holding it, it is submitted (WHR-413).
+    if (field) {
       const enters = await submitLeftInput(deps, p, field, text)
       if (enters) started = null // unconfirmed: Enter pressed, no turn observed yet
     } else if (started === false && text.includes('\n')) {
@@ -132,12 +133,14 @@ async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknow
   } catch (e) { failure(e) } finally { deps.refresh() }
 }
 
-// Looks at Claude's field after a send it did not start: up to this many,
-// settleMs apart (about 12 s by default), for the photos to show.
-const SUBMIT_LOOKS = 30
+// Looks at Claude's field after a send: up to this many, settleMs apart
+// (about 24 s by default), for the photos to show.
+const SUBMIT_LOOKS = 60
 // After each Enter, the look that decides on the next one, in settleMs: the
 // field may still be drawing, or Claude switching turns, and drop an Enter.
-const RESUBMIT_AFTER = [1, 2, 4, 8]
+// After a long idle, Claude ignored Enter for 2-3 s with "[Image #N]" already
+// shown (WHR-413): Enters keep coming for about 16 s.
+const RESUBMIT_AFTER = [1, 2, 3, 4, 5, 5, 5, 5, 5, 5]
 
 // Our message left in Claude's field: waits (bounded) until the field holds
 // it whole, placeholders included, then presses Enter, and again (backing
@@ -150,8 +153,9 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
   const settle = deps.settleMs ?? 400
   const holds = async (times = 1) => {
     await new Promise(res => setTimeout(res, settle * times))
-    const now = await field(p).catch(() => null)
-    return now ? fieldHolds(now, text, true) : null
+    // A failed read is no empty field: not taken, no Enter on it either.
+    const now = await field(p).catch(() => undefined)
+    return now === undefined ? false : now ? fieldHolds(now, text, true) : null
   }
   // Wait for it whole (null: the field emptied, the message was taken).
   for (let i = 0; ; i++) {
@@ -160,11 +164,14 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
     if (seen) break
   }
   let enters = 0
+  let left = true
   for (const after of RESUBMIT_AFTER) {
     await deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['enter'] }, 10000)
     enters++
-    if (!await holds(after)) break
+    if (!await holds(after)) { left = false; break }
   }
+  // Evidence for the next report, no message text.
+  if (left || enters > 1) console.warn(`[wherdr] message to ${p.coreAddress}: ${left ? `still in input after ${enters} Enters` : `submitted after ${enters} Enters`}`)
   return enters
 }
 
