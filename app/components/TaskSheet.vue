@@ -203,7 +203,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
             </details>
             <small v-if="switched && i === switchAt" class="muted" data-testid="review-switch">{{ switched }}</small>
             <TaskProofs :proofs="proofs(s.id)" :links="proofLinks(s.id)" />
-            <TaskShots v-if="shots(s.id).length" :task="card.id" :shots="shots(s.id)" :mode="shotMode(s)" />
+            <TaskShots v-if="shots(s.id).length" :task="card.id" :shots="shots(s.id)" :mode="shotMode(s)" :head="card.state?.shotsHead?.[s.id]" />
             <details v-if="earlier(s.id).length" data-testid="shots-earlier">
               <summary>{{ tl('Earlier screenshots') }}</summary>
               <TaskShots :task="card.id" :shots="earlier(s.id)" :mode="shotMode(s)" />

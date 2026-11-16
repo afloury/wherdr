@@ -1046,7 +1046,12 @@ side by side), its PR and the review's verdict in one line, then:
 - **Reject**: say what to change, tap the screenshots that are wrong, and add
   your own (pick a file, or paste one); *Send back* returns it to its worker
   with your note, and each picked screenshot as a download with the task's key.
-  It leaves the list too.
+  It leaves the list too. The screenshots stay: the worker redoes the ones you
+  picked (and any screen its new commits change) in place, so the next look
+  shows the same screens, each in its latest version. Above them, **Since your
+  last look** quotes your note and shows each screenshot taken since, beside
+  the version it redoes (*Before* / *Redone*; a screen added since is *New
+  screen*); a tap opens the pair full size. The To do tab shows the same.
 
 An agent's question shows its [summary](#tldr), the options of the agent's
 `choices` line as buttons and *Another answer* with *Send*: either goes to the
@@ -1095,10 +1100,17 @@ it follows you across devices like the Board's picker.
   minor) show in its place, each in Markdown, folded to a few lines with *Show more*, full
   width, one above the other (on a phone, *Worker* / *Reviewer* tabs above one note).
   A step you end (*Deployed*, …) shows the same under its badge.
-  When the agent reworks the task after its review (new commits since the
-  review), its new screenshots replace the shown ones, marked *after rework*;
-  the earlier set stays in the Plan tab under *Earlier screenshots*. The merge
-  step then sends the task back to review, which sees the new set.
+  Screenshots of the result are taken last, on the finished, committed code;
+  each records the commit it shows. One taken before the step's last commit
+  stays shown, marked *Earlier commit*: the worker retakes only the screens its
+  new commits change. A redone screenshot takes the place of the one it redoes
+  (the upload's `&replaces=<file>`), the old version going to the Plan tab under
+  *Earlier screenshots*; a send-back keeps the set and lists for the worker the
+  ones you picked to redo. A round never ends with fewer screenshots of the
+  result than the last one unless the worker's note says why (*Fewer
+  screenshots because: …*, in the log). When the agent reworks the task after
+  its review (new commits since the review), its new screenshots are marked
+  *after rework*, and the merge step sends the task back to review.
 - **A review to settle** after several send-backs: each choice the engine offers,
   with what it does.
 - **A stopped task**: who stopped it and why, then *Continue*, *Take it as it is*
