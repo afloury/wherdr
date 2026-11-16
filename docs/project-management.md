@@ -1069,8 +1069,9 @@ motion); a failed action keeps the task with its error. After the last one:
 the middle (on a computer the window shrinks to them). On a computer it is a large window (960 px wide, up to 90 % of the
 screen's height, screenshots two per row): only the task's content scrolls, the
 filter, its title and the buttons stay. The filter at the top picks *Follow group tab* (the projects of the
-home tab), *All*, a group or a project (its key badge, then its name); it follows you across devices like the
-Board's picker.
+home tab), *All*, a group or a project (its key badge, then its name); each option shows right after its name, in a
+muted grey-bordered chip, how many tasks wait under it (none at 0; groups and projects with tasks listed first), the closed picker too;
+it follows you across devices like the Board's picker.
 
 - <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: its [TL;DR](#tldr); then its screenshots large (swipe between them on
   the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop),
