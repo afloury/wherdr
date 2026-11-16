@@ -52,6 +52,11 @@ export function agentDescendants(ps: string, root: number): CoreProcess[] {
   return out
 }
 
+// "herdr-core: <kind>" for a failed core call (the last stderr line becomes the FsError reason).
+export const coreFailure = (e: unknown) => `herdr-core: ${e instanceof CoreError && /^[a-z_]{1,40}$/.test(e.kind) ? e.kind : 'unreachable'}`
+// The core's error kind of a failed remote read, from its reason, else null.
+export const coreFailureKind = (e: unknown) => /^herdr-core: ([a-z_]+)$/.exec(String((e as { message?: unknown } | null)?.message ?? ''))?.[1] ?? null
+
 export function coreShell(call: Call, on: string): ShellExec {
   return async (script, args = [], opts = {}): Promise<ExecResult> => {
     const seconds = Math.max(1, Math.ceil((opts.timeoutMs ?? 15000) / 1000))
@@ -66,7 +71,8 @@ export function coreShell(call: Call, on: string): ShellExec {
       return { code: r.code, stdout, stderr: Buffer.from(r.stderr || '', 'base64').toString('utf8') }
     } catch (e) {
       // An unreachable machine reads as the SSH failure code (the file's state is unknown).
-      return { code: 255, stdout: Buffer.alloc(0), stderr: e instanceof CoreError ? e.message : 'unreachable' }
+      // Core's error kind ("unavailable", "timeout"…) is kept: its message alone is generic.
+      return { code: 255, stdout: Buffer.alloc(0), stderr: coreFailure(e) }
     }
   }
 }
@@ -168,6 +174,8 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
         const tp = p.agent === 'codex' ? await withBirth({ id: p.id, agent: p.agent, cwd: p.cwd, status: p.status }).catch(() => p) : p
         by.set(m, [...(by.get(m) || []), tp as TranscriptPane])
       }
+      // A machine whose agents all ended is observed too (with none): its caches empty.
+      for (const name of machines.keys()) if (!by.has(name)) by.set(name, [])
       for (const [name, list] of by) void forMachine(name).then(t => t.observe(list)).catch(() => {})
     },
   }

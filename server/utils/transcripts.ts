@@ -1078,6 +1078,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
   const tailReads = new Map<string, Promise<TailResult>>()
   const previewCache = new Map<string, { size: number, gen: string, reply: { key: string, text: string } }>()
   const metaCache = new Map<string, Json>()
+  const META_MAX = 2000
   // omp file commands of this machine (see parseOmp), re-read every 5 min.
   let ompTemplates: { at: number, list: CommandTemplate[] } = { at: 0, list: [] }
   async function refreshOmpTemplates() {
@@ -1141,8 +1142,14 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
       const d = JSON.parse(first)
       if (d.type === 'session_meta') meta = d.payload
     } catch { meta = null }
-    // An incomplete line (brand new file): we will retry later.
-    if (meta) metaCache.set(file, meta)
+    // An incomplete line (brand new file): we will retry later. Only what the
+    // lookups use is kept (not the base instructions, tens of KB per conversation),
+    // for the files of the last days only.
+    if (meta) {
+      meta = { id: meta.id, cwd: meta.cwd, timestamp: meta.timestamp, parent_thread_id: meta.parent_thread_id, thread_source: meta.thread_source }
+      metaCache.set(file, meta)
+      if (metaCache.size > META_MAX) metaCache.delete(metaCache.keys().next().value!)
+    }
     return meta
   }
 
@@ -1231,6 +1238,11 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now }:
     for (const p of panes) if (p.agent === 'codex') codexPeers.set(p.id, p)
     const live = new Set(panes.map(p => p.id))
     activity.prune(id => live.has(id))
+    // Agents come and go all day (the board's tasks): what was kept for a pane
+    // that is gone leaves with it, or the server's memory grows with every run.
+    for (const id of new Set([...locCache.keys(), ...lastLoc.keys(), ...modelCache.keys(), ...pendingCache.keys(), ...askCache.keys(), ...claudeAskCache.keys()])) {
+      if (!live.has(id)) forget(id)
+    }
     for (const p of panes) activity.observe({ id: p.id, agent: p.agent, status: p.status ?? null })
   }
 
