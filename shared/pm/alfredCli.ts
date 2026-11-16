@@ -17,16 +17,16 @@ import { THEMES } from '../../app/utils/themes'
 const ON_OFF = ['1', '0']
 export const SETTING_VALUES: Partial<Record<SyncedSetting, readonly string[]>> = {
   'theme': THEMES.map(t => t.id),
-  'machineBar': ON_OFF, 'compactListV2': ON_OFF,
-  'showShells': ON_OFF, 'showCounters': ON_OFF, 'showQuotas': ON_OFF, 'quotaDisplay': ['left', 'used'],
+  'machineBar': ON_OFF,
+  'showCounters': ON_OFF, 'showQuotas': ON_OFF, 'quotaDisplay': ['left', 'used'],
   'autoReorderReady': ON_OFF, 'readySort': READY_SORTS,
   'typewriterSpeed': ['off', 'fast', 'medium', 'slow'], 'encryptedText': ON_OFF, 'defaultViewMode': ['chat', 'term'],
   'wherdr.files.hidden': ON_OFF, 'wherdr.files.md': ['rendered', 'source'],
 }
 // Where each one is in Settings: "Show me" on its proposal card highlights it.
 export const SETTING_TARGETS: Partial<Record<SyncedSetting, UiTargetId>> = {
-  theme: 'appearance.theme', machineBar: 'appearance.home-screen', compactListV2: 'appearance.home-screen',
-  showShells: 'appearance.home-screen', showCounters: 'appearance.home-screen', showQuotas: 'appearance.home-screen',
+  theme: 'appearance.theme', machineBar: 'appearance.home-screen',
+  showCounters: 'appearance.home-screen', showQuotas: 'appearance.home-screen',
   autoReorderReady: 'appearance.home-screen', quotaDisplay: 'appearance.quotas',
   typewriterSpeed: 'conversation.typewriter', encryptedText: 'conversation.typewriter',
   defaultViewMode: 'conversation.default-pane',
@@ -38,6 +38,9 @@ export type AlfredCommand =
   | { name: 'project', key: string }
   | { name: 'coordinator open' | 'coordinator resend', key: string }
   | { name: 'last', key: string }
+  // The home tabs and their projects; a brief of one tab (none: the open one) or of all.
+  | { name: 'groups' }
+  | { name: 'brief', group?: string, all?: true, since?: number }
   // Show a place of wherdr beside Alfred's conversation (shared/uiOpen.ts).
   | { name: 'ui open', link: string }
   | { name: 'ui targets' }
@@ -76,6 +79,8 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'ui targets', does: 'the settings ui open --target can highlight: id and where it is' },
   { usage: 'tell <KEY> "<text>"', does: 'send a message to the project\'s coordinator, as from Alfred (started first when it does not run); written to the project\'s log' },
   { usage: 'last <KEY>', does: 'the last reply of the project\'s coordinator, and whether it is still working' },
+  { usage: 'groups', does: 'the home tabs (tab groups, machines shown as their own tab) with their projects, and the one the user has open (open: from their last message)' },
+  { usage: 'brief [--group <name> | --all] [--since <YYYY-MM-DD>]', does: 'facts for a brief, project by project, from the engine: tasks merged since the last brief of that scope (or the date), tasks waiting for the user and for what, tasks stuck, coordinators idle or stopped; then machines offline or full, quotas near their limit, open incidents. Default: the open tab\'s group' },
   { usage: 'v2', does: 'when the user comes from wherdr v2: its projects, read now from the herdr-projects board of this machine (suggested key, name, folder on this machine and whether it is there: here, base branch, v2 settings to redo, open tasks), each with the v3 project made from it, if any, and the migration report' },
   { usage: 'v2 import [--only <KEY,KEY>] [--start no]', does: 'bring over every v2 project not made yet, in one change: each added on this machine with its v2 folder (one whose folder cannot be added is listed with why), then its coordinator started (no workflow needed: it starts with the minimal default and its first reply proposes a workflow). With --propose, one card: a checkbox per project and one for starting their coordinators; --only: the keys to add; --start no: add only. The outcome lists each project' },
   { usage: 'settings', does: 'the synced settings, their values, and the values each one Alfred may change accepts (1 = on, 0 = off)' },
@@ -100,6 +105,7 @@ const FLAGS: Record<string, string[]> = {
   'project machine': ['clone'],
   'ui open': ['target', 'project'],
   'v2 import': ['only', 'start'],
+  'brief ': ['group', 'since'],
 }
 
 export const CHANGES = ['project add', 'project template', 'project memory', 'project guards', 'project machine', 'coordinator start', 'v2 import']
@@ -117,12 +123,13 @@ export function parseAlfredCommand(argv: unknown): AlfredCommand | { error: stri
 function parseWords(argv: unknown): AlfredCommand | { error: string } {
   if (!Array.isArray(argv) || !argv.every(a => typeof a === 'string')) return { error: 'argv must be a list of words' }
   const words: string[] = [], flags: Record<string, string> = {}
-  let apply = false, resume = false, propose = false
+  let apply = false, resume = false, propose = false, all = false
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] as string
     if (a === '--apply') { apply = true; continue }
     if (a === '--propose') { propose = true; continue }
     if (a === '--resume') { resume = true; continue }
+    if (a === '--all') { all = true; continue }
     if (!a.startsWith('--')) { words.push(a); continue }
     const v = argv[i + 1] as string | undefined
     if (v === undefined || v.startsWith('--')) return { error: `${a} needs a value` }
@@ -131,7 +138,7 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
   }
   const [w0 = '', w1 = '', w2, w3, ...rest] = words
   if (w0 === 'notes') {
-    if (apply || propose || resume) return { error: 'notes commands take no --apply, --propose nor --resume' }
+    if (apply || propose || resume || all) return { error: 'notes commands take no --apply, --propose nor --resume' }
     const notes = parseNotes(words.slice(1), flags)
     return 'error' in notes ? notes : { name: 'notes', notes }
   }
@@ -144,10 +151,18 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
   if (propose && verb === 'project memory') return { error: 'project memory has no card: show its lines, then --apply after the user\'s yes' }
   if (propose && apply) return { error: '--propose or --apply, not both' }
   if (resume && verb !== 'coordinator start') return { error: '--resume is for coordinator start only' }
+  if (all && w0 !== 'brief') return { error: '--all is for brief only' }
   const key = (k: string | undefined) => (k && KEY_RE.test(k) ? k.toUpperCase() : '')
 
   if (['help', 'projects', 'templates', 'machines', 'coordinators', 'settings', 'v2'].includes(w0) && !w1)
     return { name: w0 as 'help' }
+  if (w0 === 'groups' && !w1) return { name: 'groups' }
+  if (w0 === 'brief') {
+    const { group, since } = flags, at = since === undefined ? undefined : Date.parse(since)
+    if (w1 || (group !== undefined && all)) return usage('brief')
+    if (at !== undefined && (!/^\d{4}-\d{2}-\d{2}/.test(since!) || Number.isNaN(at))) return { error: '--since is a date: YYYY-MM-DD' }
+    return { name: 'brief', ...(group ? { group } : {}), ...(all ? { all: true as const } : {}), ...(at !== undefined ? { since: at } : {}) }
+  }
   if (w0 === 'last') return key(w1) && !w2 ? { name: 'last', key: key(w1) } : usage('last')
   if (w0 === 'tell') {
     const text = words.slice(2).join(' ').trim()

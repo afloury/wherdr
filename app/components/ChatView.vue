@@ -34,6 +34,8 @@ import { stripPosition } from '#shared/filePaths'
 import { turnOpens as openCards } from '#shared/uiOpen'
 import { readAloudEngine, stopSpeaking } from '~/composables/useReadAloud'
 import { foldableReply } from '~/utils/wakeReply'
+import { TONE_ICON, firstSentence, quietStreaks, runSum, wakeSum, type RunSum, type WakeSum } from '~/utils/wakeSummary'
+import { openTaskSheet } from '~/composables/useTaskSheet'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 // A version of a reply replaced while the agent writes takes its question marks with it.
@@ -504,9 +506,12 @@ type Block = ({ k: 'day', key: string, label: string }
   // A wake: one compact row, the coordinator's answer under it (see foldWakes).
   // The user's click on a card, told to the agent (shared/uiActions.ts cardNote): a muted row.
   | { k: 'card', key: string, text: string, time: string | null, at: string | null }
-  | { k: 'wake', key: string, kind: WakeKind, head: string, text: string, time: string | null, at: string | null, answer: string | null, loud: boolean, ms?: number }
-  // `last`: the first line of the last answer in the run.
-  | { k: 'wakes', key: string, n: number, from: string | null, to: string | null, last: string | null }) & { in?: string[] }
+  // `sum`: its kind, tasks and short label, read from its text (utils/wakeSummary.ts).
+  | { k: 'wake', key: string, kind: WakeKind, head: string, text: string, time: string | null, at: string | null, answer: string | null, loud: boolean, sum: WakeSum, ms?: number }
+  // `sum`: the run's counts by kind and their tasks.
+  | { k: 'wakes', key: string, n: number, from: string | null, to: string | null, sum: RunSum }
+  // Consecutive quiet wakes inside an open run: one more fold.
+  | { k: 'quiet', key: string, n: number, from: string | null, to: string | null }) & { in?: string[] }
 
 // Images of a transcript item (a user message, or what a tool returned),
 // re-read on demand from its line (ref = its position in the file).
@@ -769,7 +774,6 @@ const asks = (b: Block & { k: 'assistant' }) => /\?\s*$/m.test(b.text) || replyT
 // A block the user started: it ends a wake's turn.
 const fromUser = (b: Block) => b.k === 'user' || b.k === 'card' || b.k === 'ompRun' || (b.k === 'notice' && !!b.scheduled) || (b.k === 'system' && !!b.cmd)
 const plainLine = (text: string) => text.replace(/[*_`#>]+/g, '').replace(/\s+/g, ' ').trim()
-const firstLine = (text: string) => plainLine(text.split('\n').find(l => plainLine(l)) || '')
 // Ends a wake's turn: the user's input, or a turn the agent took by itself.
 const endsWakeTurn = (b: Block) => fromUser(b) || (b.k === 'who' && !!b.own)
 
@@ -778,8 +782,9 @@ const endsWakeTurn = (b: Block) => fromUser(b) || (b.k === 'who' && !!b.own)
 // answer sits under it in a lighter style and the rest of the turn opens on
 // tap. Any other answer (one that asks, a `wherdr` block, a link, more than
 // one line: see utils/wakeReply.ts) stays a full reply. Consecutive routine
-// wakes (not an incident, nothing changed, nothing asked) fold into one row,
-// with the first line of the last answer in it. A fold holds only wakes and
+// wakes (not an incident, nothing changed, nothing asked) fold into one row
+// that counts them by kind with their tasks (utils/wakeSummary.ts); open, each
+// is one line, and two or more quiet ones in a row fold once more. A fold holds only wakes and
 // their own turns: a turn the agent took by itself stays outside.
 // A wake whose turn was seen over stays so: while the agent starts on the
 // user's next message before the transcript has it, its turn has no end yet,
@@ -790,14 +795,22 @@ function foldWakes(out: Block[]): Block[] {
   const res: Block[] = []
   let run: (Block & { k: 'wake' })[] = []
   let runAt = 0
-  let runLast: string | null = null
+  let runIdx: number[] = []
   const endRun = () => {
     if (run.length > 1) {
       const key = `r:${run[0]!.key}`
+      // Quiet streaks (not the whole run): from their first wake to the next wake, folded, latest first.
+      const sums = run.map(w => w.sum)
+      for (const [a, z] of quietStreaks(sums).filter(([a, z]) => z - a + 1 < run.length).reverse()) {
+        const qk = `q:${run[a]!.key}`, end = runIdx[z + 1] ?? res.length
+        for (let j = runIdx[a]!; j < end; j++) res[j]!.in = [qk, ...(res[j]!.in || [])]
+        res.splice(runIdx[a]!, 0, { k: 'quiet', key: qk, n: z - a + 1, from: run[a]!.time, to: run[z]!.time })
+      }
       for (let j = runAt; j < res.length; j++) res[j]!.in = [key, ...(res[j]!.in || [])]
-      res.splice(runAt, 0, { k: 'wakes', key, n: run.length, from: run[0]!.time, to: run.at(-1)!.time, last: runLast })
+      res.splice(runAt, 0, { k: 'wakes', key, n: run.length, from: run[0]!.time, to: run.at(-1)!.time, sum: runSum(sums) })
     }
     run = []
+    runIdx = []
   }
   for (let i = 0; i < out.length; i++) {
     const b = out[i]!
@@ -818,10 +831,10 @@ function foldWakes(out: Block[]): Block[] {
     const routine = fold && b.wake !== 'incident' && !changed
     if (!routine) endRun()
     else if (!run.length) runAt = res.length
-    const w: Block & { k: 'wake' } = { k: 'wake', key: b.key, kind: b.wake, head: wakeLine(b.text), text: b.text, time: b.time, at: b.at, answer: fold && last ? plainLine(last.text) : null, loud: b.wake === 'incident' || asked, ...(b.ms ? { ms: b.ms } : {}) }
+    const w: Block & { k: 'wake' } = { k: 'wake', key: b.key, kind: b.wake, head: wakeLine(b.text), text: b.text, time: b.time, at: b.at, answer: fold && last ? plainLine(last.text) : null, loud: b.wake === 'incident' || asked, sum: wakeSum(b.text), ...(b.ms ? { ms: b.ms } : {}) }
     if (routine) {
       run.push(w)
-      runLast = last ? firstLine(last.text) || null : null
+      runIdx.push(res.length)
     }
     res.push(w)
     for (const x of turn) {
@@ -1579,11 +1592,22 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </div>
 
 
-              <button v-else-if="b.k === 'wakes'" type="button" class="wake-run" data-testid="wake-run" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
-                <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="wake-chev" />
-                <span class="wake-head">{{ tl(`${b.n} routine checks`) }}</span>
-                <span v-if="b.last" class="wake-last" :title="b.last">· last: “{{ b.last }}”</span>
+              <div v-else-if="b.k === 'wakes'" class="wake-run" :class="{ ask: b.sum.forUser }" data-testid="wake-run" @click="setOpen(b.key, !isOpen(b.key))">
+                <button type="button" class="wake-toggle" :aria-expanded="isOpen(b.key)" @click.stop="setOpen(b.key, !isOpen(b.key))">
+                  <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="wake-chev" />
+                  <span class="wake-head">{{ tl(`${b.n} checks`) }}</span>
+                </button>
+                <span v-for="p in b.sum.parts" :key="p.tone" class="wake-part" :data-tone="p.tone" data-testid="wake-part">
+                  <UIcon :name="TONE_ICON[p.tone]" class="wake-icon" />{{ tl(p.text) }}
+                  <button v-for="c in p.chips" :key="c.id" type="button" class="wake-chip" :title="c.id" :aria-label="c.id" @click.stop="openTaskSheet(c.id)">{{ c.text }}</button>
+                </span>
                 <span v-if="b.from" class="wake-time">{{ b.from === b.to ? b.from : `${b.from}–${b.to}` }}</span>
+              </div>
+
+              <button v-else-if="b.k === 'quiet'" type="button" class="wake-row wake-quiet" data-testid="wake-quiet" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
+                <UIcon :name="isOpen(b.key) ? 'i-lucide-chevron-down' : 'i-lucide-chevron-right'" class="wake-chev" />
+                <span class="wake-head">{{ tl(`${b.n} quiet checks`) }}</span>
+                <span v-if="b.from" class="wake-time">{{ `${b.from}–${b.to}` }}</span>
               </button>
 
               <div v-else-if="b.k === 'card'" class="wake card-note" :data-hit-key="b.key" data-testid="card-note">
@@ -1595,13 +1619,22 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               </div>
 
               <div v-else-if="b.k === 'wake'" class="wake" :class="{ loud: b.loud, open: isOpen(b.key) }" :data-kind="b.kind" :data-hit-key="b.key" data-testid="wake">
-                <button type="button" class="wake-row" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
+                <!-- A routine one: its kind's icon, its tasks, a short label and the reply's first sentence. -->
+                <div v-if="b.answer && !b.loud" class="wake-row wake-line" :class="{ quiet: b.sum.quiet }" @click="setOpen(b.key, !isOpen(b.key))">
+                  <UIcon :name="TONE_ICON[b.sum.tone]" class="wake-icon" :data-tone="b.sum.tone" />
+                  <button v-for="id in b.sum.tasks" :key="id" type="button" class="wake-chip" @click.stop="openTaskSheet(id)">{{ id }}</button>
+                  <button type="button" class="wake-toggle wake-head" :aria-expanded="isOpen(b.key)" @click.stop="setOpen(b.key, !isOpen(b.key))">
+                    <span class="wake-label">{{ tl(b.sum.label) }}</span> {{ firstSentence(b.answer) }}
+                  </button>
+                  <span v-if="b.time" class="wake-time" :title="b.at || undefined">{{ b.time }}</span>
+                </div>
+                <button v-else type="button" class="wake-row" :aria-expanded="isOpen(b.key)" @click="setOpen(b.key, !isOpen(b.key))">
                   <span class="msg-wake" :data-kind="b.kind">{{ t(WAKE_LABEL[b.kind]) }}</span>
                   <span class="wake-head">{{ b.head }}</span>
                   <span v-if="b.time" class="wake-time" :title="b.at || undefined">{{ b.time }}</span>
                 </button>
                 <pre v-if="isOpen(b.key) || searching" class="wake-text">{{ b.text }}</pre>
-                <p v-else-if="b.answer" class="wake-answer">{{ b.answer }}</p>
+                <p v-else-if="b.answer && b.loud" class="wake-answer">{{ b.answer }}</p>
               </div>
 
               <div v-else-if="b.k === 'user'" class="msg-user-wrap" :data-hit-key="b.key">
