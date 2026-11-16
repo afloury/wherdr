@@ -16,7 +16,7 @@ Reading:
 | `wherdr alfred machines` | the machines herdr-core knows (key, label, status); `""` is this machine |
 | `wherdr alfred coordinators` | each coordinator, its agent and whether it runs (`stopped`: its terminal ended, see `--resume`) |
 | `wherdr alfred coordinator open <KEY>` | the link that opens a running project coordinator |
-| `wherdr alfred last <KEY>` | what the project's coordinator last said (its last message, else the bottom of its screen), and whether it is still working |
+| `wherdr alfred last <KEY>` | what the project's coordinator last said (its last message, else the bottom of its screen), whether it is still working, and the tasks it added since Alfred last told it (`tasks`) |
 | `wherdr alfred groups` | your home tabs (tab groups, and machines shown as their own tab) with the projects each one shows, and the tab you have open (`open`, sent with each message you write to Alfred, not shown in the chat) |
 | `wherdr alfred brief [--group <name> \| --all] [--since <YYYY-MM-DD>]` | the facts of a [brief](#briefs) for the open tab's group, another group, or all |
 | `wherdr alfred v2` | when you come from wherdr v2: its projects, read then from the herdr-projects board of this machine, their open tasks, the v3 project made from each, and the migration report ([set up your v2 projects](migrate-from-v2.md#set-up-your-v2-projects-with-alfred)) |
@@ -55,10 +55,20 @@ Proposing and delegating (no `--apply`):
 | Command | Does |
 | --- | --- |
 | `wherdr alfred project workflow edit <KEY> < workflow.json` | proposes a new workflow for the project (the whole JSON, guards unchanged). Nothing changes yet: you accept or refuse it in the project's [Workflow tab](project-management.md#workflow), in the same review as a coordinator's proposal. Only on your request in Alfred's chat, never in a wake |
-| `wherdr alfred tell <KEY> "<text>"` | sends a message to the project's coordinator, starting it when it does not run, and writes it to the project's log as from Alfred. When Alfred relays your message, the coordinator's turn counts as yours; otherwise as a wake |
+| `wherdr alfred tell <KEY> "<text>"` | sends a message to the project's coordinator, starting it when it does not run, and writes it to the project's log as from Alfred. When Alfred relays your message, it reaches the coordinator as *From Alfred, for the user: …* and its turn counts as yours; otherwise *From Alfred: …*, as a wake |
 
 So you can ask Alfred "propose a workflow for WEB": it tells WEB's coordinator, reads its reply
 with `last`, and reports back; the proposal itself waits for your answer in wherdr.
+
+### Requests about a project
+
+Tell Alfred something about a project ("on TV, the progress bar under an episode does not
+show"): it finds the project by its name or key, else among the projects of the home tab you
+have open, and asks with buttons when it is not sure which. It never changes the project
+itself: it relays your request to that project's coordinator (`tell`), which adds the task as if
+you had written to it, waits for its answer (`last`), and reports back in one or two lines, the
+task it created as a task card. For a long back-and-forth (a design to discuss, many
+questions), it suggests opening the coordinator's conversation instead.
 
 ```text
 $ wherdr alfred project template WEB company

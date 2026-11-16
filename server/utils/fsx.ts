@@ -144,16 +144,22 @@ export function parseStatLine(line: string): FsStat | null {
   return st
 }
 
-export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number } = {}): MachineFs {
+// A byte range is read in chunks of at most this much: herdr-core's
+// machine.exec keeps only the first 8 MB a command writes, and a longer
+// transcript slice (screenshots are multi-MB lines) came back cut short.
+export const READ_CHUNK = 4 * 1024 * 1024
+
+export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number, readChunk?: number } = {}): MachineFs {
   const ttl = opts.statTtlMs ?? 700
+  const chunk = opts.readChunk ?? READ_CHUNK
   // Small cache (and grouping of simultaneous requests): the previews, the
   // model and the open conversation each run their `stat` every second.
   const statCache = new Map<string, { at: number, v: Promise<FsStat | null> }>()
 
   // `ENOENT` for a missing file (as on the local disk), `unreachable` when the
   // session itself failed (ssh 255, timeout): the file's state is unknown.
-  async function run(script: string, args: string[], timeoutMs = 15000, input?: Buffer) {
-    const r = await exec(script, args, { timeoutMs, input })
+  async function run(script: string, args: string[], timeoutMs = 15000, input?: Buffer, maxBytes?: number) {
+    const r = await exec(script, args, { timeoutMs, input, ...(maxBytes ? { maxBytes } : {}) })
     if (r.code !== 0) {
       const reason = (r.stderr || `code ${r.code}`).trim().split('\n').pop() || 'failed'
       const code = r.code === 255 || r.code === 124 ? 'unreachable' : r.code === MISSING_PATH_EXIT || /no such file/i.test(r.stderr) ? 'ENOENT' : 'remote'
@@ -217,7 +223,18 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number } = {}
       // tail -c +N jumps straight to byte N (regular file); head cuts.
       // Open before the pipeline so a failed open cannot be hidden by head's
       // successful exit (POSIX sh has no portable pipefail).
-      return run(REQUIRE_PATH + 'exec 3< "$1" || exit $?\ntail -c +"$2" <&3 | head -c "$3"', [p, String(start + 1), String(len)], timeoutMs || 60000)
+      // In chunks (READ_CHUNK), each one refused rather than cut if the exec
+      // keeps less (maxBytes): a short result only ever means the end of the file.
+      const parts: Buffer[] = []
+      let got = 0
+      while (got < len) {
+        const n = Math.min(chunk, len - got)
+        const b = await run(REQUIRE_PATH + 'exec 3< "$1" || exit $?\ntail -c +"$2" <&3 | head -c "$3"', [p, String(start + got + 1), String(n)], timeoutMs || 60000, undefined, n)
+        parts.push(b)
+        got += b.length
+        if (b.length < n) break
+      }
+      return parts.length === 1 ? parts[0]! : Buffer.concat(parts)
     },
     async digest(p, len) {
       const out = await run(REQUIRE_PATH + 'exec 3< "$1" || exit $?\nhead -c "$2" <&3 | cksum', [p, String(Math.max(0, len))], 60000)

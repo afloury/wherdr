@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Settings, in sections: appearance, conversation, terminal, agents (with pace), machines,
 // notifications, security (passkey), shortcuts, about.
-import type { ThemeDef, ThemeGroup } from '~/utils/themes'
+import type { ThemeDef, ThemeGroup, ThemeMode } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
 import { SETTINGS_ALIASES, SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
 import { CONVERSATION_TABS, conversationTab, type ConversationTab } from '#shared/appLinks'
@@ -265,17 +265,50 @@ const quietEnd = computed(() => {
 })
 
 // ------------------------------------------------------------ theme
-// Picker section titles: brand names stay as is in both languages; the
-// 'herdr' group holds the classic terminal palettes.
-const themeGroupLabel = (g: ThemeGroup) => (g === 'agents' ? tl('Agents', 'Agents') : g === 'herdr' ? tl('Classic', 'Classiques') : 'wherdr')
-// Preview: background, surface, line, text, accent, states (working, waiting, done).
-const swatches = (th: ThemeDef) => [th.c.bg, th.c.surface, th.c.line, th.c.text, th.c.accent, th.c.blue, th.c.rose, th.c.teal]
+// Picker section titles: brand names stay as is.
+const themeGroupLabel = (g: ThemeGroup) => (g === 'agents' ? t('Agents') : g === 'classic' ? t('Classic') : g === 'custom' ? tl('Custom') : 'wherdr')
+// Preview in the mode shown: background, surface, line, text, accent, states (working, waiting, done).
+const swatches = (th: ThemeDef) => {
+  const c = activeTheme.value.light ? th.light : th.c
+  return [c.bg, c.surface, c.line, c.text, c.accent, c.blue, c.rose, c.teal]
+}
+const modeItems = computed(() => [
+  { value: 'dark' as ThemeMode, label: t('Dark'), icon: 'i-lucide-moon' },
+  { value: 'light' as ThemeMode, label: t('Light'), icon: 'i-lucide-sun' },
+  { value: 'system' as ThemeMode, label: t('System'), icon: 'i-lucide-monitor' },
+])
+function pickMode(m: ThemeMode) {
+  themeMode.value = m
+  haptic()
+}
 const themesOpen = ref(false)
-const currentTheme = computed(() => themeById(themeChoice.value))
+const currentTheme = computed(() => findTheme(themeChoice.value))
 const currentLabel = computed(() => (currentTheme.value ? currentTheme.value.label : themeChoice.value))
 function pickTheme(id: string) {
   themeChoice.value = id
   haptic()
+}
+// Custom themes: the editor opens on a theme (a custom one is edited, any other starts a new one).
+const editorOpen = ref(false)
+const editorBase = ref<ThemeDef | null>(null)
+function openEditor(th: ThemeDef | undefined) {
+  editorBase.value = th || themeById(DEFAULT_THEME)!
+  editorOpen.value = true
+}
+const importOpen = ref(false)
+const importText = ref('')
+const importError = ref('')
+async function importFile(e: Event) {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (file) importText.value = file.size > THEME_FILE_MAX ? '' : await file.text()
+  importError.value = file && file.size > THEME_FILE_MAX ? tl(`The file is larger than ${THEME_FILE_MAX / 1024} KB`) : ''
+}
+function importTheme() {
+  const th = importThemeText(importText.value)
+  if (typeof th === 'string') { importError.value = tl(th); return }
+  if (!saveCustomTheme(th)) return
+  importOpen.value = false
+  toast(tl(`Theme ${th.label} imported`))
 }
 
 // ------------------------------------------------------------ texte du terminal
@@ -396,6 +429,11 @@ onMounted(() => {
         <div v-show="activeSection === 'appearance'" class="settings-section">
           <div data-ui-target="appearance.theme" class="settings-group">
             <h3>{{ t('Theme') }}</h3>
+            <div class="segmented theme-mode" role="radiogroup" :aria-label="t('Mode')" style="--segment-count: 3">
+              <button v-for="m in modeItems" :key="m.value" type="button" role="radio" :class="{ on: themeMode === m.value }" :aria-checked="themeMode === m.value" @click="pickMode(m.value)">
+                <UIcon :name="m.icon" /><span>{{ m.label }}</span>
+              </button>
+            </div>
             <!-- Collapsed by default: the current theme shows, a tap expands the list. -->
             <button type="button" class="theme-opt theme-current" :aria-expanded="themesOpen" @click="themesOpen = !themesOpen">
               <span class="theme-sw"><i v-for="(c, i) in currentTheme ? swatches(currentTheme) : []" :key="i" :style="{ background: c }" /></span>
@@ -403,22 +441,43 @@ onMounted(() => {
               <UIcon :name="themesOpen ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'" class="theme-check" />
             </button>
             <div v-show="themesOpen" class="theme-list" role="radiogroup" :aria-label="t('Theme')">
-              <section v-for="sec in themeSections()" :key="sec.group" class="theme-section" :aria-label="themeGroupLabel(sec.group)">
+              <section v-for="sec in themeSections(customThemes)" :key="sec.group" class="theme-section" :aria-label="themeGroupLabel(sec.group)">
                 <h4 class="theme-section-title">{{ themeGroupLabel(sec.group) }}</h4>
                 <div class="theme-grid">
+                  <div v-for="th in sec.group === 'custom' ? sec.themes : []" :key="th.id" class="theme-custom">
+                    <button type="button" role="radio" class="theme-opt" :class="{ on: themeChoice === th.id }" :aria-checked="themeChoice === th.id" @click="pickTheme(th.id)">
+                      <span class="theme-sw"><i v-for="(c, i) in swatches(th)" :key="i" :style="{ background: c }" /></span>
+                      <span class="theme-name">{{ th.label }}<small v-if="th.author">{{ th.author }}</small></span>
+                    </button>
+                    <button type="button" class="icon-btn" :aria-label="tl(`Edit ${th.label}`)" data-testid="theme-edit" @click="openEditor(th)"><UIcon name="i-lucide-pencil" /></button>
+                  </div>
                   <button
-                    v-for="th in sec.themes" :key="th.id" type="button" role="radio" class="theme-opt" :class="{ on: themeChoice === th.id }"
+                    v-for="th in sec.group === 'custom' ? [] : sec.themes" :key="th.id" type="button" role="radio" class="theme-opt" :class="{ on: themeChoice === th.id }"
                     :aria-checked="themeChoice === th.id" @click="pickTheme(th.id)"
                   >
                     <span class="theme-sw"><i v-for="(c, i) in swatches(th)" :key="i" :style="{ background: c }" /></span>
-                    <span class="theme-name">{{ th.label }}<small v-if="th.id === DEFAULT_THEME">{{ t('default') }}</small><small v-else-if="th.light">{{ t('light') }}</small></span>
+                    <span class="theme-name">{{ th.label }}<small v-if="th.id === DEFAULT_THEME">{{ t('default') }}</small></span>
                     <UIcon v-if="themeChoice === th.id" name="i-lucide-check" class="theme-check" />
                   </button>
                 </div>
               </section>
+              <div class="theme-tools">
+                <UButton size="lg" color="neutral" variant="outline" icon="i-lucide-palette" data-testid="theme-create" @click="openEditor(currentTheme)">{{ tl('Create theme') }}</UButton>
+                <UButton size="lg" color="neutral" variant="outline" icon="i-lucide-upload" @click="importText = ''; importError = ''; importOpen = true">{{ tl('Import theme') }}</UButton>
+              </div>
             </div>
           </div>
-          <p class="muted settings-hint">{{ t('The theme follows you on every device.') }}</p>
+          <ThemeEditor v-model:open="editorOpen" :base="editorBase" />
+          <AppSheet v-model:open="importOpen" :title="tl('Import theme')" hide-close>
+            <form class="sheet-form" @submit.prevent="importTheme">
+              <label class="field-label" for="themeImport">{{ tl('Theme JSON') }}</label>
+              <UTextarea id="themeImport" v-model="importText" :rows="8" class="w-full mono" :placeholder="tl('Paste a theme file, or pick one')" />
+              <input type="file" accept=".json,application/json" class="w-full" :aria-label="tl('Theme file')" @change="importFile">
+              <p v-if="importError" class="form-error" role="alert">{{ importError }}</p>
+              <UButton type="submit" size="xl" color="primary" class="hw-cta" :disabled="!importText.trim()">{{ tl('Import') }}</UButton>
+            </form>
+          </AppSheet>
+          <p class="muted settings-hint">{{ t('The theme and its mode follow you on every device. System follows the light or dark setting of this device.') }}</p>
 
           <div data-ui-target="appearance.home-screen" class="settings-group">
             <h3>{{ t('Home screen') }}</h3>

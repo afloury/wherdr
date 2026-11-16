@@ -1098,6 +1098,13 @@ it follows you across devices like the Board's picker.
 - <a id="notes-on-a-task-waiting-for-you"></a>**A visual change to merge**: its [TL;DR](#tldr); then its screenshots large (swipe between them on
   the phone, a grid on a computer; tap one to zoom; each is labelled phone or desktop),
   *Full reports in Comments*, then *Merge* and *Open the PR*, or *Send back* with a note: the agent gets your note as what to fix.
+  Telling the coordinator what to change does the same: it runs
+  `wherdr pm step back <task> "<what to change>" --user-said "<your words>"`
+  (only in a turn that comes from you, never in a wake, and only on a step
+  that waits for you). The step goes back to the worker, the approval drops,
+  the screenshots follow the same rules as *Send back*, and the task leaves
+  Tasks to review at once, back when its next review is done; the log keeps
+  your words.
   With no TL;DR yet, the **Worker's note** (its closing report: what
   was done, why it is done, what was tested) and the **Reviewer's note** (the
   verdict, what it sent back and was fixed during the rounds, what it left as
@@ -1559,6 +1566,17 @@ agent again (you send it back, a merge finds a conflict, CI goes red, new
 commits need a review), wherdr starts the worker or the reviewer again in the
 same worktree, with a note on where the work stands. The task's log says when
 its agents were ended and started again.
+
+An agent you talk to stays: your last message to one of the task's agents
+(from its chat or its terminal) keeps them for 30 minutes after it instead of
+10, and while you have that conversation open in wherdr they are not ended at
+all. Only a machine short of memory for a task waiting to start cuts that
+grace (the plain 10 minutes then apply), and the log says so. Once the worker
+is released, *Open the agent* stays on the task, with one muted line under it
+(*Released at 12:43 to free memory: opening it starts it again.*): opening it
+starts the worker again in its worktree with its conversation taken up again,
+whose first line says *Restarted: it was released to free memory at 12:43*,
+and you write to it as before.
 
 The same goes when you answer and the task moves on: a review decision (*pass*,
 say), *Send back*, *Try again* or a merge you confirm hands the next step to

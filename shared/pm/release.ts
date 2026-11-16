@@ -1,6 +1,7 @@
 // A task that waits for the user, or waits in the merge queue with no work
 // handed to its agent, lets its agents go: once they have been idle
-// RELEASE_IDLE_MS, the engine ends them (worktree, branch and files stay) and
+// RELEASE_IDLE_MS (RELEASE_TALK_MS after the user's last message to one of
+// them, never while its conversation is open), the engine ends them (worktree, branch and files stay) and
 // starts the worker (or the reviewer) again in the same worktree when the task
 // needs it. Only agents that hold a step under way count against a machine's
 // cap. Pure: server/utils/pmRelease.ts reads the terminals and ends the agents.
@@ -33,7 +34,28 @@ export const waitsInQueue = (t: Task) => !!t.queue && !!t.step?.started && !t.st
 export const idleSince = (prev: number | undefined, task: Task, busy: boolean, now: number) =>
   !(waitsForUser(task) || waitsInQueue(task)) || busy ? undefined : prev ?? now
 
-export const releaseDue = (since: number | undefined, now: number) => since !== undefined && now - since >= RELEASE_IDLE_MS
+// The user's conversation with one of the task's agents (in memory, pmTalk.ts):
+// their last message to it, from the chat or its terminal; open: on screen in wherdr now.
+export interface Talk { at?: number, open?: boolean }
+export const RELEASE_TALK_MS = 30 * 60_000
+
+// Released now? 'idle': idle long enough; 'cut': only because a task waiting
+// to start is short of memory on the agents' machine (short), which cuts the
+// grace of a conversation. false: kept.
+export function releaseDue(since: number | undefined, now: number, talk: Talk = {}, short = false): false | 'idle' | 'cut' {
+  if (since === undefined || now - since < RELEASE_IDLE_MS) return false
+  const kept = !!talk.open || (talk.at !== undefined && now - talk.at < RELEASE_TALK_MS)
+  return !kept ? 'idle' : short ? 'cut' : false
+}
+
+// A task to do that waits for room (placement.ts) on that machine, or on any:
+// memory goes to it before a conversation's grace.
+export const roomWanted = (tasks: Pick<Task, 'state' | 'held' | 'machine'>[], machine: string) =>
+  tasks.some(t => t.state === 'todo' && !!t.held && isRoomHold(t.held) && (t.machine === undefined || t.machine === machine))
+
+// The first message of a released worker's conversation, taken up again when
+// the user opens it (at: when it was released, as the user's clock says it).
+export const restartedLine = (at: string) => `Restarted: it was released to free memory at ${at}. Wait for the user's next message.`
 
 // The worker the engine released: started again when the task needs it.
 export const wasReleased = (r?: Pick<Run, 'state' | 'endedBy'>) => r?.state === 'ended' && r.endedBy === 'released'

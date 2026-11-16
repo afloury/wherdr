@@ -886,6 +886,9 @@ body.short-bottom { --safe-bottom: 0px; }
 .files-num { flex: none; min-width: 4ch; padding: 6px 8px 6px 6px !important; text-align: right; color: var(--dim); user-select: none; border-right: 1px solid var(--line); }
 .files-text { flex: 1; padding: 6px 10px !important; color: var(--text-2); }
 .files-image { display: block; max-width: 100%; max-height: 70vh; margin: 12px auto; background: repeating-conic-gradient(var(--code-bg) 0 25%, transparent 0 50%) 0 0 / 16px 16px; }
+.files-image-open { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.files-image-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.files-md img[src] { cursor: zoom-in; }
 /* A Markdown file, formatted: the conversation's Markdown styles on a framed
    page, headings ruled as a document, light syntax colours in code blocks. */
 .files-md-mode { max-width: 280px; margin: 10px 0 0; }
@@ -1708,7 +1711,7 @@ body.kb .composer { padding-bottom: 8px; }
 .tools.omp-run { --omp-color: var(--fx-base); }
 /* omp themes: their accent is the omp magenta's neighbour; glide the cyan / blue instead. */
 :root[data-theme="omp"] :is(.composer[data-agent="omp"], .omp-run[data-agent="omp"], .tools.omp-console:not(.omp-run)) { --fx-2: var(--teal); }
-:root[data-theme="omp-light"] :is(.composer[data-agent="omp"], .omp-run[data-agent="omp"], .tools.omp-console:not(.omp-run)) { --fx-2: var(--blue); }
+:root[data-theme="omp"][data-mode="light"] :is(.composer[data-agent="omp"], .omp-run[data-agent="omp"], .tools.omp-console:not(.omp-run)) { --fx-2: var(--blue); }
 .prompt:focus-within { border-color: transparent; outline: none; }
 /* Both masks are as big as what they show (container units size the square): the square is
    at least as wide as the diagonal, so it covers them whatever its angle. */
@@ -2344,6 +2347,9 @@ body.kb .composer { padding-bottom: 8px; }
 /* Home: one discreet line while quiet mode is active, outside the header (which keeps
    its shape); a tap opens Settings › Notifications. */
 /* Themes: color swatches, selection marked by the accent. */
+/* Mode (Dark, Light, System) above the theme. */
+.segmented.theme-mode { margin-bottom: 12px; }
+.segmented.theme-mode .iconify { width: 16px; height: 16px; }
 .theme-list { display: flex; flex-direction: column; gap: 18px; padding-top: 18px; }
 .theme-grid { display: grid; grid-template-columns: 1fr; border: 1px solid var(--line); }
 .theme-opt {
@@ -2361,7 +2367,12 @@ body.kb .composer { padding-bottom: 8px; }
 .theme-name { flex: 1; min-width: 0; font-size: 14.5px; font-weight: 500; color: var(--text); }
 .theme-name small { display: block; font: 400 11px/1.3 var(--mono); color: var(--muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .theme-check { width: 18px; height: 18px; color: var(--accent); }
-@media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) { .theme-grid { grid-template-columns: 1fr 1fr; } .theme-grid .theme-opt:nth-child(2) { border-top: 0; } .theme-grid .theme-opt:nth-child(even) { border-left: 1px solid var(--line-soft); } }
+/* A custom theme: the radio and its Edit button side by side. */
+.theme-custom { display: flex; align-items: center; min-width: 0; border-top: 1px solid var(--line-soft); }
+.theme-custom .theme-opt { flex: 1; min-width: 0; border-top: 0; }
+.theme-grid .theme-custom:first-child { border-top: 0; }
+.theme-tools { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (min-width: 900px), (min-width: 700px) and (min-height: 700px), (min-width: 700px) and (min-device-width: 700px) and (min-device-height: 700px) and (pointer: coarse) { .theme-grid { grid-template-columns: 1fr 1fr; } .theme-grid > :nth-child(2) { border-top: 0; } .theme-grid > :nth-child(even) { border-left: 1px solid var(--line-soft); } }
 .settings-card, .settings-action.solo, .settings-stepper, .settings-toggle { background: var(--bg-2); border: 1px solid var(--line); }
 .settings-card { padding: 0 16px 14px; }
 /* Cards opening with text (no action row bringing its own top inset) get the bottom inset on top too. */

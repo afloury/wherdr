@@ -131,6 +131,7 @@ export interface Run {
   state: 'starting' | 'running' | 'ended'
   endedBy?: 'exit' | 'lost' | 'stopped' | 'released' // released: idle while its task waited for the user (release.ts)
   startedAt: number
+  endedAt?: number // when the engine released it (release.ts)
   peakMb?: number // the most its worktree's processes took, sampled each tick (peaks.ts)
   session?: string // Claude's conversation id, pinned at launch: a resume takes it up again
 }

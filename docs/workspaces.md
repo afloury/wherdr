@@ -39,8 +39,24 @@ commands that name a project take `--project <member>`). A member's guards,
 merges, settings and workflow stay with you. Its instructions (`AGENTS.md`)
 list the members.
 
+### What the workspace's coordinator may change
+
+The workspace's coordinator **never changes a member's repository**: every code
+change in a member goes through tasks (`feature split` of a feature,
+`task add --feature`), done by task agents in their own worktrees. On Claude,
+its settings deny edits inside each member's folder (rewritten at each start,
+so a newly adopted member is covered from the coordinator's next start); it may
+still write elsewhere under the root, such as specs and notes. On Codex, the
+root is read-only: it reads every repository and writes only in its own folder.
+
+The root's own `AGENTS.md` and `CLAUDE.md`, when present, are copied into its
+instructions at each start (a `CLAUDE.md` that only imports `AGENTS.md` adds
+nothing), so the rules shared by every repository apply to it too.
+
 A member has **no coordinator**: none is started for it, and none shows in the
-sidebar. Every wake about a member's task goes to the workspace's coordinator,
+sidebar: the workspace's **row** does, under its tab group, with its
+coordinator's state, its members' tasks working and waiting for you, and its
+members' key badges ([Coordinators](home.md#coordinators)). Every wake about a member's task goes to the workspace's coordinator,
 its first line naming the task (`PAY-3: stuck: …`), and *Ask the coordinator*
 on a member's task asks it too. Its scheduled wakes' health summaries cover all the members' tasks.
 
