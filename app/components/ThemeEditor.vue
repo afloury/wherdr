@@ -64,7 +64,7 @@ async function remove() {
     <div v-if="draft" class="te" data-testid="theme-editor">
       <template v-if="!editing">
         <label class="field-label" for="teStart">{{ tl('Start from') }}</label>
-        <USelect id="teStart" :model-value="base?.id" :items="startItems" size="xl" class="w-full" @update:model-value="v => startFrom(String(v))" />
+        <USelect id="teStart" :model-value="findTheme(base?.id) ? base?.id : undefined" :placeholder="tl('Choose a theme')" :items="startItems" size="xl" class="w-full" @update:model-value="v => startFrom(String(v))" />
       </template>
       <div class="te-names">
         <span><label class="field-label" for="teName">{{ tl('Name') }}</label><UInput id="teName" v-model="draft.label" size="xl" class="w-full" maxlength="40" data-testid="theme-name" /></span>
