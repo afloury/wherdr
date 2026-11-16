@@ -28,6 +28,10 @@ wherdr 3.1 adds **workspaces**, one coordinator for several repositories. Alfred
 
 **Tasks.** An agent you are writing to is kept 30 minutes after your last message, and writing to a released agent brings it back. Screenshots of a visual task are tied to its final commit, and a send-back asks the worker to retake only the screens its changes affect. A coordinator's step back sends a task waiting for you back to its worker with your words. With no working branch set, a task starts from the branch its workflow opens PRs to.
 
+**Claude quotas.** Claude Ultra accounts no longer show a 5-hour window, which they do not have; Pro and Max keep it.
+
+**Workflow proposals.** A coordinator's workflow proposal no longer opens Settings by itself: accept it from the card in the conversation, or from the proposal row on the project's Workflow tab.
+
 **A second v3 install** keeps its own project-management folders, and its uninstall removes them.
 
 ## Fixed
@@ -36,7 +40,7 @@ wherdr 3.1 adds **workspaces**, one coordinator for several repositories. Alfred
 
 **Codex conversations on the shared daemon** ([#810](https://github.com/afloury/wherdr/issues/810)). A local Codex attached to the shared app-server no longer shows *No conversation* on an older thread: wherdr reads that daemon's history page by page. Thanks to [@Ovalene2333](https://github.com/Ovalene2333) for the fix.
 
-**Conversations.** A remote agent's turn no longer disappears after a very long line, such as a large screenshot. A conversation search no longer stops at the first line larger than its read window, such as a screenshot (thanks to [@followcat](https://github.com/followcat)). A photo message sent to Claude while it works or after a long idle is submitted instead of staying in its input, and is not shown twice. A run's task badges wrap inside the row, and the conversation never scrolls sideways.
+**Conversations.** A remote agent's turn no longer disappears after a very long line, such as a large screenshot. A conversation search no longer stops at the first line larger than its read window, such as a screenshot (thanks to [@followcat](https://github.com/followcat)). A message with several photos sent to Claude, working or idle, is submitted instead of staying in its input (even while Claude still shows *Pasting…*, and after a wherdr restart mid-send), and is not shown twice. A '!' command run while Claude works runs once and shows once. A run's task badges wrap inside the row, and the conversation never scrolls sideways.
 
 [Full changelog](https://github.com/afloury/wherdr/blob/v3.1.0/CHANGELOG.md)
 
