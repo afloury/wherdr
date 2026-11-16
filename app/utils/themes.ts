@@ -35,12 +35,14 @@ export interface ThemeColors {
 }
 // Section of the theme picker: wherdr's own themes, themes inspired by the
 // coding agents, then classic editor palettes.
+// The user's own themes (customThemes.ts) follow, in a Custom section.
 export const THEME_GROUPS = ['wherdr', 'agents', 'classic'] as const
-export type ThemeGroup = typeof THEME_GROUPS[number]
+export type ThemeGroup = typeof THEME_GROUPS[number] | 'custom'
 export interface ThemeDef {
   id: string
   label: string
   group: ThemeGroup
+  author?: string
   c: ThemeColors // dark palette
   // xterm ANSI palette: black, red, green, yellow, blue, magenta, cyan, white, then the bright ones.
   ansi: string[]
@@ -261,8 +263,11 @@ export const THEMES: ThemeDef[] = [
 export const DEFAULT_THEME = 'wherdr-titanium'
 export const themeById = (id: string | null | undefined) => THEMES.find(t => t.id === id)
 
-// Picker sections in THEME_GROUPS order (the default theme leads THEMES).
-export const themeSections = () => THEME_GROUPS.map(group => ({ group, themes: THEMES.filter(t => t.group === group) }))
+// Picker sections in THEME_GROUPS order (the default theme leads THEMES), then the custom themes.
+export const themeSections = (custom: ThemeDef[] = []) => [
+  ...THEME_GROUPS.map(group => ({ group: group as ThemeGroup, themes: THEMES.filter(t => t.group === group) })),
+  ...(custom.length ? [{ group: 'custom' as ThemeGroup, themes: custom }] : []),
+]
 
 // The 2.x light themes, now the Light mode of a kept theme.
 const LIGHT_THEMES: Record<string, string> = { 'catppuccin-latte': DEFAULT_THEME, 'omp-light': 'omp' }
@@ -270,8 +275,9 @@ export const legacyLightTheme = (v: string | null | undefined) => (v ? LIGHT_THE
 
 // Theme choice read from the device: an id that no longer exists (removed
 // theme) falls back to the default instead of showing a raw id in Settings.
+// A custom theme's id is kept: the list of custom themes may load later.
 export const storedThemeChoice = (v: string | null | undefined) =>
-  themeById(v)?.id ?? legacyLightTheme(v) ?? DEFAULT_THEME
+  themeById(v)?.id ?? legacyLightTheme(v) ?? (v?.startsWith('custom-') ? v : DEFAULT_THEME)
 
 export const THEME_MODES = ['dark', 'light', 'system'] as const
 export type ThemeMode = typeof THEME_MODES[number]
@@ -327,9 +333,9 @@ export function themeVars(th: ThemeVariant): Record<string, string> {
 
 // Stylesheet of all themes: [data-theme="…"] { --bg: … } for the dark palette,
 // [data-theme="…"][data-mode="light"] for the light one.
-export function themesCss(): string {
+export function themesCss(themes = THEMES): string {
   const rule = (sel: string, v: ThemeVariant) => `:root${sel}{${Object.entries(themeVars(v)).map(([k, x]) => `${k}:${x}`).join(';')}}`
-  return THEMES.flatMap(t => [
+  return themes.flatMap(t => [
     ...(t.id === DEFAULT_THEME ? [] : [rule(`[data-theme="${t.id}"]`, themeVariant(t, false))]),
     rule(`[data-theme="${t.id}"][data-mode="light"]`, themeVariant(t, true)),
   ]).join('\n')
@@ -352,4 +358,30 @@ export function xtermTheme(th: ThemeVariant) {
 function hexAlpha(hex: string, alpha: number) {
   const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex)
   return m ? `rgba(${parseInt(m[1]!, 16)},${parseInt(m[2]!, 16)},${parseInt(m[3]!, 16)},${alpha})` : hex
+}
+
+// WCAG relative luminance and contrast ratio of two #rrggbb colors.
+const luminance = (hex: string) => {
+  const [r, g, b] = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255)
+    .map(c => (c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4))
+  return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!
+}
+export const contrast = (a: string, b: string) => {
+  const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x)
+  return (hi! + 0.05) / (lo! + 0.05)
+}
+// A palette's contrast below WCAG AA: body and muted text 4.5:1 on every
+// background, the accent and focus ring 3:1 (non-text), borders a visible step.
+export function contrastIssues(c: ThemeColors): string[] {
+  const found: string[] = []
+  const need = (what: string, ratio: number, min: number) => { if (ratio < min) found.push(`${what} ${ratio.toFixed(2)} < ${min}`) }
+  for (const bg of ['bg', 'bg2', 'surface'] as const) {
+    need(`text on ${bg}`, contrast(c.text, c[bg]), 4.5)
+    need(`muted on ${bg}`, contrast(c.muted, c[bg]), 4.5)
+  }
+  need('line on bg', contrast(c.line, c.bg), 1.3)
+  need('line on surface', contrast(c.line, c.surface), 1.2)
+  need('focus ring', contrast(c.ring || c.accent, c.bg), 3)
+  need('accent', contrast(c.accent, c.bg), 3)
+  return found
 }
