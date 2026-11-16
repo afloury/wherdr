@@ -805,7 +805,9 @@ with one project picked, its [Autopilot](#autopilot) button. The picker offers
 *Follow machine tab* (the projects the [home tab](home.md#machines-as-tabs) picked
 shows; **All** shows every one, and changing the tab updates the board in place),
 *All projects*, or one project, shown as its key badge in its color then its name
-(as in every project picker). Your pick is kept and follows you across devices;
+(as in every project picker). A [workspace](workspaces.md) picked shows its
+features and the tasks of all its members, in *To do*, *Working* and *Done*
+(see [Features on the board](workspaces.md#features-on-the-board)). Your pick is kept and follows you across devices;
 until you pick, it is *Follow machine tab* once machine groups exist, else *All
 projects*. The first column is **Your turn**, then the
 project's columns, or *To do*, *Working* and *Done* for all projects. A done
@@ -865,7 +867,9 @@ action), standard otherwise. The coordinator does the same with `task add
 
 A done task leaves the board some time after it is done: 7 days by default, set
 per project in [General](#general). The engine checks at start and every 6 hours
-and writes *archived after 7 days done* in the task's log. An archived task keeps
+and writes *archived after 7 days done* in the task's log. A sub-task of a
+[feature](workspaces.md#features-on-the-board) stays until its feature is closed, so the
+feature's card keeps counting it. An archived task keeps
 everything: its description, history, log, PR link, number and `wherdr pm show`;
 its branch and PR are left alone. The Done column shows only done tasks not
 archived, newest done first; at its bottom, a muted line, **142 archived · show**, opens the list
