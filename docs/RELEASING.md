@@ -61,7 +61,7 @@ it is never deleted. The docs, scripts and installers keep pointing at `-b v3`.
    Before deleting, check:
    `grep -rnE -- 'ref: main|--ref main|blob/main|origin/main' README.md docs scripts .github website/public/install herdr-plugin.toml`
    and move what is left to `v3` or `2.x`.
-5. The site: wherdr.dev stays v2's as it is, because v3's `site.yml` runs by hand only (to
+5. The site: wherdr.dev stays v2's as it is, because v3's `site.yml` deploys only when run by hand (to
    redeploy v2's site, run `site.yml` on `2.x`). On v3, `website/public/install` and the
    Herdr plugin (`herdr-plugin.toml`) only print how to install v3 beside v2: a failed
    plugin build leaves the installed v2 plugin as it was. Update the pages and `agent.md`

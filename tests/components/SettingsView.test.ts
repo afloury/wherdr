@@ -96,7 +96,7 @@ it('Terminal: smooth touch scrolling defaults to off and the switch persists acr
   } finally { w.unmount() }
 })
 
-it('Conversation: replays the encrypted preview from glyphs to the complete plain reply when enabled', async () => {
+it('Conversation: the preview opens under Show me, plays, replays encrypted from glyphs to the plain reply, and hides', async () => {
   desk.value = true
   reducedMotion.value = false
   typewriterSpeed.value = 'slow'
@@ -111,6 +111,16 @@ it('Conversation: replays the encrypted preview from glyphs to the complete plai
   try {
     const toggle = w.find('.encrypted-toggle [role="switch"]')
     expect(toggle.attributes('aria-checked')).toBe('true')
+    // Folded by default; Show me opens it and plays it once.
+    const fold = w.find('[data-testid="settings-preview-toggle"]')
+    expect(fold.text()).toBe('Show me')
+    expect(w.find('.typing-sample').exists()).toBe(false)
+    await fold.trigger('click')
+    expect(fold.text()).toBe('Hide')
+    now += 1000
+    frame?.(now)
+    await nextTick()
+    expect(w.find('.typing-sample .tw-trail [data-g]').exists()).toBe(true)
     // Finish the initial preview so this check requires the setting to replay it.
     now += 30_000
     frame?.(now)
@@ -134,6 +144,9 @@ it('Conversation: replays the encrypted preview from glyphs to the complete plai
     expect(preview.findAll('.tw-trail [data-g]')).toHaveLength(0)
     expect(preview.text()).toContain('Found the cause: the cache was never invalidated after an update.')
     expect(preview.text()).toContain('All tests pass.')
+    await fold.trigger('click')
+    expect(fold.text()).toBe('Show me')
+    expect(w.find('.typing-sample').exists()).toBe(false)
   } finally { w.unmount() }
 })
 
@@ -174,6 +187,22 @@ it('Wide computer: Settings open beside the conversation, on the linked section,
     const agents = w.findAll('.settings-section').find(s => s.find('#settings-pace').exists())!
     await vi.waitFor(() => expect(shown(agents)).toBe(true))
     expect(w.get('#settings').classes()).toContain('settings-panel')
+    // Icon rail (a narrow panel, main.css container query): every icon names its section,
+    // on hover and to screen readers; the toggle under it shows the names, kept on the device.
+    for (const b of w.findAll('.settings-nav-item')) {
+      expect(b.attributes('title')).toBeTruthy()
+      expect(b.attributes('aria-label')).toBe(b.attributes('title'))
+    }
+    const toggle = w.get('.settings-rail-toggle')
+    expect(toggle.attributes('aria-pressed')).toBe('false')
+    await toggle.trigger('click')
+    expect(w.get('.settings-nav').classes()).toContain('rail-labels')
+    expect(toggle.attributes('aria-pressed')).toBe('true')
+    expect(localStorage.getItem('settingsRailLabels')).toBe('1')
+    await toggle.trigger('click')
+    expect(w.get('.settings-nav').classes()).not.toContain('rail-labels')
+    expect(localStorage.getItem('settingsRailLabels')).toBe('0')
+    localStorage.removeItem('settingsRailLabels')
     // Another section stays in the panel.
     await w.findAll('.settings-nav-item').find(b => b.attributes('title') === 'Terminal')!.trigger('click')
     await vi.waitFor(() => expect(path()).toBe('/a/w1:p1?section=terminal'))
