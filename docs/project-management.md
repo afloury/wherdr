@@ -723,7 +723,7 @@ more than one line, or a question is never folded. Consecutive routine wakes (no
 nor `wherdr pm` command beyond `ack`, `read`, `list`, `show`, `incidents`,
 `help`; a one-line answer that asks nothing) fold into one row, *3 routine checks ·
 last: "WHR-12 merged"*, 08:00–11:00, with the first line of the last answer in
-it, that opens on tap. The fold holds only the wakes and their own turns. An incident, or a wake whose answer asks you
+it, that opens on tap. The fold holds only the wakes and their own turns. A message of yours that Claude took in the same turn as a wake (sent at the same moment) stays your own bubble, with its photos, beside the wake's row, in the order Claude got them; that turn's answer is yours too and shows in full. wherdr does not send a wake while your message is still being typed into the coordinator. An incident, or a wake whose answer asks you
 something, keeps its row (in its stronger colour); an answer that asks you
 stays a full reply, with its answer buttons:
 
