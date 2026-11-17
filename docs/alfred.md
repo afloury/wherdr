@@ -106,7 +106,7 @@ written to `notes/.log.jsonl` with who made it.
 | --- | --- |
 | `wherdr alfred notes list [--scope all\|<tab>]` | the notes (id, title, scope, dates) and the linked files |
 | `wherdr alfred notes show <id\|path>` | one note, or one linked file |
-| `wherdr alfred notes add "<title>" [--scope all\|<tab>] < lines.md` | adds a note: at most 12 short lines, checkboxes (`- [ ]`) and links allowed; scope `all` (every tab, the default) or one home tab (a tab group or a machine shown as its own tab), by name |
+| `wherdr alfred notes add "<title>" [--scope all\|<tab>] < lines.md` | adds a note: at most 12 content lines and 1500 characters (blank lines, `---` separators and `#` to `####` headings do not count toward the 12), checkboxes (`- [ ]`) and links allowed; scope `all` (every tab, the default) or one home tab (a tab group or a machine shown as its own tab), by name |
 | `wherdr alfred notes edit <id> [--title "<title>"] [--scope all\|<tab>] < lines.md` | changes a note; new lines on stdin replace its own, empty stdin keeps them |
 | `wherdr alfred notes remove <id>` | removes a note |
 | `wherdr alfred notes file put <folder/name.md> < file.md` | writes a linked file under a folder of the notes, for anything too long for a note |

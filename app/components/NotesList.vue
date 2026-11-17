@@ -1,12 +1,12 @@
 <script setup lang="ts">
 // The notes (shared/notes.ts) under their filter, for NotesPanel.vue: each
-// note's title and its few Markdown lines, read-only checkboxes and badges
+// note's title and its few Markdown lines (headings, --- separators), read-only checkboxes and badges
 // (NoteBadge.vue). Links: an in-app place opens in place (`leave` first),
 // another note scrolls to it, a linked file (plans/x.md) opens rendered in
 // its place with a back arrow. A link that leads nowhere, or out of the
 // notes folder, is muted and does nothing.
 import { h, render } from 'vue'
-import { NOTES_FOLLOW, filterTab, noteBadges, noteTarget, notesShown, scopeName, type Note } from '#shared/notes'
+import { NOTES_FOLLOW, filterTab, noteBadges, noteMarkdown, noteTarget, notesShown, scopeName, type Note } from '#shared/notes'
 import { appRoute, isAppLink } from '#shared/appLinks'
 import NoteBadge from './NoteBadge.vue'
 
@@ -31,7 +31,7 @@ const tabEmpty = computed(() => Boolean(tab.value && notes.value && !shown.value
 
 // Each badge leaves a mark in the text, a slot in the HTML, then mounts there.
 const rendered = computed(() => shown.value.map((n) => {
-  const { text, badges } = noteBadges(n.body, i => `@@note-badge-${i}@@`)
+  const { text, badges } = noteBadges(noteMarkdown(n.body), i => `@@note-badge-${i}@@`)
   const html = md(text, { plain: true }).replace(/@@note-badge-(\d+)@@/g, (_, i: string) => `<span class="note-badge-slot" data-i="${i}"></span>`)
   return { note: n, html, badges }
 }))
