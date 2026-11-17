@@ -1,5 +1,5 @@
-import { execFile } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFile, spawnSync } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -8,7 +8,7 @@ import { fieldOf } from '../server/utils/agyProtobuf'
 import { createTranscripts } from '../server/utils/transcripts'
 import {
   agyAnchorOf, agyHeadOf, agyToolSummary, agyUserText, conversationPath, createAgyTranscripts, hasStep,
-  parseAgyStep, prefixOf, takeVisible, type AgyDoc, type AgyStep,
+  parseAgyStep, prefixOf, sweepAgyCopies, takeVisible, type AgyDoc, type AgyStep,
 } from '../server/utils/agyTranscripts'
 import { AGY_SESSION, openAgyFixture, stepBlobs, writeAgyFixture, writeAgySummaries } from './helpers/agy-fixture.mjs'
 import { type MachineFs, createShellFs } from '../server/utils/fsx'
@@ -473,6 +473,46 @@ it('cuts a kept WAL ending mid-frame back to the last whole frame', async () => 
   // whole-frame boundary, still far below a full WAL copy.
   expect(remote.bytes.get(live.file) ?? 0).toBe(dbBytes)
   expect((remote.bytes.get(walFile) ?? 0) - walBytes).toBe(remote.sizeOf(walFile) - boundary + 88)
+})
+
+it('sweeps only the kept copies whose process is gone', () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'wherdr-sweep-'))
+  try {
+    // A folder of this process, of a child that has exited, one without a pid,
+    // and something else entirely.
+    const live = path.join(dir, `wherdr-agy-${process.pid}-live`)
+    const exited = spawnSync(process.execPath, ['-e', '']).pid!
+    const dead = path.join(dir, `wherdr-agy-${exited}-dead`)
+    const nameless = path.join(dir, 'wherdr-agy-stale')
+    const other = path.join(dir, 'wherdr-other')
+    for (const d of [live, dead, nameless, other]) mkdirSync(d)
+    writeFileSync(path.join(dead, 'conv.db'), 'kept copy')
+    sweepAgyCopies(dir)
+    expect(existsSync(live)).toBe(true)
+    expect(existsSync(dead)).toBe(false)
+    expect(existsSync(nameless)).toBe(true)
+    expect(existsSync(other)).toBe(true)
+  } finally { rmSync(dir, { recursive: true, force: true }) }
+})
+
+it('removes a kept copy when its pane is gone', async () => {
+  const scratch = mkdtempSync(path.join(tmpdir(), 'wherdr-keep-'))
+  const home = mkdtempSync(path.join(scratch, 'home-'))
+  vi.stubEnv('TMPDIR', scratch)
+  try {
+    writeAgyFixture(home, { rows: [{ role: 'user', text: 'Hi' }] })
+    const t = createTranscripts({ home, herdr: async () => ({}) })
+    const p = { id: 'p1', agent: 'agy', cwd: '/work/acme-shop', agentSession: AGY_SESSION }
+    expect((await t.chat(p)).available).toBe(true)
+    const kept = readdirSync(scratch).filter(n => n.startsWith('wherdr-agy-'))
+    expect(kept).toHaveLength(1)
+    // The pane left the state: its copy goes with it.
+    t.observe([])
+    expect(existsSync(path.join(scratch, kept[0]!))).toBe(false)
+  } finally {
+    vi.unstubAllEnvs()
+    rmSync(scratch, { recursive: true, force: true })
+  }
 })
 
 it('recopies a restarted WAL in full', async () => {

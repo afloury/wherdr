@@ -141,7 +141,11 @@ opening a torn pair.
 A WAL-mode checkpoint rewrites the database file, so the next read ships it
 in full again; a page-level delta would need a page-hash helper on the remote
 machine (no such primitive exists on `MachineFs` today), which is why the
-copy stays whole — bounded by the snapshot limit — until one lands. Step
+copy stays whole — bounded by the snapshot limit — until one lands. Kept
+copies live in the system temp dir under `wherdr-agy-<pid>-*` (often tmpfs, up
+to 256 MiB each): a restart removes the folders whose process no longer runs
+(so a second server on the same host keeps its own), and a pane that goes
+takes its copy with it. Step
 payloads are protobuf blobs decoded by a small bounds-checked reader
 (`server/utils/agyProtobuf.ts`).
 The session is resolved fail-closed from what the `agy` process holds open —

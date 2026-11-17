@@ -1882,6 +1882,9 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   }
 
   function forget(paneId: string) {
+    // The conversation's kept copy leaves with the pane (agyTranscripts).
+    const last = lastLoc.get(paneId)
+    if (last) agy.forgetFile(last.file)
     locCache.delete(paneId)
     lastLoc.delete(paneId)
     modelCache.delete(paneId)
