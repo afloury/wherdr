@@ -38,6 +38,7 @@ import { readAloudEngine, stopSpeaking } from '~/composables/useReadAloud'
 import { foldableReply } from '~/utils/wakeReply'
 import { TONE_ICON, firstSentence, quietStreaks, runSum, wakeSum, type RunSum, type WakeSum } from '~/utils/wakeSummary'
 import { openTaskSheet } from '~/composables/useTaskSheet'
+import { QUESTIONS_HOST, type QuestionsHost } from '~/utils/questionsCard'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 // A version of a reply replaced while the agent writes takes its question marks with it.
@@ -1008,6 +1009,22 @@ function choose(btn: HTMLButtonElement) {
   haptic()
   emit('choose', `${refLine(ref)}\n${btn.dataset.a}`)
 }
+// A `questions` card (QuestionsCard.vue): live and answered as `choices` are;
+// its Send sends all its answers as one reply, quoted to the message.
+provide<QuestionsHost>(QUESTIONS_HOST, {
+  state(el) {
+    const key = el.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey || ''
+    const ref = choiceRef(el)
+    const given = ref ? sentAnswer(key, ref) : null
+    return { live: key === blocks.value.findLast(b => b.k === 'assistant')?.key && given === null && !readOnly.value, given }
+  },
+  send(el, text) {
+    const ref = choiceRef(el)
+    if (!ref) return
+    haptic()
+    emit('choose', `${refLine(ref)}\n${text}`)
+  },
+})
 // The words of a question (`.q-text`) and its button share a number in their message.
 const wordsOf = (btn: HTMLElement) => btn.closest('.md-body')?.querySelectorAll<HTMLElement>(`.q-text[data-n="${btn.dataset.n}"]`) || []
 const draftText = computed(() => useDraft(props.pane.id).text)
