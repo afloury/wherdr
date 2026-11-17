@@ -1,5 +1,4 @@
 import { createHash, type Hash } from 'node:crypto'
-import path from 'node:path'
 import { imageTagCount, uploadNames, withoutUploads } from '../../shared/queuedMatch'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
 import { ompToolCall, ompToolResult, ompUserRun } from './ompTools'
@@ -7,6 +6,7 @@ import { pendingClaudeTool, pendingCodexTool, pendingOmpTool } from './promptDet
 import { type ClaudeAsked, type OmpAsked, pendingClaudeAsk, pendingOmpAsk } from './choices'
 import { cleanModelName, lastModel, mergeOmpModel, ompLastModel, ompModelComplete, ompModelLabel, ompModelResult } from './models'
 import { type MachineFs, localFs } from './fsx'
+import { machinePath } from './machinePath'
 import { searchFile } from './conversationSearch'
 import { hasTranscript, transcriptKind } from '../../shared/agentKind'
 import { type CommandTemplate, ompCommandTemplates } from './slash'
@@ -1055,6 +1055,8 @@ export function isMissing(e: unknown): boolean {
 }
 
 export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, codexHistory }: { home: string, herdr: HerdrCall, fs?: MachineFs, now?: () => number, codexHistory?: CodexHistory }) {
+  // The machine's paths (POSIX for a remote Linux machine, even from a Windows host).
+  const path = machinePath(home)
   const devin = createDevinTranscripts({ home, fs, now })
   // File -> state (size, generation) and when this server first saw it, for
   // whole-second mtimes (see SETTLE_MS); `file|size|gen` -> checksum of the
