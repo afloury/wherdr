@@ -275,6 +275,30 @@ agent's last message are live; once a sent message answers them, and in older me
 greyed, the answer given marked. A `wherdr` block with a line wherdr does not understand (a
 missing quote, no option or more than four, an unknown kind) shows as ordinary code.
 
+**Several questions in one card.** When an agent has several questions at once (a plan to
+settle, say), it asks them in one `questions` card instead of a numbered list or one message
+each: a `questions` line, then one numbered line per question (up to 8), the question then its
+2 to 4 options:
+
+````md
+A few things before I start:
+
+```wherdr
+questions
+1 "Which database?" | "Postgres" | "SQLite"
+2 "Keep the old API?" | "Yes" | "No, remove it"
+```
+````
+
+Tap one option per question (tap it again to take it back), or **Other…** and type your own
+answer. On a computer, with the focus in the card, a digit goes to that question and a letter
+(`a` to `d`) picks that option and moves to the next one. **Send** sends all the answers as one
+reply, quoted to the message, one line per question: `1A Postgres`, then `2B No, remove it`: the
+number, the option's letter and its text, or your own words, exactly as typed, after the number. Send needs one answer at least; a question left
+unanswered is sent as `skip`, and the card says how many will be. Like choice buttons, only the
+card of the agent's last message is live; once answered it is greyed with the answers given. In
+Tasks to review, the card in the agent's question answers it the same way.
+
 Above the field, **N questions unanswered** counts the questions of the agent's last message
 (and the rows of its decision tables) that your draft does not answer yet; tap it to scroll to
 the first one. A question counts once it is quoted, a row once it is answered, quoted or covered
