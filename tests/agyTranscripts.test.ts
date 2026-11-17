@@ -179,6 +179,21 @@ it('maps error steps to an error notice', async () => {
   expect(items.at(-1)).toMatchObject({ role: 'notice', name: 'error', error: true, text: 'The model produced an invalid tool call.' })
 })
 
+it('reads a closed database without leaving sidecars next to it', async () => {
+  const { home, reader } = fixture()
+  // agy leaves a WAL-mode database behind, its sidecars removed on close.
+  const live = openAgyFixture(home, { wal: true, rows: [{ role: 'user', text: 'Closed conversation' }] })
+  live.close()
+  const file = live.file
+  expect(existsSync(`${file}-wal`)).toBe(false)
+  expect(existsSync(`${file}-shm`)).toBe(false)
+  expect((await reader.chat(pane)).items?.[0]?.text).toBe('Closed conversation')
+  // node:sqlite writes a -wal and a -shm on a read-only open: agy's own folder
+  // must stay exactly as agy left it.
+  expect(existsSync(`${file}-wal`)).toBe(false)
+  expect(existsSync(`${file}-shm`)).toBe(false)
+})
+
 it('reads committed WAL frames of a live conversation database', async () => {
   const { home, reader } = fixture()
   const live = openAgyFixture(home, { wal: true, rows: [{ role: 'user', text: 'First request' }] })

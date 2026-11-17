@@ -2,10 +2,11 @@
 // <uuid>.db (SQLite, WAL mode, protobuf step payloads). The database is copied
 // to a local snapshot before node:sqlite opens it — the same code path for a
 // remote machine through MachineFs, and a consistent WAL view for the live,
-// still-written local file. Locally the live database is tried read-only first
-// and the copy is only the fallback.
+// still-written local file. Locally the live database is opened in place,
+// read-only, only while agy holds both sidecars (node:sqlite would create
+// them otherwise); every other local read uses the copy.
 import { createHash } from 'node:crypto'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { ChatItem, ChatResponse, ModelInfo } from '../../shared/types'
@@ -395,10 +396,12 @@ export function createAgyTranscripts({
     if (known) return known
     const work = (async () => {
       const Db = await ctor()
-      // Local, live database: try a plain read-only open first (each statement
-      // sees a consistent WAL snapshot); fall back to a byte copy when WAL or
-      // shm permissions refuse it. Remote machines always take the copy path.
-      if (fs === localFs) {
+      // Local database: a plain read-only open in place, only while agy holds
+      // both sidecars. node:sqlite (Node 24) creates a missing -wal and -shm
+      // even for a read-only open and leaves them in agy's folder. Otherwise
+      // (agy not running, or a sidecar refused) read a copy; remote
+      // machines always take the copy path.
+      if (fs === localFs && walSt && existsSync(`${file}-shm`)) {
         try {
           const db = new Db(file, { readOnly: true })
           try {
