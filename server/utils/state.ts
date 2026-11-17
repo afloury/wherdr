@@ -28,6 +28,7 @@ import { pmStore } from './pmStore'
 import { projectCoordinatorName } from '../../shared/pm/project'
 import { createHeld } from './coreHeld'
 import { coreInputDeps, coreSend } from './coreInput'
+import { onSubmittingChange } from './submitting'
 
 const fsp = fs.promises
 const hcCall = <T>(method: string, params: object, timeout: number) => coreCall<T>(process.env.HC_SOCKET || '', method, params, timeout)
@@ -221,6 +222,8 @@ export const wakeCorePoll = () => scheduleCorePoll()
 
 export function startPolling() {
   stopped = false
+  // A send to Claude starts or ends: its "Sending…" changes on every open page now.
+  onSubmittingChange(scheduleCorePoll)
   const endpoint = process.env.HC_SOCKET
   if (endpoint) {
     coreAlerts = createCoreAlerts({ settleMs: NOTIFY_SETTLE_MS, current: a => coreSession?.get(a), send: (a, k) => { notifyCorePane(a, k).catch(e => log('notification:', e.message)) } })
