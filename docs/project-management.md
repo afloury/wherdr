@@ -817,7 +817,10 @@ section: a table of situations, each with the tool to use and an example, so
 agents show you things rather than describe them.
 
 - Every agent: a `wherdr` block with `choices "A" | "B"` when it needs one
-  choice from you (`choices "OK"` alone for a one-click confirm), and `task <ID>` for a task's live card when its state matters.
+  choice from you (`choices "OK"` alone for a one-click confirm), a
+  `questions` card when it has several questions at once (never a numbered
+  list of them: you answer all of them in one message, `1A Postgres · 2B No`),
+  and `task <ID>` for a task's live card when its state matters.
 - Alfred and coordinators also: a setting highlighted (`ui open --target`), a
   live `status` card, and buttons you click (`ui action step|resume|open`),
   screenshots beside the chat (`ui show shots`). Alfred proposes a setting
