@@ -113,8 +113,10 @@ export async function resumeFirst(deps: CoreAdminDeps & { store: FirstStore & Pi
   for (const rec of await deps.store.coordinators()) {
     const q = rec.undelivered
     if (!q?.queued) continue
-    const t = !rec.terminal ? null : await deps.call<{ state?: string }>('terminal.get', { terminal: rec.terminal }, 3000).catch(() => null)
-    if (rec.terminal && t?.state && t.state !== 'finished') { void deliverFirst(deps, rec.project, rec.terminal, q.texts).catch(() => {}); continue }
+    // A lookup that fails (a timeout, its machine briefly unreachable) is no ended session:
+    // deliverFirst retries it within its bound, and records the outcome.
+    const t = !rec.terminal ? null : await deps.call<{ state?: string }>('terminal.get', { terminal: rec.terminal }, 3000).catch(() => undefined)
+    if (rec.terminal && (t === undefined || (t?.state && t.state !== 'finished'))) { void deliverFirst(deps, rec.project, rec.terminal, q.texts).catch(() => {}); continue }
     const why = 'its session ended while wherdr restarted'
     await log(deps, rec.project, `first message given up: ${why}`)
     await deps.store.saveCoordinator({ ...rec, undelivered: { texts: q.texts, why, at: Date.now() } })

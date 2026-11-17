@@ -3,14 +3,14 @@ import { deliverFirst, queuedFirst, resendFirst, resumeFirst, startTurn, type Fi
 import type { CoordinatorRecord } from '../server/utils/pmStore'
 
 // Terminals that become idle at a given time (ms after the start), or end; `flaky`: the
-// first terminal.get of each fails (a timeout).
-function fake(readyAt: Record<string, number>, ended: string[] = [], flaky = false) {
+// first terminal.get of each (or of those named) fails (a timeout).
+function fake(readyAt: Record<string, number>, ended: string[] = [], flaky: boolean | string[] = false) {
   const t0 = Date.now(), sent: [string, string][] = [], log: [string, string][] = [], asked = new Set<string>()
   const recs = new Map<string, CoordinatorRecord>()
   const deps = {
     pollMs: 1, readyWatchMs: 20, queueWatchMs: 2000,
     call: (async (m: string, p: { terminal: string, text?: string }) => {
-      if (m === 'terminal.get' && flaky && !asked.has(p.terminal)) { asked.add(p.terminal); throw new Error('timeout') }
+      if (m === 'terminal.get' && (flaky === true || (Array.isArray(flaky) && flaky.includes(p.terminal))) && !asked.has(p.terminal)) { asked.add(p.terminal); throw new Error('timeout') }
       if (m === 'terminal.get') return ended.includes(p.terminal) ? { state: 'finished' } : { state: 'live', status: Date.now() - t0 >= readyAt[p.terminal]! ? 'idle' : 'working' }
       if (m === 'terminal.read') return { text: 'ready' }
       if (m === 'terminal.send') sent.push([p.terminal, p.text!])
@@ -76,8 +76,8 @@ describe('first messages of coordinators', () => {
     f.recs.get('C')!.undelivered = queuedFirst(['one', 'two'])
     expect(await deliverFirst(f.deps, 'C', 'C', ['one', 'two'])).toBe('sent')
     expect(saved).toEqual([['two'], undefined])
-    // A restart: G still runs and gets what is left; H's session ended, given up and logged.
-    const g = fake({ G: 0 }, ['H'])
+    // A restart: G still runs and gets what is left (its first lookup times out); H's session ended, given up and logged.
+    const g = fake({ G: 0 }, ['H'], ['G'])
     g.recs.get('G')!.undelivered = queuedFirst(['two'])
     g.recs.get('H')!.undelivered = queuedFirst(['hi'])
     await resumeFirst(g.deps as never)
