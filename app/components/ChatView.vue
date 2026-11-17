@@ -9,7 +9,7 @@ import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolVie
 import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
-import { uploadSrc } from '#shared/queuedMatch'
+import { uploadNames, uploadSrc } from '#shared/queuedMatch'
 import { userMessageParts } from '~/utils/userMessage'
 import { type PendingMessage, type WaitingOn, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
@@ -31,7 +31,8 @@ import { liveRunSpot } from '~/utils/liveRunPlace'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall, shellView } from '~/utils/ompTool'
 import { keepIfSame, keyedMemo, weakMemo } from '~/utils/keepIfSame'
 import { duplicateImages } from '#shared/imageDupes'
-import { stripPosition } from '#shared/filePaths'
+import { PLACE_LABELS, stripPosition, type PathFound } from '#shared/filePaths'
+import { resolveWritten, writtenFound } from '~/composables/useWrittenPaths'
 import { turnOpens as openCards } from '#shared/uiOpen'
 import { readAloudEngine, stopSpeaking } from '~/composables/useReadAloud'
 import { foldableReply } from '~/utils/wakeReply'
@@ -1174,18 +1175,50 @@ function openCodeMenu(el: HTMLElement, items: MenuItem[], title: string) {
   codeMenu.open = true
 }
 const fileName = (p: string) => p.replace(/\/+$/, '').split('/').pop() || p
-function pathMenuItems(p: string): MenuItem[] {
+// Where the server found it (useWrittenPaths.ts): its absolute path, one set
+// of actions per folder when it is in several; found nowhere, muted.
+const MISSING_PATH = tl('Not found in the agent’s folder, the repository or the notes')
+function placeItems(p: string, f: PathFound | undefined, several: boolean): MenuItem[] {
+  const shown = f?.abs ?? p, place = several && f ? ` · ${tl(PLACE_LABELS[f.where])}` : ''
   const items: MenuItem[] = []
-  // A folder (`src/`) has nothing to show or save.
-  if (!offlineView.value && !p.endsWith('/')) {
+  // A folder (`src/`) has nothing to show or save; a notes file opens in the Notes panel.
+  if (f?.notes) items.push({ label: `${t('Preview')}${place}`, icon: 'i-lucide-eye', run: () => openNotesFile(f.notes!) })
+  else if (!offlineView.value && !p.endsWith('/')) {
     items.push(
-      { label: t('Preview'), icon: 'i-lucide-eye', run: () => previewFile(p) },
-      { label: t('Download'), icon: 'i-lucide-download', run: () => downloadFile(p) },
+      { label: `${t('Preview')}${place}`, icon: 'i-lucide-eye', run: () => previewFile(shown) },
+      { label: `${t('Download')}${place}`, icon: 'i-lucide-download', run: () => downloadFile(shown) },
     )
   }
-  items.push({ label: t('Copy path'), icon: 'i-lucide-copy', desc: p, mono: true, run: () => copyText(p) })
+  items.push({ label: `${t('Copy path')}${place}`, icon: 'i-lucide-copy', desc: shown, mono: true, run: () => copyText(shown) })
   return items
 }
+function pathMenuItems(p: string): MenuItem[] {
+  const found = offlineView.value ? undefined : writtenFound(props.pane.id, p)
+  if (found && !found.length) return [{ label: MISSING_PATH, icon: 'i-lucide-file-x', disabled: true }, ...placeItems(p, undefined, false).filter(i => i.icon === 'i-lucide-copy')]
+  if (!found) return placeItems(p, undefined, false)
+  return found.flatMap((f, i) => [...(i ? [{ kind: 'separator' } as MenuItem] : []), ...placeItems(p, f, found.length > 1)])
+}
+function openNotesFile(rel: string) {
+  notesFile.value = rel
+  notesOpen.value = true
+}
+// Each path chip of the replies: muted when found nowhere, after one request
+// for the paths not asked yet.
+function paintPaths() {
+  for (const el of listEl.value?.querySelectorAll<HTMLElement>('.md-body .md-path') || []) {
+    const missing = writtenFound(props.pane.id, (el.textContent || '').trim())?.length === 0
+    el.classList.toggle('md-path-missing', missing)
+    if (missing) el.title = MISSING_PATH
+    else el.removeAttribute('title')
+  }
+}
+async function markPaths() {
+  if (offlineView.value) return
+  paintPaths()
+  const paths = [...listEl.value?.querySelectorAll<HTMLElement>('.md-body .md-path') || []].map(el => (el.textContent || '').trim()).filter(p => p && !p.endsWith('/'))
+  if (await resolveWritten(props.pane.id, paths)) paintPaths()
+}
+watch(visibleBlocks, () => nextTick(markPaths), { flush: 'post', immediate: true })
 function openPathMenu(el: HTMLElement, path?: string) {
   const p = path || (el.textContent || '').trim()
   if (p) openCodeMenu(el, pathMenuItems(p), fileName(p))
@@ -1274,8 +1307,12 @@ async function retryQueued(q: { id: string }) {
     retrying.value = null
   }
 }
-function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' | 'inInput'>) {
+function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' | 'inInput' | 'raw'>) {
   const l = pendingLabel(q, waitFor.value, props.pane.agent)
+  // The server still waits for a photo to become an image (or sends its path): on its way, never "Not sent" (WHR-454).
+  if ((l.kind === 'sending' && q.state === 'sending') || (l.kind === 'input' && props.pane.sending)) {
+    if (uploadNames(q.raw).length) return t('Sending… adding the photo')
+  }
   switch (l.kind) {
     case 'read': return t('Read by the agent')
     case 'input': return t('Not sent yet · waiting in the agent’s input')

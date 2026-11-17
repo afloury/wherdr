@@ -29,11 +29,25 @@ function save(list: Submitting[]) {
 
 const fresh = (s: Submitting, now: number) => now - s.at < SUBMITTING_TTL_MS
 
+// Terminals with a send running in this process, for the conversation's
+// "Sending…" (pane.sending): the send runs here whatever the page does.
+const running = new Map<string, number>()
+export const sendingTo = (terminal: string | undefined) => Boolean(terminal && running.get(terminal))
+
 /** Notes a message being submitted; returns what forgets it. */
 export function noteSubmitting(terminal: string, text: string): () => void {
   const s = { id: randomUUID(), terminal, text, at: Date.now() }
+  running.set(terminal, (running.get(terminal) || 0) + 1)
   save([...load().filter(x => fresh(x, s.at)), s])
-  return () => save(load().filter(x => x.id !== s.id && fresh(x, Date.now())))
+  let done = false
+  return () => {
+    if (done) return
+    done = true
+    const n = (running.get(terminal) || 1) - 1
+    if (n) running.set(terminal, n)
+    else running.delete(terminal)
+    save(load().filter(x => x.id !== s.id && fresh(x, Date.now())))
+  }
 }
 
 /** At startup: the sends a restart interrupted, still fresh. */
