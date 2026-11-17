@@ -82,14 +82,19 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
 
     <template v-if="!data">
       <h3>{{ tl('Projects') }}</h3>
-      <SettingsSkeleton :error="loadError" @retry="load" />
       <div v-if="!loadError" class="pm-actions">
         <UButton color="primary" variant="solid" size="xl" icon="i-lucide-plus" disabled data-testid="pm-add">{{ tl('Add project') }}</UButton>
         <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" disabled data-testid="pm-board">{{ tl('Open the board') }}</UButton>
       </div>
+      <SettingsSkeleton :error="loadError" @retry="load" />
     </template>
     <template v-else-if="data.enabled">
       <h3>{{ tl('Projects', 'Projets') }}</h3>
+      <div class="pm-actions">
+        <UButton color="primary" variant="solid" size="xl" icon="i-lucide-plus" data-testid="pm-add" @click="addProject">{{ tl('Add project', 'Ajouter le projet') }}</UButton>
+        <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-boxes" data-testid="pm-add-workspace" @click="workspaceOpen = true">{{ tl('Add workspace') }}</UButton>
+        <UButton v-if="data.projects.length" to="/board" color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" data-testid="pm-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
+      </div>
       <div v-if="data.projects.length" class="settings-card">
         <button v-for="p in data.projects" :key="p.key" type="button" class="pm-row" data-testid="pm-project" @click="show(p.key)">
           <span class="pm-id"><b>{{ p.name }}<span v-if="p.visibility?.value === 'public'" class="pm-public" data-testid="pm-public">{{ tl('Public', 'Public') }}</span></b><small class="mono-label">{{ shownKey(p) }} · {{ machineName(p.machine) }}</small><small v-if="proposes(p.key)" class="mono-label pm-review" data-testid="pm-review"><span class="card-state blocked" aria-hidden="true"><i /></span>{{ tl('1 to review') }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
@@ -97,11 +102,6 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
         </button>
       </div>
       <p v-else class="muted settings-hint" data-testid="pm-empty">{{ tl('No project yet.', 'Aucun projet pour l’instant.') }}</p>
-      <div class="pm-actions">
-        <UButton color="primary" variant="solid" size="xl" icon="i-lucide-plus" data-testid="pm-add" @click="addProject">{{ tl('Add project', 'Ajouter le projet') }}</UButton>
-        <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-boxes" data-testid="pm-add-workspace" @click="workspaceOpen = true">{{ tl('Add workspace') }}</UButton>
-        <UButton v-if="data.projects.length" to="/board" color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" data-testid="pm-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
-      </div>
       <button type="button" class="settings-card pm-row pm-library" data-testid="pm-library" @click="libraryOpen = true">
         <span class="pm-id"><b>{{ tl('Template library') }}</b><small class="mono-label">{{ tl(`${data.templates.length} saved · ${exampleCount} examples`) }}</small></span>
         <UIcon name="i-lucide-chevron-right" class="pm-chevron" />
@@ -127,5 +127,5 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
 .pm-chevron { flex: none; color: var(--muted); }
 .pm-public { margin-left: 8px; padding: 2px 6px; border: 1px solid var(--blocked); color: var(--blocked); font: 600 11px/1 var(--font-mono, 'JetBrains Mono', monospace); letter-spacing: .08em; text-transform: uppercase; vertical-align: 2px; }
 .pm-settings .pm-library { margin-top: 16px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
-.pm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.pm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 </style>

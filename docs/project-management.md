@@ -131,7 +131,8 @@ data, and post it only on your yes.
 **Settings › Projects** holds the *Project management* switch, *Set up a project*,
 the project list and the [template library](#template-library): each row shows
 the name (with a **Public** badge for a public repository), the key, the machine
-and the folder. *Add project* opens the setup window on a new project; *Open the
+and the folder. *Add project*, *Add workspace* and *Open the board* sit above
+the list. *Add project* opens the setup window on a new project; *Open the
 board* goes to the board. Until the list is read, the switch and the rows show
 as grey blocks and both buttons wait; a failed read says why, with *Try again*. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
