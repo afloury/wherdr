@@ -10,7 +10,7 @@ import { cloneOn, type Project } from './project'
 export type RepoCommand = { name: 'repo adopt', repo: string }
 
 export const REPO_COMMANDS = [
-  { usage: 'repo adopt <repo>', does: 'make a repository under the workspace\'s root one of its member projects (<repo>: its path under the root, such as payroll-api, or its full path); key and color are picked for it, it takes the workspace\'s settings and workflow, and its visibility is checked. Refused outside the root, for a folder already a project, without git, or without an origin when the workflow pushes or opens pull requests. Nothing is cloned: it runs only on machines with its clone under their root. Written to the workspace\'s log' },
+  { usage: 'repo adopt <repo>', does: 'make a repository under the workspace\'s root one of its member projects (<repo>: its path under the root, such as payroll-api, or its full path); key and color are picked for it, it runs on the workspace\'s settings and workflow (shared, never copied: a later change to them reaches it), and its visibility is checked. Refused outside the root, for a folder already a project, without git, or without an origin when the workflow pushes or opens pull requests. Nothing is cloned: it runs only on machines with its clone under their root. Written to the workspace\'s log' },
 ]
 
 // `repo …` words (after `repo`) → a command, or why not.

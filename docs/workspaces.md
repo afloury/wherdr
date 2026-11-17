@@ -164,6 +164,13 @@ and the strictest wins, so a member can add protected branches or keep a merge
 for you, never loosen the workspace's. For a member, `template show` lists them
 apart (`workspaceGuards`) and says when it runs the workspace's workflow.
 
+The workspace's coordinator reads the workflow each member runs
+(`template show --project <member>`, `plan --project <member>`): its `runs`
+line says whether it is the workspace's, which a change reaches at once (a
+member keeps no copy), or the member's own. It never changes a member's own
+workflow: `template edit --project <member>` is refused, and the refusal points
+to the workspace's workflow, which every member without its own runs.
+
 ## Features
 
 A workspace's tasks are **features**, never ordinary tasks: wherdr refuses any

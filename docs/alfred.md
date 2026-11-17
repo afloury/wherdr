@@ -162,6 +162,10 @@ new commit counts as an update too.
 Alfred and the coordinators never explain wherdr from memory: they read `docs/llms.txt` (the
 docs index) first, then only the sections that answer. These are the docs of the build that runs, wherever
 wherdr was started from (see `WHERDR_ROOT` in [Configuration](configuration.md#configuration)).
+A coordinator on another machine than wherdr's reads them with `wherdr pm docs` (the index),
+`wherdr pm docs workspaces.md` (a page) or `wherdr pm docs workspaces.md#shared-workflow` (one
+section, the anchor of the index's link): read-only, in a wake too, and a page too long is cut
+with the list of its sections.
 
 Alfred answers with this server's own address and port (and its published address, if any),
 not the defaults the docs quote. Other commands meant for the server itself (a restart, a
