@@ -4,7 +4,7 @@
 import { coreCall, CoreError } from './core'
 import { HerdrError } from './herdr'
 import { keepPastes } from './pastes'
-import { fieldGap, fieldHolds, isBareBang, isSlashCommand } from '../../shared/queuedMatch'
+import { fieldGap, fieldHolds, isBareBang, isSlashCommand, uploadNames } from '../../shared/queuedMatch'
 import { corePaint, pasting, readDraft, sameText } from './coreDraft'
 import { noteSubmitting, type Submitting } from './submitting'
 import { inTurn, typingInto } from './terminalTurns'
@@ -99,6 +99,14 @@ export async function coreSend(deps: CoreInputDeps, b: { pane_id?: unknown, text
   return inTurn(p.coreAddress!, () => typeIn(deps, p, text, b.pastes, waited), deps.turnSettleMs)
 }
 
+// Claude turns a pasted photo path into "[Image #N]" a moment after the
+// paste; core's Enter right after it may come first, and Claude then submits
+// the path as plain text (WHR-440, mostly after a few idle minutes). A lone
+// "\" ends the paste: Claude reads "\" + Enter as a new line, never as a
+// submit, and the message waits in its field until submitLeftInput sees each
+// photo as its placeholder and presses Enter.
+export const holdEnter = (text: string) => (uploadNames(text).length ? `${text}\n\\` : text)
+
 // Behind another writer (or just after it), Claude may still be taking its
 // text out of the field: a few looks before calling the field busy.
 const BUSY_LOOKS = 5
@@ -113,7 +121,7 @@ async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknow
   // Noted before the send: a restart during it or during the Enters resumes it.
   const forget = field && deps.submitting ? deps.submitting(p.coreAddress!, text) : () => {}
   try {
-    const r = await deps.call<{ started?: boolean | null, status?: string | null }>('terminal.send', { terminal: p.coreAddress, text }, 30000)
+    const r = await deps.call<{ started?: boolean | null, status?: string | null }>('terminal.send', { terminal: p.coreAddress, text: field ? holdEnter(text) : text }, 30000)
     let started = r?.started ?? null
     // Claude takes a multi-line send (photo lines, text + "\n@file") as a paste and
     // may leave it in its input: core reports no turn started. A large photo is

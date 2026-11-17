@@ -32,8 +32,11 @@ export const onlyImageTags = (text: string) => imageTagCount(text) > 0 && !Strin
 // long multi-line part as one "[Pasted text #N +K lines]", and wraps it
 // (spaces aside). `exact`: the field holds it and nothing else; otherwise it
 // starts with it (more text may follow). A field with a paste stand-in is
-// only matched exactly: what it stands for is unknown.
-const fieldForm = (t: string) => String(t || '').replace(IMAGE_TAG, '[Image]').replace(/\s+/g, '')
+// only matched exactly: what it stands for is unknown. Claude draws its
+// "[Image #N]" tags before the text, wherever the photo lines were (wherdr
+// sends them last): only their count is compared, not their place (WHR-440).
+const tagsFirst = (t: string, n: number) => '[Image]'.repeat(n) + t.replace(IMAGE_TAG, '').replace(/\s+/g, '')
+const fieldForm = (t: string) => tagsFirst(String(t || ''), imageTagCount(t))
 // The conversation's own matching (`loose`): photos left out on both sides.
 // Claude's field may show fewer "[Image #N]" than the message has photo lines
 // (a photo it did not turn into an image, or a tag drawn on another line);
@@ -44,11 +47,14 @@ const fieldForm = (t: string) => String(t || '').replace(IMAGE_TAG, '[Image]').r
 const PHOTO_PATH = /(?:~|\/)\S*\/(?:\.cache\/herdr-web\/uploads\/\S+|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{6}\.(?:jpg|png|webp|gif|heic))/g
 const looseForm = (t: string) => String(t || '').replace(IMAGE_TAG, '').replace(PHOTO_PATH, '').replace(/\s+/g, '')
 const PASTE_TAG = /\[Pasted text #\d+(?: \+\d+ lines)?\]/
-const messageForm = (text: string) => fieldForm(String(text || '').split('\n').map(l => (isUploadLine(l) ? '[Image]' : l)).join('\n'))
+const messageForm = (text: string) => tagsFirst(withoutUploads(text), uploadNames(text).length + imageTagCount(text))
 // Why a field does not hold a message, for the server log: sizes, never text.
 export const fieldGap = (field: string, text: string) =>
   `${fieldForm(field).length} chars, ${imageTagCount(field)} images${PASTE_TAG.test(field) ? ', a paste stand-in' : ''}; expected ${messageForm(text).length} chars, ${uploadNames(text).length} images, ${text.split('\n').length} lines`
 export function fieldHolds(field: string | null | undefined, text: string, exact = false, loose = false): boolean {
+  // The lone "\" a photo message is sent with (holdEnter in coreInput.ts), left
+  // there when Claude dropped core's Enter: not part of the message.
+  field = String(field || '').replace(/\\\s*$/, '')
   // Photos alone: only their tags tell them apart, so they are counted.
   const free = loose && Boolean(withoutUploads(text))
   const form = free ? looseForm : fieldForm
