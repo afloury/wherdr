@@ -92,3 +92,12 @@ it('shows the user step\'s real button, and branch protection apart from who mer
   expect(await guard({ protected: ['main'], merge: { protected: 'user', others: 'user' } })).toBe('next is not protected: you merge')
   expect(await guard({ protected: ['next'], merge: { protected: 'user', others: 'engine' } })).toBe('next is protected: you merge')
 })
+
+// WHR-449: Manage templates opens the library (`?library=1`, shown by Settings › Projects).
+it('Manage templates opens the library, beside Start from a template and in the ⋯ menu', async () => {
+  const w = mounted = await mountSuspended(ProjectWorkflow, { props: { project, workflow: null, log: [], templates: [] }, route: '/settings?section=projects&project=WEB&tab=workflow' })
+  const router = useRouter()
+  await w.get('[data-testid="wf-library"]').trigger('click')
+  await vi.waitFor(() => expect(router.currentRoute.value.query).toMatchObject({ project: 'WEB', tab: 'workflow', library: '1' }))
+  expect((w.vm as unknown as { menu: () => { label?: string }[] }).menu().map(m => m.label)).toContain('Manage templates…')
+})

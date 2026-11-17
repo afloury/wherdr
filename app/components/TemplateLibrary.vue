@@ -1,8 +1,8 @@
 <script setup lang="ts">
-// Settings › Projects › Template library: the saved templates and the
-// built-in examples. Tap one to read it (each task type's plan, then its
+// The template library (a project sheet's Workflow tab › Manage templates, or
+// `?library=1` in Settings › Projects): the saved templates and the built-in examples. Tap one to read it (each task type's plan, then its
 // JSON); a saved one is renamed or deleted from its ⋯ menu. A project never
-// follows the library: it starts from a copy (New sheet, or Workflow › ⋯).
+// follows the library: it starts from a copy (New sheet, or Workflow › Start from a template).
 import { EXAMPLES } from '#shared/pm/examples'
 import { planSteps } from '#shared/pm/steps'
 import type { TemplateInfo } from '#shared/pm/project'

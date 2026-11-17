@@ -106,8 +106,13 @@ it('switches project management on; Add project opens New › Project, no Set up
   expect(w.find('[data-testid="pm-setup"]').exists()).toBe(false)
   await w.find('[data-testid="pm-add"]').trigger('click')
   expect(newProjectOpen.value && newAgentOpen.value).toBe(true)
-  expect(w.get('[data-testid="pm-library"]').text()).toContain('1 saved · 4 examples')
-  await w.get('[data-testid="pm-library"]').trigger('click')
+  expect(w.find('[data-testid="pm-library"]').exists()).toBe(false)
+})
+
+// WHR-449: the library lives on the Workflow tab; its deep link still opens it.
+it('library=1 opens the template library', async () => {
+  state = { ...state, enabled: true }
+  mounted = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&library=1' })
   await vi.waitFor(() => expect(inSheet('library-saved')?.dataset.id).toBe('vibe'))
 })
 
@@ -267,4 +272,35 @@ it('shows a search past 8 projects', async () => {
   expect(v.findAll('[data-testid="pm-project"]').map(r => r.text())).toEqual([expect.stringContaining('Docs')])
   await v.get('[data-testid="pm-search"] input').setValue('zzz')
   expect(v.get('[data-testid="pm-none"]').text()).toContain('No project matches.')
+})
+
+// WHR-443: Workspaces first, each with its members under it (folded on a tap,
+// kept on the device), then the projects outside any workspace; a search hit
+// inside a workspace shows under it, the workspace's row with it.
+it('groups members under their workspace, folds it, and shows a search hit inside it', async () => {
+  localStorage.removeItem('projectsSettingsFolded')
+  const ws: Project = { ...web(), key: 'LED', name: 'Ledger', path: '~/work', kind: 'workspace', visibility: undefined }
+  const member = (key: string, name: string): Project => ({ ...web(), key, name, path: `~/work/${name.toLowerCase()}`, workspace: 'LED' })
+  const others = Array.from({ length: 6 }, (_, i) => ({ ...web(), key: `P${i}`, name: `Project ${i}`, path: `~/src/p${i}` }))
+  state = { ...state, enabled: true, projects: [ws, member('API', 'Api'), member('UI', 'Front'), ...others] }
+  const w = await mountSuspended(ProjectsSettings, { props: { active: true } })
+  mounted = w
+  await vi.waitFor(() => expect(w.findAll('[data-testid="pm-ws"]')).toHaveLength(1))
+  const names = (sel: string) => w.findAll(sel).map(r => r.find('.pm-name').text())
+  expect(names('[data-testid="pm-ws-members"] [data-testid="pm-project"]')).toEqual(['Api', 'Front'])
+  expect(w.findAll('.pm-card').at(1)!.findAll('[data-testid="pm-project"]')).toHaveLength(6) // the projects outside
+  expect(w.get('[data-testid="pm-workspace"] .project-badge').text()).toBe('LED')
+
+  await w.get('[data-testid="pm-ws-toggle"]').trigger('click')
+  expect(w.get('[data-testid="pm-ws-toggle"]').attributes('aria-expanded')).toBe('false')
+  expect(JSON.parse(localStorage.getItem('projectsSettingsFolded')!)).toEqual(['LED'])
+
+  await w.get('[data-testid="pm-search"] input').setValue('front') // folded, opened by the search
+  await vi.waitFor(() => expect(names('[data-testid="pm-ws-members"] [data-testid="pm-project"]')).toEqual(['Front']))
+  expect(w.get('[data-testid="pm-workspace"]').text()).toContain('Ledger')
+  expect(w.get('[data-testid="pm-none"]').text()).toContain('No project matches.')
+  await w.get('[data-testid="pm-search"] input').setValue('ledger') // the workspace alone: its members don't match
+  await vi.waitFor(() => expect(w.find('[data-testid="pm-ws-members"]').exists()).toBe(false))
+  expect(w.findAll('[data-testid="pm-workspace"]')).toHaveLength(1)
+  localStorage.removeItem('projectsSettingsFolded')
 })

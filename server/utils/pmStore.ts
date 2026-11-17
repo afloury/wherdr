@@ -518,7 +518,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const source = template && !ws.fields.workspace ? await sourceOf(template) : null
       const checked = await check(project.machine, project.path, ws.fields.kind ? { ...opts, plain: true } : opts)
       const { path: folder, git } = typeof checked === 'string' ? { path: checked, git: true } : checked
-      if (list.some(p => p.machine === project.machine && p.path === folder)) throw new HerdrError('exists', 'This folder is already a project')
+      // A member at its workspace's root (the root's own repository) shares the workspace's folder.
+      if (list.some(p => p.machine === project.machine && p.path === folder && !(isWorkspace(p) && p.key === ws.fields.workspace))) throw new HerdrError('exists', 'This folder is already a project')
       // A removed project's workflow and log under the same key are not the new one's.
       await Promise.all([workflowFile(fields.key), workflowLogFile(fields.key)].map(f => fs.rm(f, { force: true })))
       let added: Project = ws.fields.workspace

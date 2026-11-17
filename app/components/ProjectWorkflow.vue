@@ -3,8 +3,10 @@
 // chart (WorkflowChart), the JSON to read and copy, and the way to change
 // it: ask the project's coordinator, whose proposal the user accepts or
 // refuses (ProposalReview). The ⋯ menu (menu(), shown by the sheet) holds the
-// change log and Save as template. A project without a workflow starts from a
-// template: a choice, not an edit.
+// change log, Save as template and Manage templates. A project without a workflow
+// starts from a template: a choice, not an edit; Manage templates beside it.
+// Manage templates opens the library (TemplateLibrary, shown by Settings ›
+// Projects from `?library=1`, over this sheet).
 import { EXAMPLES } from '#shared/pm/examples'
 import type { LogEntry } from '#shared/pm/templateText'
 import type { Template } from '#shared/pm/workflow'
@@ -71,9 +73,14 @@ async function start() {
   if (await run('start', () => api('/api/pm/project-apply', { key: props.project.key, template }))) dialog.value = ''
 }
 
+const route = useRoute()
+const router = useRouter()
+const manage = () => router.replace({ query: { ...route.query, library: '1' } })
+
 const menu = (): MenuItem[] => [
   { label: tl('Change log'), icon: 'i-lucide-history', disabled: !props.log.length, run: () => (dialog.value = 'log') },
   { label: tl('Save as template…'), icon: 'i-lucide-copy-plus', disabled: !props.workflow, run: () => { asId.value = freeId(props.project.key.toLowerCase()); dialog.value = 'save-as' } },
+  { label: tl('Manage templates…'), icon: 'i-lucide-library', run: manage },
 ]
 defineExpose({ menu })
 </script>
@@ -97,6 +104,7 @@ defineExpose({ menu })
     <template v-else>
       <p class="muted settings-hint">{{ tl('No workflow chosen yet: tasks follow a minimal one (to do, work, done). Ask the project’s coordinator to propose one, or start from a template.') }}</p>
       <UButton size="xl" color="primary" class="hw-cta" icon="i-lucide-layout-template" data-testid="wf-start-open" @click="startPick = ''; dialog = 'start'">{{ tl('Start from a template') }}</UButton>
+      <UButton size="xl" color="neutral" variant="outline" class="hw-cta" icon="i-lucide-library" data-testid="wf-library" @click="manage">{{ tl('Manage templates') }}</UButton>
     </template>
     <p v-if="error && !dialog" class="form-error" role="alert">{{ t(error) }}</p>
 

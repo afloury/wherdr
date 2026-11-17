@@ -52,9 +52,14 @@ function alive(pid: number) {
   try { return !/^\d+ \(.*\) Z/.test(readFileSync(`/proc/${pid}/stat`, 'utf8')) }
   catch { return true }
 }
+// Seen dead once is enough: a second look could catch a zombie reaped between
+// its kill(0) and its /proc read, and wrongly read it as alive.
 async function gone(pid: number) {
-  for (let i = 0; i < 50 && alive(pid); i++) await new Promise(r => setTimeout(r, 100))
-  return !alive(pid)
+  for (let i = 0; i < 50; i++) {
+    if (!alive(pid)) return true
+    await new Promise(r => setTimeout(r, 100))
+  }
+  return false
 }
 const events = () => readFileSync(log, 'utf8').trim().split('\n')
 

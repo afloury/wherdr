@@ -198,6 +198,7 @@ const openArchived = (c: Card) => { keepArchivedCard(c); show(c.id) }
           <!-- An accepted merge on its way: Merging until it ends, what it waits for on the status line above (none while its checks are red). -->
           <span v-else-if="mergeGoesNow(c)" class="board-badge board-merging" role="status" :aria-label="`${tl('Merging')}: ${mergeWaits(c)}`" data-testid="board-merging"><UIcon name="i-lucide-loader-circle" class="spin" aria-hidden="true" />{{ tl('Merging') }}</span>
           <small v-if="c.report" class="board-status wait" :title="c.report.text" data-testid="board-report">{{ tl('Problem reported') }} {{ fmtTime(c.report.at) }}</small>
+          <small v-else-if="c.parked?.room" class="muted" :title="c.parked.need" data-testid="board-parked">{{ tl(`Paused: waiting for room on ${c.parked.room}`) }}</small>
           <small v-else-if="c.parked" class="muted" :title="c.parked.need" data-testid="board-parked">{{ tl('Waits for', 'Attend') }} {{ shownTaskId(data?.projects ?? [], c.parked.on) }}: {{ c.parked.need }}</small>
           <small v-else-if="waiting(c).length" class="muted" data-testid="board-waits">{{ tl('Waits for', 'Attend') }} {{ waiting(c).map(id => shownTaskId(data?.projects ?? [], id)).join(', ') }}</small>
           <!-- Stalled, the machine may still fix it: a warning only; after 30 min it is Your turn. -->
