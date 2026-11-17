@@ -1413,6 +1413,29 @@ its clock stops: such a task never shows *over 3h*, it shows what it waits
 for, and the limit goes on from where it stopped once the agent can work
 again. The time in step shown on the card stays the real time.
 
+### A task waiting for another task
+
+A worker that finds halfway that it needs something from another task or
+repository says so: `hc label "$HC_TERMINAL_ID" "wherdr.report=blocked:on WHR-12: the new /api/items endpoint"`
+(its instructions say how). The task is then **parked**:
+
+- a task named becomes one of its `after` tasks;
+- its agents end, so its machine slot is free; it is never nudged, restarted
+  or counted as stalled, and its step's clock stops;
+- its card says *Waits for WHR-12: the new /api/items endpoint*;
+- its coordinator is woken once with the need. Named a repository that no
+  task covers, the coordinator adds a task there and links it with
+  `wherdr pm task edit <task> --after <new task>` (allowed on a parked task).
+
+Once every task it waits for is done, the worker's conversation is taken up
+again (the same Claude session, not a fresh start), told what changed: each
+task's title, PR and report. A task that would close a cycle (WHR-12 already
+waits for this one, directly or not) is refused: this task is not parked, its
+worker is told, and the coordinator gets one wake with a decision: pull the
+shared contract (proto, API, schema) into its own task both wait for, or merge
+the two tasks into one. If it cannot decide, it leaves the wake unanswered
+and the choice reaches you in **Decisions**.
+
 ### Why agents are gone
 
 When a task's agents are gone (after a restart, or while wherdr runs), the

@@ -50,6 +50,7 @@ export interface Card {
   stopped?: Stopped // who stopped it and why: Continue, Take it as it is or Archive
   removable?: true // never started (no agent, worktree or branch): the user may remove it
   after?: string[] // tasks of the same project it starts after
+  parked?: { on: string, need: string } // its worker waits for this task or repository (park.ts)
   mergeAfter?: string[] // tasks of its project or workspace its PR merges after
   prNow?: string // its PR as the engine last read it (prNow)
   branch?: string // its working branch, once an agent worked on it
@@ -164,6 +165,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(task.tldrHeld ? { tldrWaits: true as const } : task.tldr?.text ? { tldr: task.tldr.text } : {}),
     ...(notStarted(task, runs) ? { removable: true as const } : {}),
     ...(task.after ? { after: afterIds(task) } : {}),
+    ...(task.parked && !s?.done ? { parked: { on: task.parked.on, need: task.parked.need } } : {}),
     ...(task.mergeAfter ? { mergeAfter: mergeAfterIds(task) } : {}),
     ...(s?.started ? { times: timesOf(task, plan, runs, now) } : {}),
     ...(task.archived ? { archived: task.archived } : {}),

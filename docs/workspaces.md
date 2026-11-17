@@ -252,6 +252,14 @@ a feature, never a cycle, counting `after` and `mergeAfter` together (a task
 that merges after one that starts after it would block both). While it waits,
 its new commits are not pushed either: they go once the upstream is done.
 
+A sub-task's worker that finds halfway it needs something the split did not
+plan reports `blocked:on <task|repo>: <need>`: its task parks until that task
+is done, then goes on in the same conversation (see
+[A task waiting for another task](project-management.md#a-task-waiting-for-another-task)).
+A wait that would close a cycle is refused and goes to the coordinator as a
+decision. So a contract both sides need (proto, API, schema) is its own first
+task in a split.
+
 A feature's state is never stored, it comes from its sub-tasks: **to do**
 until one starts, **working** (also once they have all ended, until it is
 closed), **waiting for you** while one is under *Your turn*, and **done** once
