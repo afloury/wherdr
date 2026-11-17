@@ -62,7 +62,7 @@ export function refusalSaid(text: string, told?: Told): Said {
 // offline): Try again only. unknown: Try again first, the agent second.
 export type ActionFix = 'code' | 'outside' | 'unknown'
 const CODE_FIX = /conflicts? with|is behind|not mergeable|cannot be cleanly created|check\(s\) failed|refused|rejected\]|fast-forward|\(fetch first\)|since the review|head is not the task's commit|commits the task's worktree never had/i
-const OUTSIDE_FIX = /herdr-core|unreachable|offline|machine_unknown|timed out|did not respond|interrupted|HTTP 5\d\d|\b50[234]\b|bad gateway|service unavailable|could not resolve host|connection (reset|refused|timed out|closed)|remote end hung up|RPC failed|early EOF|rate limit|unreadable PR details/i
+const OUTSIDE_FIX = /herdr-core|unreachable|offline|machine_unknown|timed out|did not respond|interrupted|(?:HTTP|status|error)[ :]*5\d\d\b|bad gateway|service unavailable|could not resolve host|connection (reset|refused|timed out|closed)|remote end hung up|RPC failed|early EOF|rate limit|unreadable PR details/i
 export function actionFix(error: string | undefined): ActionFix {
   if (!error) return 'unknown'
   if (OUTSIDE_FIX.test(error)) return 'outside'

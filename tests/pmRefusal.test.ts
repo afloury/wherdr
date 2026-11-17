@@ -44,7 +44,8 @@ it('drops the user\'s turn while the agent fixes the conflict, and gives it back
 
 it('tells a failed action its worker can fix from one outside the code', () => {
   // The branch or PR needs work: the agent first.
-  for (const e of ['merge: the PR conflicts with v3', 'merge: 2 check(s) failed', 'push: push to task/x refused: non-fast-forward', 'merge: new commits since the review (abc..def)'])
+  for (const e of ['merge: the PR conflicts with v3', 'merge: 2 check(s) failed', 'push: push to task/x refused: non-fast-forward', 'merge: new commits since the review (abc..def)',
+    'push: ! [rejected] task/WHR-503 -> task/WHR-503 (fetch first)', 'merge: the PR #504 conflicts with v3'])
     expect(actionFix(e)).toBe('code')
   // herdr-core, a machine, the network, the Git host: Try again only.
   for (const e of ['merge: herdr-core rejected the request (unavailable)', 'box is unreachable', 'merge: timed out', 'merge: HTTP 502 Bad Gateway', 'push: could not resolve host: github.com', 'merge: API rate limit exceeded', 'github.merge was interrupted before its result was known: check by hand, then try again'])
