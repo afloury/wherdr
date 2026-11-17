@@ -37,6 +37,8 @@ async function act(action: 'send' | 'clear' | 'send-queued') {
     busy.value = null
   }
 }
+// A photo shows in the field as "[Image #N]", or as its path until Claude reads it.
+const hasPhoto = computed(() => /\[Image #\d+\]|\.(?:png|jpe?g|gif|webp|heic)\b/i.test(props.pane.draft?.text || ''))
 const icon = (a: typeof busy.value, idle: string) => (busy.value === a ? 'i-lucide-loader-circle' : idle)
 </script>
 
@@ -64,7 +66,7 @@ const icon = (a: typeof busy.value, idle: string) => (busy.value === a ? 'i-luci
       <UIcon name="i-lucide-circle-alert" /><span>{{ error }}</span>
     </div>
     <div v-else-if="pane.sending" class="queued-tag" role="status" data-testid="unsent-sending">
-      <UIcon name="i-lucide-loader-circle" class="spin" /><span>{{ /\[Image #\d+\]/.test(pane.draft.text) ? t('Sending… adding the photo') : t('Sending…') }}</span>
+      <UIcon name="i-lucide-loader-circle" class="spin" /><span>{{ hasPhoto ? t('Sending… adding the photo') : t('Sending…') }}</span>
     </div>
     <div v-else-if="!shown" class="queued-tag failed" role="status">
       <UIcon name="i-lucide-circle-alert" /><span>{{ t('Not sent — still in Claude’s input') }}</span>
