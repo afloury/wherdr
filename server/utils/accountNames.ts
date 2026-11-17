@@ -3,7 +3,7 @@
 // atomically, one write at a time.
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { writeFileAtomic } from './atomicWrite'
 import { ACCOUNT_KEY, cleanAccountName } from '../../shared/quotaAccount'
 import { DATA_DIR } from './env'
 
@@ -30,15 +30,7 @@ export function setAccountName(key: string, name: string, file = ACCOUNT_NAMES_F
     const clean = cleanAccountName(name)
     if (clean) names[key] = clean
     else delete names[key]
-    await fs.mkdir(path.dirname(file), { recursive: true })
-    const temp = `${file}.${randomUUID()}.tmp`
-    try {
-      await fs.writeFile(temp, JSON.stringify({ v: 1, names }) + '\n', { mode: 0o600 })
-      await fs.rename(temp, file)
-    } catch (error) {
-      await fs.rm(temp, { force: true }).catch(() => {})
-      throw error
-    }
+    await writeFileAtomic(file, JSON.stringify({ v: 1, names }) + '\n')
     return names
   })
   queue = run.catch(() => {})

@@ -3,7 +3,7 @@
 // change is pushed to the open apps over /ws/events.
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { writeFileAtomic } from './atomicWrite'
 import { applySettingsPatch, cleanSettings, type SettingsMap, type SettingsPatch } from '../../shared/settings'
 import { DATA_DIR } from './env'
 import { HerdrError } from './herdr'
@@ -40,17 +40,7 @@ export async function readSettings(file = SETTINGS_FILE): Promise<SettingsMap> {
   return loadSettings(file).catch(() => ({}))
 }
 
-async function writeSettings(settings: SettingsMap, file: string) {
-  await fs.mkdir(path.dirname(file), { recursive: true })
-  const temp = `${file}.${randomUUID()}.tmp`
-  try {
-    await fs.writeFile(temp, JSON.stringify({ v: 1, settings }) + '\n', { mode: 0o600 })
-    await fs.rename(temp, file)
-  } catch (error) {
-    await fs.rm(temp, { force: true }).catch(() => {})
-    throw error
-  }
-}
+const writeSettings = (settings: SettingsMap, file: string) => writeFileAtomic(file, JSON.stringify({ v: 1, settings }) + '\n')
 
 // Writes one after another: two devices changing settings at the same time
 // each get their keys in; for the same key, the last one to arrive wins.

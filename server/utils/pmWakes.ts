@@ -83,7 +83,11 @@ async function gather(deps: WakeDeps, now: number) {
     if (JSON.stringify(w.state) === JSON.stringify(task.step)) continue
     // No coordinator: the tick still counts (timeouts), the step start stays to announce.
     const has = !!coord?.terminal
-    await store.saveTask({ ...task, step: has ? w.state : { ...w.state, told: task.step.told } })
+    // Saved on the task as it is now: a step the user moved since this tick's
+    // read (approved, done) is kept, and this tick's news for it dropped.
+    const step0 = JSON.stringify(task.step)
+    const saved = await store.updateTask(task.id, cur => JSON.stringify(cur.step) === step0 ? { ...cur, step: has ? w.state : { ...w.state, told: task.step!.told } } : null)
+    if (!saved) continue
     const step = currentStep(plan, task.step)
     if (has) add(ck, w.texts.map(x => `${task.id} (${task.title}): ${x}`), { kind: 'step', about: `${task.id} (${step?.id ?? 'step'})` })
   }

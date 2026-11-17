@@ -211,7 +211,7 @@ describe('wake queue', () => {
     expect(readQueue(lines, 2 * 86_400_000)).toEqual([{ ...w, deliveredAt: 5 }])
   })
 
-  it('survives a restart: the queue is read back from wakes.jsonl', async () => {
+  it('survives a restart and a cut append: the queue is read back from wakes.jsonl', async () => {
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-wakes-'))
     try {
       const a = createPmStore(dir)
@@ -220,6 +220,11 @@ describe('wake queue', () => {
       await a.saveWakes([w])
       await a.saveWakes([{ ...w, deliveredAt: Date.now(), tries: 1 }])
       expect(await createPmStore(dir).wakes()).toEqual([{ ...w, deliveredAt: expect.any(Number), tries: 1 }])
+      // An append cut halfway: the next wake still gets a line of its own.
+      await fs.appendFile(path.join(dir, 'wakes.jsonl'), '{"id":"cut","coord')
+      const next = queued(['CO-2: done'], Date.now(), 'w2')[0]!
+      await a.saveWakes([next])
+      expect(await a.wakes()).toEqual([{ ...w, deliveredAt: expect.any(Number), tries: 1 }, next])
     } finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
 })

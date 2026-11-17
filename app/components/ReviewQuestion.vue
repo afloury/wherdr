@@ -2,10 +2,11 @@
 // Tasks to review: an agent's question. Its summary by Claude Haiku on top
 // (pmSummary.ts, none while the pace holds it), the agent's whole last message
 // folded under it (open alone when there is no summary), drawn as in the chat
-// (Markdown, `wherdr` blocks), last; first the options of its `choices` line
+// (Markdown, `wherdr` blocks, a `questions` card answered there), last; first the options of its `choices` line
 // as buttons and a field for another answer. Each sends `send` with the text,
 // which ReviewSheet types to the agent (POST /api/pm/answer).
 import type { Card } from '#shared/pm/board'
+import { QUESTIONS_HOST, type QuestionsHost } from '~/utils/questionsCard'
 
 const props = defineProps<{ card: Card, busy: boolean, sent?: string }>()
 const emit = defineEmits<{ send: [text: string] }>()
@@ -16,6 +17,11 @@ const html = computed(() => md(full.value))
 const options = computed(() => messageChoices(full.value))
 const other = ref('')
 const send = (text: string) => { if (text.trim() && !props.busy && !props.sent) emit('send', text.trim()) }
+// A `questions` card in the message (QuestionsCard.vue) sends all its answers at once.
+provide<QuestionsHost>(QUESTIONS_HOST, {
+  state: () => ({ live: !props.busy && !props.sent, given: props.sent ?? null }),
+  send: (_el, text) => send(text),
+})
 // A choice button drawn in the message itself answers too.
 const onMessageClick = (e: MouseEvent) => {
   const b = (e.target as HTMLElement).closest<HTMLButtonElement>('.q-choice')
