@@ -102,12 +102,11 @@ const fold = (key: string) => { folded.value = isOpen(key) ? [...folded.value, k
 const workspaces = computed(() => (data.value?.projects ?? []).filter(p => p.kind === 'workspace'))
 const memberOf = (p: { workspace?: string }) => (p.workspace && workspaces.value.some(w => w.key === p.workspace) ? p.workspace : '')
 const outside = (p: { kind?: string, workspace?: string }) => p.kind !== 'workspace' && !memberOf(p)
-// A workspace kept by the filter (and search) shows its members on the tab; one
-// kept only for a member, those members.
-const groups = computed(() => workspaces.value.map((ws) => {
-  const kept = listed.value.includes(ws)
-  return { ws, members: (kept ? onTab.value : listed.value).filter(p => memberOf(p) === ws.key) }
-}).filter(g => listed.value.includes(g.ws) || g.members.length))
+// A workspace shows with the members the filter and search keep; one kept only
+// for a member still shows, for context.
+const groups = computed(() => workspaces.value
+  .map(ws => ({ ws, members: listed.value.filter(p => memberOf(p) === ws.key) }))
+  .filter(g => listed.value.includes(g.ws) || g.members.length))
 const plain = computed(() => listed.value.filter(outside))
 const hasPlain = computed(() => (data.value?.projects ?? []).some(outside))
 const noneText = (what: 'project' | 'workspace') => (searching.value ? tl(`No ${what} matches.`) : tl(`No ${what} on this tab.`))

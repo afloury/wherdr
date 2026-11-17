@@ -294,5 +294,8 @@ it('groups members under their workspace, folds it, and shows a search hit insid
   await vi.waitFor(() => expect(names('[data-testid="pm-ws-members"] [data-testid="pm-project"]')).toEqual(['Front']))
   expect(w.get('[data-testid="pm-workspace"]').text()).toContain('Ledger')
   expect(w.get('[data-testid="pm-none"]').text()).toContain('No project matches.')
+  await w.get('[data-testid="pm-search"] input').setValue('ledger') // the workspace alone: its members don't match
+  await vi.waitFor(() => expect(w.find('[data-testid="pm-ws-members"]').exists()).toBe(false))
+  expect(w.findAll('[data-testid="pm-workspace"]')).toHaveLength(1)
   localStorage.removeItem('projectsSettingsFolded')
 })
