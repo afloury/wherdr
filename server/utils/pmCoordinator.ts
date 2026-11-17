@@ -58,7 +58,7 @@ import { sameFilesText } from '../../shared/pm/files'
 import type { CoordinatorRecord, PmStore } from './pmStore'
 import { ALFRED, OWN_FILES, alfredFiles, alfredName, isAlfredProgram, startPrompt } from '../../shared/pm/alfred'
 import { APP_URL_FILE, DATA_DIR, ENV_APP_URL, HOME } from './env'
-import { findDocsDir } from './wherdrDocs'
+import { findDocsDir, readDocs } from './wherdrDocs'
 import { projectsDataDir, projectsHome } from '../../bin/lib/userpath.mjs'
 import { readV2Projects, type V2Candidate } from './v2Board'
 import pkg from '../../package.json'
@@ -209,7 +209,8 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
   const shown = (k: string) => shownKey(projects.find(x => x.key === k) ?? { key: k })
   const reach = (k: string) => {
     const level = inScope(projects, scope, k) ? { key: scope, reach: [{ project: k, level: 'act' as const }] } : self
-    const why = main || k === scope ? undefined : reachRefusal(level, k, cmd.name, { self: shown(scope), other: shown(k) })
+    // A workspace's coordinator reads its members' workflow too (only the user changes a member's own).
+    const why = main || k === scope || (cmd.name === 'template show' && inScope(projects, scope, k)) ? undefined : reachRefusal(level, k, cmd.name, { self: shown(scope), other: shown(k) })
     if (why) throw new HerdrError('refused', why)
   }
   if (named && projects.some(x => x.key === named)) reach(named)
@@ -231,6 +232,8 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
   const by = coordinatorBy(scope)
   if (!main && key && !inScope(projects, scope, key) && !READ_COMMANDS.includes(cmd.name)) Object.assign(visit, { on: key, by, what: [cmd.name, 'task' in cmd ? cmd.task : 'title' in cmd ? `"${cmd.title}"` : ''].join(' ').trim() })
   const needProject = () => { if (!p) throw new HerdrError('bad_input', `Name the project: --project <KEY> (${projects.map(shownKey).join(', ')})`); return p }
+  // A member: the workflow it runs, its own or its workspace's (never a copy).
+  const runsOf = async (x?: Project) => !x?.workspace ? {} : { runs: await store.savedWorkflow(x.key) ? `its own workflow, set by the user (the workspace's guards on top)` : `workspace ${shown(x.workspace)}'s workflow: a change to it reaches ${shown(x.key)}` }
   const needPlan = () => { needProject(); if (!t) throw new HerdrError('not_found', 'The project has no template'); return t }
   // The autopilot that holds the command: the project's own, also for Alfred (which has none);
   // a member's: its workspace's. Another project's tasks: that project's autopilot and limits.
@@ -290,12 +293,13 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       return { tasks: (cmd.archived ? tasks.sort((a, b) => b.archived! - a.archived!) : boardOrder(tasks)).map(x => ({ ...summary(ts.get(x.project) ?? null, x, projects.find(y => y.key === x.project)), ...(x.kind === 'feature' ? { state: featureState(x, all) } : {}), ...(x.feature ? { feature: x.feature } : {}) })) }
     }
     case 'show': { const task = await taskOf(cmd.task); return { task: { ...summary(t, task, p), weight: weightText(weightOf(t, task)), machine: machineOf(task, p, deps.machines()), description: task.description, log: task.log ?? [] }, plan: t ? planOf(t, task, p) : [] } }
-    case 'plan': return { template: t && { id: t.id, version: t.version }, workingBranch: workingBranch(p), plans: Object.fromEntries(Object.keys(needPlan().taskTypes).map(type => [type, planSteps(t!, { type }, p?.base)])) }
+    case 'docs': return readDocs(findDocsDir(), cmd.page)
+    case 'plan': return { template: t && { id: t.id, version: t.version }, ...await runsOf(p), workingBranch: workingBranch(p), plans: Object.fromEntries(Object.keys(needPlan().taskTypes).map(type => [type, planSteps(t!, { type }, p?.base)])) }
     case 'template show': return {
       template: ownWorkflow(needPlan()),
       // A member's: the workspace's guards on top of its own; without its own file, it runs the workspace's.
       ...(t!.workspaceGuards ? { workspaceGuards: t!.workspaceGuards } : {}),
-      ...(p?.workspace && !await store.savedWorkflow(p.key) ? { shared: `the workflow of workspace ${p.workspace}: template edit gives ${p.key} its own` } : {}),
+      ...await runsOf(p),
       ...(main ? {} : rec?.proposal ? { proposal: 'waiting for the user in wherdr', diff: rec.proposal.diff } : answersOf(rec).length ? { lastProposal: answersOf(rec).at(-1)!.outcome } : {}),
     }
     case 'template edit': {

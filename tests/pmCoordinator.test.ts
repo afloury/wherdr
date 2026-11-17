@@ -159,9 +159,17 @@ describe('workspaces (WHR-314)', () => {
     await cli(['task', 'tag', pa.id, 'X-1'])
     expect((await store.task(pa.id))!.log!.at(-1)).toMatchObject({ by: 'coordinator WS', text: 'tag X-1' })
     await refused(cli(['show', st.id]), 'project WS only')
-    await refused(cli(['template', 'show', '--project', 'PA']), 'stays with its own coordinator and the user')
     // Its instructions list its members.
     expect(roleFiles((await store.projects()).find(x => x.key === 'WS')!, null, [], undefined, k => k, { members: [{ key: 'PA', path: '/w/pa' }, { key: 'QA', path: '/w/qa' }] })['AGENTS.md']).toContain('member projects: PA, QA')
+  })
+
+  it('reads which workflow a member runs, the workspace\'s or its own; never edits a member\'s (WHR-444)', async () => {
+    await store.saveWorkflow('WS', { ...structuredClone(company), instructions: 'SHARED' })
+    await store.saveWorkflow('QA', { ...structuredClone(company), instructions: 'OWN' })
+    const pa = await cli(['template', 'show', '--project', 'PA']) as { template: Template, runs: string }
+    expect([pa.template.instructions, pa.runs]).toEqual(['SHARED', 'workspace WS\'s workflow: a change to it reaches PA'])
+    expect(await cli(['plan', '--project', 'QA'])).toMatchObject({ runs: expect.stringContaining('its own workflow') })
+    await refused(cli(['template', 'edit', '--project', 'PA'], '{}'), 'propose a change to the workspace\'s workflow')
   })
 
   it('one autopilot: a member\'s start in a wake counts the other members\' tasks', async () => {
