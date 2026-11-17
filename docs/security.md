@@ -49,9 +49,11 @@ only the routes listed in `shared/coreRoutes.ts` answer.
 - **Protected files**: the file browser and the file paths shown in conversations never preview,
   download or stream wherdr's data folder (`DATA_DIR`, with `auth.json`, the push keys and
   subscriptions, the OpenRouter key), its settings (`wherdr.env`, which can hold
-  `OPENROUTER_API_KEY`, and `wherdr.json`, in `WHERDR_DIR` and in `~/wherdr`), `~/.ssh` or
-  `~/.config/herdr`, on any machine, even through a symlink or inside
-  a browsed project. For paths shown in conversations only, Settings › Security › **Also show
+  `OPENROUTER_API_KEY`, and `wherdr.json`, in `WHERDR_DIR` and in `~/wherdr`), a v2 data folder
+  next to v3 (`~/wherdr/data`, with its `auth.json`), `~/.ssh`, `~/.config/herdr`, `~/.config/gh`,
+  agents' credentials (`~/.claude/.credentials.json`, `~/.codex/auth.json`) or herdr-core's state
+  (`~/.local/state/herdr-core`, but each session's `files` folder, where photos and attached files
+  go), on any machine, even through a symlink or inside a browsed project. For paths shown in conversations only, Settings › Security › **Also show
   protected files** (off by default) lifts this. Agents themselves can still read them: the lock
   protects the app, not the machine.
 - **Files shown from conversations**: which folders a path written by an agent may open
