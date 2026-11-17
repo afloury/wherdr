@@ -151,7 +151,7 @@ export type Command =
   | { name: 'read', task: string, to?: AgentRole, lines?: number }
   | { name: 'task start', task: string, on?: string }
   | { name: 'task check', task: string }
-  | { name: 'task stop', task: string, reason: string }
+  | { name: 'task stop', task: string, reason: string, forRoom?: true }
   | { name: 'task remove', task: string, reason: string }
   | { name: 'task order', task: string, tasks: string[] } // task: the first, for its project
   | { name: 'task add', title: string, type: string, after?: string, mergeAfter?: string, description?: string, weight?: Weight, files?: string[], fromBranch?: string, feature?: string }
@@ -191,7 +191,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'automation propose [<automation>] [--remove] < automation.json', does: 'propose a new automation (no id), a change to one (its id) or its removal (--remove, no input); only in a turn that comes from the user. The JSON: {"name", "prompt" (the task\'s description), "type"? (a task type, else the first), "schedule" (every 2h, daily 09:00, mon,thu 09:00 or a cron) or "event" (added, approval, review-failed, failed, needs-you, merged) with "filter"? (a title glob: docs*)}. The user accepts or refuses it from a card in your reply and in the project\'s Automations tab; an accepted new one starts switched on, and the user alone switches one on or off' },
   { usage: 'task start <task> [--on <machine>]', does: 'start a task to do, or one stopped on a failure again, or continue a stopped one (in a wake, only twice); in a turn of the user at any time, past the autopilot\'s limits and hours (the output says when: "started; past the autopilot\'s limit of 3 at once"; the start still counts in them), in a wake only with the autopilot on, within its limits and hours; a task with "after" waits until those tasks are done (the engine then starts it itself). --on picks one of the machines the project allows, by its name, for a task never started (default: the project\'s own); it is refused while that machine is not ready, with what fails there; while it is offline the task goes to another allowed machine that fits, else waits for it. A started task always goes back to its own machine' },
   { usage: 'task check <task>', does: 'read the task\'s PR on GitHub now, for a task at its merge step or archived with a PR: merged, its merge step ends as merged and the task goes on; open, why it waits; closed without a merge, said (the user may archive it). At any time, when the user asks to unblock a task' },
-  { usage: 'task stop <task> --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started' },
+  { usage: 'task stop <task> [--for-room] --reason "<one sentence>"', does: 'end the task\'s agent; its worktree, branch and work stay, and it waits for the user (or your `task start` to continue it); in a turn of the user at any time, in a wake only a task your autopilot started. --for-room only frees its machine, for any task at its worker\'s step, in a turn of the user or a wake: the task is paused (its card says it waits for room), it asks the user nothing, and the engine continues it in the same worktree and conversation once that machine has room, before any new task starts there, in board order' },
   { usage: 'task remove <task> --reason "<one sentence>"', does: 'remove a task never started (a duplicate, one no longer needed) from the board; refused while other tasks wait for it (after); written to the project\'s log; in a turn of the user at any time, in a wake only a task your autopilot added' },
   { usage: 'task order <task> [<task>…]', does: 'put these tasks first in their column (To do, Your turn…), in this order; the others keep their order after them. Keep the board busy starts to-do tasks in board order, and the merge queue takes approved merges in it. A done task is refused. In a turn of the user at any time, in a wake only with the autopilot on; written to the project\'s log' },
   { usage: 'task edit <task> [--title "<text>"] [--description "<text>"] [--after <task>,<task>] [--merge-after <task>,<task>] --reason "<one sentence>"', does: 'change the task\'s title or description when the user changes direction; only in a turn that comes from the user. Written to the task\'s log with the reason and a short diff; its running agent is told at once, and the worker and the reviewer read the new spec from their next step or round. --after alone changes the tasks it starts after ("" for none), for a task not started yet: tasks of its project or workspace, never a cycle; in a wake only with the autopilot on. --merge-after alone changes the tasks its PR merges after ("" for none), for a task not done yet, under the same rules' },
@@ -267,7 +267,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i] as string
     if (!a.startsWith('--')) { words.push(a); continue }
-    if (a === '--spec' || a === '--archived' || a === '--remove' || a === '--until-user' || a === '--refresh') { flags[a.slice(2)] = 'yes'; continue } // the options without a value
+    if (a === '--spec' || a === '--archived' || a === '--remove' || a === '--until-user' || a === '--refresh' || a === '--for-room') { flags[a.slice(2)] = 'yes'; continue } // the options without a value
     const v = argv[i + 1] as string | undefined
     if (v === undefined) return { error: `${a} needs a value` }
     flags[a.slice(2)] = v
@@ -281,7 +281,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   const verb = [w0, w1].join(' '), task = w2 ?? ''
   const usage = (u: string) => ({ error: `usage: wherdr pm ${COMMANDS.find(c => c.usage.startsWith(u))!.usage}` })
   const known = (...k: string[]) => Object.keys(flags).find(f => !k.includes(f))
-  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'after', 'merge-after', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'step back': ['user-said'], 'step wait': ['for', 'until-user', 'reason'], 'task decide': ['reason'], 'task stop': ['reason'], 'task remove': ['reason'], 'task add': ['type', 'after', 'merge-after', 'description', 'weight', 'files', 'from-branch', 'feature'], 'feature add': ['description'], 'feature close': ['reason'], 'task start': ['on'], 'list': ['archived'], 'automation propose': ['remove'], 'incidents': ['since'], 'ui open': ['target'], 'map set': ['does', 'talks', 'used-by'], 'map list': ['refresh'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' || w0 === 'list' ? w0 : verb] ?? []))
+  const extra = known('project', ...({ 'tell': ['to', 'fix', 'reason', 'spec'], 'task edit': ['title', 'description', 'after', 'merge-after', 'reason'], 'read': ['to', 'lines'], 'pr merge': ['user-said', 'method'], 'task link': ['label'], 'step done': ['user-said', 'link'], 'step back': ['user-said'], 'step wait': ['for', 'until-user', 'reason'], 'task decide': ['reason'], 'task stop': ['reason', 'for-room'], 'task remove': ['reason'], 'task add': ['type', 'after', 'merge-after', 'description', 'weight', 'files', 'from-branch', 'feature'], 'feature add': ['description'], 'feature close': ['reason'], 'task start': ['on'], 'list': ['archived'], 'automation propose': ['remove'], 'incidents': ['since'], 'ui open': ['target'], 'map set': ['does', 'talks', 'used-by'], 'map list': ['refresh'] }[w0 === 'tell' || w0 === 'read' || w0 === 'incidents' || w0 === 'list' ? w0 : verb] ?? []))
   if (extra) return { error: `unknown option --${extra}` }
   if (w0 === 'map') return parseMap(words.slice(1), flags)
   if (w0 === 'repo') return parseRepo(words.slice(1))
@@ -381,7 +381,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   if (verb === 'task stop' || verb === 'task remove') {
     const reason = (flags.reason ?? '').trim()
     if (!TASK_RE.test(task) || w3 || !reason) return usage(verb)
-    return reason.length <= 300 && !reason.includes('\n') ? { name: verb, task, reason } : { error: '--reason is one sentence (300 characters at most)' }
+    return reason.length <= 300 && !reason.includes('\n') ? { name: verb, task, reason, ...(flags['for-room'] && verb === 'task stop' ? { forRoom: true as const } : {}) } : { error: '--reason is one sentence (300 characters at most)' }
   }
   if (verb === 'step wait') {
     const reason = (flags.reason ?? '').trim(), d = flags.for?.trim()

@@ -6,7 +6,12 @@ import { createPmStore } from '../server/utils/pmStore'
 import { startTask, type PmLaunchDeps } from '../server/utils/pmLaunch'
 import { advanceTick } from '../server/utils/pmAdvance'
 import { resumeParked } from '../server/utils/pmPark'
+import { pauseForRoom } from '../server/utils/pmStop'
+import { placeFor } from '../server/utils/pmPlace'
 import { parkOf, parseBlockedOn, resumeText } from '../shared/pm/park'
+import { cardOf, toHandle } from '../shared/pm/board'
+import { decisionsOf } from '../shared/pm/decisions'
+import { parseCommand } from '../shared/pm/coordinator'
 import { stallOf } from '../shared/pm/blocked'
 import { agentNeeded } from '../shared/pm/watchdog'
 import { initialState } from '../shared/pm/steps'
@@ -14,6 +19,8 @@ import { wherdr } from '../shared/pm/examples'
 import { taskPlan, type Task } from '../shared/pm/run'
 
 const woken = vi.hoisted(() => [] as string[])
+const cap = vi.hoisted(() => ({ n: 9 }))
+vi.mock('../server/utils/pmMemory', async orig => ({ ...(await orig<object>()), machineCapacity: async () => null, readMemorySettings: async () => ({ m1: { maxAgents: cap.n } }) }))
 vi.mock('../server/utils/pmWakes', async orig => ({ ...(await orig<object>()), wakeCoordinators: async (_d: unknown, _t: unknown, why: string) => { woken.push(why); return ['the project\'s coordinator'] } }))
 
 const projects = [{ key: 'WH', machine: 'm1', path: '/p', template: 'wherdr' }] as never
@@ -55,7 +62,7 @@ describe('a blocked report', () => {
 
 describe('parking on the server', () => {
   let dir = ''
-  beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-park-')); woken.length = 0 })
+  beforeEach(async () => { dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-park-')); woken.length = 0; cap.n = 9 })
   afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
   async function setup(second: Partial<Task> = {}) {
@@ -139,5 +146,38 @@ describe('parking on the server', () => {
     expect(woken[0]).toMatch(/^Decision: /)
     expect(calls.filter(c => c[0] === 'terminal.send').map(c => c[1].text)).toEqual(Array(2).fill(expect.stringContaining('already waits for this task')))
     expect(calls.some(c => c[0] === 'terminal.kill')).toBe(false)
+  })
+  it('paused for room: out of the user\'s lists, kept to its machine\'s cap, resumed in its conversation before a new task starts there', async () => {
+    expect(parseCommand(['task', 'stop', 'WH-1', '--for-room', '--reason', 'machine over its cap'])).toMatchObject({ name: 'task stop', forRoom: true })
+    const { store, calls, deps } = await setup()
+    cap.n = 1
+    await pauseForRoom(deps, 'WH-1', 'machine over its cap', 'coordinator WH')
+    const run = (await store.runs())[0]!
+    expect(run).toMatchObject({ state: 'ended', endedBy: 'released' })
+    const t = (await store.task('WH-1'))!
+    expect(t).toMatchObject({ state: 'working', parked: { on: 'm1', room: 'm1', need: 'machine over its cap' } })
+    const card = cardOf(t, taskPlan(wherdr, t), await store.runs())
+    expect(card.parked).toMatchObject({ room: 'm1' })
+    expect(toHandle([card])).toEqual([])
+    expect(decisionsOf({ cards: [card], tasks: [t], coordinators: [], wakes: [] } as never)).toEqual([])
+    await expect(pauseForRoom(deps, 'WH-1', 'again', 'coordinator WH')).rejects.toThrow('already paused for room')
+
+    // Another task took the room: WH-1 waits, and a new task does not start there before it.
+    await startTask(deps, 'WH-2')
+    await resumeParked(deps)
+    expect(calls.filter(c => c[0] === 'terminal.run')).toHaveLength(2)
+    expect((await store.task('WH-1'))!.parked).toBeDefined()
+    const fresh = await store.addTask({ project: 'WH', title: 'Next', type: 'simple' })
+    expect(await placeFor(deps, fresh)).toMatchObject({ hold: expect.stringContaining('WH-1, paused for room there, starts first') })
+
+    // The room is back: WH-1 goes on in the same conversation, told why it paused.
+    const other = (await store.runs()).find(r => r.task === 'WH-2')!
+    await store.saveRun({ ...other, state: 'ended', endedBy: 'released' })
+    await resumeParked(deps)
+    const line = String(calls.filter(c => c[0] === 'terminal.run')[2]![1].line)
+    expect(line).toContain(`'--resume' '${run.session}'`)
+    expect(line).toContain('There is room again')
+    expect((await store.task('WH-1'))!.parked).toBeUndefined()
+    expect(await placeFor(deps, fresh)).toMatchObject({ hold: expect.not.stringContaining('paused for room') })
   })
 })

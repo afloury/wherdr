@@ -13,7 +13,9 @@ import { shownTaskId, storedTaskId } from './projectKey'
 import type { Project } from './project'
 
 // on: the task (its stored id) or the repository it waits for; before: its after links when it parked.
-export interface Parked { on: string, need: string, at: number, before: string[] }
+// room: paused by a coordinator to free its machine (on: that machine's key, room: its name, need: why);
+// the engine takes it up again once that machine has room (pauseForRoom, resumeParked).
+export interface Parked { on: string, need: string, at: number, before: string[], room?: string }
 
 const PREFIX = 'blocked:on '
 export const BLOCKED_ON_CMD = `hc label "$HC_TERMINAL_ID" "${LABEL.report}=${PREFIX}<task or repository>: <what you need>"`
@@ -80,3 +82,23 @@ export function resumeText(task: Task, tasks: Task[], projects: Project[]): stri
   })
   return [`You were waiting for ${shownTaskId(projects, task.parked!.on)}: ${task.parked!.need}`, ...lines, 'Update your branch with what you need, then go on with your task.'].join('\n')
 }
+
+// A started task a coordinator pauses to free its machine: why not, or undefined.
+// Only a worker's step: the worker is what the engine starts again.
+export function roomPauseRefusal(task: Task, holder: string | undefined, live: { role: string }[]): string | undefined {
+  if (task.step?.done) return `${task.id} is done`
+  if (task.stopped) return `${task.id} is stopped: it holds no room`
+  if (task.parked) return task.parked.room ? `${task.id} is already paused for room` : `${task.id} is parked: it holds no room`
+  if (task.state === 'todo' || !task.step?.started) return `${task.id} has not started`
+  if (task.state === 'waiting' || task.step.yourTurn) return `${task.id} waits for the user: pausing it would hide that from them`
+  if (holder !== 'worker') return `${task.id} is at a step its worker does not hold: only a worker's step is paused for room`
+  if (!live.length) return `${task.id} has no agent running: it holds no room`
+}
+
+// The task paused for room on a machine (key, name): no agent, no stall, out of the user's lists.
+export const roomParked = (task: Task, machine: string, label: string, why: string, now: number): Task =>
+  ({ ...task, parked: { on: machine, need: why, at: now, before: afterIds(task), room: label } })
+
+// The first message of its worker's conversation, taken up again once there is room.
+export const roomResumeText = (p: Parked) =>
+  `Your coordinator paused this task to free room on ${p.room}: ${p.need}\nThere is room again: go on with your task where you left it.`
