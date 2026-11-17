@@ -173,6 +173,37 @@ describe('core input routes', () => {
     expect(cold.logs.join('\n')).not.toMatch(/look|srv/)
   })
 
+  it('a photo path cleared to be pasted again: never sent in part, nor lost when the field cannot be read', async () => {
+    const msg = 'important instructions\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png'
+    // `cleared`: the field after each clear (a clear that leaves part of the text, or a field no longer readable).
+    const run = async (cleared: () => string | null | Error) => {
+      const keys: string[] = []
+      let field: string | null | Error = null
+      let sends = 0
+      const t = deps((m, params) => {
+        if (m === 'terminal.send') { sends++; field = `${msg}\n\\` }
+        if (m === 'terminal.keys') { keys.push(...params.keys); if (params.keys[0] === 'ctrl+u') field = cleared() }
+        return m === 'terminal.send' ? { started: false } : {}
+      })
+      t.d.settleMs = 1
+      let looks = 0
+      t.d.field = async () => { if (!looks++) return null; if (field instanceof Error) throw field; return field }
+      const warn = console.warn
+      console.warn = () => {}
+      try {
+        await expect(coreSend(t.d, { pane_id: 't1', text: msg })).rejects.toMatchObject({ code: 'not_submitted' })
+      } finally { console.warn = warn }
+      // Never Enter on what is left, never pasted again into it: the conversation offers Retry with the whole message.
+      expect(keys).not.toContain('enter')
+      expect(sends).toBe(1)
+      return keys.filter(k => k === 'ctrl+u').length
+    }
+    // Each clear leaves "important": cleared again (bounded), then refused.
+    expect(await run(() => 'important')).toBeGreaterThan(1)
+    // Cleared, but the field is no longer readable: refused too.
+    expect(await run(() => new Error('paint'))).toBeGreaterThan(0)
+  })
+
   it('no client after the first request: the send still runs to its Enter, its terminal shown as sending until then', async () => {
     const msg = 'look at this\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png'
     let enters = 0

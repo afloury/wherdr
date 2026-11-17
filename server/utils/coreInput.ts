@@ -179,6 +179,8 @@ const SUBMIT_LOOKS = 60
 // later (WHR-454). Seen there this many looks in a row (about 1.6 s), the
 // message is cleared and pasted once more: the file and Claude are warm now.
 const RAW_LOOKS = 4
+// Clears pressed at most to empty the field before that second paste.
+const CLEARS = 3
 // After each Enter, the look that decides on the next one, in settleMs: the
 // field may still be drawing, or Claude switching turns, and drop an Enter.
 // After a long idle, Claude ignored Enter for 2-3 s with "[Image #N]" already
@@ -214,44 +216,65 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
   }
   // Evidence for the next report: sizes, never the text.
   const why = () => (last === undefined ? 'field never read with text' : `field held ${fieldGap(last, text)}`)
-  // Wait for it whole (null: the field emptied, the message was taken).
   const keys = (k: string[]) => deps.call('terminal.keys', { terminal: p.coreAddress, keys: k }, 10000)
-  for (let i = 0, rawLooks = 0; ; i++) {
-    const seen = await holds()
-    if (seen === null) return 0
-    if (seen) break
-    rawLooks = last !== undefined && fieldHoldsRawPhoto(last, text) ? rawLooks + 1 : 0
-    if (rawLooks >= RAW_LOOKS && again) {
-      const paste = again
-      again = undefined
-      // Pasted again only on a field seen empty after the clear: never twice in it.
-      await keys(clearKeys(last!.split('\n').length))
-      let empty = false
-      for (let k = 0; k < 3 && !empty; k++) empty = await look() === null
-      if (empty) {
+  // Cleared to be pasted again, the message is only in wherdr: a field never
+  // seen empty after that is refused, so the conversation offers Retry with it whole.
+  const lost = () => new HerdrError('not_submitted', 'The photo could not be added and the message was taken out of Claude’s input: send it again.')
+  // Wait for it whole (null: the field emptied, the message was taken). Every
+  // decision is on the latest read; a failed read decides nothing.
+  for (let i = 0, rawLooks = 0, clearing = 0; ; i++) {
+    if (i >= SUBMIT_LOOKS) {
+      console.warn(`[wherdr] message to ${p.coreAddress}: not submitted, ${clearing ? 'its field never seen empty after a clear' : 'never held the message alone'}: ${why()}`)
+      if (clearing) throw lost()
+      return 0
+    }
+    const now = await look()
+    if (now === undefined) continue
+    if (clearing) {
+      // Pasted again only on a field seen empty: never twice in it.
+      if (now === null) {
         console.warn(`[wherdr] message to ${p.coreAddress}: a photo stayed a path after ${Date.now() - started} ms, pasted again`)
-        await paste()
+        const paste = again!
+        again = undefined
+        clearing = rawLooks = 0
         last = undefined
-        rawLooks = 0
+        await paste()
         continue
       }
+      // What is left is ours (the field held our message alone): cleared again, a few times.
+      if (clearing >= CLEARS) {
+        console.warn(`[wherdr] message to ${p.coreAddress}: not submitted, its field could not be emptied to paste it again: ${why()}`)
+        throw lost()
+      }
+      await keys(clearKeys(now.split('\n').length))
+      clearing++
+      continue
     }
-    if ((rawLooks >= RAW_LOOKS && !again) || (i + 1 >= SUBMIT_LOOKS && rawLooks)) {
+    if (now === null) return 0
+    if (fieldHolds(now, text, true)) break
+    rawLooks = fieldHoldsRawPhoto(now, text) ? rawLooks + 1 : 0
+    if (rawLooks >= RAW_LOOKS && again) {
+      await keys(clearKeys(now.split('\n').length))
+      clearing = 1
+      continue
+    }
+    if (rawLooks >= RAW_LOOKS || (rawLooks && i + 1 >= SUBMIT_LOOKS)) {
       raw = true
-      const gap = fieldGap(last!, text)
-      // The lone "\" (and only it): one Backspace at a time while the field still ends with it.
-      for (let k = 0; k < 3 && /\\\s*$/.test(last || ''); k++) {
-        await keys(['backspace'])
-        const now = await look()
-        if (now === null) return 0
-        if (now === undefined) break
+      const gap = fieldGap(now, text)
+      // The lone "\" (and only it): one Backspace at a time while the field
+      // ends with it; Enter only on a field read holding our message whole.
+      for (let k = 0, cur = now; /\\\s*$/.test(cur); k++) {
+        if (k < 3) await keys(['backspace'])
+        const after = k < 3 ? await look() : undefined
+        if (after === null) return 0
+        if (after === undefined || !fieldHoldsRawPhoto(after, text)) {
+          console.warn(`[wherdr] message to ${p.coreAddress}: not submitted, its field changed while its "\\" was taken out: ${why()}`)
+          return 0
+        }
+        cur = after
       }
       console.warn(`[wherdr] message to ${p.coreAddress}: a photo stayed a path, sent as it is after ${Date.now() - started} ms: field held ${gap}`)
       break
-    }
-    if (i + 1 >= SUBMIT_LOOKS) {
-      console.warn(`[wherdr] message to ${p.coreAddress}: not submitted, never held the message alone: ${why()}`)
-      return 0
     }
   }
   let enters = 0
