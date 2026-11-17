@@ -32,6 +32,7 @@ import { advanceTick } from './pmAdvance'
 import { forgetMemory } from './pmMemory'
 import { samplePeaks } from './pmPeaks'
 import { releaseIdle, reviveWorker } from './pmRelease'
+import { resumeParked } from './pmPark'
 import { watchAgents } from './pmWatchdog'
 import { startFileWaits, syncFiles } from './pmFiles'
 import { agentBack, agentWaits, fixWatch, handToAgent, handedWatch, MACHINE_OFFLINE, MACHINE_PAUSED, retriesAction, roomWakeDue, type WorkerNow } from '../../shared/pm/release'
@@ -359,6 +360,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now(), doing: 
   const resumes = await stage('resumeInterrupted', () => resumeInterrupted(deps, now))
   if (resumes) await stage('wakeIncidents', () => wakeIncidents(deps, resumes.busy, now))
   await stage('releaseIdle', () => releaseIdle(deps, now))
+  await stage('resumeParked', () => resumeParked(deps))
   await stage('startChained', () => startChained(deps, now))
   await stage('startHeld', () => startHeld(deps, now))
   await stage('syncFiles', () => syncFiles(deps, now))
@@ -394,7 +396,8 @@ async function followTask(deps: PmLaunchDeps, task: Task, projects: Project[], r
     return
   }
   // Its step action runs (outside the tick): followed once it ended, never from an older copy.
-  if (actionRunning(task.id)) return
+  // Parked on another task (park.ts): no move until it goes on.
+  if (actionRunning(task.id) || task.parked) return
   const p = projects.find(x => x.key === task.project)
   const t = p ? await store.workflow(p.key) : null
   if (!p || !t) { await noteCannotFollow(store, task, 'its project or workflow is missing'); return }
