@@ -1498,6 +1498,25 @@ shared contract (proto, API, schema) into its own task both wait for, or merge
 the two tasks into one. If it cannot decide, it leaves the wake unanswered
 and the choice reaches you in **Decisions**.
 
+### A task paused for room
+
+A coordinator that only needs to free a crowded machine pauses a started task
+instead of stopping it: `wherdr pm task stop <task> --for-room --reason "machine over its cap"`,
+in your turn or in a wake, for a task at its worker's step that does not wait
+for you, and whose worker's conversation can be taken up again (a Claude worker;
+another is refused: stop it instead). The task is **parked** the same way:
+
+- its agents end, so its machine slot is free; it is never nudged, restarted
+  or counted as stalled;
+- its card says *Paused: waiting for room on <machine>*; it asks you nothing:
+  it is not in **Tasks to review**, **Your turn** or **Decisions**.
+
+The engine continues it by itself (same worktree, the same conversation, told
+why it paused) once its machine has room, keeping the machine's cap, in board
+order, and before any new task starts on that machine. If its worker cannot start
+then, the task stays paused and the engine tries again 10 minutes later. From its sheet you can
+still **Resume now** (past the cap) or **Stop** it.
+
 ### Why agents are gone
 
 When a task's agents are gone (after a restart, or while wherdr runs), the
