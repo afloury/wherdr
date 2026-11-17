@@ -18,7 +18,8 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   The button then says *Running…*, and *Ran at 16:42* once it has finished; it stays a button, to
   run the command again. The run shows at once in the conversation as omp shows its actions: a
   *! · You ran* card with the command, the elapsed time and the working ring (in the agent's colors, as the message field's halo), its output so far
-  underneath (Claude Code: read from its screen); when the transcript writes the command, that
+  underneath (Claude Code: read from its screen). The card keeps its place in time: a message sent
+  while it runs, and the agent's reply, show under it. When the transcript writes the command, that
   entry takes the card's place (shown once), with its run time and its output folded.
   Run while Claude is working: Claude Code queues the command and runs it once, when its turn
   ends; until then it shows only as its queued bubble, and the card starts when Claude runs it.

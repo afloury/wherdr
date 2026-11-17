@@ -27,6 +27,7 @@ import { isStartPrompt } from '#shared/pm/alfred'
 import type { ProposalAnswer } from '#shared/pm/coordinator'
 import type { AutomationProposal } from '#shared/pm/automations'
 import { proposalSpot, type PlacedBlock } from '~/utils/proposalPlace'
+import { liveRunSpot } from '~/utils/liveRunPlace'
 import { OMP_CONSOLE_SHOWN, isOmpGroup, ompConsoleRows, ompTotalMs, ompWall, shellView } from '~/utils/ompTool'
 import { keepIfSame, keyedMemo, weakMemo } from '~/utils/keepIfSame'
 import { duplicateImages } from '#shared/imageDupes'
@@ -1134,6 +1135,14 @@ const liveRun = computed<(ChatItem & { omp: OmpToolView }) | null>(() => {
   const omp = s ? { ...shellView({ text: s.command, out: s.lines.join('\n') }, s.hidden), ...(s.python ? { title: 'Python' } : {}) } : shellView({ text: run!.cmd })
   return { role: 'bash', text: omp.target || '', ts: new Date(since).toISOString(), omp: { ...omp, intent: tl('Running…') } }
 })
+// Its place in time (utils/liveRunPlace.ts): the key of the block it goes
+// before, the first one written after it started; null: last, under them all.
+const liveRunAt = computed(() => {
+  const run = liveRun.value
+  if (!run?.ts) return null
+  const timeOf = (b: Block) => (b.k === 'tools' ? (b.list[0]?.ts ? Date.parse(b.list[0].ts) : undefined) : blockTime(b))
+  return liveRunSpot(shownBlocks.value, Date.parse(run.ts), timeOf)
+})
 function cmdMenuItems(cmd: string, runnable: boolean): MenuItem[] {
   const items: MenuItem[] = []
   if (runnable) items.push({ label: tl('Run…', 'Lancer…'), icon: 'i-lucide-play', run: () => runCommand(cmd) })
@@ -1597,6 +1606,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <div v-else-if="chat.older.length" class="chat-note">{{ t('Start of conversation') }}</div>
 
             <template v-for="b in (skeleton ? [] : shownBlocks)" :key="b.key">
+              <!-- "!" command running, with messages written after it started: above them. -->
+              <ChatShellRun v-if="liveRun && b.key === liveRunAt" :tool="liveRun" :agent="agent" live />
               <div v-if="b.k === 'day'" class="day-sep"><span>{{ b.label }}</span></div>
 
               <div v-else-if="b.k === 'who'" class="msg-who" :class="agent || ''">
@@ -1814,6 +1825,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
           </button>
         </Teleport>
         <div v-if="queuedList.length || liveRun || (!readOnly && hasDraft)" class="queued-list">
+          <!-- "!" command running: live output read from the screen. Messages sent meanwhile go under it. -->
+          <ChatShellRun v-if="liveRun && liveRunAt === null" :tool="liveRun" :agent="agent" live />
           <!-- Already sent (visible as sent on screen), not yet in the transcript. -->
           <div v-for="q in queuedList.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
@@ -1832,8 +1845,6 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             </UChatMessage>
             <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ queuedLabel(q) }}</span></div>
           </div>
-          <!-- "!" command running: live output read from the screen. -->
-          <ChatShellRun v-if="liveRun" :tool="liveRun" :agent="agent" live />
           <div v-for="q in queuedList.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
