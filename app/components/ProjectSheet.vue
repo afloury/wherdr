@@ -21,6 +21,7 @@ import { ARCHIVE_DAYS, archiveDays } from '#shared/pm/archive'
 import type { LogEntry } from '#shared/pm/templateText'
 import { SETUP_TIMEOUT, checkSetup, isRelPath, type Prefs, type Template, type WorkflowError, type WorktreeSetup } from '#shared/pm/workflow'
 import { workflowBase } from '#shared/pm/run'
+import { STATE_EVENTS, type OnStateChange, type StateEvent } from '#shared/pm/onState'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
 import type { RepoVisibility } from '#shared/pm/visibility'
 import { PROJECT_TABS, PROJECT_TAB_LABEL as TAB_LABEL, type ProjectTab } from '~/utils/projectTabs'
@@ -45,7 +46,7 @@ const ready = ref<Record<string, string>>({}) // each other machine's last readi
 const loaded = ref(false)
 const error = ref('')
 const busy = ref('')
-const form = reactive({ name: '', coordinatorName: '', key: '', color: '', base: '', branchName: '', commitMessage: '', archiveAfter: '', deleteBranch: true, agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '', reach: {} as Record<string, string> })
+const form = reactive({ name: '', coordinatorName: '', key: '', color: '', base: '', branchName: '', commitMessage: '', onStateCommand: '', onStateEvents: ['done'] as string[], archiveAfter: '', deleteBranch: true, agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '', reach: {} as Record<string, string> })
 const others = computed(() => (props.projects ?? []).filter(x => x.key !== p.value.key))
 // The sheet's latest copy of the project (a save answers before the prop follows).
 const last = shallowRef(props.project)
@@ -61,13 +62,21 @@ async function load() {
   await read()
   filling = true
   fill(p.value, workflow.value?.prefs ?? {})
+  onStateWas = JSON.stringify(onStateBody())
   fillSetup(workflow.value?.worktree)
   fillInstr(p.value)
   filling = false
   keyInput.value = form.key
   loaded.value = true
 }
-const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', commitMessage: (x.kind === 'workspace' ? x.shared?.commitMessage : x.commitMessage) ?? '', archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
+const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', commitMessage: (x.kind === 'workspace' ? x.shared?.commitMessage : x.commitMessage) ?? '', ...onStateForm(x.kind === 'workspace' ? x.shared?.onStateChange : x.onStateChange), archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
+// The On state change command and its events (none set: done ticked, for a first command).
+const onStateForm = (o?: OnStateChange) => ({ onStateCommand: o?.command ?? '', onStateEvents: o ? [...o.events] : ['done'] })
+// Sent only once the user changes it: a member's other saves keep the workspace's.
+const onStateBody = () => ({ command: form.onStateCommand, events: form.onStateEvents })
+let onStateWas = ''
+const STATE_LABEL: Record<StateEvent, string> = { started: 'Starts', waits: 'Waits for you', done: 'Done', failed: 'Fails or is stopped' }
+const toggleEvent = (e: StateEvent, on: boolean) => { form.onStateEvents = STATE_EVENTS.filter(x => (x === e ? on : form.onStateEvents.includes(x))) }
 // The worktree setup: paths one per line (or comma separated). Folders to
 // share: empty is node_modules (no `share`), noShare is none (`share: []`).
 const setup = reactive({ copy: '', share: '', noShare: false, lockfile: '', command: '', timeout: '' })
@@ -101,9 +110,11 @@ const invalid = (): Record<string, string> => {
 // Every field saves by itself (useAutosave): the whole form in one call, each
 // field's Saved mark on its group (agent and model together, key and color).
 const send = async () => {
-  const { name, coordinatorName, key, color, base, branchName, commitMessage, archiveAfter, deleteBranch, reach, ...prefs } = form
+  const { name, coordinatorName, key, color, base, branchName, commitMessage, onStateCommand: _oc, onStateEvents: _oe, archiveAfter, deleteBranch, reach, ...prefs } = form
   const was = last.value
-  const r = await api<{ project: Project }>('/api/pm/project-update', { key: was.key, name, coordinatorName, base, branchName, commitMessage, archiveAfter: Number(archiveAfter), deleteBranch, reach: Object.entries(reach).map(([project, level]) => ({ project, level })), ...(color && color !== was.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(was) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}), ...(wsKind.value ? { instructionsFiles: instrBody() } : {}) })
+  const onState = JSON.stringify(onStateBody()) !== onStateWas ? { onStateChange: onStateBody() } : {}
+  const r = await api<{ project: Project }>('/api/pm/project-update', { key: was.key, name, coordinatorName, base, branchName, commitMessage, ...onState, archiveAfter: Number(archiveAfter), deleteBranch, reach: Object.entries(reach).map(([project, level]) => ({ project, level })), ...(color && color !== was.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(was) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}), ...(wsKind.value ? { instructionsFiles: instrBody() } : {}) })
+  if (onState.onStateChange) onStateWas = JSON.stringify(onState.onStateChange)
   // The form keeps what was typed; the shared lists that show its key, color and agents are read again.
   last.value = r.project
   emit('changed')
@@ -112,12 +123,12 @@ const send = async () => {
   loadTaskAgents()
 }
 const auto = useAutosave(send, invalid)
-const GROUP: Record<string, string> = { instrFiles: 'instrMode', color: 'key', agent: 'worker', model: 'worker', reviewAgent: 'reviewer', reviewModel: 'reviewer', reviewFallbackAgent: 'fallback', reviewFallbackModel: 'fallback', noShare: 'share' }
+const GROUP: Record<string, string> = { instrFiles: 'instrMode', color: 'key', agent: 'worker', model: 'worker', reviewAgent: 'reviewer', reviewModel: 'reviewer', reviewFallbackAgent: 'fallback', reviewFallbackModel: 'fallback', noShare: 'share', onStateCommand: 'onState', onStateEvents: 'onState' }
 // The key is typed in keyInput and saved only on blur or Enter (commitKey): a
 // pause mid-rename would make a partial key a real rename and a former key for good.
 const keyInput = ref('')
 const commitKey = () => { form.key = keyInput.value }
-const TYPED = ['name', 'coordinatorName', 'branchName', 'commitMessage', 'model', 'reviewModel', 'reviewFallbackModel', 'copy', 'share', 'lockfile', 'command', 'timeout', 'instrFiles']
+const TYPED = ['name', 'coordinatorName', 'branchName', 'commitMessage', 'onStateCommand', 'model', 'reviewModel', 'reviewFallbackModel', 'copy', 'share', 'lockfile', 'command', 'timeout', 'instrFiles']
 let filling = false
 for (const [o, keys] of [[form, Object.keys(form)], [setup, Object.keys(setup)], [instr, Object.keys(instr)]] as const)
   for (const k of keys) watch(() => JSON.stringify((o as Record<string, unknown>)[k]), () => { if (!filling) auto.change(GROUP[k] ?? k, !TYPED.includes(k)) }, { flush: 'sync' })
@@ -288,6 +299,17 @@ async function remove() {
             <small class="muted">{{ tl('The commit title of a squash merge, and of the merge commit a land makes. Fields: those of the branch name, and {title}. A field left empty drops with its separator. Unset: the usual message.') }}</small>
           </span>
 
+          <span class="field-label">{{ tl('On state change') }}<SavedMark :s="auto.state.onState" /></span>
+          <span class="pm-field">
+            <UInput v-model="form.onStateCommand" size="lg" class="pm-base-pick mono" placeholder="./scripts/tracker-sync.sh" :aria-label="tl('On state change')" maxlength="2000" data-testid="pm-on-state" />
+            <span class="pm-on-state-events">
+              <UCheckbox v-for="e in STATE_EVENTS" :key="e" :model-value="form.onStateEvents.includes(e)" :label="tl(STATE_LABEL[e])" size="lg" :data-testid="`pm-on-state-${e}`" @update:model-value="v => toggleEvent(e, v === true)" />
+            </span>
+            <small v-if="auto.errors.onState" class="form-error pm-field-error" role="alert">{{ t(auto.errors.onState) }}</small>
+            <small class="muted">{{ tl('A shell command run in the project\'s clone on its home machine when a task changes state, once per task and event, 30 s at most; its result goes to the task\'s log. The facts come as WHERDR_TASK_ID, WHERDR_TASK_TAG, WHERDR_TASK_TITLE, WHERDR_TASK_STATE, WHERDR_TASK_PR and WHERDR_PROJECT.') }}</small>
+            <small class="pm-on-state-warn">{{ tl('It runs with your rights on that machine.') }}</small>
+          </span>
+
           <span class="field-label">{{ tl('Archive done tasks after') }}<SavedMark :s="auto.state.archiveAfter" /></span>
           <span class="pm-field">
             <USelect v-model="form.archiveAfter" :items="archiveItems" size="lg" class="pm-base-pick" :aria-label="tl('Archive done tasks after')" data-testid="pm-archive-after" />
@@ -456,6 +478,9 @@ async function remove() {
 .pm-later { margin-top: 18px; }
 /* A field's save error, right under it. */
 .pm-field-error { display: block; margin: 4px 2px 0; font-size: 13px; }
+.pm-on-state-events { display: flex; flex-wrap: wrap; gap: 0 16px; }
+.pm-on-state-events > * { min-height: 44px; align-items: center; }
+.pm-on-state-warn { color: var(--ui-warning); }
 /* The worktree setup: short help lines, then two columns at most (one on the
    phone, under 540 px) filled in order; a .pm-wide item takes a whole row. */
 .pm-help { display: grid; gap: 2px; margin-bottom: 10px; }

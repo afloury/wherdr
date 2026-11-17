@@ -57,7 +57,9 @@ export async function projectView(store: PmStore, key: string) {
 }
 
 // { name?, base?, prefs? }: prefs (worker and reviewer agents) live in the workflow.
-export async function updateProject(store: PmStore, key: unknown, body: Record<string, unknown>) {
+// authorization: the request's; with a token (a coordinator, Alfred) the On state change command is refused.
+export async function updateProject(store: PmStore, key: unknown, body: Record<string, unknown>, authorization?: unknown) {
+  if (body.onStateChange !== undefined && bearer(authorization)) throw new HerdrError('forbidden', 'Only the user sets the On state change command, in the project\'s settings')
   const { update, errors } = cleanProjectUpdate(body)
   if (!update) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
   if (body.prefs !== undefined) {

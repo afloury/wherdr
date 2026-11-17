@@ -36,6 +36,7 @@ import type { HealthSent } from '../../shared/pm/health'
 import type { Automation, AutomationProposal, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { afterRefusal, subTasks } from '../../shared/pm/feature'
+import { eventOf, stateChanges, type TaskStateName } from '../../shared/pm/onState'
 import { cleanWorkspaceFields, effectiveProjects, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
 import type { MapFile } from '../../shared/pm/workspaceMap'
 import { DATA_DIR } from './env'
@@ -116,6 +117,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     incidents: path.join(dir, 'incidents.json'), maps: path.join(dir, 'maps'),
   }
   let queue: Promise<unknown> = Promise.resolve()
+  // Told each task's state changes once saved (pmOnState.ts runs the project's command).
+  let onStates: ((t: Task, states: TaskStateName[]) => void) | undefined
   const serial = <T>(fn: () => Promise<T>): Promise<T> => {
     const run = queue.then(fn)
     queue = run.catch(() => {})
@@ -230,7 +233,17 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     return fn()
   })
   // The task with the marks on disk (a caller's copy may be older) and a new one if its step or turn changed.
-  const marked = async (t: Task) => withMark(t, TASK_ID_RE.test(t.id) ? (await readJson<Task>(path.join(files.tasks, `${t.id}.json`)))?.marks ?? t.marks : t.marks, Date.now())
+  // Its state changes since (onState.ts) are kept on it, and told once it is saved.
+  const writeTask = async (t: Task) => {
+    const disk = TASK_ID_RE.test(t.id) ? await readJson<Task>(path.join(files.tasks, `${t.id}.json`)) : null
+    // The events seen stay seen, even when a caller's copy is older.
+    const ran = disk?.stateRan || t.stateRan ? { stateRan: { ...disk?.stateRan, ...t.stateRan } } : {}
+    const now = Date.now(), m = withMark({ ...t, ...ran }, disk?.marks ?? t.marks, now), states = stateChanges(disk, m)
+    const out = states.length ? { ...m, stateRan: { ...m.stateRan, ...Object.fromEntries(states.map(x => [eventOf(x), now])) } } : m
+    await writeJson(path.join(files.tasks, `${t.id}.json`), out)
+    if (states.length && onStates) setImmediate(() => onStates!(out, states))
+    return out
+  }
   async function findProject(key: unknown) {
     const list = await projects()
     const i = list.indexOf(projectOf(list, key)!)
@@ -279,8 +292,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const moved = replan(taskPlan(before, task, p), taskPlan(after, task, p), task.step!, Date.now())
       if (!moved) continue
       const text = moved.from === moved.to ? `workflow changed: still at ${moved.to}` : `workflow changed: ${moved.from} is gone, on to ${moved.to}`
-      const out = await marked({ ...task, step: moved.state, log: [...(task.log ?? []), { at: Date.now(), by: 'engine', text }].slice(-200) })
-      await writeJson(path.join(files.tasks, `${task.id}.json`), out)
+      await writeTask({ ...task, step: moved.state, log: [...(task.log ?? []), { at: Date.now(), by: 'engine', text }].slice(-200) })
     }
   }
   // A member's overrides recomputed from its stored form (no change: nothing written).
@@ -364,18 +376,18 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       return { id: key.toLowerCase(), version }
     }),
     runs,
-    saveTask: (t: Task) => write(async () => { const out = await marked(t); await writeJson(path.join(files.tasks, `${t.id}.json`), out); return out }),
+    saveTask: (t: Task) => write(() => writeTask(t)),
+    onStateChanges: (fn: typeof onStates) => { onStates = fn },
     // A screenshot of the task: `change` gives the task with it, from the task
     // read in the same write (refused: it throws, nothing is kept).
     addShot: (id: string, file: string, data: Buffer, change: (t: Task) => Task) => write(async () => {
       const task = TASK_ID_RE.test(id) && SHOT_FILE_RE.test(file) ? await readJson<Task>(path.join(files.tasks, `${id}.json`)) : null
       if (!task) throw new HerdrError('not_found', 'Unknown task')
-      const next = await marked(change(task))
+      const next = change(task)
       const folder = path.join(files.shots, id)
       await fs.mkdir(folder, { recursive: true, mode: 0o700 })
       await fs.writeFile(path.join(folder, file), data, { mode: 0o600 })
-      await writeJson(path.join(files.tasks, `${id}.json`), next)
-      return next
+      return writeTask(next)
     }),
     // Where it is on this machine, for the coordinator to open.
     shotPath: (id: string, file: string) => path.join(files.shots, id, file),
@@ -387,15 +399,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const task = TASK_ID_RE.test(id) ? await readJson<Task>(path.join(files.tasks, `${id}.json`)) : null
       if (!task) return null
       const next = change(task)
-      const out = await marked(log ? { ...next, log: [...(next.log ?? []), { at: Date.now(), by: log.by, text: showIds(await readProjects(), log.text) }].slice(-200) } : next)
-      await writeJson(path.join(files.tasks, `${id}.json`), out)
-      return out
+      return writeTask(log ? { ...next, log: [...(next.log ?? []), { at: Date.now(), by: log.by, text: showIds(await readProjects(), log.text) }].slice(-200) } : next)
     }),
     // A line of the task's log, saved with the task.
     logTask: (t: Task, by: string, text: string) => write(async () => {
-      const out = await marked({ ...t, log: [...(t.log ?? []), { at: Date.now(), by, text: showIds(await readProjects(), text) }].slice(-200) })
-      await writeJson(path.join(files.tasks, `${t.id}.json`), out)
-      return out
+      return writeTask({ ...t, log: [...(t.log ?? []), { at: Date.now(), by, text: showIds(await readProjects(), text) }].slice(-200) })
     }),
     // A task removed for good (never started: nothing else to clean up), and a
     // line of its project's log, since its own log goes with it.
@@ -558,13 +566,14 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     // A new key: a key no other project has (any case, former keys too); the old one stays an alias.
     updateProject: (key: unknown, update: ProjectUpdate) => write(async () => {
       const { list, i } = await findProject(key)
-      const { base: _base, label: _label, aliases: _aliases, branchName: _bn, commitMessage: _cm, deleteBranch: _db, coordinatorName: _cn, reach: _r, ...rest } = list[i]!
+      const { base: _base, label: _label, aliases: _aliases, branchName: _bn, commitMessage: _cm, onStateChange: _os, deleteBranch: _db, coordinatorName: _cn, reach: _r, ...rest } = list[i]!
       const keepBranch = (update.deleteBranch ?? list[i]!.deleteBranch) === false
       const base = update.base ?? list[i]!.base
       // '' goes back to task/{id}.
       const branchName = update.branchName ?? list[i]!.branchName
       // '' goes back to the usual commit message.
       const commitMessage = update.commitMessage ?? list[i]!.commitMessage
+      const onStateChange = update.onStateChange ?? list[i]!.onStateChange
       // '' (or the project's own name) goes back to following the project's name.
       const coordinatorName = update.coordinatorName ?? list[i]!.coordinatorName
       // Only other projects that exist, never its own.
@@ -581,10 +590,12 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
         : isWorkspace(rest) && update.instructionsFiles !== undefined ? { shared: { ...sharedRest, ...(update.instructionsFiles ? { instructionsFiles: update.instructionsFiles } : {}) } } : {}
       // A workspace's commit message template is the one its members take: it goes in its shared settings.
       const sharedNow = 'shared' in instr ? instr.shared : rest.shared
-      const { commitMessage: _scm, ...sharedOther } = sharedNow ?? {}
-      const sharedMessage = isWorkspace(rest) && update.commitMessage !== undefined
-        ? { shared: { ...sharedOther, ...(update.commitMessage ? { commitMessage: update.commitMessage } : {}) } } : {}
-      const ownMessage = !isWorkspace(rest) && commitMessage ? { commitMessage } : {}
+      // So is its On state change command.
+      const { commitMessage: _scm, onStateChange: _sos, ...sharedOther } = sharedNow ?? {}
+      const pickShared = <K extends 'commitMessage' | 'onStateChange'>(k: K) => (update[k] === undefined ? (sharedNow?.[k] !== undefined ? { [k]: sharedNow[k] } : {}) : update[k] ? { [k]: update[k] } : {})
+      const sharedMessage = isWorkspace(rest) && (update.commitMessage !== undefined || update.onStateChange !== undefined)
+        ? { shared: { ...sharedOther, ...pickShared('commitMessage'), ...pickShared('onStateChange') } } : {}
+      const ownMessage = !isWorkspace(rest) ? { ...(commitMessage ? { commitMessage } : {}), ...(onStateChange ? { onStateChange } : {}) } : {}
       const placement = update.placement ?? rest.placement
       const allowed = machinesOf(rest, update)
       if (allowed.errors.length) throw badInput(allowed.errors)
