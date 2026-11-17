@@ -15,7 +15,9 @@ at most, and a workspace is never itself in a workspace.
 
 ## Creating a workspace
 
-In Settings › Projects, *Add workspace* (next to *Add project*) asks for:
+In Settings › Projects, *Add workspace* (next to *Add project*), or in the
+sidebar's *New* sheet › *Project* with its *Project | Workspace* switch on
+*Workspace*, asks for (the same form in both places):
 
 - its **name** and **key** (proposed from the name, as for a project);
 - its **tab group** (optional): the home tab group it belongs to;
@@ -24,12 +26,15 @@ In Settings › Projects, *Add workspace* (next to *Add project*) asks for:
   one checked is its home; its root must exist there. Nothing is cloned for you.
   *Browse* beside a root opens that machine's folders (from the typed folder
   when it exists, else the machine's home) to pick it; it is disabled while
-  the machine is offline.
+  the machine is offline. From the New sheet, the sheet's machine is checked
+  first.
+- the **agent** for its coordinator, as for a new project.
 
 *Create* adds it and starts its coordinator, whose first reply runs
 `wherdr pm map list` and offers to build the [map](#the-workspace-map) from
 the repositories it found. A coordinator that does not start is said in the
-window; the workspace stays added. Alfred adds one too:
+window; the workspace stays added. From the New sheet, the sheet then closes
+and the coordinator's conversation opens. Alfred adds one too:
 `wherdr alfred workspace add` ([Alfred's command](alfred.md)).
 
 ## The workspace's coordinator
@@ -251,6 +256,14 @@ the upstream again, or drop the wait with `task edit <task> --merge-after ""`.
 a feature, never a cycle, counting `after` and `mergeAfter` together (a task
 that merges after one that starts after it would block both). While it waits,
 its new commits are not pushed either: they go once the upstream is done.
+
+A sub-task's worker that finds halfway it needs something the split did not
+plan reports `blocked:on <task|repo>: <need>`: its task parks until that task
+is done, then goes on in the same conversation (see
+[A task waiting for another task](project-management.md#a-task-waiting-for-another-task)).
+A wait that would close a cycle is refused and goes to the coordinator as a
+decision. So a contract both sides need (proto, API, schema) is its own first
+task in a split.
 
 A feature's state is never stored, it comes from its sub-tasks: **to do**
 until one starts, **working** (also once they have all ended, until it is

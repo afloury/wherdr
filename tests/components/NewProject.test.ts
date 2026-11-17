@@ -150,6 +150,24 @@ it('a browsed folder fills name and key, shows as ~/…, is probed and can start
   w.unmount()
 })
 
+it('its Workspace side shows the shared workspace form; Create adds it as Add workspace does, then opens its coordinator', async () => {
+  const w = await openSheet([{ project: '_main', name: 'Main coordinator', main: true, agent: opus }])
+  expect(w.find('[data-testid="add-workspace"]').exists()).toBe(false)
+  await w.get('[data-side="workspace"]').trigger('click')
+  expect(w.find('[data-testid="coordinator-form"]').exists()).toBe(false)
+  await w.get('#new-workspace-name').setValue('Payroll apps')
+  await w.get('[data-agent="codex"]').trigger('click')
+  await w.get('form').trigger('submit')
+  await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w2%3Ap1'))
+  // The sheet's machine (this one) checked first: the home.
+  expect(posts).toEqual([
+    { url: '/api/pm/project', body: { key: 'PA', name: 'Payroll apps', machine: '', path: '~/work', kind: 'workspace', plain: true } },
+    { url: '/api/pm/coordinator-start', body: { project: 'PA', program: 'codex' } },
+  ])
+  expect(newAgentOpen.value).toBe(false)
+  w.unmount()
+})
+
 it('offers no project without project management', async () => {
   views = []
   const w = await mountSuspended(NewAgentSheet, { global: { stubs } })

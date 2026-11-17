@@ -76,7 +76,7 @@ it('greets with the rename question on the first start only', () => {
 // WHR-243: a new user with no project is offered the first one's setup.
 // WHR-349: one question per message: with an offer, the name question waits for its own message.
 it('offers the v2 projects or the first project alone, the name question in a later message', () => {
-  const offer = /no project yet.*set up the first one.*setup window/
+  const offer = /no project yet.*set up the first one.*New › Project form/
   const later = `Once this offer is answered (done or declined), ask in a message of its own: "Would you like to give me another name?"`
   const v2 = startPrompt(true, ALFRED, true)
   expect(v2).toMatch(new RegExp(`run \`wherdr alfred v2\` and say exactly: "${GREETING}" .*set up those projects.*its own choices block`))

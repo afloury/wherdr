@@ -43,7 +43,7 @@ it('creates a workspace with its root on each machine, then starts its coordinat
   await w.findAll('[data-testid="add-workspace-machine"] button[role="checkbox"]')[1]!.trigger('click')
   await w.findAll('input[data-testid="add-workspace-root"]')[1]!.setValue('/srv/work')
   await w.get('form').trigger('submit')
-  await vi.waitFor(() => expect(launch).toHaveBeenCalledWith('PA2'))
+  await vi.waitFor(() => expect(launch).toHaveBeenCalledWith('PA2', undefined))
   expect(added).toEqual([{ key: 'PA2', name: 'Payroll apps', machine: '', path: '~/work', kind: 'workspace', shared: { machines: ['big'], clones: { big: '/srv/work' } }, plain: true }])
   expect(w.emitted('added')).toEqual([['PA2']])
   w.unmount()
