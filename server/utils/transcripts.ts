@@ -1,6 +1,6 @@
 import { createHash, type Hash } from 'node:crypto'
 import path from 'node:path'
-import { imageTagCount } from '../../shared/queuedMatch'
+import { imageTagCount, uploadNames, withoutUploads } from '../../shared/queuedMatch'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
 import { ompToolCall, ompToolResult, ompUserRun } from './ompTools'
 import { pendingClaudeTool, pendingCodexTool, pendingOmpTool } from './promptDetail'
@@ -127,6 +127,17 @@ const pastedOf = (...parts: string[]) => {
 // Same message? (spaces, case and images ignored; Claude may group
 // several into one turn, hence inclusion rather than equality).
 const normMsg = (t: string) => stripImageTags(t).replace(/\s+/g, ' ').trim().toLowerCase()
+// A message from wherdr whose photos reached Claude as their paths, not as
+// images (WHR-440): one server log line per message, sizes only, so a
+// recurrence shows. Recent ones only: a parse of old history logs nothing.
+const PHOTO_PATHS_LOGGED = new Set<string>()
+function notePhotoPaths(uuid: unknown, ts: string | null, text: string) {
+  const photos = uploadNames(text).length
+  if (!photos || typeof uuid !== 'string' || PHOTO_PATHS_LOGGED.has(uuid) || !ts || Date.now() - Date.parse(ts) > 10 * 60_000) return
+  PHOTO_PATHS_LOGGED.add(uuid)
+  if (PHOTO_PATHS_LOGGED.size > 200) PHOTO_PATHS_LOGGED.delete(PHOTO_PATHS_LOGGED.values().next().value!)
+  console.warn(`[wherdr] message matched by its text only: ${photos} photo(s) reached Claude as paths, not images (${withoutUploads(text).length} chars of text)`)
+}
 export function sameMsg(queued: string, said: string): boolean {
   const q = normMsg(queued).slice(0, 60)
   return Boolean(q) && normMsg(said).includes(q)
@@ -464,6 +475,7 @@ export function claudeParser(home = '') {
           } else {
             const text = humanText(content)
             if (text) {
+              notePhotoPaths(d.uuid, ts, text)
               items.push({ role: 'user', text: clip(text), ts, ...pastedOf(content) })
               pendingCmd = null
               said(text, ts)

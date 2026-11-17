@@ -34,6 +34,16 @@ describe('waiting message: in the agent\'s queue or taken', () => {
     expect(pendingQueue({ mine, claude: [], items, screen: null })).toEqual([])
   })
 
+  it('a photo message in the transcript is sent, whatever form its photo took; even with a copy in Claude\'s field', () => {
+    const core = '/home/user/.local/state/herdr-core/default/files/t1/2026-11-15T15-00-18-537Z-deeecd.jpg'
+    const msg = { id: 'p', text: `margin missing\n${core}`, at: Date.parse('2026-01-01T00:00:00Z'), settledAt: 1 }
+    const said = (text: string, images = 0) => [{ role: 'user' as const, text, images, ts: '2026-01-01T00:00:05Z' }]
+    for (const items of [said('margin missing', 1), said(`margin missing\n${core}`), said(`margin missing\n~/.local/state/herdr-core/default/files/t1/${core.split('/').pop()}`)]) {
+      expect(pendingQueue({ mine: [msg], claude: [], items, screen: null, idle: true, input: '[Image #3] margin missing' })).toEqual([])
+    }
+    expect(pendingQueue({ mine: [msg], claude: [], items: said('another message'), screen: null, idle: true })).toHaveLength(1)
+  })
+
   it('Claude\'s own entries (typed on the computer) are in its queue too', () => {
     const [q] = pendingQueue({ mine: [], claude: [queue[0]!], items: [], screen: null })
     expect(q).toMatchObject({ id: expect.stringMatching(/^cc-/), phase: 'queued', inAgentQueue: true })
