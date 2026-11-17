@@ -3,6 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { notesStore } from '../server/utils/notesStore'
 import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, findWritten, writtenTarget, isPdf, isVideo, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
 import type { Machine } from '../server/utils/machines'
 import { samplePdf } from './e2e/samplePdf.mjs'
@@ -270,4 +271,20 @@ describe('where a written path is found', () => {
     const found = await findWritten(home(), coord, ['/etc'], ['~/.ssh/key', 'hosts', '~/leaves-home.txt'])
     expect(found).toEqual({ '~/.ssh/key': [], 'hosts': [], '~/leaves-home.txt': [] })
   })
+})
+
+// Review of WHR-455: a notes symlink leads nowhere outside the notes; 
+describe('written paths: notes links and long conversations', () => {
+  it('never reads a notes file whose link leaves the notes folder', async () => {
+    const dir = path.join(base, 'notes')
+    mkdirSync(path.join(dir, 'plans'), { recursive: true })
+    writeFileSync(path.join(dir, 'plans', 'ok.md'), '# ok\n')
+    symlinkSync(path.join(base, '.ssh', 'key'), path.join(dir, 'plans', 'key.md'))
+    const store = notesStore(dir)
+    expect(await store.readFile('plans/ok.md')).toBe('# ok\n')
+    expect(await store.readFile('plans/key.md')).toBeNull()
+    const found = await findWritten({ exec: null, home: base } as unknown as Machine, null, [], ['plans/key.md'], undefined, { dir: store.dir, read: store.readFile })
+    expect(found['plans/key.md']).toEqual([])
+  })
+
 })

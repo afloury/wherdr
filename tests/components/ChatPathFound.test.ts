@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import ChatView from '~/components/ChatView.vue'
 import { herdrState } from '~/composables/useHerdr'
+import { resolveWritten, writtenFound } from '~/composables/useWrittenPaths'
 import type { ChatItem, Pane } from '#shared/types'
 
 const pane: Pane = { id: 'w1:p7', workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'claude', name: null, label: null, status: 'idle', title: null, cwd: '/home/demo/coord', agentSession: null }
@@ -30,5 +31,17 @@ describe('paths in a reply', () => {
       w.unmount()
       herdrState.value = { ok: false, workspaces: [], panes: [] }
     }
+  })
+
+  it('asks for every path, in requests of at most 200', async () => {
+    const asked: number[] = []
+    const paths = Array.from({ length: 201 }, (_, i) => `gone/${i}.md`)
+    await resolveWritten('w1:p1', paths, async (b) => {
+      const ps = (b as { paths: string[] }).paths
+      asked.push(ps.length)
+      return { found: Object.fromEntries(ps.map(p => [p, []])) }
+    })
+    expect(asked.sort((a, b) => a - b)).toEqual([1, 200])
+    expect(writtenFound('w1:p1', 'gone/200.md')).toEqual([])
   })
 })

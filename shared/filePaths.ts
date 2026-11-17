@@ -86,6 +86,9 @@ export function resolveAgentPath(written: string, cwd: string | null | undefined
 // Where a written path was found: the agent's folder (its home when unknown),
 // its project's repository (a task's worktree, a coordinator's clones), or the
 // notes (opened in the Notes panel: `notes` is the notes file's path).
+// The most paths one request resolves (POST /api/files/resolve): the client sends more in several.
+export const WRITTEN_BATCH = 200
+
 export type PathPlace = 'agent' | 'repo' | 'notes'
 export interface PathFound { where: PathPlace, abs: string, notes?: string }
 export const PLACE_LABELS: Record<PathPlace, string> = { agent: 'Agent folder', repo: 'Repository', notes: 'Notes' }

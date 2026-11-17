@@ -19,7 +19,7 @@ import path from 'node:path'
 import { DATA_DIR, WHERDR_DIR } from './env'
 import { shq } from './fsx'
 import type { FileEntry, FilePreview, FilesListing } from '../../shared/types'
-import { insideRoot, posixResolve, resolveAgentPath, stripPosition, writtenCandidates, type PathFound } from '../../shared/filePaths'
+import { insideRoot, posixResolve, resolveAgentPath, stripPosition, writtenCandidates, WRITTEN_BATCH, type PathFound } from '../../shared/filePaths'
 import { filePath as notesFilePath } from '../../shared/notes'
 import { chatFilesRoots, type ChatFilesPolicy } from '../../shared/chatFiles'
 import { gitToplevel } from './changes'
@@ -294,14 +294,13 @@ ${OPEN_FILE}
   shift 2
 done`
 
-const MAX_FIND = 200
 // Where each written path is found (shared/filePaths.ts: the agent's folder,
 // then `repos`), checked on the machine in one run, then the notes on this
 // server (`notes`: their folder and a reader, given when the policy allows that folder). Missing,
 // protected or outside the policy: not listed.
 export async function findWritten(m: Machine, cwd: string | null | undefined, repos: string[], written: unknown[], policy: ChatFilesPolicy = HOME_ONLY, notes?: { dir: string, read: (rel: string) => Promise<string | null> }): Promise<Record<string, PathFound[]>> {
   const roots = chatFilesRoots(posixResolve('/', m.home), policy.level)
-  const paths = [...new Set(written.filter((w): w is string => typeof w === 'string' && w.length <= 1024 && !w.endsWith('/')))].slice(0, MAX_FIND)
+  const paths = [...new Set(written.filter((w): w is string => typeof w === 'string' && w.length <= 1024 && !w.endsWith('/')))].slice(0, WRITTEN_BATCH)
   const checks: { w: string, c: PathFound, root: string, rel: string }[] = []
   for (const w of paths) {
     for (const c of writtenCandidates(w, cwd, repos, m.home, roots)) {
