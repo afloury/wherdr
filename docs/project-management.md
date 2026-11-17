@@ -130,11 +130,16 @@ data, and post it only on your yes.
 
 ## Projects
 
-**Settings › Projects** holds the *Project management* switch,
-the project list and the [template library](#template-library): each row shows
-the name (with a **Public** badge for a public repository), the key, the machine
-and the folder. *Add project*, *Add workspace* and *Open the board* sit above
-the list. *Add project* opens the **New** sheet on its *Project* form, as the sidebar's
+**Settings › Projects** holds the *Project management* switch, then two
+sections: **Workspaces**, each [workspace](workspaces.md)'s row with its member
+projects indented under it, and **Projects**, those outside any workspace,
+followed by the [template library](#template-library). A workspace folds or
+opens with the chevron on its left (open by default; the choice stays on the
+device). Each row is compact: the key as its colored badge, the name (with a
+**Public** badge for a public repository) and the machine on one line, the
+folder small under it; a long name or folder ends with an ellipsis. *Add
+workspace* sits in the Workspaces header, *Add project* and *Open the board* in
+the Projects header. *Add project* opens the **New** sheet on its *Project* form, as the sidebar's
 New › Project does; *Open the
 board* goes to the board. Until the list is read, the switch and the rows show
 as grey blocks and both buttons wait; a failed read says why, with *Try again*. A row opens the
@@ -148,7 +153,8 @@ home tabs: *Follow tab* (the default: the projects of the home tab open now, the
 same rule as the board's *Follow machine tab*), *All*, then each machine tab
 and tab group. The choice stays on the device. Past 8 projects under the filter,
 a search field finds a project by name, key (a former one too) or folder, any
-case. When nothing shows, the list says so with *Show all tabs*. A link that
+case. A member the filter or search keeps shows under its workspace, the
+workspace's row shown with it (a folded workspace opens while you search). When nothing shows, the list says so with *Show all tabs*. A link that
 names a project (`?project=KEY`) opens it even when the filter hides it.
 
 A project can also be a [workspace](workspaces.md): a folder without git whose
