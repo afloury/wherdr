@@ -11,7 +11,8 @@
 // written again after a significant change (pmSummary.ts). At start and every
 // 5 minutes, the processes left in the worktrees of tasks with no live agent
 // are killed (pmProcs.ts). A merge cut by the last restart goes on
-// (resumeMerges), and a shutdown first waits a little for a merge that runs.
+// (resumeMerges), coordinators' first messages cut by it are typed (resumeFirst),
+// and a shutdown first waits a little for a merge that runs.
 import { coreAdminDeps } from '../utils/coreAdminDeps'
 import { reconcileRuns } from '../utils/pmLaunch'
 import { rewriteRoleFiles } from '../utils/pmCoordinator'
@@ -28,6 +29,7 @@ import { sweepOrphans } from '../utils/pmProcs'
 import { summaryTick } from '../utils/pmSummary'
 import { Holds } from '../utils/pmHold'
 import { runOnState } from '../utils/pmOnState'
+import { resumeFirst } from '../utils/coordinatorFirst'
 
 // Under Nitro's 30 s shutdown and the updater's wait before it kills the server.
 const MERGE_WAIT_MS = 20_000
@@ -62,6 +64,7 @@ export default defineNitroPlugin((nitroApp) => {
       void rewriteRoleFiles({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
       void resumeMerges({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
       void sweepOrphans({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
+      void resumeFirst({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})
     }, () => {})
   }, 10_000)
   const wakes = every('wakes', 30_000, () => wakeTick({ ...coreAdminDeps(), store: pmStore() }))

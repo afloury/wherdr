@@ -116,6 +116,22 @@ describe('runs', () => {
 })
 
 describe('workflows migration', () => {
+  it('logs and skips a migration that cannot save, and keeps serving the projects as stored', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    // A member of a workspace that does not exist: saveProjects refuses the list.
+    const list = [{ key: 'WEB', name: 'Web', machine: '', path: '/w', addedAt: 1, workspace: 'GONE' }]
+    await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: list }))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(await store.projects()).toEqual(list)
+      expect(await store.projects()).toEqual(list)
+      // Each migration once, not at every call.
+      expect(warn.mock.calls.map(c => String(c[0]).replace(/: .*/, ''))).toEqual(['[pm] workflow migration skipped', '[pm] color migration skipped'])
+      expect(warn.mock.calls[1]![0]).toContain('names no existing workspace')
+    } finally { warn.mockRestore() }
+  })
+
   it('copies each project\'s template and log into its own workflow, once, leaving the library as is', async () => {
     const store = createPmStore(dir)
     await store.setEnabled(true)

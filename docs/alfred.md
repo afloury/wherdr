@@ -168,7 +168,7 @@ section, the anchor of the index's link): read-only, in a wake too, and a page t
 with the list of its sections.
 
 Alfred answers with this server's own address and port (and its published address, if any),
-not the defaults the docs quote. Other commands meant for the server itself (a restart, a
-`git pull` of its install) come as text to copy, never with *Run*, which would run them in
+not the defaults the docs quote. Other commands meant for the server itself (a restart, its
+install's `update.sh`) come as text to copy, never with *Run*, which would run them in
 Alfred's own folder. `wherdr alfred help` and `wherdr pm help`
 list the commands of the wherdr that runs now.

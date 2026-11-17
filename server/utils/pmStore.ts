@@ -67,7 +67,7 @@ export interface CoordinatorRecord {
   cards?: UiCard[] // the action buttons it put in its replies (shared/uiActions.ts), newest first
   cardNotes?: string[] // what the user did with its cards while it did not run, said at its next start (cardOutcome.ts)
   visits?: { at: number, by: string, what: string }[] // what other coordinators did on its project since its last wake (reach.ts)
-  undelivered?: { texts: string[], why: string, at: number } // first messages its session never got (coordinatorFirst.ts)
+  undelivered?: { texts: string[], why: string, at: number, queued?: true } // first messages its session never got; queued: still being typed (coordinatorFirst.ts)
   openTab?: string // Alfred's: the home tab the user had open at their last message (a note scope: all, *group:…, machine:…)
   briefs?: Record<string, number> // Alfred's: when it last ran `brief` for each scope
 }
@@ -216,8 +216,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     await saveProjects(out)
   }
   let migrated: Promise<void> | null = null
+  // A migration that fails (a workspace error in saveProjects, say) is logged and
+  // skipped: the board keeps serving the projects as stored, and tries it again at the next start.
+  const tryMigrate = (name: string, run: () => Promise<void>) => run().catch((e) => { console.warn(`[pm] ${name} migration skipped: ${e instanceof Error ? e.message : e}`) })
   // As stored: what writes change. Readers get effective ones (shown below).
-  const projects = async () => { await (migrated ??= migrate().then(migrateColors).catch((e) => { migrated = null; throw e })); return readProjects() }
+  const projects = async () => { await (migrated ??= tryMigrate('workflow', migrate).then(() => tryMigrate('color', migrateColors))); return readProjects() }
   async function templates(): Promise<TemplateInfo[]> {
     const names = await fs.readdir(files.templates).catch(() => [] as string[])
     const out: TemplateInfo[] = []
