@@ -73,6 +73,15 @@ describe('the On state change command', () => {
     expect((await store.task('CO-1'))!.log!.at(-1)!.text).toBe('on state change (done): exit 0: moved ABC-123 to Done / more')
   })
 
+  it('keeps an event seen when an older copy of the task is saved', async () => {
+    const started = await store.saveTask(task({ step: step() }))
+    await store.saveTask({ ...started, step: step({ yourTurn: { reason: 'user', badge: 'Review' } }) })
+    await store.logTask(started, 'engine', 'an older copy')
+    await store.updateTask('CO-1', t => ({ ...t, step: step({ yourTurn: { reason: 'user', badge: 'Review' } }) }))
+    await settle()
+    expect(told.map(([, s]) => s)).toEqual([['started'], ['waits']])
+  })
+
   it('logs a failure and a timeout, never tried again; no setting runs nothing', async () => {
     await runOnState(deps(), task(), ['done'])
     expect(runs).toHaveLength(0)

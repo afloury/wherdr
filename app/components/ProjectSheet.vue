@@ -62,6 +62,7 @@ async function load() {
   await read()
   filling = true
   fill(p.value, workflow.value?.prefs ?? {})
+  onStateWas = JSON.stringify(onStateBody())
   fillSetup(workflow.value?.worktree)
   fillInstr(p.value)
   filling = false
@@ -71,6 +72,9 @@ async function load() {
 const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', commitMessage: (x.kind === 'workspace' ? x.shared?.commitMessage : x.commitMessage) ?? '', ...onStateForm(x.kind === 'workspace' ? x.shared?.onStateChange : x.onStateChange), archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
 // The On state change command and its events (none set: done ticked, for a first command).
 const onStateForm = (o?: OnStateChange) => ({ onStateCommand: o?.command ?? '', onStateEvents: o ? [...o.events] : ['done'] })
+// Sent only once the user changes it: a member's other saves keep the workspace's.
+const onStateBody = () => ({ command: form.onStateCommand, events: form.onStateEvents })
+let onStateWas = ''
 const STATE_LABEL: Record<StateEvent, string> = { started: 'Starts', waits: 'Waits for you', done: 'Done', failed: 'Fails or is stopped' }
 const toggleEvent = (e: StateEvent, on: boolean) => { form.onStateEvents = STATE_EVENTS.filter(x => (x === e ? on : form.onStateEvents.includes(x))) }
 // The worktree setup: paths one per line (or comma separated). Folders to
@@ -106,9 +110,11 @@ const invalid = (): Record<string, string> => {
 // Every field saves by itself (useAutosave): the whole form in one call, each
 // field's Saved mark on its group (agent and model together, key and color).
 const send = async () => {
-  const { name, coordinatorName, key, color, base, branchName, commitMessage, onStateCommand, onStateEvents, archiveAfter, deleteBranch, reach, ...prefs } = form
+  const { name, coordinatorName, key, color, base, branchName, commitMessage, onStateCommand: _oc, onStateEvents: _oe, archiveAfter, deleteBranch, reach, ...prefs } = form
   const was = last.value
-  const r = await api<{ project: Project }>('/api/pm/project-update', { key: was.key, name, coordinatorName, base, branchName, commitMessage, onStateChange: { command: onStateCommand, events: onStateEvents }, archiveAfter: Number(archiveAfter), deleteBranch, reach: Object.entries(reach).map(([project, level]) => ({ project, level })), ...(color && color !== was.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(was) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}), ...(wsKind.value ? { instructionsFiles: instrBody() } : {}) })
+  const onState = JSON.stringify(onStateBody()) !== onStateWas ? { onStateChange: onStateBody() } : {}
+  const r = await api<{ project: Project }>('/api/pm/project-update', { key: was.key, name, coordinatorName, base, branchName, commitMessage, ...onState, archiveAfter: Number(archiveAfter), deleteBranch, reach: Object.entries(reach).map(([project, level]) => ({ project, level })), ...(color && color !== was.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(was) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}), ...(wsKind.value ? { instructionsFiles: instrBody() } : {}) })
+  if (onState.onStateChange) onStateWas = JSON.stringify(onState.onStateChange)
   // The form keeps what was typed; the shared lists that show its key, color and agents are read again.
   last.value = r.project
   emit('changed')

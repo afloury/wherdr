@@ -236,7 +236,9 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   // Its state changes since (onState.ts) are kept on it, and told once it is saved.
   const writeTask = async (t: Task) => {
     const disk = TASK_ID_RE.test(t.id) ? await readJson<Task>(path.join(files.tasks, `${t.id}.json`)) : null
-    const now = Date.now(), m = withMark(t, disk?.marks ?? t.marks, now), states = stateChanges(disk, m)
+    // The events seen stay seen, even when a caller's copy is older.
+    const ran = disk?.stateRan || t.stateRan ? { stateRan: { ...disk?.stateRan, ...t.stateRan } } : {}
+    const now = Date.now(), m = withMark({ ...t, ...ran }, disk?.marks ?? t.marks, now), states = stateChanges(disk, m)
     const out = states.length ? { ...m, stateRan: { ...m.stateRan, ...Object.fromEntries(states.map(x => [eventOf(x), now])) } } : m
     await writeJson(path.join(files.tasks, `${t.id}.json`), out)
     if (states.length && onStates) setImmediate(() => onStates!(out, states))
