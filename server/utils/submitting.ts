@@ -30,23 +30,32 @@ function save(list: Submitting[]) {
 const fresh = (s: Submitting, now: number) => now - s.at < SUBMITTING_TTL_MS
 
 // Terminals with a send running in this process, for the conversation's
-// "Sending…" (pane.sending): the send runs here whatever the page does.
-const running = new Map<string, number>()
-export const sendingTo = (terminal: string | undefined) => Boolean(terminal && running.get(terminal))
+// "Sending…" (pane.sending): the send runs here whatever the page does. The
+// texts are kept too: Claude's field may show only "[Pasted text #N +K lines]",
+// and the conversation shows the user's own text instead (pane.sendingText).
+const running = new Map<string, string[]>()
+export const sendingTo = (terminal: string | undefined) => Boolean(terminal && running.get(terminal)?.length)
+export const sendingText = (terminal: string | undefined) => (terminal && running.get(terminal)?.at(-1)) || undefined
+// Called on each start and end of a send: the open conversations get the new
+// state at once (state.ts polls), not at the next core event.
+let changed = () => {}
+export const onSubmittingChange = (f: () => void) => { changed = f }
 
 /** Notes a message being submitted; returns what forgets it. */
 export function noteSubmitting(terminal: string, text: string): () => void {
   const s = { id: randomUUID(), terminal, text, at: Date.now() }
-  running.set(terminal, (running.get(terminal) || 0) + 1)
+  running.set(terminal, [...running.get(terminal) || [], text])
   save([...load().filter(x => fresh(x, s.at)), s])
+  changed()
   let done = false
   return () => {
     if (done) return
     done = true
-    const n = (running.get(terminal) || 1) - 1
-    if (n) running.set(terminal, n)
-    else running.delete(terminal)
+    const list = running.get(terminal) || []
+    list.splice(list.indexOf(text), 1)
+    if (!list.length) running.delete(terminal)
     save(load().filter(x => x.id !== s.id && fresh(x, Date.now())))
+    changed()
   }
 }
 
