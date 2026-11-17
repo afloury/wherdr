@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { WAKE, ackWakes, addSkip, enqueue, inWake, readQueue, sinceYesterday, tickWakes, wakeKindOf, wakeText, type Wake } from '../shared/pm/wakes'
+import { WAKE, ackWakes, addSkip, enqueue, inWake, readQueue, sinceYesterday, splitWakes, tickWakes, wakeKindOf, wakeText, type Wake } from '../shared/pm/wakes'
 import { HEALTH_REPEAT_MS, healthRepeats } from '../shared/pm/health'
 import { createPmStore } from '../server/utils/pmStore'
 
@@ -66,6 +66,25 @@ describe('wake queue', () => {
     expect(wakeText(r.deliver!, true)).toMatch(/--fix <kind>.*base \(merge the base.*stall \(restart a stalled agent\).*At most 2 times per task and step.*A permission request, merging, approving, guards, settings and limits stay the user's/)
     // Once delivered, new reasons start a new wake.
     expect(enqueue(r.q, 'CO', ['CO-3: added'], 3 * MIN, 'w3').id).toBe('w3')
+  })
+
+  it('splits a turn Claude merged into the user\'s own parts and each wake, in order', () => {
+    const a = wakeText({ id: 'w1', coordinator: 'CO', scheduled: true, reasons: ['Scheduled wake (every 1h).'], createdAt: 0, tries: 1 })
+    const b = wakeText({ id: 'w2', coordinator: 'CO', kind: 'incident', about: 'inc1', reasons: ['CO-3: stuck'], createdAt: 0, tries: 1 })
+    const photo = '~/.cache/herdr-web/uploads/shot.png'
+    const user = (text: string) => ({ wake: false, text })
+    const wake = (text: string) => ({ wake: true, text })
+    // A wake alone: one part, its text as is.
+    expect(splitWakes(a)).toEqual([wake(a)])
+    expect(splitWakes(`${photo}\n\n${a}`)).toEqual([user(photo), wake(a)])
+    expect(splitWakes(`Look at this:\n> quoted\n\n${a}`)).toEqual([user('Look at this:\n> quoted'), wake(a)])
+    expect(splitWakes(`${a}\n\nAlso check CO-7.`)).toEqual([wake(a), user('Also check CO-7.')])
+    expect(splitWakes(`${a}\n\n${b}`)).toEqual([wake(a), wake(b)])
+    // Pasted: its wrapper goes with the wake.
+    const pasted = `<pasted_content id="1">\n${a}\n</pasted_content>`
+    expect(splitWakes(`Hi\n${pasted}`)).toEqual([user('Hi'), wake(pasted)])
+    // No wake: the user's message.
+    expect(splitWakes('Autopilot: please look')).toEqual([user('Autopilot: please look')])
   })
 
   it('names its source on the first line, one source per wake', () => {

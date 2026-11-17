@@ -146,7 +146,8 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   scrolls sideways, on a phone too), read from each wake's first line and task lines, standing out when one waits
   for you. Open, each wake is one line: an icon, its task, a short label (*merged*,
   *Scheduled*, *Health check*) and the reply's first sentence, a tap showing the full reply;
-  quiet checks are dimmer, two or more in a row fold into *N quiet checks*. See
+  quiet checks are dimmer, two or more in a row fold into *N quiet checks*. A message of yours that
+  Claude took in the same turn as a wake keeps its own bubble (photos included) beside the wake's row. See
   [Who sends a wake](project-management.md#who-sends-a-wake).
 - **Questions and permissions**: native questions, approvals and menus show their options; a tap
   answers. wherdr reads the screen again right before answering and refuses the answer if the
