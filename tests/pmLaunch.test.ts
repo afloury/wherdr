@@ -338,6 +338,18 @@ describe('startTask', () => {
     expect((await store.task('WEB-2'))!.log!.at(-1)!.text).toMatch(new RegExp(`^resumed after incident ${i!.id} \\(login\\).*; told it: ${said}$`))
   })
 
+  it('an omp agent on a login prompt opens no login incident (no credentials file whose renewal could be seen): the task waits like for any prompt', async () => {
+    const { store, deps } = await setup({ installed: ['omp'], template: { ...template, prefs: { agent: 'omp', model: 'sonnet' } }, screen: 'Please run /login' })
+    const { syncWaits } = await import('../server/utils/pmMechanic')
+    await startTask(deps, 'WEB-1')
+    const call = deps.call
+    deps.call = (async (m: string, p: Record<string, unknown>) => (m === 'terminal.list' ? { terminals: (await store.runs()).map(r => ({ address: r.terminal, status: { state: 'blocked' } })) } : call(m, p))) as never
+    await syncWaits(deps)
+    expect(await store.incidents()).toEqual([])
+    expect(await store.task('WEB-1')).toMatchObject({ state: 'waiting', waitKind: 'permission' })
+    expect((await store.task('WEB-1'))!.recovery).toBeUndefined()
+  })
+
   it('a start once its files are free, its machine out of reach midway (herdr-core answers unreachable): held, started by the next tick once it is back', async () => {
     const { store, deps, runs } = await setup()
     const first = await store.saveTask({ ...(await store.task('WEB-1'))!, state: 'working', step: { at: 1, started: true, since: 1, proofs: {}, rounds: {} }, changed: ['app/x.vue'] })

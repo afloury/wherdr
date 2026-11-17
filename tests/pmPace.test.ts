@@ -36,7 +36,7 @@ describe('projectPace', () => {
     const pace = await projectPace(store, 'WEB', undefined, 2_000, true)
     expect(pace).toMatchObject({ program: 'omp', account: null, quota: null, today: null })
     expect(pace!.verdict.go).toBe(true)
-    expect(paceLine(pace!, 2_000)).toBe("omp · quota unknown (no reading of omp on this project's machine) · task-count limits only")
+    expect(paceLine(pace!, 2_000)).toBe('omp · no quota reading for OMP · task-count limits only')
   })
   it('a worker on Claude is still read from its account', async () => {
     await store.saveWorkflow('WEB', { ...defaultWorkflow('WEB'), prefs: { agent: 'claude', model: 'sonnet' } })

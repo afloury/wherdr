@@ -478,12 +478,14 @@ answered says *Replaced*.
 `agent` and `reviewAgent` (and `reviewFallbackAgent`) are `claude`, `codex` or
 `omp`: the programs the engine starts with a pinned model and a first message
 (`exec omp --model <model> '<message>'`; an omp model may be a fuzzy name or
-`provider/model`). A task on omp behaves like one on Codex: its conversation is
-not taken up again after a restart or when it is paused for room (it starts a new
-agent with a handover note, as [below](#the-engine-resumes-the-work)). omp has no
-quota reading, so its account is never *out* and the [pace](quotas.md#pace) never
-holds it: only the autopilot's task-count limits apply, and a reviewer fallback is
-never asked for an omp reviewer by quota (it stays for a Claude or Codex one).
+`provider/model`). An omp task's conversation is not taken up again after a
+restart (it starts a new agent with a handover note, as
+[below](#the-engine-resumes-the-work)), and it cannot be paused for room. omp has
+no quota reading, so its account is never *out* and the [pace](quotas.md#pace)
+never holds it: only the autopilot's task-count limits apply, and a reviewer
+fallback is never started because of an omp reviewer's quota. An omp agent on a
+login prompt opens no login incident (wherdr knows no credentials file for omp):
+its task waits for you like for any prompt.
 
 #### Reviewer fallback
 

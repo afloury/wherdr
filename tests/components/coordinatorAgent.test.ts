@@ -5,7 +5,8 @@ import { coordinatorAgent, defaultProjectChoice, offerCoordinators } from '~/com
 import { agentOrder, appConfig, hiddenAgents } from '~/composables/useHerdr'
 import { MAIN } from '#shared/pm/coordinator'
 
-afterEach(() => { hiddenAgents.value = []; agentOrder.value = [] })
+const kinds = appConfig.value.kinds
+afterEach(() => { hiddenAgents.value = []; agentOrder.value = []; appConfig.value = { ...appConfig.value, kinds } })
 const offer = (kinds: string[], order: string[] = [], hidden: string[] = []) => {
   appConfig.value = { ...appConfig.value, kinds }
   agentOrder.value = order

@@ -66,13 +66,13 @@ describe('diagnose: why agents are gone', () => {
 })
 
 describe('a login incident names the program', () => {
-  it('Claude, Codex, and any other program by its own name (an unknown one never reads as Claude)', () => {
+  it('Claude, Codex, and any other program by its name (an unknown one never reads as Claude)', () => {
     const line = (program?: string) => incidentLine({ cause: 'login', label: 'host-a', ...(program ? { program } : {}) })
     expect(line('codex')).toBe('Waiting for login: Codex login expired on host-a')
     expect(line('claude')).toBe('Waiting for login: Claude login expired on host-a')
     expect(line()).toBe('Waiting for login: Claude login expired on host-a')
-    expect(line('omp')).toBe('Waiting for login: Omp login expired on host-a')
+    expect(line('omp')).toBe('Waiting for login: OMP login expired on host-a')
     const login = { id: 'i1', cause: 'login' as const, label: 'host-a', program: 'omp', tasks: ['WEB-1'], runs: ['1'], at: NOW }
-    expect(openLogins([login as never], [{ id: 'WEB-1', run: '1', step: {} } as never])).toMatchObject([{ id: 'i1', program: 'Omp', machine: 'host-a' }])
+    expect(openLogins([login as never], [{ id: 'WEB-1', run: '1', step: {} } as never])).toMatchObject([{ id: 'i1', program: 'OMP', machine: 'host-a' }])
   })
 })

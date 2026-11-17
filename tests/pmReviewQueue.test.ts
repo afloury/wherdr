@@ -36,7 +36,7 @@ describe('a reviewer on omp (no quota reading)', () => {
     // Even with a reading of the other programs, and a strict pace.
     const paced = { ...DEFAULT_PACE, mode: 'everyday' as const, reserve5h: 30 }
     expect(accountOut(codex(99), 'omp', '', now)).toBeUndefined()
-    expect(reviewAccount(codex(99), 'omp', '')).toEqual({ key: 'omp', name: 'Omp', quota: null })
+    expect(reviewAccount(codex(99), 'omp', '')).toEqual({ key: 'omp', name: 'OMP', quota: null })
     expect(reviewerOut(codex(99), 'omp', '', () => paced, now)).toBeUndefined()
     expect(reviewerOut(null, 'omp', '', () => paced, now)).toBeUndefined()
   })

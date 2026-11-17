@@ -283,7 +283,8 @@ export const prefOf = (t: Template, task: Pick<Task, 'type' | 'prefs'>, k: keyof
   task.prefs?.[k] || t.taskTypes[task.type]?.prefs?.[k] || t.prefs?.[k] || ''
 
 // Why the review agent cannot take a review: its account at its limit until `until` (local time).
-export const programName = (program: string) => `${program.charAt(0).toUpperCase()}${program.slice(1)}`
+// As the interface names it (KIND_LABEL in app/utils/format.ts): omp is "OMP".
+export const programName = (program: string) => (program === 'omp' ? 'OMP' : `${program.charAt(0).toUpperCase()}${program.slice(1)}`)
 export const quotaOut = (program: string, until: number) => `${programName(program)} out of quota until ${new Date(until).toTimeString().slice(0, 5)}`
 
 // The last reviewer start in a task's log, when the fallback took it: why, and by whom.

@@ -8,7 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### New
 
-- **omp as a worker, a reviewer and a project coordinator.** A task's `agent`, `reviewAgent` and `reviewFallbackAgent` may be `omp` (started as `omp --model <model> '<message>'`, not resumable like a Codex worker, with no quota reading: only the task-count limits hold). A project's or workspace's coordinator may run on omp too, as an option that is never the default: it starts with a tool list without edit, write, `ast_edit`, `eval`, `task` and `debug` (its shell can still write, as Claude's can), and its conversation can be resumed. With no explicit choice, the first offered Claude or Codex is the default, even when omp comes first in Settings › Agents; `wherdr alfred coordinator start --program omp` accepts it ([Projects](docs/project-management.md#worker-and-reviewer-agents), [Home](docs/home.md)).
+- **omp as a worker, a reviewer and a project coordinator.** A task's `agent`, `reviewAgent` and `reviewFallbackAgent` may be `omp` (started as `omp --model <model> '<message>'`, not resumable, with no quota reading: only the task-count limits hold). A project's or workspace's coordinator may run on omp too, as an option that is never the default: it starts with a tool list without an edit tool, `ast_edit`, `eval`, `task`, `debug` and `lsp` (its shell can still write, as Claude's can), and its conversation can be resumed. With no explicit choice, the first offered Claude or Codex is the default, even when omp comes first in Settings › Agents; `wherdr alfred coordinator start --program omp` accepts it ([Projects](docs/project-management.md#worker-and-reviewer-agents), [Home](docs/home.md)).
 
 ### Fixed
 

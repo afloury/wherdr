@@ -176,8 +176,8 @@ describe('reviewer plan', () => {
     const omp = { ...company, prefs: { agent: 'omp', model: 'sonnet', reviewModel: 'same' } }
     expect(reviewerPlan(omp, task())).toEqual({ program: 'omp', model: 'sonnet' })
     // omp has no quota reading: the fallback is not asked for it, and its name reads plainly if it ever is.
-    expect(reviewerPlan(company, task({ reviewAgent: 'omp', reviewModel: 'openai/gpt-5.5', reviewFallbackAgent: 'claude', reviewFallbackModel: 'same' }), 'Omp out of quota until 10:00'))
-      .toEqual({ program: 'claude', model: 'sonnet', switched: 'Omp out of quota until 10:00' })
+    expect(reviewerPlan(company, task({ reviewAgent: 'omp', reviewModel: 'openai/gpt-5.5', reviewFallbackAgent: 'claude', reviewFallbackModel: 'same' }), 'OMP out of quota until 10:00'))
+      .toEqual({ program: 'claude', model: 'sonnet', switched: 'OMP out of quota until 10:00' })
   })
   // The engine's reading says the review agent's account is out (`out`); none: as before.
   const out = 'Codex out of quota until 14:52'

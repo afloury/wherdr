@@ -36,7 +36,7 @@ import { FEATURE_COMMANDS, parseFeature, type FeatureCommand } from './feature'
 
 // The agent of a coordinator: the project's default, and the one its kept
 // conversation ran with (changing it starts a new conversation, never a
-// resume of another program's session). model: passed to Claude or Codex at
+// resume of another program's session). model: passed to Claude, Codex or omp at
 // its start; none, the harness's default (changed inside the agent).
 export interface CoordinatorAgent { program: CoordinatorProgram, model?: string }
 // The harnesses that can carry a coordinator or Alfred: each reads its role
@@ -516,8 +516,12 @@ export function citedSpecChange(task: Pick<Task, 'specNotes' | 'log'>, reason: s
 export const specChangedText = (what: string) => `The task's spec changed: ${what}\n\n${SPEC_RULE} Follow the new spec from now on.`
 
 // The tools of an omp project coordinator: it reads, searches and runs the shell
-// (`wherdr pm`), but has no edit, write, ast_edit, eval, task or debug tool.
-export const OMP_COORDINATOR_TOOLS = 'read,grep,glob,find,bash,todo,ask,web_search,lsp,wait'
+// (`wherdr pm`). No edit, ast_edit, eval, task, debug or lsp tool (lsp can apply
+// edits: rename, code actions). Verified on omp 18.20: with this list omp has no
+// edit tool, and its `write` tool refuses filesystem paths (it writes only its
+// internal xd:// devices and local:// session scratch). The shell can still
+// write, as with Claude: the guard is the list.
+export const OMP_COORDINATOR_TOOLS = 'read,grep,glob,find,bash,todo,ask,web_search,wait'
 
 // How the coordinator starts, in its own folder, with its harness's default
 // model. Claude: the repo added with --add-dir, its edits denied in the

@@ -160,8 +160,8 @@ agent. Alfred runs with any of Claude, Codex, OMP, Pi, OpenCode, Kimi, Gemini CL
 Copilot, Amp and Droid (other programs are left out of its picker: wherdr knows no instructions
 file they read). A project's coordinator runs with Claude, Codex or omp only: those are the ones that
 can be kept out of the project's repository. wherdr does it for Claude (a deny rule) and Codex (the
-sandbox). omp is kept out by its tool list: it starts without the edit and write tools (and without
-`ast_edit`, `eval`, `task` and `debug`), but its shell can still write, as Claude's can. So omp
+sandbox). omp is kept out by its tool list: it starts without an edit tool (and without
+`ast_edit`, `eval`, `task`, `debug` and `lsp`; the `write` tool left only reaches omp's internal devices, not files), but its shell can still write, as Claude's can. So omp
 is offered for a project's coordinator but never picked for you: with no explicit choice, the first
 offered Claude or Codex is the default, even when omp is first in your order (omp is the default
 only when neither is offered). Choices and order follow you on every device.

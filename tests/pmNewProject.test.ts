@@ -10,7 +10,7 @@ import { draftBody, folderKind, needsRemote, proposeKey, proposeName, shortHome,
 import { findRepos, parseRepos } from '../server/utils/pmRepos'
 import { pmFolderCheck, probeFolder } from '../server/utils/pmFolder'
 import { createPmStore } from '../server/utils/pmStore'
-import { coordinatorArgs, isPlainFolder, roleFiles } from '../shared/pm/coordinator'
+import { OMP_COORDINATOR_TOOLS, coordinatorArgs, isPlainFolder, roleFiles } from '../shared/pm/coordinator'
 import { EXAMPLES } from '../shared/pm/examples'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 
@@ -162,7 +162,8 @@ describe('coordinator of a folder without git', () => {
     // omp has no member-path rule: its tool list (no edit or write) keeps it out of the members, the root is added.
     const omp = coordinatorArgs('omp', '/c', ws.path, isPlainFolder(ws))
     expect(omp.slice(0, 2)).toEqual(['omp', '--tools'])
-    expect(omp[2]).not.toMatch(/edit|write|ast_edit|eval|task|debug/)
+    expect(omp[2]).toBe(OMP_COORDINATOR_TOOLS)
+    expect(omp[2]!.split(',').filter(x => /^(edit|write|ast_edit|eval|task|debug|lsp)$/.test(x))).toEqual([])
     expect(omp.slice(3)).toEqual(['--add-dir', ws.path])
   })
 })
