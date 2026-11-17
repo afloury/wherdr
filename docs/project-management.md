@@ -518,6 +518,12 @@ commits that only merge the base, the task's own change unchanged, and
 changes to comments only are not reviewed again (the same rule
 as for your approval; a comment-only change is said in the log).
 
+The worker's report (`report.md` in the task's folder) grows by one section
+per round: each step handed back to the worker keeps the earlier report and
+adds the round's section at its end, under its own heading. Only that section
+gives the step's proofs (an earlier link proves nothing); a worker that
+rewrote the file gets the earlier report back on top.
+
 ### Guards
 
 Needs: [Workflow](#workflow).
