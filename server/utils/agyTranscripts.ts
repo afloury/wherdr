@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { ChatItem, ChatResponse, ModelInfo } from '../../shared/types'
 import { clip } from './transcriptText'
-import type { TranscriptPane } from './transcripts'
+import { type TranscriptPane, isMissing } from './transcripts'
 import { excerpt, matchAt } from '../../shared/searchText'
 import { ompModelLabel } from './models'
 import { HerdrError } from './herdr'
@@ -47,13 +47,6 @@ const hash12 = (s: string) => createHash('sha1').update(s).digest('hex').slice(0
 const HEAD = /^(.*):(\d+):(null|\d+):([0-9a-f]{12})(?=[/~#]|$)/
 const ANCHOR = /\/(\d+)\.([0-9a-f]{12})(?=[~#]|$)/
 const AGY_SESSION = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i
-
-function isMissing(e: unknown): boolean {
-  const err = e as { code?: string, message?: string } | null
-  if (!err) return false
-  if (err.code === 'ENOENT' || err.code === 'ENOTDIR') return true
-  return err.code === 'remote' && /no such file|not a directory|introuvable/i.test(err.message || '')
-}
 
 // node:sqlite loads lazily through server/utils/sqliteDb.ts: nothing else in
 // the process pays its ExperimentalWarning, and a Node built before 22.13
