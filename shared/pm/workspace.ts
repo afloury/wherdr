@@ -9,6 +9,7 @@ import { checkPrefs, checkSetup, defaultWorkflow, type Prefs, type Template, typ
 import type { Strategy } from './placement'
 import type { OnStateChange } from './onState'
 import { KEY_RE, cleanProjectUpdate, type Project, type ProjectUpdate } from './project'
+import { ROOT_REPO, underRoot } from './workspaceAdopt'
 
 // A workspace's settings, which its members take. machines: the machines
 // beside the workspace's own; clones: the clone root on each (a member's
@@ -66,7 +67,8 @@ export const DEFAULT_INSTRUCTIONS = ['AGENTS.md', 'CLAUDE.md']
 export const INSTRUCTIONS_CAP = 16000 // characters kept of each file
 export function workspaceInstructions(member: Project, list: Project[]): { machine: string, root: string, paths: string[], first?: true } | undefined {
   const ws = workspaceOf(member, list)
-  if (!ws) return undefined
+  // The root's own repository: its worktrees already hold the root's files.
+  if (!ws || isRootMember(member, ws)) return undefined
   const own = (member.overrides ?? []).includes('instructionsFiles'), set = own ? member.instructionsFiles ?? [] : ws.shared?.instructionsFiles
   if (set && !set.length) return undefined
   return { machine: ws.machine, root: ws.path, paths: set ?? DEFAULT_INSTRUCTIONS, ...(set ? {} : { first: true as const }) }
@@ -91,11 +93,15 @@ const trim = (p: string) => p.replace(/\/+$/, '')
 const rootOn = (ws: Project, machine: string) => (machine === ws.machine ? ws.path : ws.shared?.clones?.[machine])
 
 // The member's repository path under the workspace's root (payroll-api for
-// ~/work/payroll-api), else its folder's name.
+// ~/work/payroll-api; ROOT_REPO for the root's own repository), else its folder's name.
 export function repoPath(member: Pick<Project, 'machine' | 'path'>, ws: Project) {
   const root = rootOn(ws, member.machine), path = trim(member.path)
+  if (root && path === trim(root)) return ROOT_REPO
   return root && path.startsWith(`${trim(root)}/`) ? path.slice(trim(root).length + 1) : path.split('/').pop()!
 }
+
+// The member that is the workspace's root's own repository.
+export const isRootMember = (member: Pick<Project, 'machine' | 'path'>, ws: Project) => repoPath(member, ws) === ROOT_REPO
 
 // The member's machines from the workspace's: its home first, then each one
 // with a clone root, its clone under that root.
@@ -104,7 +110,7 @@ function sharedMachines(member: Project, ws: Project): Pick<Project, 'machines' 
   const others = [ws.machine, ...(ws.shared?.machines ?? [])].filter((m, i, all) => m !== member.machine && all.indexOf(m) === i && rootOn(ws, m))
   // A machine the workspace paused stays paused for the member, its home included.
   const paused = (ws.shared?.paused ?? []).filter(m => m === member.machine || others.includes(m))
-  return { ...(others.length ? { machines: [member.machine, ...others], clones: Object.fromEntries(others.map(m => [m, `${trim(rootOn(ws, m)!)}/${repo}`])) } : {}), ...(paused.length ? { paused } : {}) }
+  return { ...(others.length ? { machines: [member.machine, ...others], clones: Object.fromEntries(others.map(m => [m, underRoot(rootOn(ws, m)!, repo)])) } : {}), ...(paused.length ? { paused } : {}) }
 }
 
 // The settings in force for a project: a member's override wins, else the
@@ -174,13 +180,14 @@ export function workflowOverrides(member: Project, ws: Project | undefined, t: P
   return own.size ? { overrides: SHARED_FIELDS.filter(f => own.has(f)) } : {}
 }
 
-// What the store refuses in a project list: a workspace with git, or in a
+// What the store refuses in a project list: a workspace stored with git (its
+// root may be a git repository, which is then a member, never the workspace), or in a
 // workspace; a member of a project that is not a workspace; an unknown override.
 // A member names one workspace (a string), so a project is in one at most.
 export function workspaceErrors(list: Project[]): string[] {
   const errors: string[] = []
   for (const p of list) {
-    if (isWorkspace(p) && p.git !== false) errors.push(`Workspace ${p.key} is a folder without git`)
+    if (isWorkspace(p) && p.git !== false) errors.push(`Workspace ${p.key} is stored without git (git: false): a git repository at its root is a member project`)
     if (p.workspace === undefined) continue
     if (typeof p.workspace !== 'string' || !workspaceOf(p, list)) errors.push(`${p.key} names no existing workspace`)
     if (isWorkspace(p)) errors.push(`Workspace ${p.key} cannot be in a workspace`)
