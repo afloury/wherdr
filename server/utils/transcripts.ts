@@ -1255,16 +1255,11 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
 
   // Codex panes of the machine (kept up to date by the state): for the claims.
   const codexPeers = new Map<string, TranscriptPane>()
-  // Live agy panes: a summaries fallback is only unambiguous when no peer
-  // shares the pane's folder on this machine.
-  const agyPeers = new Map<string, TranscriptPane>()
   // Agents seen at work: they have a conversation (see shared/integrations.ts).
   const activity = createActivity()
   function observe(panes: TranscriptPane[]) {
     codexPeers.clear()
     for (const p of panes) if (p.agent === 'codex') codexPeers.set(p.id, p)
-    agyPeers.clear()
-    for (const p of panes) if (p.agent === 'agy') agyPeers.set(p.id, p)
     const live = new Set(panes.map(p => p.id))
     activity.prune(id => live.has(id))
     // Agents come and go all day (the board's tasks): what was kept for a pane
@@ -1328,11 +1323,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
       } else if (pane.agent === 'agy') {
         const proc = await paneProcess(pane.id, 'agy')
         const guess = proc ? await agySession(fs, home, proc, fs === localFs) : null
-        let id = guess ? guess.id : pane.agentSession
-        if (!id && proc && guess && !guess.ambiguous) {
-          const competing = [...agyPeers.values()].some(o => o.id !== pane.id && o.cwd === pane.cwd)
-          id = await agy.summariesSession(pane, competing)
-        }
+        const id = guess ? guess.id : pane.agentSession
         const file = id && agy.pathOf(id)
         if (file) loc = { file, session: id! }
       } else if (pane.agent === 'codex') loc = await locateCodexPane(pane)

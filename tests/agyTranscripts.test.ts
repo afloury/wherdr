@@ -10,7 +10,7 @@ import {
   agyAnchorOf, agyHeadOf, agyToolSummary, agyUserText, conversationPath, createAgyTranscripts, hasStep,
   parseAgyStep, prefixOf, takeVisible, type AgyDoc, type AgyStep,
 } from '../server/utils/agyTranscripts'
-import { AGY_OTHER, AGY_SESSION, openAgyFixture, stepBlobs, writeAgyFixture, writeAgySummaries } from './helpers/agy-fixture.mjs'
+import { AGY_SESSION, openAgyFixture, stepBlobs, writeAgyFixture, writeAgySummaries } from './helpers/agy-fixture.mjs'
 import { type MachineFs, createShellFs, localFs } from '../server/utils/fsx'
 
 const homes: string[] = []
@@ -271,19 +271,19 @@ it('returns not_found for a missing database and fails open on transient errors'
   await expect(reader.chat(pane)).rejects.toThrow()
 })
 
-it('summaries fallback only resolves a unique live match for the pane folder', async () => {
+it('never guesses a session from the summaries index', async () => {
   const { home } = fixture()
-  const agy = createAgyTranscripts({ home, fs: localFs })
-  const p = { cwd: '/home/user/acme-shop', bornAt: Date.parse('2026-02-02T11:00:00Z') }
-  expect(await agy.summariesSession(p, false)).toBeNull()
-  writeAgySummaries(home, [
-    { id: AGY_SESSION, uris: ['/home/user/acme-shop'], modified: '2026-02-02T12:05:00Z' },
-    { id: AGY_OTHER, uris: ['/home/user/other'], modified: '2026-02-02T12:06:00Z' },
-  ])
+  // A top-level live conversation claims this folder, and its database exists.
+  writeAgySummaries(home, [{ id: AGY_SESSION, uris: ['/home/user/acme-shop'], modified: '2026-02-02T12:05:00Z' }])
   writeAgyFixture(home, { rows: [{ role: 'user', text: 'Hi' }] })
-  expect(await agy.summariesSession(p, false)).toBe(AGY_SESSION)
-  expect(await agy.summariesSession(p, true)).toBeNull() // a peer agy on the same folder
-  expect(await agy.summariesSession({ ...p, cwd: '/home/user/elsewhere' }, false)).toBeNull()
+  // The live agy process holds no conversation file open (the scan reads this
+  // test process's own descriptors) and its launch line carries no flag: the
+  // summaries row must not stand in and put an older conversation on screen.
+  const t = createTranscripts({
+    home,
+    herdr: async () => ({ process_info: { foreground_processes: [{ name: 'agy', pid: process.pid }] } }),
+  })
+  expect(await t.chat({ id: 'p1', agent: 'agy', cwd: '/home/user/acme-shop' })).toMatchObject({ available: false, reason: 'not_found' })
 })
 
 // A remote filesystem over an in-memory store: `read` bytes are counted like
