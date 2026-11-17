@@ -139,8 +139,14 @@ Enter for a few seconds with the placeholder already shown) is submitted by wher
 every send to Claude, idle or busy, whatever core reports, wherdr looks at the box: empty,
 the message was taken (but an empty box with *Pasting…* under it is Claude still reading
 the photos, several seconds for three large ones: wherdr keeps waiting); otherwise it waits up to about 24 seconds for the box to hold that
-message alone, each photo as its placeholder, presses Enter, and presses it again while the
-message is still there (up to ten times over about 16 seconds). This also holds for a
+message alone, each photo as its placeholder (Claude draws the placeholders before the
+text; only their count is compared), presses Enter, and presses it again while the
+message is still there (up to ten times over about 16 seconds). A message with photos ends
+with a lone `\` on its last line: core presses Enter right after its paste, and Claude,
+before it has turned a photo path into `[Image #N]`, would submit the path as plain text;
+`\` + Enter is a new line in Claude, so the message waits in the box for wherdr's Enter.
+A message whose photo still reached Claude as its path is shown as sent, its photo as a
+photo, and leaves one line in the server log (photo count and text size, never the text). This also holds for a
 message sent while Claude works or ends its turn: Enter then puts it in Claude's own queue.
 Enter is only pressed on a box that holds that message alone, so it is never sent twice. A
 send that needed more than one Enter, or stayed in the box, leaves one line in the server
