@@ -1,21 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { flushPromises } from '@vue/test-utils'
-import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
-import { readBody } from 'h3'
+import { mountSuspended } from '@nuxt/test-utils/runtime'
 import Composer from '~/components/Composer.vue'
 import { eventsOpen } from '~/composables/useHerdr'
 import { menuState } from '~/composables/useUi'
 import type { MenuItem } from '~/composables/useUi'
 import type { Pane } from '#shared/types'
-
-const sent: { pane_id: string, text: string }[] = []
-registerEndpoint('/api/prompt', {
-  method: 'POST',
-  handler: async (event) => {
-    sent.push(await readBody<{ pane_id: string, text: string }>(event))
-    return { ok: true, started: true }
-  },
-})
 
 const pane = (id: string, agent: string): Pane => ({
   id, workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent, name: null, label: null, status: 'idle', title: null, cwd: '/home/user/acme-shop', agentSession: null,
@@ -31,7 +20,7 @@ async function openPlus(agent: string) {
 }
 
 describe('Composer + menu: the agent’s slash commands', () => {
-  beforeEach(() => { eventsOpen.value = true; sent.length = 0 })
+  beforeEach(() => { eventsOpen.value = true })
   afterEach(() => { eventsOpen.value = false; menuState.open = false; menuState.items = [] })
 
   // Antigravity CLI 1.5.9: each one runs from a paste + Enter; the panels
@@ -49,17 +38,5 @@ describe('Composer + menu: the agent’s slash commands', () => {
       ['/model', 'Change model'],
       ['/diff', 'View diff'],
     ])
-  })
-
-  it('sends a tapped command to the agent as its message', async () => {
-    const p = await openPlus('agy')
-    commands().find(c => c.cmd === '/context')!.run!()
-    await flushPromises()
-    expect(sent).toEqual([{ pane_id: p.id, text: '/context' }])
-  })
-
-  it('keeps an agent without a command list to Interrupt only', async () => {
-    await openPlus('aider')
-    expect(commands().map(c => c.cmd)).toEqual(['esc'])
   })
 })

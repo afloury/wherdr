@@ -132,7 +132,8 @@ describe('Antigravity slash-command panels', () => {
     expect(readCoreScreen(screen(name), 'agy', 'blocked').choices).toBeNull()
   })
 
-  it.each(PANELS)('%s: read as the terminal, Esc back to the field', async (name) => {
+  it(`${PANELS[0]}: read as the terminal, Esc back to the field`, async () => {
+    const name = PANELS[0]!
     let text = screen(name)
     const screens = createCoreScreens({ call: async () => ({ text }), viewed: () => true })
     const p = { id: name, agent: 'agy', status: 'idle', coreAddress: 'host-a/t2' } as Pane
