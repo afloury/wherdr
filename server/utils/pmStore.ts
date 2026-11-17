@@ -385,11 +385,13 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     shot: (id: string, file: string) => (TASK_ID_RE.test(id) && SHOT_FILE_RE.test(file) ? fs.readFile(path.join(files.shots, id, file)).catch(() => null) : Promise.resolve(null)),
     // A change made on the task as it is on disk, in one write (with a log line
     // when given): a caller's older copy never undoes what another wrote since
-    // (an engine action that ended meanwhile). null: no such task.
-    updateTask: (id: string, change: (t: Task) => Task, log?: { by: string, text: string }) => write(async () => {
+    // (an engine action that ended meanwhile). null: no such task, or the
+    // change gave null (nothing to write on the task as it is now).
+    updateTask: (id: string, change: (t: Task) => Task | null, log?: { by: string, text: string }) => write(async () => {
       const task = TASK_ID_RE.test(id) ? await readJson<Task>(path.join(files.tasks, `${id}.json`)) : null
       if (!task) return null
       const next = change(task)
+      if (!next) return null
       return writeTask(log ? { ...next, log: [...(next.log ?? []), { at: Date.now(), by: log.by, text: showIds(await readProjects(), log.text) }].slice(-200) } : next)
     }),
     // A line of the task's log, saved with the task.
@@ -419,10 +421,14 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     // Appends the changed wakes; the file is rewritten (atomically) once it holds many old lines.
     saveWakes: (changed: Wake[]) => write(async () => {
       if (!changed.length) return
-      const lines = (await fs.readFile(files.wakes, 'utf8').catch(() => '')).split('\n').filter(Boolean)
+      const text = await fs.readFile(files.wakes, 'utf8').catch(() => '')
+      const lines = text.split('\n').filter(Boolean)
       if (lines.length < 500) {
         await fs.mkdir(dir, { recursive: true, mode: 0o700 })
-        return fs.appendFile(files.wakes, changed.map(w => JSON.stringify(w) + '\n').join(''), { mode: 0o600 })
+        // A cut append left a line without its newline: the next wake starts
+        // on a line of its own, never glued to the cut one (both lost).
+        const cut = text && !text.endsWith('\n') ? '\n' : ''
+        return fs.appendFile(files.wakes, cut + changed.map(w => JSON.stringify(w) + '\n').join(''), { mode: 0o600 })
       }
       const ids = new Set(changed.map(w => w.id))
       const keep = [...readQueue(lines, Date.now(), Date.now() - sinceYesterday(Date.now())).filter(w => !ids.has(w.id)), ...changed]
