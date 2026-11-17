@@ -64,7 +64,9 @@ workflow either: ask their coordinator, or open the project, then
 *Workflow › Start from a template*. There, an example that needs a remote
 warns when the repository has none.
 
-**New › Project** opens straight on adding a project: the machine tabs (with
+**New › Project** opens straight on adding a project (its *Project |
+Workspace* switch at the top: *Workspace* shows the
+[workspace form](workspaces.md#creating-a-workspace) instead): the machine tabs (with
 several machines), that machine's git repositories with a search, then *Or
 any folder* with **Browse**: a new or empty folder (created at start, `git
 init` offered), or any folder without git (a folder of several projects, for
