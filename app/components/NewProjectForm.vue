@@ -148,12 +148,6 @@ const notes = {
         </span>
       </div>
       <p v-if="draftGit(draft)" class="coord-hint muted">{{ tl('Its coordinator looks at the repository and proposes a workflow in its first message.') }}</p>
-      <label class="field-label">{{ tl('Agent', 'Agent') }}</label>
-      <AgentPicker v-model="agent" :programs="choices" />
-      <p v-if="current && fallback" class="coord-hint muted">
-        {{ fallback === agent ? tl('The project’s default agent.', 'L’agent par défaut du projet.') : tl(`The default stays ${kindLabel(fallback)}.`, `Le défaut reste ${kindLabel(fallback)}.`) }}
-      </p>
-      <p v-else-if="!fallback" class="coord-hint muted" data-testid="coordinator-no-agent">{{ tl('No offered agent can coordinate: check Settings › Agents.', 'Aucun agent proposé ne peut coordonner : vois Réglages › Agents.') }}</p>
     </template>
 
     <UCollapsible v-if="stopped.length" v-model:open="restartOpen" data-testid="project-restart">
@@ -174,7 +168,8 @@ const notes = {
         </div>
       </template>
     </UCollapsible>
-    <template v-if="current">
+    <!-- One agent picker, always below the restart list: a new folder or a stopped project. -->
+    <template v-if="draft || current">
       <label class="field-label">{{ tl('Agent', 'Agent') }}</label>
       <AgentPicker v-model="agent" :programs="choices" />
       <p v-if="current && fallback" class="coord-hint muted">

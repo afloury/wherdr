@@ -78,7 +78,8 @@ needs no workflow: it has no tasks (a task needs git for its own worktree),
 and its coordinator does the work in it directly. Below, *Restart a
 coordinator* (with their number, collapsed until you open it) lists the
 projects whose coordinator does not run, to start it again; those running are
-in the sidebar, and with none stopped the section is hidden. On a
+in the sidebar, and with none stopped the section is hidden. The agent
+picker comes after it, for a new folder as for a project to restart. On a
 computer the sheet is wider, with a taller repository list.
 
 Then ask the coordinator for tasks, and answer what shows under *Your turn* and
