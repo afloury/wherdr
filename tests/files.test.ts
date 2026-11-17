@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { notesStore } from '../server/utils/notesStore'
-import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, findWritten, writtenTarget, isPdf, isVideo, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
+import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, findWritten, notesAllowed, writtenTarget, isPdf, isVideo, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
 import type { Machine } from '../server/utils/machines'
 import { samplePdf } from './e2e/samplePdf.mjs'
 
@@ -287,4 +287,12 @@ describe('written paths: notes links and long conversations', () => {
     expect(found['plans/key.md']).toEqual([])
   })
 
+})
+
+it('offers the notes only when their folder, symlinks resolved, is in an allowed folder', async () => {
+  mkdirSync(path.join(base, 'notes-ok'), { recursive: true })
+  symlinkSync(elsewhere, path.join(base, 'notes-out'))
+  expect(await notesAllowed(path.join(base, 'notes-ok'), [base])).toBe(true)
+  expect(await notesAllowed(path.join(base, 'notes-out'), [base])).toBe(false)
+  expect(await notesAllowed(path.join(base, 'notes-out'), ['/'])).toBe(true)
 })

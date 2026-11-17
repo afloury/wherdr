@@ -15,6 +15,7 @@
 // written path for a clear error. Only a written path, with "Also show
 // protected files" on, skips them ($5 = 1).
 import { execFile } from 'node:child_process'
+import { realpath } from 'node:fs/promises'
 import path from 'node:path'
 import { DATA_DIR, WHERDR_DIR } from './env'
 import { shq } from './fsx'
@@ -318,6 +319,15 @@ export async function findWritten(m: Machine, cwd: string | null | undefined, re
     }
   }
   return found
+}
+
+// The notes folder, once its symlinks are resolved, lies in one of `roots`
+// (resolved too): only then are notes offered for a written path.
+export async function notesAllowed(dir: string, roots: string[]): Promise<boolean> {
+  const real = await realpath(dir).catch(() => '')
+  if (!real) return false
+  const reals = await Promise.all(roots.map(r => realpath(r).catch(() => '')))
+  return reals.some(r => r && insideRoot(r, real) && real !== r)
 }
 
 // Early, on the path as written (the machine checks again once symlinks are resolved).
