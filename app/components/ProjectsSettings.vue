@@ -5,7 +5,8 @@
 // Add project opens the New sheet on its Project form (NewProjectForm), as the
 // sidebar's New › Project does (the `projects.setup` target: the switch while projects are off); Add workspace, WorkspaceAddSheet. A row whose coordinator
 // proposes a workflow change says so (reviewed on the sheet's Workflow tab).
-// Template library opens TemplateLibrary (`?library=1`).
+// `?library=1` opens the template library (TemplateLibrary), on its own or over
+// a project's sheet (its Workflow tab's Manage templates sets it).
 // Off, the server refuses every change but the switch. Until the overview is
 // read: skeletons (SettingsSkeleton), not an off switch and no project; a failed
 // read shows its error and Try again.
@@ -19,7 +20,6 @@
 // any workspace. A member the filter or search keeps shows under its workspace,
 // the workspace's row shown with it. Rows are compact (ProjectsSettingsRow).
 import type { PmOverview } from '#shared/pm/project'
-import { EXAMPLES } from '#shared/pm/examples'
 import { projectTab, projectsMatching, type ProjectTab } from '~/utils/projectTabs'
 
 const props = defineProps<{ active: boolean }>()
@@ -110,7 +110,6 @@ const groups = computed(() => workspaces.value
 const plain = computed(() => listed.value.filter(outside))
 const hasPlain = computed(() => (data.value?.projects ?? []).some(outside))
 const noneText = (what: 'project' | 'workspace') => (searching.value ? tl(`No ${what} matches.`) : tl(`No ${what} on this tab.`))
-const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.some(t => t.id === e.id)).length)
 </script>
 
 <template>
@@ -179,13 +178,9 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
       </div>
       <p v-else-if="hasPlain" class="muted settings-hint" data-testid="pm-none">{{ noneText('project') }} <UButton v-if="tabPick !== TAB_ALL" variant="link" color="primary" class="pm-show-all" data-testid="pm-show-all" @click="showAll">{{ tl('Show all tabs') }}</UButton></p>
       <p v-else class="muted settings-hint" data-testid="pm-empty">{{ workspaces.length ? tl('No project outside a workspace.') : tl('No project yet.', 'Aucun projet pour l’instant.') }}</p>
-      <button type="button" class="settings-card pm-row pm-library" data-testid="pm-library" @click="libraryOpen = true">
-        <span class="pm-id"><b>{{ tl('Template library') }}</b><small class="mono-label">{{ tl(`${data.templates.length} saved · ${exampleCount} examples`) }}</small></span>
-        <UIcon name="i-lucide-chevron-right" class="pm-chevron" />
-      </button>
       <WorkspaceAddSheet v-model:open="workspaceOpen" :taken="data.projects.flatMap(p => [p.key, ...(p.aliases ?? [])])" @added="k => { load(); show(k) }" />
-      <TemplateLibrary v-model:open="libraryOpen" :templates="data.templates" @changed="load" />
       <ProjectSheet v-if="opened" :key="opened.key" :project="opened" :tab="tab" :templates="data.templates" :projects="data.projects" :review="review" @tab="k => show(opened!.key, k)" @close="show()" @changed="load" />
+      <TemplateLibrary v-model:open="libraryOpen" :templates="data.templates" @changed="load" />
     </template>
     <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
   </div>
@@ -194,10 +189,6 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
 <style scoped>
 .pm-settings h3 { margin-top: 24px; }
 .pm-settings .settings-card { padding: 0; }
-.pm-row { display: flex; width: 100%; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); text-align: left; }
-.pm-row:active { background: var(--surface-2); }
-.pm-id { display: grid; flex: 1; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
-.pm-chevron { flex: none; color: var(--muted); }
 /* Rows and workspaces split by a rule; a workspace's members by a softer one, indented. */
 .pm-card > * + * { border-top: 1px solid var(--line); }
 .pm-ws-head { display: flex; align-items: stretch; min-width: 0; }
@@ -211,7 +202,6 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
 .pm-ws-members > * { border-top: 1px solid var(--line-soft); }
 .pm-ws-members > .pm-member { padding-left: 60px; }
 :deep(.pm-ws-fold) { animation: none !important; }
-.pm-settings .pm-library { margin-top: 16px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
 .pm-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .pm-filter > .pm-tab { flex: 0 1 auto; min-width: 0; }
 .pm-filter > .pm-search { flex: 1 1 240px; height: auto; min-height: 40px; }

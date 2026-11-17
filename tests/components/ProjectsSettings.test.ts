@@ -106,8 +106,13 @@ it('switches project management on; Add project opens New › Project, no Set up
   expect(w.find('[data-testid="pm-setup"]').exists()).toBe(false)
   await w.find('[data-testid="pm-add"]').trigger('click')
   expect(newProjectOpen.value && newAgentOpen.value).toBe(true)
-  expect(w.get('[data-testid="pm-library"]').text()).toContain('1 saved · 4 examples')
-  await w.get('[data-testid="pm-library"]').trigger('click')
+  expect(w.find('[data-testid="pm-library"]').exists()).toBe(false)
+})
+
+// WHR-449: the library lives on the Workflow tab; its deep link still opens it.
+it('library=1 opens the template library', async () => {
+  state = { ...state, enabled: true }
+  mounted = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&library=1' })
   await vi.waitFor(() => expect(inSheet('library-saved')?.dataset.id).toBe('vibe'))
 })
 
