@@ -1214,7 +1214,7 @@ function pathMenuItems(p: string): MenuItem[] {
 }
 function openNotesFile(rel: string) {
   notesFile.value = rel
-  notesOpen.value = true
+  openNotes()
 }
 // Each path chip of the replies: muted when found nowhere, after one request
 // for the paths not asked yet.
