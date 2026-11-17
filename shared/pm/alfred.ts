@@ -38,7 +38,7 @@ export const FIRST_MESSAGE = `${GREETING} Would you like to give me another name
 // per message: with an offer, the name question waits for a message of its own
 // (a tap on a choice answers one question only).
 const V2_OFFER = ' Then, in the same message, when some of those v2 projects are not v3 projects yet, add one short line: you see they come from wherdr v2, and you can set up those projects with them (see "Coming from wherdr v2" in AGENTS.md), with its own choices block.'
-const FIRST_PROJECT_OFFER = ' Then, in the same message, add one or two short sentences: there is no project yet, and you can set up the first one with them, here one question at a time, or in the setup window (see "The first project" in AGENTS.md).'
+const FIRST_PROJECT_OFFER = ' Then, in the same message, add one or two short sentences: there is no project yet, and you can set up the first one with them, here one question at a time, or in the New › Project form (see "The first project" in AGENTS.md).'
 const NAME_LATER = ' Do not ask about your name in this message. Once this offer is answered (done or declined), ask in a message of its own: "Would you like to give me another name?"'
 export const startPrompt = (first: boolean, name: string, v2 = false, none = false) => (!first
   ? `Follow "At start" in AGENTS.md, then greet the user in one short line as ${name}.`
@@ -73,12 +73,12 @@ const V2_SECTION = [
   'End with what was set up, and what is left to do by hand: the migration report (`report` in the answer) lists it (machines it could not add, settings to redo), and the v2 settings each project had are in `left`.', '',
 ]
 
-// The first project of a new user (no project, not from v2): the setup window
-// does the same steps; Alfred opens it or walks them through.
+// The first project of a new user (no project, not from v2): the New › Project form
+// (Settings › Projects › Add project) adds it; Alfred opens it or walks them through.
 const FIRST_PROJECT_SECTION = [
   '## The first project', '',
   'wherdr has no project yet. When the user wants one, ask which they prefer:',
-  '- The setup window: open it with `wherdr alfred ui open --target projects.setup` (its "Set up a project" button, highlighted), and stay there for their questions.',
+  '- The New › Project form: open it with `wherdr alfred ui open --target projects.setup` (Settings › Projects, its "Add project" button highlighted), and stay there for their questions.',
   '- Here with you, one question at a time, each change shown first and made after their yes: turn project management on, the machine and folder of its repository (`wherdr alfred machines`, then `project add`), then its coordinator (`coordinator start`). Tell them its coordinator then looks at the project and, in its first reply, proposes a workflow (the checks before a merge, the reviews, who merges) for them to accept or refuse; no template to pick.', '',
 ]
 

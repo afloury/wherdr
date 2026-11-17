@@ -64,7 +64,7 @@ post('/api/pm/project-visibility', b => edit(b, { visibility: { value: b.value a
 
 const inSheet = (id: string) => document.body.querySelector<HTMLElement>(`[data-testid="${id}"]`)
 let mounted: { unmount: () => void } | null = null
-afterEach(() => { mounted?.unmount(); mounted = null; reset(); refuse = ''; guards = { protected: ['main'] }; newAgentOpen.value = false; gate = Promise.resolve(); down = false })
+afterEach(() => { mounted?.unmount(); mounted = null; reset(); refuse = ''; guards = { protected: ['main'] }; newAgentOpen.value = false; newProjectOpen.value = false; gate = Promise.resolve(); down = false })
 
 // WHR-328: while the overview loads, no off switch and no empty list: skeletons,
 // the buttons disabled; a failed read shows its error and Try again.
@@ -95,7 +95,7 @@ it('loading shows skeletons, then the real values; a failed read shows Try again
   await vi.waitFor(() => expect(v.findAll('[data-testid="pm-project"]')).toHaveLength(1))
 })
 
-it('switches project management on; Add project opens the setup window on a new project', async () => {
+it('switches project management on; Add project opens New › Project, no Set up a project', async () => {
   const w = await mountSuspended(ProjectsSettings, { props: { active: true } })
   mounted = w
   await vi.waitFor(() => expect(w.find('[data-testid="pm-switch"]').attributes('disabled')).toBeUndefined())
@@ -103,17 +103,18 @@ it('switches project management on; Add project opens the setup window on a new 
 
   await w.find('[data-testid="pm-switch"]').trigger('click')
   await vi.waitFor(() => expect(w.find('[data-testid="pm-empty"]').exists()).toBe(true))
+  expect(w.find('[data-testid="pm-setup"]').exists()).toBe(false)
   await w.find('[data-testid="pm-add"]').trigger('click')
-  await vi.waitFor(() => expect(inSheet('setup-project-form')).toBeTruthy())
+  expect(newProjectOpen.value && newAgentOpen.value).toBe(true)
   expect(w.get('[data-testid="pm-library"]').text()).toContain('1 saved · 4 examples')
   await w.get('[data-testid="pm-library"]').trigger('click')
   await vi.waitFor(() => expect(inSheet('library-saved')?.dataset.id).toBe('vibe'))
 })
 
-// WHR-243: Alfred's `ui open --target projects.setup` opens the setup window, not only a halo.
-it('the projects.setup target opens the setup window', async () => {
+// WHR-243: Alfred's `ui open --target projects.setup` opens Add project's form, not only a halo.
+it('the projects.setup target opens New › Project', async () => {
   mounted = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&target=projects.setup' })
-  await vi.waitFor(() => expect(inSheet('setup-wizard')).toBeTruthy())
+  expect(newProjectOpen.value && newAgentOpen.value).toBe(true)
 })
 
 it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name, base, worktree setup, other projects its coordinator may act on, and the visibility', async () => {

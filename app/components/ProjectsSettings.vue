@@ -2,10 +2,10 @@
 // Settings › Projects: the project management switch, then the projects (a git
 // folder on a machine herdr-core reaches). A row opens the project's sheet
 // (ProjectSheet), its key and tab in the URL (`?project=WHR&tab=general`).
-// Add project opens SetupWizard on a new project; Add workspace, WorkspaceAddSheet. A row whose coordinator
+// Add project opens the New sheet on its Project form (NewProjectForm), as the
+// sidebar's New › Project does; Add workspace, WorkspaceAddSheet. A row whose coordinator
 // proposes a workflow change says so (reviewed on the sheet's Workflow tab).
-// Template library opens TemplateLibrary (`?library=1`). Set up a project opens
-// SetupWizard, at the first step left.
+// Template library opens TemplateLibrary (`?library=1`).
 // Off, the server refuses every change but the switch. Until the overview is
 // read: skeletons (SettingsSkeleton), not an off switch and no project; a failed
 // read shows its error and Try again.
@@ -21,7 +21,6 @@ const data = ref<PmOverview | null>(null)
 const error = ref('')
 const loadError = ref('')
 const busy = ref(false)
-const setupOpen = ref(false)
 const workspaceOpen = ref(false)
 
 const machineName = (key: string) => key ? (appConfig.value.machines?.find(m => m.key === key)?.label || key) : (appConfig.value.hostLabel || t('This machine'))
@@ -44,13 +43,13 @@ async function toggle(on: boolean) {
   catch (e) { error.value = (e as Error).message }
   finally { busy.value = false }
 }
-const setupAdding = ref(false)
-// Alfred's `ui open --target projects.setup`: the setup window opens too, not only its button's halo.
-watch(() => props.active && route.query.target === 'projects.setup', (go) => { if (go) { setupAdding.value = false; setupOpen.value = true } }, { immediate: true })
+// The New sheet on its Project form (read by NewAgentSheet when it opens).
 function addProject() {
-  setupAdding.value = true
-  setupOpen.value = true
+  newProjectOpen.value = true
+  newAgentOpen.value = true
 }
+// Alfred's `ui open --target projects.setup`: Add project's form opens too, not only its button's halo.
+watch(() => props.active && route.query.target === 'projects.setup', (go) => { if (go) addProject() }, { immediate: true })
 
 // The open project and its tab, from the URL.
 const opened = computed(() => (props.active ? data.value?.projects.find(p => p.key === route.query.project) : undefined))
@@ -77,8 +76,6 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
       <SettingsSkeleton v-if="!data" kind="switch" />
       <USwitch v-else :model-value="data.enabled" :disabled="busy" size="xl" data-testid="pm-switch" @update:model-value="v => toggle(v)" />
     </label>
-    <UButton color="neutral" variant="ghost" size="lg" icon="i-lucide-list-checks" class="pm-setup" data-testid="pm-setup" data-ui-target="projects.setup" @click="setupAdding = false; setupOpen = true">{{ tl('Set up a project') }}</UButton>
-    <SetupWizard v-model:open="setupOpen" :adding="setupAdding" @changed="load" />
 
     <template v-if="!data">
       <h3>{{ tl('Projects') }}</h3>
@@ -91,7 +88,7 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
     <template v-else-if="data.enabled">
       <h3>{{ tl('Projects', 'Projets') }}</h3>
       <div class="pm-actions">
-        <UButton color="primary" variant="solid" size="xl" icon="i-lucide-plus" data-testid="pm-add" @click="addProject">{{ tl('Add project', 'Ajouter le projet') }}</UButton>
+        <UButton color="primary" variant="solid" size="xl" icon="i-lucide-plus" data-testid="pm-add" data-ui-target="projects.setup" @click="addProject">{{ tl('Add project', 'Ajouter le projet') }}</UButton>
         <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-boxes" data-testid="pm-add-workspace" @click="workspaceOpen = true">{{ tl('Add workspace') }}</UButton>
         <UButton v-if="data.projects.length" to="/board" color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" data-testid="pm-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
       </div>
@@ -116,7 +113,6 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
 
 <style scoped>
 .pm-settings h3 { margin-top: 24px; }
-.pm-setup { margin-top: 8px; }
 .pm-settings .settings-card { padding: 0; }
 .pm-row { display: flex; width: 100%; align-items: center; gap: 12px; padding: 13px 16px; border-bottom: 1px solid var(--line); text-align: left; }
 .pm-row:last-child { border-bottom: 0; }

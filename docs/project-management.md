@@ -13,9 +13,9 @@ Each step does the thing in place; Next waits until it is done, and Back shows
 only when there is a step to go back to (never on the first). While no project
 went through every step, the **Board** header shows *Finish setup (2/3)*,
 which opens it at the first step left; once one project's coordinator runs,
-the button is gone. **Settings › Projects › Set up a project** opens it too, on
-the first project with a step left, and *Add project* opens it on a new
-project.
+the button is gone. Home's *Open the setup window* opens it too.
+**Settings › Projects › Add project** adds a project with the New sheet's
+*Project* form instead (see below).
 
 There is no workflow to pick here: the project's coordinator sets it up with
 you, and you change it any time by talking to it or to Alfred. Templates stay
@@ -126,11 +126,12 @@ data, and post it only on your yes.
 
 ## Projects
 
-**Settings › Projects** holds the *Project management* switch, *Set up a project*,
+**Settings › Projects** holds the *Project management* switch,
 the project list and the [template library](#template-library): each row shows
 the name (with a **Public** badge for a public repository), the key, the machine
 and the folder. *Add project*, *Add workspace* and *Open the board* sit above
-the list. *Add project* opens the setup window on a new project; *Open the
+the list. *Add project* opens the **New** sheet on its *Project* form, as the sidebar's
+New › Project does; *Open the
 board* goes to the board. Until the list is read, the switch and the rows show
 as grey blocks and both buttons wait; a failed read says why, with *Try again*. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
