@@ -36,12 +36,14 @@ describe('wherdr blocks', () => {
       expect(parseWherdrBlock(text), text).toBeNull()
     // One reply for all: the number, the option's letter, `skip` when left; read back as given.
     const reply = questionsReply([...items, { q: 'Name?', options: ['x', 'y'] }, { q: 'Later?', options: ['x', 'y'] }], [{ option: 0 }, { option: 1 }, { text: ' my  own ' }, null])
-    expect(reply).toBe('1A Postgres · 2B No, remove it · 3 my own · 4 skip')
-    expect(readQuestionsReply([...items, { q: 'Name?', options: ['x', 'y'] }, { q: 'Later?', options: ['x', 'y'] }], reply)).toEqual([{ option: 0 }, { option: 1 }, { text: 'my own' }, null])
-    // ` · ` typed in an answer never splits it: sent as `•`, read back whole.
-    const tricky = questionsReply(items, [{ text: 'alpha · 2B beta' }, { option: 0 }])
-    expect(tricky).toBe('1 alpha • 2B beta · 2A Yes')
-    expect(readQuestionsReply(items, tricky)).toEqual([{ text: 'alpha • 2B beta' }, { option: 0 }])
+    expect(reply).toBe('1A Postgres\n2B No, remove it\n3 my  own\n4 skip')
+    expect(readQuestionsReply([...items, { q: 'Name?', options: ['x', 'y'] }, { q: 'Later?', options: ['x', 'y'] }], reply)).toEqual([{ option: 0 }, { option: 1 }, { text: 'my  own' }, null])
+    // What the user typed reaches the agent as is, and reads back whole.
+    for (const text of ['alpha · 2B beta', 'alpha·beta', '2A Yes · 3 x']) {
+      const sent = questionsReply(items, [{ text }, { option: 0 }])
+      expect(sent).toBe(`1 ${text}\n2A Yes`)
+      expect(readQuestionsReply(items, sent)).toEqual([{ text }, { option: 0 }])
+    }
   })
 
   it('draws an invalid block as an ordinary code block', () => {

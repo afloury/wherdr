@@ -67,12 +67,12 @@ export function uiGuide(role: UiRole, o: { pm?: boolean, key?: string } = {}): s
     return ['## Showing instead of telling', '',
       'When you ask the user something, the chat can draw it: a fenced code block in the language `wherdr`, one line per element. You have no `ui` command: these blocks only show.', '',
       ...table, '', ...examples,
-      'Choices only in a question you are blocked on. One block per message, after the sentence that explains it. The user answers a `questions` card in one message: `1A Postgres · 2B No, remove it` (`skip` for one left unanswered).', '']
+      'Choices only in a question you are blocked on. One block per message, after the sentence that explains it. The user answers a `questions` card in one message, one line per question: `1A Postgres`, `2B No, remove it`, `3 <their own words>` or `3 skip`.', '']
   }
   return ['## Showing instead of telling', '',
     'Show the user what you mean instead of describing it. A `wherdr` block is a fenced code block in the language `wherdr`, one line per element, one kind per block: the chat draws it with live data (never what you wrote about it).', '',
     ...table, '', ...examples,
-    '- At most one card or button group per message, after the sentence that explains it; never a card with no sentence. Several questions go in one `questions` card, answered in one message: `1A Postgres · 2B No, remove it` (`skip` for one left unanswered).',
+    '- At most one card or button group per message, after the sentence that explains it; never a card with no sentence. Several questions go in one `questions` card, answered in one message, one line per question: `1A Postgres`, `2B No, remove it`, `3 <their own words>` or `3 skip`.',
     '- In a wake: `wherdr` blocks only. A `ui` command or `--propose` is refused there: tell the user what you would show instead of trying.',
     '- A refusal (no open wherdr: `not_found`, or not in the user\'s turn) → give the in-app link in text. Never retry in a loop.',
     '- Only the user\'s click acts: never say a button\'s action is done ("I merged it") before its card shows the outcome.', '']

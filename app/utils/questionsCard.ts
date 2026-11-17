@@ -1,17 +1,22 @@
 // The answers of a `questions` card (utils/markdown.ts, QuestionsCard.vue) as
-// the one message it sends, and back: `1A Postgres · 2 my own words · 3 skip`.
+// the one message it sends, and back, one answer per line:
+//   1A Postgres
+//   2 my own words
+//   3 skip
 // Each answer starts with the question's number, then the option's letter
 // when one was picked (readable as "1A 2B" too); a question left unanswered
-// is sent as `skip`. A `·` in an answer (typed, or in an option) is sent as
-// `•`, so that ` · ` only ever separates answers and the reply reads back.
+// is sent as `skip`. An answer is one line (an option, or the card's
+// one-line field), so the line breaks alone separate them: the user's words
+// reach the agent exactly as typed, and the reply reads back whole.
 import type { WherdrQuestion } from './markdown'
 
 // The option picked (its index), or the words typed instead.
 export type QuestionPick = { option: number } | { text: string } | null
 export const SKIP = 'skip'
-const SEP = ' · '
+const SEP = '\n'
 export const optionLetter = (i: number) => String.fromCharCode(65 + i)
-const clean = (text: string) => text.replace(/·/g, '•').replace(/\s+/g, ' ').trim()
+// Only a line break, which a one-line answer cannot hold, is ever changed.
+const clean = (text: string) => text.replace(/\s*\n\s*/g, ' ').trim()
 
 export function questionsReply(items: WherdrQuestion[], picks: QuestionPick[]): string {
   return items.map((q, i) => {
@@ -25,8 +30,8 @@ export function questionsReply(items: WherdrQuestion[], picks: QuestionPick[]): 
 // A sent reply read back, so that an answered card shows what was given.
 export function readQuestionsReply(items: WherdrQuestion[], reply: string): QuestionPick[] {
   const picks: QuestionPick[] = items.map(() => null)
-  for (const part of reply.replace(/\s+/g, ' ').split(SEP)) {
-    const m = /^\s*(\d+)([A-D])?\s+(.*?)\s*$/.exec(part)
+  for (const part of reply.split(SEP)) {
+    const m = /^\s*(\d+)([A-D])? (.*?)\s*$/.exec(part)
     const i = m ? Number(m[1]) - 1 : -1
     if (!m || !items[i] || picks[i]) continue
     const option = m[2] ? m[2].charCodeAt(0) - 65 : items[i]!.options.findIndex(o => clean(o).toLowerCase() === m[3]!.toLowerCase())

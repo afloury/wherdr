@@ -293,8 +293,8 @@ questions
 Tap one option per question (tap it again to take it back), or **Other…** and type your own
 answer. On a computer, with the focus in the card, a digit goes to that question and a letter
 (`a` to `d`) picks that option and moves to the next one. **Send** sends all the answers as one
-reply, quoted to the message: `1A Postgres · 2B No, remove it`, the number, the option's letter
-and its text, your own words after the number. Send needs one answer at least; a question left
+reply, quoted to the message, one line per question: `1A Postgres`, then `2B No, remove it`: the
+number, the option's letter and its text, or your own words, exactly as typed, after the number. Send needs one answer at least; a question left
 unanswered is sent as `skip`, and the card says how many will be. Like choice buttons, only the
 card of the agent's last message is live; once answered it is greyed with the answers given. In
 Tasks to review, the card in the agent's question answers it the same way.
