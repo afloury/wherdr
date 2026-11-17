@@ -77,6 +77,8 @@ function sync() {
   const next = order.value.filter(id => !handled.value.includes(id) && (ids.has(id) || (id === cur && id !== acted)))
   for (const c of live.value) if (!next.includes(c.id)) next.push(c.id)
   seen.value = { ...seen.value, ...Object.fromEntries(live.value.map(c => [c.id, c])) }
+  // One that left the list takes its pending action's state with it.
+  for (const id of order.value) if (!next.includes(id)) forget(id)
   order.value = next
   const i = cur ? next.indexOf(cur) : -1
   at.value = i >= 0 ? i : Math.min(at.value, next.length)
@@ -117,13 +119,14 @@ const verdict = computed(() => (card.value && state.value ? reviewLine(card.valu
 const notes = computed(() => (card.value && state.value ? { worker: workerNote(card.value.plan, state.value), review: reviewNote(card.value.plan, state.value) } : {}))
 
 const pane = computed(() => (card.value?.terminal ? herdrState.value?.panes.find(p => p.coreAddress === card.value!.terminal) : undefined))
-const { busy, error, pressing, refused, press, start, resume, decide, sendBack, restartReview, startWorker, askFix } = useTaskActions(() => card.value, () => { acted = card.value && !refused.value ? card.value.id : ''; taskChanged() })
+// Each task's own busy, error and refusal: an action still running on one never shows on the next.
+const { busy, error, pressing, refused, failed, forget, press, start, resume, decide, sendBack, restartReview, startWorker, askFix } = useTaskActions(() => card.value, (id) => { acted = !failed(id) ? id : ''; taskChanged() })
 const rejecting = ref(false)
-watch(() => card.value?.id, () => { error.value = ''; rejecting.value = false; acted = '' })
+watch(() => card.value?.id, () => { rejecting.value = false; acted = '' })
 const DONE_MS = 400
 // Done with the current one: its confirmation, then off the list, the next one shows.
 async function leave(c: Card, how: 'approved' | 'sent' | 'answered' | 'fixing') {
-  if (error.value || refused.value) return
+  if (failed(c.id)) return
   heldAt.value = progress.value
   held.value = c
   done.value = how
