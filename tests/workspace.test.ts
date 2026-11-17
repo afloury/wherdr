@@ -81,7 +81,7 @@ describe('workspaces', () => {
 
   it('refuses a workspace with git, an unknown workspace, a nested one and an unknown override', () => {
     expect(workspaceErrors([ws, member])).toEqual([])
-    expect(workspaceErrors([{ ...ws, git: undefined }])).toEqual(['Workspace WS is a folder without git'])
+    expect(workspaceErrors([{ ...ws, git: undefined }])).toEqual(['Workspace WS is stored without git (git: false): a git repository at its root is a member project'])
     expect(workspaceErrors([member])).toEqual(['PAY names no existing workspace'])
     expect(workspaceErrors([ws, { ...member, workspace: 'PAY' }, { ...member, key: 'X', workspace: 'WS' }])).toEqual(['PAY names no existing workspace'])
     expect(workspaceErrors([ws, { ...ws, key: 'W2', workspace: 'WS' }])).toEqual(['Workspace W2 cannot be in a workspace'])
