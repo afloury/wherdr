@@ -579,11 +579,17 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const { instructionsFiles: _sf, ...sharedRest } = rest.shared ?? {}
       const instr = rest.workspace && files ? { instructionsFiles: files }
         : isWorkspace(rest) && update.instructionsFiles !== undefined ? { shared: { ...sharedRest, ...(update.instructionsFiles ? { instructionsFiles: update.instructionsFiles } : {}) } } : {}
+      // A workspace's commit message template is the one its members take: it goes in its shared settings.
+      const sharedNow = 'shared' in instr ? instr.shared : rest.shared
+      const { commitMessage: _scm, ...sharedOther } = sharedNow ?? {}
+      const sharedMessage = isWorkspace(rest) && update.commitMessage !== undefined
+        ? { shared: { ...sharedOther, ...(update.commitMessage ? { commitMessage: update.commitMessage } : {}) } } : {}
+      const ownMessage = !isWorkspace(rest) && commitMessage ? { commitMessage } : {}
       const placement = update.placement ?? rest.placement
       const allowed = machinesOf(rest, update)
       if (allowed.errors.length) throw badInput(allowed.errors)
       const overrides = memberOverrides(list[i]!, update)
-      list[i] = { ...kept, ...overrides, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...ownName, ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...(commitMessage ? { commitMessage } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(allowed.paused ? { paused: allowed.paused } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}), ...(update.archiveAfter !== undefined ? { archiveAfter: update.archiveAfter } : {}), ...(keepBranch ? { deleteBranch: false as const } : {}), ...(reach.length ? { reach } : {}), ...instr }
+      list[i] = { ...kept, ...overrides, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...ownName, ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...ownMessage, ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(allowed.paused ? { paused: allowed.paused } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}), ...(update.archiveAfter !== undefined ? { archiveAfter: update.archiveAfter } : {}), ...(keepBranch ? { deleteBranch: false as const } : {}), ...(reach.length ? { reach } : {}), ...instr, ...sharedMessage }
       await saveProjects(list)
       return list[i]!
     }),

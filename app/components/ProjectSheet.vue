@@ -67,7 +67,7 @@ async function load() {
   keyInput.value = form.key
   loaded.value = true
 }
-const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', commitMessage: x.commitMessage ?? '', archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
+const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', commitMessage: (x.kind === 'workspace' ? x.shared?.commitMessage : x.commitMessage) ?? '', archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
 // The worktree setup: paths one per line (or comma separated). Folders to
 // share: empty is node_modules (no `share`), noShare is none (`share: []`).
 const setup = reactive({ copy: '', share: '', noShare: false, lockfile: '', command: '', timeout: '' })
