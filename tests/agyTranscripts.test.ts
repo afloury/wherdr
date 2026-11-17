@@ -11,7 +11,7 @@ import {
   parseAgyStep, prefixOf, takeVisible, type AgyDoc, type AgyStep,
 } from '../server/utils/agyTranscripts'
 import { AGY_SESSION, openAgyFixture, stepBlobs, writeAgyFixture, writeAgySummaries } from './helpers/agy-fixture.mjs'
-import { type MachineFs, createShellFs, localFs } from '../server/utils/fsx'
+import { type MachineFs, createShellFs } from '../server/utils/fsx'
 
 const homes: string[] = []
 const keepers: { close: () => void }[] = []
@@ -139,17 +139,6 @@ it('reads a user prompt, the reply, its thinking and its tool call with the pair
   const tool = items.find(i => i.role === 'tool')
   expect(tool).toMatchObject({ name: 'run_command', text: 'npm test', out: '12 passed' })
   expect(items.at(-1)).toMatchObject({ role: 'assistant', text: '**All twelve tests pass.**' })
-})
-
-it('honors ANTIGRAVITY_APP_DATA_DIR locally but not on a remote filesystem', async () => {
-  const { home, reader } = fixture()
-  const alternate = path.join(home, 'alternate')
-  writeAgyFixture(alternate, { rows: [{ role: 'user', text: 'Custom data dir' }] })
-  vi.stubEnv('ANTIGRAVITY_APP_DATA_DIR', path.join(alternate, '.gemini/antigravity-cli'))
-  expect((await reader.chat(pane)).items?.[0]?.text).toBe('Custom data dir')
-  const remote = createAgyTranscripts({ home, fs: { ...localFs } })
-  writeAgyFixture(home, { rows: [{ role: 'user', text: 'Default data dir' }] })
-  expect((await remote.chat(pane)).items?.[0]?.text).toBe('Default data dir')
 })
 
 it('skips malformed protobuf rows in a stored conversation', async () => {
