@@ -38,6 +38,10 @@ describe('wherdr blocks', () => {
     const reply = questionsReply([...items, { q: 'Name?', options: ['x', 'y'] }, { q: 'Later?', options: ['x', 'y'] }], [{ option: 0 }, { option: 1 }, { text: ' my  own ' }, null])
     expect(reply).toBe('1A Postgres · 2B No, remove it · 3 my own · 4 skip')
     expect(readQuestionsReply([...items, { q: 'Name?', options: ['x', 'y'] }, { q: 'Later?', options: ['x', 'y'] }], reply)).toEqual([{ option: 0 }, { option: 1 }, { text: 'my own' }, null])
+    // ` · ` typed in an answer never splits it: sent as `•`, read back whole.
+    const tricky = questionsReply(items, [{ text: 'alpha · 2B beta' }, { option: 0 }])
+    expect(tricky).toBe('1 alpha • 2B beta · 2A Yes')
+    expect(readQuestionsReply(items, tricky)).toEqual([{ text: 'alpha • 2B beta' }, { option: 0 }])
   })
 
   it('draws an invalid block as an ordinary code block', () => {
