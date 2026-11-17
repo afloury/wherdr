@@ -16,12 +16,13 @@
 
 ## Install and update
 
-- [Requirements](docs/installation.md#requirements): hc, Linux or macOS, Node.js 22 and Git.
+- [Requirements](docs/installation.md#requirements): hc, Linux or macOS (Windows experimental), Node.js 22 and Git.
 - [The hc socket](docs/installation.md#the-hc-socket): the default `HC_SOCKET`: `$XDG_RUNTIME_DIR/herdr-core/<session>.sock` on Linux, `~/.local/state/herdr-core/<session>/<session>.sock` on macOS; session `default`.
 - [v2 and v3 on one computer](docs/installation.md#v2-and-v3-on-one-computer): v2 and a by-hand v3 both default to port 7683; start v3 with `PORT=7684`.
 - [A second v3 on one computer](docs/installation.md#a-second-v3-on-one-computer): a second v3 keeps its own pm folders (`WHERDR_PM_DIR`, `.wherdr/pm-<name>` from the install script for another `--name`); its uninstall removes them.
 - [On macOS](docs/installation.md#on-macos): install by hand (the script needs systemd), the macOS socket path, a LaunchAgent, Keep awake.
 - [Installation](docs/installation.md#installation): install v3 and run it as a service.
+- [On Windows (experimental)](docs/installation.md#on-windows-experimental): not supported yet (the Files view and git changes call `sh`); install hc with `install.ps1`, `HC_SOCKET` is a named pipe `\\.\pipe\herdr-core-<user>-<session>.sock`, `npm.cmd` when PowerShell blocks `npm`.
 - [Keep it running](docs/installation.md#keep-it-running): run wherdr as a service (a systemd --user unit, a macOS LaunchAgent).
 - [On-device dictation files](docs/installation.md#on-device-dictation-files): where the dictation models and read-aloud voices are fetched and kept.
 - [Updating](docs/installation.md#updating): the version in Settings › About (with its commit), a banner for a newer 3.x release only (never a 2.x) with What's new (the release notes) and Update with Alfred, or update v3 by hand.
