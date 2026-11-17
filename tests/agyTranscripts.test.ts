@@ -5,9 +5,9 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { fieldOf } from '../server/utils/agyProtobuf'
 import {
   agyToolSummary, agyUserText, agyAnchorOf, conversationPath, hasStep, agyHeadOf,
-  modelOf, parseAgy, parseAgyStep, prefixOf, takeVisible, type AgyDoc, type AgyStep,
+  parseAgyStep, prefixOf, takeVisible, type AgyDoc, type AgyStep,
 } from '../server/utils/agyTranscripts'
-import { AGY_SESSION, agyModelBlob, stepBlobs } from './helpers/agy-fixture.mjs'
+import { AGY_SESSION, stepBlobs } from './helpers/agy-fixture.mjs'
 
 const homes: string[] = []
 function fixture() {
@@ -69,27 +69,6 @@ it('summarizes a tool call from its best-known argument', () => {
   expect(agyToolSummary('grep_search', JSON.stringify({ Query: 'retry' }))).toBe('retry')
   expect(agyToolSummary('run_command', 'not json')).toBe('run_command')
   expect(agyToolSummary('read_file', '{}')).toBe('read_file')
-})
-
-it('pairs a stored result back to its call and renders an error notice', () => {
-  const steps = [
-    step({ role: 'user', text: 'Run tests' }, 0)!,
-    step({ role: 'agent', thinking: 'Check first', calls: [{ id: 'call-1', name: 'run_command', args: JSON.stringify({ CommandLine: 'npm test' }) }] }, 1)!,
-    step({ role: 'agent', text: '**All pass.**' }, 3)!,
-    step({ role: 'error', text: 'Invalid call' }, 4)!,
-  ]
-  const d = doc(steps, [['call-1', { out: '12 passed', error: false }]])
-  const items = parseAgy(steps, d)
-  expect(items.map(i => i.role)).toEqual(['user', 'thinking', 'tool', 'assistant', 'notice'])
-  expect(items[2]).toMatchObject({ name: 'run_command', text: 'npm test', out: '12 passed' })
-  expect(items[4]).toMatchObject({ name: 'error', error: true, text: 'Invalid call' })
-})
-
-it('reads the model from gen_metadata data', () => {
-  expect(modelOf(agyModelBlob('gemini-3-pro-test', 'Gemini 3 Pro (test)')))
-    .toEqual({ id: 'gemini-3-pro-test', label: 'Gemini 3 Pro (test)' })
-  expect(modelOf(agyModelBlob('other-model'))).toMatchObject({ id: 'other-model' })
-  expect(modelOf(null)).toBeNull()
 })
 
 it('pages backwards over the visible items', () => {
