@@ -78,7 +78,7 @@ const V2_SECTION = [
 const FIRST_PROJECT_SECTION = [
   '## The first project', '',
   'wherdr has no project yet. When the user wants one, ask which they prefer:',
-  '- The New › Project form: open it with `wherdr alfred ui open --target projects.setup` (Settings › Projects, its "Add project" button highlighted), and stay there for their questions.',
+  '- The New › Project form: open it with `wherdr alfred ui open --target projects.setup` (Settings › Projects, its "Add project" button highlighted). With project management off, that highlights the Project management switch instead: tell them to turn it on, and the form opens then. Stay there for their questions.',
   '- Here with you, one question at a time, each change shown first and made after their yes: turn project management on, the machine and folder of its repository (`wherdr alfred machines`, then `project add`), then its coordinator (`coordinator start`). Tell them its coordinator then looks at the project and, in its first reply, proposes a workflow (the checks before a merge, the reviews, who merges) for them to accept or refuse; no template to pick.', '',
 ]
 

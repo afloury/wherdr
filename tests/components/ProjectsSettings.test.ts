@@ -113,8 +113,19 @@ it('switches project management on; Add project opens New › Project, no Set up
 
 // WHR-243: Alfred's `ui open --target projects.setup` opens Add project's form, not only a halo.
 it('the projects.setup target opens New › Project', async () => {
+  state = { ...state, enabled: true }
   mounted = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&target=projects.setup' })
-  expect(newProjectOpen.value && newAgentOpen.value).toBe(true)
+  await vi.waitFor(() => expect(newProjectOpen.value && newAgentOpen.value).toBe(true))
+})
+// Projects off: the halo goes on the switch, the form waits until it is turned on.
+it('the projects.setup target with projects off points at the switch, then opens New › Project', async () => {
+  const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&target=projects.setup' })
+  mounted = w
+  await vi.waitFor(() => expect(w.get('[data-testid="pm-switch"]').attributes('data-ui-target')).toBe('projects.setup'))
+  expect(newAgentOpen.value).toBe(false)
+  await w.get('[data-testid="pm-switch"]').trigger('click')
+  await vi.waitFor(() => expect(newProjectOpen.value && newAgentOpen.value).toBe(true))
+  expect(w.get('[data-testid="pm-add"]').attributes('data-ui-target')).toBe('projects.setup')
 })
 
 it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name, base, worktree setup, other projects its coordinator may act on, and the visibility', async () => {

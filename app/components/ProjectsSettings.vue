@@ -3,7 +3,7 @@
 // folder on a machine herdr-core reaches). A row opens the project's sheet
 // (ProjectSheet), its key and tab in the URL (`?project=WHR&tab=general`).
 // Add project opens the New sheet on its Project form (NewProjectForm), as the
-// sidebar's New › Project does; Add workspace, WorkspaceAddSheet. A row whose coordinator
+// sidebar's New › Project does (the `projects.setup` target: the switch while projects are off); Add workspace, WorkspaceAddSheet. A row whose coordinator
 // proposes a workflow change says so (reviewed on the sheet's Workflow tab).
 // Template library opens TemplateLibrary (`?library=1`).
 // Off, the server refuses every change but the switch. Until the overview is
@@ -49,7 +49,9 @@ function addProject() {
   newAgentOpen.value = true
 }
 // Alfred's `ui open --target projects.setup`: Add project's form opens too, not only its button's halo.
-watch(() => props.active && route.query.target === 'projects.setup', (go) => { if (go) addProject() }, { immediate: true })
+// Projects off: the halo is on the switch instead (adding is refused while off), and the
+// form opens once it is turned on.
+watch(() => props.active && route.query.target === 'projects.setup' && !!data.value?.enabled, (go) => { if (go) addProject() }, { immediate: true })
 
 // The open project and its tab, from the URL.
 const opened = computed(() => (props.active ? data.value?.projects.find(p => p.key === route.query.project) : undefined))
@@ -74,7 +76,7 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
         <small>{{ tl('Tasks follow the workflow of their project. Off, nothing is changed.') }}</small>
       </span>
       <SettingsSkeleton v-if="!data" kind="switch" />
-      <USwitch v-else :model-value="data.enabled" :disabled="busy" size="xl" data-testid="pm-switch" @update:model-value="v => toggle(v)" />
+      <USwitch v-else :model-value="data.enabled" :disabled="busy" size="xl" data-testid="pm-switch" :data-ui-target="data.enabled ? undefined : 'projects.setup'" @update:model-value="v => toggle(v)" />
     </label>
 
     <template v-if="!data">
