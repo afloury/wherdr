@@ -1322,13 +1322,11 @@ async function retryQueued(q: { id: string }) {
   }
 }
 function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' | 'inInput' | 'raw'>) {
-  const l = pendingLabel(q, waitFor.value, props.pane.agent)
-  // The server still waits for a photo to become an image (or sends its path): on its way, never "Not sent" (WHR-454).
-  if ((l.kind === 'sending' && q.state === 'sending') || (l.kind === 'input' && props.pane.sending)) {
-    if (uploadNames(q.raw).length) return t('Sending… adding the photo')
-  }
+  const l = pendingLabel(q, waitFor.value, props.pane.agent, props.pane.sending)
   switch (l.kind) {
-    case 'read': return t('Read by the agent')
+    // Not in the transcript yet: on its way, never "read" (WHR-471); a photo
+    // the server still waits on to become an image says so (WHR-454).
+    case 'sending': return uploadNames(q.raw).length && (q.state === 'sending' || props.pane.sending) ? t('Sending… adding the photo') : t('Sending…')
     case 'input': return t('Not sent yet · waiting in the agent’s input')
     case 'stopped': return t('Queued · ') + t('agent stopped')
     case 'installing': return t('Queued · ') + tl('sent when Codex is ready')
@@ -1337,10 +1335,11 @@ function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' 
       if (l.agent === 'claude') return t('Queued by Claude · sent when it finishes')
       if (l.agent === 'codex') return t('Queued by Codex · sent when it finishes')
       return t('Queued by the agent · sent when it finishes')
-    case 'queued': return t('Queued')
-    default: return t('Queued · ') + t('sending…')
+    default: return t('Queued')
   }
 }
+// Sending: a small turning loader instead of a fixed icon.
+const queuedSending = (q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' | 'inInput'>) => pendingLabel(q, waitFor.value, props.pane.agent, props.pane.sending).kind === 'sending'
 watch(() => queuedList.value.map(q => `${q.id}:${q.phase}`).join(','), () => nextTick(() => scrollToEnd(false)))
 watch(() => liveRun.value && `${liveRun.value.text}\n${liveRun.value.omp.out || ''}`, () => nextTick(() => scrollToEnd(false)))
 watch(() => props.pane.draft?.text, () => nextTick(() => scrollToEnd(false)))
@@ -1894,7 +1893,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </span><UserText :text="q.body" :pasted="q.pasted" />
               </template>
             </UChatMessage>
-            <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ queuedLabel(q) }}</span></div>
+            <div class="queued-tag sent" :role="queuedSending(q) ? 'status' : undefined">
+              <UIcon :name="queuedSending(q) ? 'i-lucide-loader-circle' : 'i-lucide-clock'" :class="{ spin: queuedSending(q) }" /><span>{{ queuedLabel(q) }}</span>
+            </div>
           </div>
           <div v-for="q in queuedList.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
@@ -1920,8 +1921,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <UIcon name="i-lucide-undo-2" />{{ t('Cancel') }}
               </button>
             </div>
-            <div v-else class="queued-tag">
-              <UIcon name="i-lucide-clock" /><span>{{ queuedLabel(q) }}</span>
+            <div v-else class="queued-tag" :role="queuedSending(q) ? 'status' : undefined">
+              <UIcon :name="queuedSending(q) ? 'i-lucide-loader-circle' : 'i-lucide-clock'" :class="{ spin: queuedSending(q) }" /><span>{{ queuedLabel(q) }}</span>
             </div>
           </div>
           <!-- herdr-core: text left unsent in Claude's own input box, Claude's queue. -->

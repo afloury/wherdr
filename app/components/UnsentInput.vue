@@ -5,8 +5,9 @@ import type { Pane } from '#shared/types'
 
 // `shown`: the field holds a message the conversation already shows as
 // waiting there: no second bubble, only its actions. `pane.sending`: wherdr's
-// server is still submitting it (a photo becoming an image, WHR-454): it reads
-// as on its way, with no actions that would race the server's own Enter.
+// server is still submitting it (its Enters, a photo becoming an image,
+// WHR-454): it reads as on its way, with no actions that would race the
+// server's own Enter. "Not sent" only once the server is done (WHR-471).
 const props = defineProps<{ pane: Pane, shown?: boolean }>()
 const busy = ref<'send' | 'clear' | 'send-queued' | null>(null)
 // Why the last send failed, shown under the row until the next try.
@@ -36,6 +37,8 @@ async function act(action: 'send' | 'clear' | 'send-queued') {
     busy.value = null
   }
 }
+// A photo shows in the field as "[Image #N]", or as its path until Claude reads it.
+const hasPhoto = computed(() => /\[Image #\d+\]|\.(?:png|jpe?g|gif|webp|heic)\b/i.test(props.pane.draft?.text || ''))
 const icon = (a: typeof busy.value, idle: string) => (busy.value === a ? 'i-lucide-loader-circle' : idle)
 </script>
 
@@ -63,7 +66,7 @@ const icon = (a: typeof busy.value, idle: string) => (busy.value === a ? 'i-luci
       <UIcon name="i-lucide-circle-alert" /><span>{{ error }}</span>
     </div>
     <div v-else-if="pane.sending" class="queued-tag" role="status" data-testid="unsent-sending">
-      <UIcon name="i-lucide-loader-circle" class="spin" /><span>{{ t('Sending… adding the photo') }}</span>
+      <UIcon name="i-lucide-loader-circle" class="spin" /><span>{{ hasPhoto ? t('Sending… adding the photo') : t('Sending…') }}</span>
     </div>
     <div v-else-if="!shown" class="queued-tag failed" role="status">
       <UIcon name="i-lucide-circle-alert" /><span>{{ t('Not sent — still in Claude’s input') }}</span>
