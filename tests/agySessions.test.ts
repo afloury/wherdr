@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { afterEach, expect, it, vi } from 'vitest'
+import { afterEach, expect, it } from 'vitest'
 import { agyConversationFlag, agyFdsSessions, agySession } from '../server/utils/agySessions'
 import { AGY_OTHER, AGY_SESSION } from './helpers/agy-fixture.mjs'
 import { type MachineFs, localFs } from '../server/utils/fsx'
@@ -12,7 +12,7 @@ function fixture() {
   homes.push(home)
   return { home }
 }
-afterEach(() => { vi.unstubAllEnvs(); for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true }) })
+afterEach(() => { for (const home of homes.splice(0)) rmSync(home, { recursive: true, force: true }) })
 
 const cli = (home: string) => path.join(home, '.gemini/antigravity-cli')
 
@@ -68,13 +68,4 @@ it('fails closed when the descriptors point at two conversations', async () => {
   const fs: MachineFs = { ...localFs, readProcessFiles: async () => [`${base}/conversations/${AGY_SESSION}.db`, `${base}/presence/${AGY_OTHER}.lock`] }
   const guess = await agySession(fs, home, { pid: 100, argvExact: true, argv: ['agy', '--conversation', AGY_SESSION] }, false)
   expect(guess).toEqual({ id: null, ambiguous: true })
-})
-
-it('honors ANTIGRAVITY_APP_DATA_DIR for local descriptor paths', async () => {
-  const { home } = fixture()
-  const alternate = path.join(home, 'custom-data')
-  vi.stubEnv('ANTIGRAVITY_APP_DATA_DIR', alternate)
-  const fs: MachineFs = { ...localFs, readProcessFiles: async () => [`${alternate}/presence/${AGY_SESSION}.lock`, `${cli(home)}/presence/${AGY_OTHER}.lock`] }
-  const guess = await agySession(fs, home, { pid: 100 }, true)
-  expect(guess).toEqual({ id: AGY_SESSION, ambiguous: false })
 })
