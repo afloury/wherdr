@@ -72,7 +72,12 @@ it('opens on adding a project; below, only the projects whose coordinator does n
   await vi.waitFor(() => expect(w.findAll('[data-repo]')).toHaveLength(2))
   expect(w.find('[data-testid="project-template"]').exists()).toBe(false)
   expect(w.find('#newPrompt').exists()).toBe(false)
-  // CO runs (the sidebar has it), Alfred has its own row.
+  // CO runs (the sidebar has it), Alfred has its own row; collapsed until opened.
+  const toggle = w.get('[data-testid="project-restart-toggle"]')
+  expect(toggle.text()).toBe('Restart a coordinator · 2')
+  expect(w.find('[data-testid="project-existing"]').exists()).toBe(false)
+  await toggle.trigger('click')
+  await vi.waitFor(() => expect(w.find('[data-testid="project-existing"]').exists()).toBe(true))
   expect(w.get('[data-testid="project-existing"]').findAll('[data-project]').map(b => b.text())).toEqual(['WEBWebsite', 'DOCDocs'])
   await w.get('[data-project="WEB"]').trigger('click')
   expect(w.get('[data-testid="coordinator-start"]').text()).toBe('Start with Codex')
@@ -85,10 +90,10 @@ it('opens on adding a project; below, only the projects whose coordinator does n
   w.unmount()
 })
 
-it('no existing project to start again: no Existing projects heading', async () => {
+it('no project to start again: no Restart a coordinator section', async () => {
   const w = await openSheet([{ project: 'CO', name: 'Company', agent: opus, ran: opus, terminal: 'host/t1' }], [running])
-  expect(w.find('[data-testid="project-existing"]').exists()).toBe(false)
-  expect(w.text()).not.toContain('Existing projects')
+  expect(w.find('[data-testid="project-restart"]').exists()).toBe(false)
+  expect(w.text()).not.toContain('Restart a coordinator')
   w.unmount()
 })
 

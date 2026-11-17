@@ -75,9 +75,10 @@ with the agent you chose (*Start with Claude*, *Codex*…), and its first
 message proposes a workflow ([its first
 conversation](#the-coordinators-first-conversation)). A folder without git
 needs no workflow: it has no tasks (a task needs git for its own worktree),
-and its coordinator does the work in it directly. Below, *Existing projects*
-lists the projects whose coordinator does not run, to start it again; those
-running are in the sidebar, and with none stopped the heading is hidden. On a
+and its coordinator does the work in it directly. Below, *Restart a
+coordinator* (with their number, collapsed until you open it) lists the
+projects whose coordinator does not run, to start it again; those running are
+in the sidebar, and with none stopped the section is hidden. On a
 computer the sheet is wider, with a taller repository list.
 
 Then ask the coordinator for tasks, and answer what shows under *Your turn* and
