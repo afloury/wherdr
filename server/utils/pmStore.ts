@@ -40,6 +40,7 @@ import { eventOf, stateChanges, type TaskStateName } from '../../shared/pm/onSta
 import { cleanWorkspaceFields, effectiveProjects, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
 import type { MapFile } from '../../shared/pm/workspaceMap'
 import { DATA_DIR } from './env'
+import { writeFileAtomic, writeJsonAtomic } from './atomicWrite'
 
 // A project coordinator: the sha256 of its token, its terminal (herdr-core
 // address), where its current turn comes from (said: the user's message), the
@@ -87,17 +88,7 @@ async function readJson<T>(file: string): Promise<T | null> {
   }
 }
 
-async function writeJson(file: string, data: unknown) {
-  await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 })
-  const temp = `${file}.${randomUUID()}.tmp`
-  try {
-    await fs.writeFile(temp, JSON.stringify(data, null, 2) + '\n', { mode: 0o600 })
-    await fs.rename(temp, file)
-  } catch (error) {
-    await fs.rm(temp, { force: true }).catch(() => {})
-    throw error
-  }
-}
+const writeJson = (file: string, data: unknown) => writeJsonAtomic(file, data, { dirMode: 0o700 })
 
 // A line of a project's log: a task removed (task), or a contributor's PR
 // merged on the user's yes (pr, said: the user's own message), by whom and why.
@@ -435,9 +426,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       }
       const ids = new Set(changed.map(w => w.id))
       const keep = [...readQueue(lines, Date.now(), Date.now() - sinceYesterday(Date.now())).filter(w => !ids.has(w.id)), ...changed]
-      const temp = `${files.wakes}.${randomUUID()}.tmp`
-      await fs.writeFile(temp, keep.map(w => JSON.stringify(w) + '\n').join(''), { mode: 0o600 })
-      await fs.rename(temp, files.wakes)
+      await writeFileAtomic(files.wakes, keep.map(w => JSON.stringify(w) + '\n').join(''))
     }),
     incidents: async () => (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? [],
     addIncidents: (list: Omit<Incident, 'id'>[]) => write(async () => {
