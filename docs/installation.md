@@ -11,7 +11,7 @@ npm and Homebrew packages, the one-tap update and Docker belong to wherdr v2: se
 - **An hc session** (herdr-core) running on the server, with protocol generation 1 and the
   methods listed in [herdr-core › Setup](core.md#setup). Know its socket path: wherdr needs it in
   `HC_SOCKET`. To install hc: `curl -fsSL https://releases.herdr.dev/core/install.sh | sh` (into `~/.local/bin`).
-- **Linux or macOS** with **Node.js 22** or newer and Git. wherdr runs as the user who runs hc.
+- **Linux or macOS** (Windows is experimental, see [On Windows](#on-windows-experimental)) with **Node.js 22** or newer and Git. wherdr runs as the user who runs hc.
   The build needs about 1.5 GB of memory: on a small machine (a Raspberry Pi), build with
   `NODE_OPTIONS=--max-old-space-size=1536`.
 - The agents you use (Claude Code, Codex) installed on each machine, in a folder of the usual
@@ -87,6 +87,35 @@ The script needs `systemd --user`, so on macOS install by hand: the steps above,
 socket path. To keep wherdr running, use a LaunchAgent (below). Machines added to hc over SSH
 work the same; a Mac that sleeps stops its agents, which
 [Keep awake](machines.md#manage-machines) prevents while you need them.
+
+### On Windows (experimental)
+
+Windows is **not supported yet**: wherdr starts and drives hc, but some views still call `sh`
+and do not work, among them the **Files** view and the **git changes**. To try it:
+
+1. Install hc from PowerShell with its `install.ps1`
+   (`irm https://releases.herdr.dev/core/install.ps1 | iex`), then start an hc session.
+2. On Windows, hc listens on a **named pipe**, not a file:
+   `\\.\pipe\herdr-core-<user>-<session>.sock` (session `default` unless set). To find it:
+
+   ```powershell
+   [System.IO.Directory]::GetFiles("\\.\pipe\") | Select-String herdr-core
+   ```
+
+3. Build and start as [by hand](#installation), with `HC_SOCKET` set to that pipe. If
+   PowerShell refuses `npm` (`npm.ps1` is blocked by the default execution policy), call
+   `npm.cmd` instead:
+
+   ```powershell
+   git clone -b v3 https://github.com/afloury/wherdr.git
+   cd wherdr
+   npm.cmd ci
+   npm.cmd run build
+   $env:HC_SOCKET = "\\.\pipe\herdr-core-<user>-default.sock"
+   npm.cmd start
+   ```
+
+The install script and the service sections below are for Linux and macOS only.
 
 ### Keep it running
 

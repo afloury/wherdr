@@ -36,7 +36,7 @@ import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from
 import { userEvent, userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
 import { boardOrder, orderTasks } from '../../shared/pm/boardOrder'
-import { removeTask, resumeTask, stopTask } from './pmStop'
+import { pauseForRoom, removeTask, resumeTask, stopTask } from './pmStop'
 import { checkOnGithub } from './pmGhCheck'
 import { noteBack } from './pmStall'
 import { reviveWorker } from './pmRelease'
@@ -556,6 +556,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
     case 'task check': return checkOnGithub(deps, (await taskOf(cmd.task)).id, by)
     case 'task stop': {
       const task = await taskOf(cmd.task)
+      if (cmd.forRoom) return { task: await pauseForRoom(deps, task.id, cmd.reason, by), paused: 'it goes on by itself once its machine has room' }
       return { task: await stopTask(deps, task.id, { who: 'coordinator', wake: turn !== 'user' }, cmd.reason, by) }
     }
     case 'task remove': {

@@ -21,7 +21,7 @@ import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
 import { findReplyOrigin, parseReply, type ReplyTarget } from '#shared/replyQuote'
 import { messageId, messageOf, messageRef, pointRef, refLine, refsIn, sameRef, type Reference } from '#shared/reference'
-import { WAKE_LABEL, wakeKindOf, type WakeKind } from '#shared/pm/wakes'
+import { WAKE_LABEL, splitWakes, wakeKindOf, type WakeKind } from '#shared/pm/wakes'
 import { cardNoteOf } from '#shared/uiActions'
 import { isStartPrompt } from '#shared/pm/alfred'
 import type { ProposalAnswer } from '#shared/pm/coordinator'
@@ -38,6 +38,7 @@ import { readAloudEngine, stopSpeaking } from '~/composables/useReadAloud'
 import { foldableReply } from '~/utils/wakeReply'
 import { TONE_ICON, firstSentence, quietStreaks, runSum, wakeSum, type RunSum, type WakeSum } from '~/utils/wakeSummary'
 import { openTaskSheet } from '~/composables/useTaskSheet'
+import { QUESTIONS_HOST, type QuestionsHost } from '~/utils/questionsCard'
 
 const props = defineProps<{ pane: Pane, localQueued: OutboxItem[] }>()
 // A version of a reply replaced while the agent writes takes its question marks with it.
@@ -500,7 +501,8 @@ const NOTICE: Record<string, [string, string]> = {
 type Block = ({ k: 'day', key: string, label: string }
   // `own`: it opens a turn the agent took by itself (a background task finished…).
   | { k: 'who', key: string, own?: boolean }
-  | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, ts: string | null, reply: ReplyTarget | null, origin: string | null, wake: WakeKind | null, ms?: number }
+  // `shared`: a wake Claude took in one turn with the user's own message (its answer is the user's too).
+  | { k: 'user', key: string, text: string, pasted?: string[], srcs: string[], files: { path: string, name: string }[], time: string | null, at: string | null, ts: string | null, reply: ReplyTarget | null, origin: string | null, wake: WakeKind | null, ms?: number, shared?: true }
   // `rid`: its code in the references to it (shared/reference.ts messageId).
   | { k: 'assistant', key: string, id: string, rid: string, text: string, html: string, time: string | null, ts: string | null, endsTurn: boolean, ms?: number }
   | { k: 'thinking', key: string, id: string, text: string, html: string, ms: number | undefined }
@@ -575,7 +577,9 @@ const agent = computed(() => props.pane.agent)
 // Alfred's conversation: its replies are headed with its name, not the agent's.
 const alfredHere = computed(() => isAlfredPane(props.pane))
 const hasDraft = computed(() => Boolean(props.pane.draft || props.pane.queueSendNow))
-const unsentPane = computed<Pane>(old => (old && old.id === props.pane.id && old.queueSendNow === props.pane.queueSendNow && JSON.stringify(old.draft) === JSON.stringify(props.pane.draft) ? old : props.pane))
+// The same object while nothing it shows changed; `sending` too, or "Sending…" stays after the server is done (WHR-472).
+const unsentPane = computed<Pane>(old => (old && old.id === props.pane.id && old.queueSendNow === props.pane.queueSendNow && old.sending === props.pane.sending
+  && old.inputText === props.pane.inputText && JSON.stringify(old.draft) === JSON.stringify(props.pane.draft) ? old : props.pane))
 const waitFor = computed(() => waitingOn(props.pane))
 // Same props objects for the messages on each render (none built inline).
 // A user message is one framed bubble: its images first, then its text, so a
@@ -662,6 +666,20 @@ const blocks = computed<Block[]>(() => {
     lastReplyBlock = null
   }
   const keys = itemKeys(list)
+  const userBlock = (it: ChatItem, raw: string, key: string, embedded: string[], shared = false) => {
+    // Attached files (PDF, text…): a chip each; their line and photo paths leave the text.
+    // Images re-read from the transcript (ref = position of the message in the
+    // file), then photos stored on the server whose path stayed as text.
+    const { text, srcs, files } = userMessageParts(raw, embedded)
+    // Reply to a specific message: the marker becomes a quote linking to the original.
+    // Alfred's start message is wherdr's: a collapsed system line.
+    if (isStartPrompt(text)) { out.push({ k: 'system', key, text: tl('Start instructions sent by wherdr'), full: text }); return }
+    const card = cardNoteOf(text)
+    if (card !== null) { out.push({ k: 'card', key, text: card, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null }); return }
+    const parsed = parseReply(text)
+    const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
+    out.push({ k: 'user', key, text: parsed ? parsed.body : text, pasted: it.pasted, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, ts: it.ts || null, reply: parsed?.reply || null, origin, wake: wakeKindOf(text), ...msOf(it), ...(shared ? { shared: true as const } : {}) })
+  }
   list.forEach((it, i) => {
     if (it.ts) {
       const day = new Date(it.ts).toDateString()
@@ -706,18 +724,16 @@ const blocks = computed<Block[]>(() => {
     flush()
     const key = keys[i]!
     if (it.role === 'user') {
-      // Attached files (PDF, text…): a chip each; their line and photo paths leave the text.
-      // Images re-read from the transcript (ref = position of the message in the
-      // file), then photos stored on the server whose path stayed as text.
-      const { text, srcs, files } = userMessageParts(it.text, itemImageSrcs(it))
-      // Reply to a specific message: the marker becomes a quote linking to the original.
-      // Alfred's start message is wherdr's: a collapsed system line.
-      if (isStartPrompt(text)) { out.push({ k: 'system', key, text: tl('Start instructions sent by wherdr'), full: text }); return }
-      const card = cardNoteOf(text)
-      if (card !== null) { out.push({ k: 'card', key, text: card, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null }); return }
-      const parsed = parseReply(text)
-      const origin = parsed ? findReplyOrigin(replies, parsed.reply)?.key || null : null
-      out.push({ k: 'user', key, text: parsed ? parsed.body : text, pasted: it.pasted, srcs, files, time: it.ts ? fmtTime(it.ts) : null, at: it.ts ? fmtDateTime(it.ts) : null, ts: it.ts || null, reply: parsed?.reply || null, origin, wake: wakeKindOf(text), ...msOf(it) })
+      // A wake Claude took in the same turn as the user's message: each part
+      // its own block, in order (the wakes fold, the user's keeps its bubble
+      // and the turn's photos).
+      // Photos Claude keeps apart from the text (images/ref) with only wakes
+      // around them: their own bubble, first (they came with the user's send).
+      const parts = splitWakes(it.text), embedded = itemImageSrcs(it)
+      if (embedded.length && parts.some(p => p.wake) && !parts.some(p => !p.wake)) parts.unshift({ wake: false, text: '' })
+      if (parts.length < 2) { userBlock(it, it.text, key, embedded); return }
+      const mineAt = parts.findIndex(p => !p.wake)
+      parts.forEach((p, n) => userBlock(it, p.text, n ? `${key}:${n}` : key, n === mineAt ? embedded : [], mineAt >= 0))
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
@@ -835,8 +851,9 @@ function foldWakes(out: Block[]): Block[] {
     const done = j < out.length || turn.at(-1)?.k === 'turn' || wakesDone.has(b.key)
     if (done) wakesDone.add(b.key)
     const asked = !!last && asks(last)
-    // Only a routine one-liner folds; any other reply shows in full.
-    const fold = done && !!last && !asked && foldableReply(last.text)
+    // Only a routine one-liner folds; any other reply shows in full, and so
+    // does one that also answers the user's message of the same turn.
+    const fold = done && !!last && !asked && !b.shared && foldableReply(last.text)
     const changed = turn.some(x => x.k === 'tools' && x.list.some(changes))
     const routine = fold && b.wake !== 'incident' && !changed
     if (!routine) endRun()
@@ -992,6 +1009,22 @@ function choose(btn: HTMLButtonElement) {
   haptic()
   emit('choose', `${refLine(ref)}\n${btn.dataset.a}`)
 }
+// A `questions` card (QuestionsCard.vue): live and answered as `choices` are;
+// its Send sends all its answers as one reply, quoted to the message.
+provide<QuestionsHost>(QUESTIONS_HOST, {
+  state(el) {
+    const key = el.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey || ''
+    const ref = choiceRef(el)
+    const given = ref ? sentAnswer(key, ref) : null
+    return { live: key === blocks.value.findLast(b => b.k === 'assistant')?.key && given === null && !readOnly.value, given }
+  },
+  send(el, text) {
+    const ref = choiceRef(el)
+    if (!ref) return
+    haptic()
+    emit('choose', `${refLine(ref)}\n${text}`)
+  },
+})
 // The words of a question (`.q-text`) and its button share a number in their message.
 const wordsOf = (btn: HTMLElement) => btn.closest('.md-body')?.querySelectorAll<HTMLElement>(`.q-text[data-n="${btn.dataset.n}"]`) || []
 const draftText = computed(() => useDraft(props.pane.id).text)
@@ -1200,7 +1233,7 @@ function pathMenuItems(p: string): MenuItem[] {
 }
 function openNotesFile(rel: string) {
   notesFile.value = rel
-  notesOpen.value = true
+  openNotes()
 }
 // Each path chip of the replies: muted when found nowhere, after one request
 // for the paths not asked yet.
@@ -1308,13 +1341,11 @@ async function retryQueued(q: { id: string }) {
   }
 }
 function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' | 'inInput' | 'raw'>) {
-  const l = pendingLabel(q, waitFor.value, props.pane.agent)
-  // The server still waits for a photo to become an image (or sends its path): on its way, never "Not sent" (WHR-454).
-  if ((l.kind === 'sending' && q.state === 'sending') || (l.kind === 'input' && props.pane.sending)) {
-    if (uploadNames(q.raw).length) return t('Sending… adding the photo')
-  }
+  const l = pendingLabel(q, waitFor.value, props.pane.agent, props.pane.sending)
   switch (l.kind) {
-    case 'read': return t('Read by the agent')
+    // Not in the transcript yet: on its way, never "read" (WHR-471); a photo
+    // the server still waits on to become an image says so (WHR-454).
+    case 'sending': return uploadNames(q.raw).length && (q.state === 'sending' || props.pane.sending) ? t('Sending… adding the photo') : t('Sending…')
     case 'input': return t('Not sent yet · waiting in the agent’s input')
     case 'stopped': return t('Queued · ') + t('agent stopped')
     case 'installing': return t('Queued · ') + tl('sent when Codex is ready')
@@ -1323,10 +1354,11 @@ function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' 
       if (l.agent === 'claude') return t('Queued by Claude · sent when it finishes')
       if (l.agent === 'codex') return t('Queued by Codex · sent when it finishes')
       return t('Queued by the agent · sent when it finishes')
-    case 'queued': return t('Queued')
-    default: return t('Queued · ') + t('sending…')
+    default: return t('Queued')
   }
 }
+// Sending: a small turning loader instead of a fixed icon.
+const queuedSending = (q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' | 'inInput'>) => pendingLabel(q, waitFor.value, props.pane.agent, props.pane.sending).kind === 'sending'
 watch(() => queuedList.value.map(q => `${q.id}:${q.phase}`).join(','), () => nextTick(() => scrollToEnd(false)))
 watch(() => liveRun.value && `${liveRun.value.text}\n${liveRun.value.omp.out || ''}`, () => nextTick(() => scrollToEnd(false)))
 watch(() => props.pane.draft?.text, () => nextTick(() => scrollToEnd(false)))
@@ -1880,7 +1912,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 </span><UserText :text="q.body" :pasted="q.pasted" />
               </template>
             </UChatMessage>
-            <div class="queued-tag sent"><UIcon name="i-lucide-check" /><span>{{ queuedLabel(q) }}</span></div>
+            <div class="queued-tag sent" :role="queuedSending(q) ? 'status' : undefined">
+              <UIcon :name="queuedSending(q) ? 'i-lucide-loader-circle' : 'i-lucide-clock'" :class="{ spin: queuedSending(q) }" /><span>{{ queuedLabel(q) }}</span>
+            </div>
           </div>
           <div v-for="q in queuedList.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
@@ -1906,8 +1940,8 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <UIcon name="i-lucide-undo-2" />{{ t('Cancel') }}
               </button>
             </div>
-            <div v-else class="queued-tag">
-              <UIcon name="i-lucide-clock" /><span>{{ queuedLabel(q) }}</span>
+            <div v-else class="queued-tag" :role="queuedSending(q) ? 'status' : undefined">
+              <UIcon :name="queuedSending(q) ? 'i-lucide-loader-circle' : 'i-lucide-clock'" :class="{ spin: queuedSending(q) }" /><span>{{ queuedLabel(q) }}</span>
             </div>
           </div>
           <!-- herdr-core: text left unsent in Claude's own input box, Claude's queue. -->

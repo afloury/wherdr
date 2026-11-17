@@ -4,9 +4,12 @@
 
 A **workspace** is a project of its own kind whose coordinator runs a set of
 linked repositories, for work that spans several of them (an API and the app
-that calls it, for instance). It has no git: its folder is a root such as
-`~/work`, under which the repositories are cloned. It belongs to one home tab
-group; a group may hold several workspaces.
+that calls it, for instance). Its folder is a root such as `~/work`, under
+which the repositories are cloned. The workspace itself has no git, but its
+root may be a git repository (shared specs, architecture docs, the agents'
+rules): that repository can then be a member like any other, see
+[The root's own repository](#the-roots-own-repository). It belongs to one home
+tab group; a group may hold several workspaces.
 
 Each repository the workspace works on is a **member project**: an ordinary
 project, with its own key, tasks and board, but **no coordinator of its own**.
@@ -15,7 +18,7 @@ at most, and a workspace is never itself in a workspace.
 
 ## Creating a workspace
 
-In Settings › Projects, *Add workspace* (next to *Add project*), or in the
+In Settings › Projects, *Add workspace* (in the *Workspaces* section's header), or in the
 sidebar's *New* sheet › *Project* with its *Project | Workspace* switch on
 *Workspace*, asks for (the same form in both places):
 
@@ -128,7 +131,8 @@ The workspace's coordinator makes a repository a member when a task first
 needs it, with no question to you:
 
 - `wherdr pm repo adopt <repo>`: `<repo>` is its path under the root (such as
-  `payroll-api` or `apps/web-app`), or its full path inside the root.
+  `payroll-api` or `apps/web-app`), or its full path inside the root; `.` (or
+  the root's own path) adopts the root's own repository.
 
 The new member gets a key and a name proposed from its folder (as the New sheet
 does: `payroll-api` → `PA`) and the next free color, takes every shared setting
@@ -148,6 +152,31 @@ wherdr refuses:
   repository;
 - a repository without an `origin` when the workflow its tasks would run
   pushes or opens pull requests.
+
+### The root's own repository
+
+When the workspace's root is itself a git repository, `wherdr pm repo adopt .`
+makes it a member project: its key and name are proposed from the root's
+folder (`~/specs` → `SPC`), and it has its own board, tasks and workflow
+like any member. Its clone on another machine is that machine's root.
+
+- Its tasks' worktrees hold the **root repository's files only**: a worktree is
+  a checkout of what the root tracks, so the repositories under the root
+  (separate git repositories, untracked by the root) are never in it. The
+  worktree setup never copies or shares a path inside, or holding, another
+  git repository (*not copied services (another git repository)* in the
+  task's log).
+- Its tasks get no workspace instructions files: their worktree already holds
+  the root's `AGENTS.md`.
+- A root without a remote works with a workflow that merges locally
+  (`git.land`); a workflow that pushes or opens pull requests is refused at
+  adoption, as for any repository without an `origin`.
+- The workspace's coordinator never changes it itself: on Claude, its edits
+  are denied in the whole root then, so specs and notes change through the
+  root member's tasks, and it plans in its own folder.
+
+Adopting the root still refuses a root that leads elsewhere through a symbolic
+link, and a root that is already another project.
 
 A member runs only on the machines that have its clone at
 `<root on that machine>/<repo path>`: before a task's first start on another

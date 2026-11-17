@@ -51,10 +51,14 @@ const messageForm = (text: string) => tagsFirst(withoutUploads(text), uploadName
 // Claude's field holds this message alone with at least one photo still as
 // its path (the others as "[Image #N]"), the lone "\" aside: Claude took the
 // path as typed text and will not turn it into an image any more (WHR-454).
+// Collapsed into "[Pasted text #N +K lines]", the paths are not on screen: a
+// photo missing from its "[Image #N]" tags is inside it as its path (Claude
+// turns them into images when it takes the paste, never later; WHR-472).
 export function fieldHoldsRawPhoto(field: string | null | undefined, text: string): boolean {
   const f = String(field || '').replace(/\\\s*$/, '')
+  if (PASTE_TAG.test(f)) return imageTagCount(f) < uploadNames(text).length && fieldHolds(f, text, true, true)
   const raw = (f.match(PHOTO_PATH) || []).length
-  return raw > 0 && !PASTE_TAG.test(f) && raw + imageTagCount(f) === uploadNames(text).length
+  return raw > 0 && raw + imageTagCount(f) === uploadNames(text).length
     && looseForm(f) === looseForm(withoutUploads(text))
 }
 // Why a field does not hold a message, for the server log: sizes, never text.
@@ -72,8 +76,11 @@ export function fieldHolds(field: string | null | undefined, text: string, exact
   if (!m || !form(field || '')) return false
   if (parts.length === 1) return exact ? parts[0] === m : m.length > 0 && parts[0]!.startsWith(m)
   // One paste stand-in, for a multi-line message: the text around it is ours,
-  // and it stands for at least one character of it.
+  // and it stands for at least one character of it. The server's own match
+  // (exact, not loose) counts the photos' tags: one missing is a path inside
+  // the stand-in (fieldHoldsRawPhoto).
   if (parts.length !== 2 || !withoutUploads(text).includes('\n')) return false
+  if (exact && !loose && imageTagCount(field) !== uploadNames(text).length + imageTagCount(text)) return false
   const [before, after] = parts as [string, string]
   return m.length > before.length + after.length && m.startsWith(before) && m.endsWith(after)
 }

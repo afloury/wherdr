@@ -130,11 +130,17 @@ data, and post it only on your yes.
 
 ## Projects
 
-**Settings › Projects** holds the *Project management* switch,
-the project list and the [template library](#template-library): each row shows
-the name (with a **Public** badge for a public repository), the key, the machine
-and the folder. *Add project*, *Add workspace* and *Open the board* sit above
-the list. *Add project* opens the **New** sheet on its *Project* form, as the sidebar's
+**Settings › Projects** holds the *Project management* switch, then two
+sections: **Workspaces**, each [workspace](workspaces.md)'s row with its member
+projects indented under it, and **Projects**, those outside any workspace
+(the [template library](#template-library) is on a project's Workflow tab).
+A workspace folds or
+opens with the chevron on its left (open by default; the choice stays on the
+device). Each row is compact: the key as its colored badge, the name (with a
+**Public** badge for a public repository) and the machine on one line, the
+folder small under it; a long name or folder ends with an ellipsis. *Add
+workspace* sits in the Workspaces header, *Add project* and *Open the board* in
+the Projects header. *Add project* opens the **New** sheet on its *Project* form, as the sidebar's
 New › Project does; *Open the
 board* goes to the board. Until the list is read, the switch and the rows show
 as grey blocks and both buttons wait; a failed read says why, with *Try again*. A row opens the
@@ -148,7 +154,8 @@ home tabs: *Follow tab* (the default: the projects of the home tab open now, the
 same rule as the board's *Follow machine tab*), *All*, then each machine tab
 and tab group. The choice stays on the device. Past 8 projects under the filter,
 a search field finds a project by name, key (a former one too) or folder, any
-case. When nothing shows, the list says so with *Show all tabs*. A link that
+case. A member the filter or search keeps shows under its workspace, the
+workspace's row shown with it (a folded workspace opens while you search). When nothing shows, the list says so with *Show all tabs*. A link that
 names a project (`?project=KEY`) opens it even when the filter hides it.
 
 A project can also be a [workspace](workspaces.md): a folder without git whose
@@ -518,6 +525,12 @@ commits that only merge the base, the task's own change unchanged, and
 changes to comments only are not reviewed again (the same rule
 as for your approval; a comment-only change is said in the log).
 
+The worker's report (`report.md` in the task's folder) grows by one section
+per round: each step handed back to the worker keeps the earlier report and
+adds the round's section at its end, under its own heading. Only that section
+gives the step's proofs (an earlier link proves nothing); a worker that
+rewrote the file gets the earlier report back on top.
+
 ### Guards
 
 Needs: [Workflow](#workflow).
@@ -592,7 +605,10 @@ every account.
 
 ### Template library
 
-**Settings › Projects › Template library** lists your saved templates (each
+**Manage templates** on a project's **Workflow** tab (in its ⋯ menu, or beside
+*Start from a template* when the project has no workflow yet) opens the
+template library; a link to `#/settings?section=projects&library=1` opens it
+too. It lists your saved templates (each
 with its version) and the built-in examples. Tap one to read it: the plan of
 each task type, then its JSON. A saved template's ⋯ menu renames it (its version
 and change log come along) or deletes it, after a confirmation. A project never
@@ -723,7 +739,7 @@ more than one line, or a question is never folded. Consecutive routine wakes (no
 nor `wherdr pm` command beyond `ack`, `read`, `list`, `show`, `incidents`,
 `help`; a one-line answer that asks nothing) fold into one row, *3 routine checks ·
 last: "WHR-12 merged"*, 08:00–11:00, with the first line of the last answer in
-it, that opens on tap. The fold holds only the wakes and their own turns. An incident, or a wake whose answer asks you
+it, that opens on tap. The fold holds only the wakes and their own turns. A message of yours that Claude took in the same turn as a wake (sent at the same moment) stays your own bubble, with its photos, beside the wake's row, in the order Claude got them; that turn's answer is yours too and shows in full. wherdr does not send a wake while your message is still being typed into the coordinator. An incident, or a wake whose answer asks you
 something, keeps its row (in its stronger colour); an answer that asks you
 stays a full reply, with its answer buttons:
 
@@ -805,7 +821,10 @@ section: a table of situations, each with the tool to use and an example, so
 agents show you things rather than describe them.
 
 - Every agent: a `wherdr` block with `choices "A" | "B"` when it needs one
-  choice from you (`choices "OK"` alone for a one-click confirm), and `task <ID>` for a task's live card when its state matters.
+  choice from you (`choices "OK"` alone for a one-click confirm), a
+  `questions` card when it has several questions at once (never a numbered
+  list of them: you answer all of them in one message, a line each: `1A Postgres`, `2B No`),
+  and `task <ID>` for a task's live card when its state matters.
 - Alfred and coordinators also: a setting highlighted (`ui open --target`), a
   live `status` card, and buttons you click (`ui action step|resume|open`),
   screenshots beside the chat (`ui show shots`). Alfred proposes a setting
@@ -1485,6 +1504,25 @@ worker is told, and the coordinator gets one wake with a decision: pull the
 shared contract (proto, API, schema) into its own task both wait for, or merge
 the two tasks into one. If it cannot decide, it leaves the wake unanswered
 and the choice reaches you in **Decisions**.
+
+### A task paused for room
+
+A coordinator that only needs to free a crowded machine pauses a started task
+instead of stopping it: `wherdr pm task stop <task> --for-room --reason "machine over its cap"`,
+in your turn or in a wake, for a task at its worker's step that does not wait
+for you, and whose worker's conversation can be taken up again (a Claude worker;
+another is refused: stop it instead). The task is **parked** the same way:
+
+- its agents end, so its machine slot is free; it is never nudged, restarted
+  or counted as stalled;
+- its card says *Paused: waiting for room on <machine>*; it asks you nothing:
+  it is not in **Tasks to review**, **Your turn** or **Decisions**.
+
+The engine continues it by itself (same worktree, the same conversation, told
+why it paused) once its machine has room, keeping the machine's cap, in board
+order, and before any new task starts on that machine. If its worker cannot start
+then, the task stays paused and the engine tries again 10 minutes later. From its sheet you can
+still **Resume now** (past the cap) or **Stop** it.
 
 ### Why agents are gone
 

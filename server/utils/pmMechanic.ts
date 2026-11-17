@@ -360,7 +360,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now(), doing: 
   const resumes = await stage('resumeInterrupted', () => resumeInterrupted(deps, now))
   if (resumes) await stage('wakeIncidents', () => wakeIncidents(deps, resumes.busy, now))
   await stage('releaseIdle', () => releaseIdle(deps, now))
-  await stage('resumeParked', () => resumeParked(deps))
+  await stage('resumeParked', () => resumeParked(deps, now))
   await stage('startChained', () => startChained(deps, now))
   await stage('startHeld', () => startHeld(deps, now))
   await stage('syncFiles', () => syncFiles(deps, now))

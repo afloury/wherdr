@@ -6,6 +6,7 @@ import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
 import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, takeUpdateNotice, userMessageTo } from '../server/utils/pmCoordinator'
 import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
+import { inTurn } from '../server/utils/terminalTurns'
 import { CREATE_SCRIPT, launched } from '../server/utils/pmLaunch'
 import { execFileSync } from 'node:child_process'
 import { trustKeys } from '../shared/pm/run'
@@ -981,6 +982,33 @@ describe('wakes', () => {
     const recheck = deliver('idle', 1000 + 300_000)
     await recheck.run()
     expect(recheck.sent[0]!.text).toContain('Check again: ')
+  })
+
+  it('keeps a step the user moved between the tick\'s read and its save', async () => {
+    const id = await atDeploy(1000)
+    const tick = deliver('idle', 2000)
+    // The user's action lands once the tick has read the tasks.
+    const tasks = async () => {
+      const list = await store.tasks()
+      await store.saveTask({ ...(await store.task(id))!, step: { ...(await store.task(id))!.step!, done: true } })
+      return list
+    }
+    expect(await wakeTick({ ...tick.d, store: { ...store, tasks } }, 2000)).toEqual([])
+    expect((await store.task(id))!.step).toMatchObject({ done: true })
+    expect(tick.sent).toEqual([])
+  })
+
+  it('waits while the user\'s message is being typed, so Claude never takes both as one turn', async () => {
+    await atDeploy(1000)
+    let typed!: () => void
+    const typing = inTurn('host/t9', () => new Promise<void>((r) => { typed = r }), 0)
+    const busy = deliver('idle', 2000)
+    expect(await busy.run()).toEqual([])
+    expect(busy.sent).toEqual([])
+    typed()
+    await typing
+    await new Promise(r => setTimeout(r, 10))
+    expect(await deliver('idle', 2500).run()).toEqual(['CO'])
   })
 
   it('names tasks by the shown key of a renamed project: wakes, the push, pm list, logs, refusals', async () => {
