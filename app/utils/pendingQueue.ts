@@ -177,5 +177,6 @@ export function pendingLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgen
   if (waitFor === 'installing') return { kind: 'installing' }
   if (waitFor === 'question') return { kind: 'question' }
   if (q.inAgentQueue) return { kind: 'agent-queue', agent: agent || '' }
-  return waitFor === 'working' ? { kind: 'queued' } : { kind: 'sending' }
+  // Held on the server (a known state); anything else is unconfirmed: sending.
+  return q.state === 'held' && waitFor === 'working' ? { kind: 'queued' } : { kind: 'sending' }
 }

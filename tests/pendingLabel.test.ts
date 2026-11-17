@@ -30,6 +30,11 @@ describe('waiting message: in the agent\'s queue or taken', () => {
     expect(pendingLabel(list[1]!, 'working', 'claude')).toEqual({ kind: 'sending' })
   })
 
+  it('send answered while the agent works, not in its queue nor the transcript: sending, even with no screen', () => {
+    const [q] = pendingQueue({ mine: [mine[0]!], claude: [], items: [], screen: null })
+    expect(pendingLabel(q!, 'working', 'claude')).toEqual({ kind: 'sending' })
+  })
+
   it('send answered, agent idle, not in the transcript yet: sending', () => {
     const list = pendingQueue({ mine, claude: [], items: [], screen: null, idle: true })
     expect(list.map(q => pendingLabel(q, 'sending', 'claude'))).toEqual([{ kind: 'sending' }, { kind: 'sending' }])
@@ -69,7 +74,9 @@ describe('label of a waiting message', () => {
   const held = { phase: 'queued' as const, state: null, inAgentQueue: true }
   const plain = { phase: 'queued' as const, state: null }
   it.each([
-    [plain, 'working', { kind: 'queued' }],
+    // Answered while the agent works, not in its queue nor the transcript yet: unconfirmed.
+    [plain, 'working', { kind: 'sending' }],
+    [{ ...plain, state: 'held' as const }, 'working', { kind: 'queued' }],
     [plain, 'sending', { kind: 'sending' }],
     [{ ...plain, state: 'sending' as const }, 'working', { kind: 'sending' }],
     [held, 'working', { kind: 'agent-queue', agent: 'claude' }],
