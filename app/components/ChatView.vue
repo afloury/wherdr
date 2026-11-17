@@ -576,7 +576,9 @@ const agent = computed(() => props.pane.agent)
 // Alfred's conversation: its replies are headed with its name, not the agent's.
 const alfredHere = computed(() => isAlfredPane(props.pane))
 const hasDraft = computed(() => Boolean(props.pane.draft || props.pane.queueSendNow))
-const unsentPane = computed<Pane>(old => (old && old.id === props.pane.id && old.queueSendNow === props.pane.queueSendNow && JSON.stringify(old.draft) === JSON.stringify(props.pane.draft) ? old : props.pane))
+// The same object while nothing it shows changed; `sending` too, or "Sending…" stays after the server is done (WHR-472).
+const unsentPane = computed<Pane>(old => (old && old.id === props.pane.id && old.queueSendNow === props.pane.queueSendNow && old.sending === props.pane.sending
+  && old.inputText === props.pane.inputText && JSON.stringify(old.draft) === JSON.stringify(props.pane.draft) ? old : props.pane))
 const waitFor = computed(() => waitingOn(props.pane))
 // Same props objects for the messages on each render (none built inline).
 // A user message is one framed bubble: its images first, then its text, so a
