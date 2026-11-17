@@ -68,7 +68,7 @@ export function agentsAtWork(runs: Run[], tasks: Task[], machine: string, holder
   return runs.filter((r) => {
     if (r.machine !== machine || r.state === 'ended') return false
     const t = tasks.find(x => x.id === r.task)
-    return !!t && !t.step?.done && !waitsForUser(t) && (!t.step?.started || holder(t) === r.role)
+    return !!t && !t.step?.done && !t.parked && !waitsForUser(t) && (!t.step?.started || holder(t) === r.role)
   })
 }
 

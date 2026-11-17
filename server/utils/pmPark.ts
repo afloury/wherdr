@@ -32,7 +32,10 @@ export async function blockedOn(deps: PmLaunchDeps, run: Run, label: string, now
     return void await tell(r.refused)
   }
   const saved = await store.logTask(r.park, 'engine', `parked: waits for ${r.park.parked!.on}: ${asked.need}`)
-  await endAgents(deps, saved, 'released', ' while the task is parked')
+  // Ended only when its conversation can be taken up again (a Claude worker's pinned session);
+  // another stays, idle, out of its machine's cap (agentsAtWork), and is told when it goes on.
+  const live = (await store.runs()).filter(x => x.task === task.id && x.state !== 'ended')
+  if (live.every(x => x.role !== 'worker' || (x.program === 'claude' && !!x.session))) await endAgents(deps, saved, 'released', ' while the task is parked')
   await wake(r.key, r.wake)
 }
 
@@ -40,7 +43,8 @@ export async function blockedOn(deps: PmLaunchDeps, run: Run, label: string, now
 // conversation (resumed when it was ended; a fresh one with a handover when it has none).
 export async function resumeParked(deps: PmLaunchDeps) {
   const { store } = deps, projects = await store.projects(), tasks = await store.tasks()
-  for (const task of tasks.filter(t => t.parked && !t.step?.done)) {
+  // A task stopped meanwhile waits for the user's Continue: never started here.
+  for (const task of tasks.filter(t => t.parked && !t.step?.done && !t.stopped && t.state === 'working')) {
     const text = resumeText(task, tasks, projects)
     if (!text) continue
     const worker = (await store.runs()).filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]

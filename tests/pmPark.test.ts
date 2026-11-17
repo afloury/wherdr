@@ -27,6 +27,11 @@ describe('a blocked report', () => {
     const r = parkOf(task({ after: 'WH-0' }), 'wh-2', 'the endpoint', [task(), other, task({ id: 'WH-0' })], projects, 9)
     expect(r).toMatchObject({ park: { after: 'WH-0,WH-2', parked: { on: 'WH-2', need: 'the endpoint', at: 9, before: ['WH-0'] } } })
     expect('wake' in r && r.wake).toContain('goes on in the same conversation once WH-2 is done')
+    // Already an after link: still what it waits for, so it resumes once that one is done.
+    const again = parkOf(task({ after: 'WH-2' }), 'WH-2', 'the endpoint', [task(), other], projects, 9)
+    expect(again).toMatchObject({ park: { after: 'WH-2', parked: { before: [] } } })
+    const parked = 'park' in again ? again.park : task()
+    expect(resumeText(parked, [parked, { ...other, step: { ...initialState(), done: true } }], projects)).toContain('WH-2 (API) is done')
     const repo = parkOf(task(), 'billing-api', 'a refund call', [task()], projects, 9)
     expect(repo).toMatchObject({ park: { parked: { on: 'billing-api', before: [] } } })
     expect('park' in repo && repo.wake).toContain('Add a task there')
@@ -101,6 +106,24 @@ describe('parking on the server', () => {
     expect(line).toContain(`'--resume' '${run.session}'`)
     expect(line).toContain('WH-2 (API) is done, PR https://github.com/o/r/pull/7.')
     expect((await store.task('WH-1'))!.parked).toBeUndefined()
+  })
+
+  it('a Codex worker stays (its conversation cannot be resumed), and a parked task the user stopped is never started again', async () => {
+    const { store, calls, env, deps } = await setup()
+    const run = (await store.runs())[0]!
+    await store.saveRun({ ...run, program: 'codex', session: undefined })
+    env.label = 'blocked:on WH-2: the endpoint'
+    await advanceTick(deps, 1000)
+    expect((await store.task('WH-1'))!.parked).toBeDefined()
+    expect(calls.some(c => c[0] === 'terminal.kill')).toBe(false)
+    expect((await store.runs())[0]!.state).not.toBe('ended')
+    const t = (await store.task('WH-1'))!
+    await store.saveTask({ ...t, state: 'waiting', stopped: { by: 'the user', why: 'later', at: 2 } })
+    await store.saveTask({ ...(await store.task('WH-2'))!, step: { ...initialState(), started: true, done: true } })
+    const before = calls.length
+    await resumeParked(deps)
+    expect(calls.slice(before).filter(c => c[0] === 'terminal.run' || c[0] === 'terminal.send')).toHaveLength(0)
+    expect((await store.task('WH-1'))!.parked).toBeDefined()
   })
 
   it('a wait that would close a cycle is refused: not parked, the worker told, one decision wake', async () => {

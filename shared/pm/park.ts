@@ -56,7 +56,7 @@ export function parkOf(task: Task, on: string, need: string, tasks: Task[], proj
   }
   if (why) return { refused: `${on} is not a task of this project or workspace: name one of them, or the repository you need something from.` }
   return {
-    park: { ...task, after: [...before, other.id].join(','), parked: { on: other.id, need, at: now, before } }, key: `blocked:${other.id}:${now}`,
+    park: { ...task, after: [...before.filter(x => x !== other.id), other.id].join(','), parked: { on: other.id, need, at: now, before: before.filter(x => x !== other.id) } }, key: `blocked:${other.id}:${now}`,
     wake: `${head} is parked: its worker waits for ${show(other.id)} (${other.title}): ${need}. If ${show(other.id)}'s work does not cover it, add a task for what is missing and link it (\`wherdr pm task edit ${show(task.id)} --after ${show(other.id)},<that task> --reason "<why>"\`), or tell the user. ${show(task.id)} goes on in the same conversation once ${show(other.id)} is done.`,
   }
 }
