@@ -4,7 +4,7 @@
 import { coreCall, CoreError } from './core'
 import { HerdrError } from './herdr'
 import { keepPastes } from './pastes'
-import { fieldGap, fieldHolds, isBareBang, isSlashCommand, uploadNames } from '../../shared/queuedMatch'
+import { fieldGap, fieldHolds, fieldHoldsRawPhoto, isBareBang, isSlashCommand, uploadNames } from '../../shared/queuedMatch'
 import { corePaint, pasting, readDraft, sameText } from './coreDraft'
 import { noteSubmitting, type Submitting } from './submitting'
 import { inTurn, typingInto } from './terminalTurns'
@@ -185,15 +185,24 @@ const RESUBMIT_AFTER = [1, 2, 3, 4, 5, 5, 5, 5, 5, 5]
 // on it. Never sent twice: the field holds one copy, and an empty field (the
 // message taken, or queued during a turn) ends it; an empty field under
 // "Pasting…" is not read yet (WHR-419). Returns the Enters pressed.
+// Never left there for a photo: one still a path when the wait ends goes as
+// its path, which the agent can still open; the
+// lone "\" of holdEnter is taken out first (WHR-454).
 async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) => Promise<string | null>, text: string): Promise<number> {
   const settle = deps.settleMs ?? 400
+  const started = Date.now()
   let last: string | undefined
-  const holds = async (times = 1) => {
+  let raw = false
+  const look = async (times = 1) => {
     await new Promise(res => setTimeout(res, settle * times))
     // A failed read is no empty field: not taken, no Enter on it either.
     const now = await field(p).catch(() => undefined)
     if (now) last = now
-    return now === undefined ? false : now ? fieldHolds(now, text, true) : null
+    return now
+  }
+  const holds = async (times = 1) => {
+    const now = await look(times)
+    return now === undefined ? false : now ? fieldHolds(now, text, true) || (raw && fieldHoldsRawPhoto(now, text)) : null
   }
   // Evidence for the next report: sizes, never the text.
   const why = () => (last === undefined ? 'field never read with text' : `field held ${fieldGap(last, text)}`)
@@ -202,6 +211,19 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
     const seen = await holds()
     if (seen === null) return 0
     if (seen) break
+    if (i + 1 >= SUBMIT_LOOKS && last !== undefined && fieldHoldsRawPhoto(last, text)) {
+      raw = true
+      const gap = fieldGap(last!, text)
+      // The lone "\" (and only it): one Backspace at a time while the field still ends with it.
+      for (let k = 0; k < 3 && /\\\s*$/.test(last || ''); k++) {
+        await deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['backspace'] }, 10000)
+        const now = await look()
+        if (now === null) return 0
+        if (now === undefined) break
+      }
+      console.warn(`[wherdr] message to ${p.coreAddress}: a photo stayed a path, sent as it is after ${Date.now() - started} ms: field held ${gap}`)
+      break
+    }
     if (i + 1 >= SUBMIT_LOOKS) {
       console.warn(`[wherdr] message to ${p.coreAddress}: not submitted, never held the message alone: ${why()}`)
       return 0

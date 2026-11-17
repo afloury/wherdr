@@ -127,6 +127,33 @@ describe('core input routes', () => {
     expect(fieldHolds('[Image #4] look', msg, true)).toBe(true)
   })
 
+  it('a photo Claude leaves as its path: when the wait ends, the "\\" is taken out and Enter pressed; one log line, no text', async () => {
+    const msg = 'look at this\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png'
+    const keys: string[] = []
+    let field: string | null = `${msg}\n\\`
+    const t = deps((m, params) => {
+      if (m === 'terminal.keys') {
+        keys.push(...params.keys)
+        if (params.keys[0] === 'backspace') field = field!.replace(/\n?\\$/, '')
+        if (params.keys[0] === 'enter') field = null
+      }
+      return m === 'terminal.send' ? { started: false } : {}
+    })
+    t.d.settleMs = 1
+    let looks = 0
+    t.d.field = async () => (looks++ ? field : null)
+    const logs: string[] = []
+    const warn = console.warn
+    console.warn = (l: string) => { logs.push(l) }
+    try {
+      expect(await coreSend(t.d, { pane_id: 't1', text: msg })).toEqual({ ok: true, started: null })
+    } finally { console.warn = warn }
+    expect(keys).toEqual(['backspace', 'enter'])
+    expect(logs).toHaveLength(1)
+    expect(logs[0]).toMatch(/a photo stayed a path, sent as it is after \d+ ms: field held \d+ chars, 0 images; expected \d+ chars, 1 images, 2 lines$/)
+    expect(logs[0]).not.toMatch(/look|srv/)
+  })
+
   it('a photo message: Enter only once Claude shows its placeholder, again while it stays (bounded)', async () => {
     const msg = '/home/user/.cache/herdr-web/uploads/a.jpg\nwhat is wrong here?'
     const path = '/home/user/.cache/herdr-web/uploads/a.jpg what is wrong here?'
