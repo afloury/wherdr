@@ -163,7 +163,7 @@ like any member. Its clone on another machine is that machine's root.
 - Its tasks' worktrees hold the **root repository's files only**: a worktree is
   a checkout of what the root tracks, so the repositories under the root
   (separate git repositories, untracked by the root) are never in it. The
-  worktree setup's *Files to copy* skips any path inside, or holding, another
+  worktree setup never copies or shares a path inside, or holding, another
   git repository (*not copied services (another git repository)* in the
   task's log).
 - Its tasks get no workspace instructions files: their worktree already holds

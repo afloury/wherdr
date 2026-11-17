@@ -49,8 +49,8 @@ describe('worktree setup', () => {
     await fs.mkdir(nested, { recursive: true })
     await fs.writeFile(path.join(nested, '.env'), 'API=1')
     git(nested, 'init', '-q')
-    const r = await prepare({ share: [], copy: ['services', 'services/api/.env', '.env'] })
-    expect(r.log).toBe('worktree setup: copied .env; not copied services (another git repository), services/api/.env (another git repository)')
+    const r = await prepare({ share: ['services'], copy: ['services', 'services/api/.env', '.env'] })
+    expect(r.log).toBe('worktree setup: copied .env; not copied services (another git repository), services/api/.env (another git repository); not shared services (another git repository)')
     await expect(fs.access(path.join(wt, 'services'))).rejects.toThrow()
   })
 
