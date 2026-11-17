@@ -43,6 +43,15 @@ it('follows the tab, renders badges and keeps checkboxes read-only', async () =>
   w.unmount()
 })
 
+it('renders --- as a separator and a heading after a list item outside the list', async () => {
+  notes.value = [note('shaped', 'all', '- a\n## Next\nText\n---\nMore')]
+  const w = await mountSuspended(NotesList)
+  await nextTick()
+  const kids = [...w.find('#note-shaped .note-body').element.children].map(e => e.tagName)
+  expect(kids.slice(-4)).toEqual(['H2', 'P', 'HR', 'P']) // the heading at the body's level, not in the list
+  w.unmount()
+})
+
 it('says which machine tab it follows, and when that tab has no note of its own', async () => {
   machineBarSaved.value = '' // the only machine, shown as its own tab
   notes.value = [note('everywhere', 'all', 'x')]

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { CoreError } from '../server/utils/core'
-import { coreInput, coreInterrupt, coreKeepGet, coreKeepSet, coreKill, coreSend, resumeSubmitting, type CoreInputDeps } from '../server/utils/coreInput'
-import { isBareBang } from '../shared/queuedMatch'
+import { coreInput, coreInterrupt, coreKeepGet, coreKeepSet, coreKill, coreSend, holdEnter, resumeSubmitting, type CoreInputDeps } from '../server/utils/coreInput'
+import { fieldHolds, isBareBang } from '../shared/queuedMatch'
 import { takingTurns } from '../server/utils/terminalTurns'
 import { HerdrError } from '../server/utils/herdr'
 import type { Pane } from '../shared/types'
@@ -73,7 +73,7 @@ describe('core input routes', () => {
     release()
     await delivering
     expect(await sending).toEqual({ ok: true, started: true })
-    expect(t.calls.map(c => c[1].text)).toEqual(['Autopilot wake', 'look\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png'])
+    expect(t.calls.map(c => c[1].text)).toEqual(['Autopilot wake', 'look\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png\n\\'])
   })
 
   it('a send right after a wake was delivered: typed once the field is empty, once, nothing left in it', async () => {
@@ -90,7 +90,7 @@ describe('core input routes', () => {
     const sending = coreSend(t.d, { pane_id: 't1', text: photos })
     await sending
     expect(Date.now() - done).toBeGreaterThanOrEqual(35)
-    expect(t.calls).toEqual([['terminal.send', { terminal: 'm/t9', text: photos }, 30000]])
+    expect(t.calls).toEqual([['terminal.send', { terminal: 'm/t9', text: `${photos}\n\\` }, 30000]])
     expect(await t.d.field!(t.d.pane('t1')!)).toBeNull()
   })
 
@@ -108,6 +108,23 @@ describe('core input routes', () => {
       await coreSend(t.d, { pane_id: 't1', text })
       expect(t.calls.filter(c => c[0] === 'terminal.keys')).toHaveLength(enters)
     }
+  })
+
+  it('text + photo: sent with a lone "\\" (core\'s Enter is a new line), submitted once Claude shows the tag, drawn first', async () => {
+    const msg = 'look\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png'
+    expect(holdEnter('no photo')).toBe('no photo')
+    // Claude reads the photo (its path still there), then draws "[Image #4]" before
+    // the text; the "\" stays while no Enter came after it.
+    const screens = [null, `${msg}\n\\`, '[Image #4]look\n\\']
+    let looks = 0
+    let enters = 0
+    const t = deps((m) => { if (m === 'terminal.keys') enters++; return m === 'terminal.send' ? { started: false } : {} })
+    t.d.settleMs = 1
+    t.d.field = async () => (enters ? null : screens[Math.min(looks++, 2)]!)
+    expect(await coreSend(t.d, { pane_id: 't1', text: msg })).toEqual({ ok: true, started: null })
+    expect(t.calls[0]![1].text).toBe(`${msg}\n\\`)
+    expect(enters).toBe(1)
+    expect(fieldHolds('[Image #4] look', msg, true)).toBe(true)
   })
 
   it('a photo message: Enter only once Claude shows its placeholder, again while it stays (bounded)', async () => {

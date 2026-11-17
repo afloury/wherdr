@@ -22,6 +22,9 @@ In Settings › Projects, *Add workspace* (next to *Add project*) asks for:
 - its **machines and root folders**: each machine it runs on, with the root
   folder there under which the repositories are cloned (`~/work`). The first
   one checked is its home; its root must exist there. Nothing is cloned for you.
+  *Browse* beside a root opens that machine's folders (from the typed folder
+  when it exists, else the machine's home) to pick it; it is disabled while
+  the machine is offline.
 
 *Create* adds it and starts its coordinator, whose first reply runs
 `wherdr pm map list` and offers to build the [map](#the-workspace-map) from
@@ -160,6 +163,13 @@ its own workflow included: they sit between your settings and the project's,
 and the strictest wins, so a member can add protected branches or keep a merge
 for you, never loosen the workspace's. For a member, `template show` lists them
 apart (`workspaceGuards`) and says when it runs the workspace's workflow.
+
+The workspace's coordinator reads the workflow each member runs
+(`template show --project <member>`, `plan --project <member>`): its `runs`
+line says whether it is the workspace's, which a change reaches at once (a
+member keeps no copy), or the member's own. It never changes a member's own
+workflow: `template edit --project <member>` is refused, and the refusal points
+to the workspace's workflow, which every member without its own runs.
 
 ## Features
 

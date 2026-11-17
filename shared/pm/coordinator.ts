@@ -133,7 +133,7 @@ export function workspaceView(ws: Pick<Project, 'key' | 'group'>, projects: Proj
 export type Turn = 'user' | 'wake' | 'none'
 
 export type Command =
-  | { name: 'help' } | { name: 'list', archived?: true } | { name: 'plan' } | { name: 'template show' } | { name: 'autopilot show' }
+  | { name: 'help' } | { name: 'docs', page?: string } | { name: 'list', archived?: true } | { name: 'plan' } | { name: 'template show' } | { name: 'autopilot show' }
   | { name: 'automation list' } | { name: 'incidents', since?: number }
   | { name: 'show', task: string }
   | { name: 'template edit' } // the new template comes as the call's input (JSON)
@@ -174,7 +174,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'list [--archived] [--project <KEY>]', does: 'the project\'s tasks, their step and what waits for the user; archived tasks (done, off the board) only with --archived' },
   { usage: 'show <task>', does: 'one task, its weight, the machine it runs on, its plan and its log' },
   { usage: 'plan [--project <KEY>]', does: 'the resolved plan of each task type' },
-  { usage: 'template show', does: 'the project\'s own workflow (JSON): a minimal default (version 0) until the user accepts one' },
+  { usage: 'template show [--project <KEY>]', does: 'the workflow the project runs (JSON): its own, a minimal default (version 0) until the user accepts one; a workspace\'s member without one of its own runs the workspace\'s, and the answer says so (runs). Never a copy: a change to the workspace\'s workflow reaches every member that runs it' },
   { usage: 'template edit < template.json', does: 'propose a new workflow for the project; only in a turn that comes from the user, guards unchanged (unless the project has no accepted workflow yet); the user accepts or refuses its diff in wherdr' },
   { usage: 'task tag <task> <text>', does: 'a short tag on the card (a ticket key, a client)' },
   { usage: 'task link <task> <url> --label <label>', does: 'a link on the card (PR, ticket, pipeline)' },
@@ -206,6 +206,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   { usage: 'ui action resume|step|open <task>', does: 'a button in your reply that the user clicks: resume (continue a stopped task), step (the button of the step that waits for the user: "Merge", "Approve screenshots"), open (its sheet); only in a turn that comes from the user. Only their click runs it, through the task sheet\'s own action, and only if the task still waits the same way; end your reply with the block the answer gives, and never say it is done before the card shows it' },
   { usage: 'ui show file <path> | shots <task>', does: 'show a file of your folder (a path relative to it; an .html page runs as a page, self-contained only: inline its CSS, scripts and images, https CDN links load, files next to it do not), or a task\'s screenshots (before and after side by side, toggled on a phone), beside your conversation (a card on a phone); only in a turn that comes from the user. It only shows: for the user\'s approval, add ui action step <task>; end your reply with the block the answer gives' },
   { usage: 'help', does: 'this list: the commands of the wherdr that runs now' },
+  { usage: 'docs [<page>[#<section>]]', does: 'the docs of the wherdr that runs now, from any machine: alone, the index (llms.txt); with a page (workspaces.md), that page; with a section (workspaces.md#shared-workflow, the anchor of the index\'s link), only that section. Read-only, in a wake too; a long page is cut: ask for a section' },
   ...MAP_COMMANDS,
   ...REPO_COMMANDS,
   ...FEATURE_COMMANDS,
@@ -236,6 +237,8 @@ const TASK_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 // The main coordinator names the project with --project <KEY>; a task names its own.
 const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'incidents', 'automation list', 'automation show', 'automation propose', 'task add', 'map show', 'map list', 'map set', 'map remove', 'repo adopt', 'feature add']
+// template edit --project: a member's own workflow is the user's (docs/workspaces.md).
+const MEMBER_WORKFLOW_EDIT = 'template edit changes your own project\'s workflow only, never another project\'s or a member\'s (no --project): a member\'s own workflow is the user\'s, set in its Workflow tab. To change what members run, propose a change to the workspace\'s workflow (template edit, no --project): every member without its own runs it'
 const URL_RE = /^https?:\/\/\S{1,2000}$/
 
 // argv after `wherdr pm` → a command, or the reason it is not one.
@@ -245,6 +248,7 @@ export function parseCommand(argv: unknown): (Command & { project?: string }) | 
   const i = argv.indexOf('--project'), project = i >= 0 ? String(argv[i + 1] ?? '') : undefined
   // ui open: --project is already in the target's link.
   if (project === undefined || r.name === 'ui open') return r
+  if (r.name === 'template edit') return { error: MEMBER_WORKFLOW_EDIT }
   if (!PROJECT_VERBS.includes(r.name)) return { error: `--project is for ${PROJECT_VERBS.join(', ')}` }
   return KEY_RE.test(project) ? { ...r, project } : { error: '--project is a project key: 2 to 10 letters or digits' }
 }
@@ -322,6 +326,7 @@ function parseWords(argv: unknown): Command | { error: string } {
   if (verb === 'ui targets') return w2 ? usage(verb) : { name: verb }
   if (verb === 'ui show') return uiShowArgs(w2, w3 === undefined ? [] : [w3, ...rest], TASK_RE, usage(verb))
   if (verb === 'ui action') return isUiAction(w2) && w3 && TASK_RE.test(w3) && !rest.length ? { name: verb, action: w2, task: w3 } : usage(verb)
+  if (w0 === 'docs') return w2 ? { error: `unexpected argument: ${w2}` } : { name: w0, ...(w1 ? { page: w1 } : {}) }
   if (w0 === 'help' || w0 === 'list' || w0 === 'plan') return w1 ? { error: `unexpected argument: ${w1}` } : { name: w0, ...(w0 === 'list' && flags.archived ? { archived: true as const } : {}) }
   if (w0 === 'show') return w1 && TASK_RE.test(w1) && !w2 ? { name: 'show', task: w1 } : usage('show')
   if (verb === 'template show' || verb === 'template edit') return w2 ? { error: `unexpected argument: ${w2}` } : { name: verb }
@@ -539,7 +544,7 @@ b64() { base64 | tr -d '\\n'; }
 body='{"argv64":[' sep=
 for a in "$@"; do body="$body$sep\\"$(printf %s "$a" | b64)\\"" sep=,; done
 body="$body]"
-case "$route $1 $2 $3 $4" in "pm/cli template edit"*|"alfred/cli project workflow edit"*|"alfred/cli project memory "*|"pm/cli automation propose"*|*" notes add"*|*" notes edit "*|*" notes file put "*) case " $* " in *" --remove "*) ;; *) body="$body,\\"input64\\":\\"$(b64)\\"" ;; esac ;; esac
+case "$route $1 $2 $3 $4" in "pm/cli template edit"*|"alfred/cli project workflow edit"*|"alfred/cli project memory "*|"alfred/cli theme propose"*|"pm/cli automation propose"*|*" notes add"*|*" notes edit "*|*" notes file put "*) case " $* " in *" --remove "*) ;; *) body="$body,\\"input64\\":\\"$(b64)\\"" ;; esac ;; esac
 out=$(mktemp) hdr=$(mktemp) || exit 1
 code=$(printf '%s}' "$body" | curl -sS -D "$hdr" -o "$out" -w '%{http_code}' -X POST --data-binary @- \\
   -H 'content-type: application/json' -H "origin: $WHERDR_URL" -H "authorization: Bearer $tok" "$WHERDR_URL/api/$route")
@@ -560,7 +565,7 @@ export function docsRule(docs: string | undefined, help: string, open: { cmd: st
     'Never explain wherdr\'s interface or commands from memory: wherdr changes with each update.',
     docs
       ? `First read \`${docs}/llms.txt\` (the index), then only the section(s) that answer, and the sections their "Needs:" line names.`
-      : 'wherdr\'s docs are on wherdr\'s machine: say so, and answer only what the docs index (docs/llms.txt in wherdr\'s repository) and your commands confirm.',
+      : 'wherdr\'s docs are on wherdr\'s machine: read them with `wherdr pm docs` (the index, llms.txt), then `wherdr pm docs <page>#<section>` for only the section(s) that answer (the anchor of the index\'s link), and the sections their "Needs:" line names. They are the docs of the wherdr that runs, never a repository checkout\'s.',
     `The current commands: ${help}.`, '',
     '## Links into wherdr', '',
     'Whenever you send the user somewhere in wherdr ("open Settings › Phone"), give the in-app link too, as inline code (`#/settings?section=phone`) or a Markdown link ([Phone settings](#/settings?section=phone)): the chat opens it in place. Only these addresses (KEY: a project key, TAG: a tag, ID: a task id):',
@@ -670,7 +675,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     ...firstTalk,
     '## Your memory', '',
     `\`memory.md\` in your folder is yours: wherdr creates it once and never rewrites it, so it outlives a restart and a change of program. Read it first, at each start, and follow it: the user's decisions and preferences there come before your defaults. Note there, as you go, each decision or preference the user gives you, one fact per line; nothing a command or the board already says. Keep it clean: merge duplicates, drop stale lines, stay under ${MEMORY_CAP} characters.`, '',
-    ...(members.length ? ['## Members', '', `This workspace's member projects: ${members.map(m => m.key).join(', ')}. They have no coordinator: you act on each (Act level: \`--project <KEY>\`), their tasks count in your autopilot's limits, and their wakes come to you.`, ''] : []),
+    ...(members.length ? ['## Members', '', `This workspace's member projects: ${members.map(m => m.key).join(', ')}. They have no coordinator: you act on each (Act level: \`--project <KEY>\`), their tasks count in your autopilot's limits, and their wakes come to you. Each runs the workspace's workflow (never a copy: a change to it reaches them) unless the user gave it its own; \`template show --project <KEY>\` and \`plan --project <KEY>\` say which. A member's own workflow is the user's.`, ''] : []),
     ...(p.kind === 'workspace' ? ['## The workspace map', '',
       `\`map.md\` in your folder is the workspace's map: what each repository under ${p.path} does, what it talks to and what uses it. wherdr writes it from \`wherdr pm map set\`; read it at each start, like your memory. Nobody reads every repository up front: the map fills as tasks touch them.`,
       '- The first time a task touches a repository not on the map, write its line: `map set <repo> --does "<one line>" [--talks a,b] [--used-by c]`. Correct a line that turns out wrong.',

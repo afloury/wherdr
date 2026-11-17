@@ -37,6 +37,7 @@ Changing (show, then do):
 | `wherdr alfred project machine remove <KEY> <machine>` | the project's tasks no longer start on that machine (tasks already there stay) |
 | `wherdr alfred coordinator start <KEY> [--program claude\|codex] [--resume]` | starts the project's coordinator; without `--program`, its default agent and model (as chosen in the setup window), else the user's first offered agent that can run it (Settings › Agents) (a new conversation replaces a running one); `--resume` takes up its last conversation again, with the agent that ran it |
 | `wherdr alfred setting set <key> <value> [--propose]` | proposes a setting change, to one of the values `settings` lists for it (a theme id from the theme list, for instance): without `--propose` it is only shown; with it, Alfred's reply carries a [card you apply](conversation.md) (before → after, *Show me*, *Cancel*, *Apply*). Alfred never applies a setting itself, and only proposes one in a turn that follows your message; lists such as machine groups or hidden agents stay in Settings |
+| `wherdr alfred theme propose < theme.json` | proposes a [custom theme](configuration.md#custom-themes) you described ("a dark navy theme with orange accents"): the theme file on stdin, checked as an import is (format, `#rrggbb` colors, Dark and Light palettes, 8 KB); a refused file says why, so Alfred fixes it. Alfred's reply carries a card: the theme's name, its swatches and a sample in your current mode with the WCAG AA contrast check, then *Edit in editor* (opens the theme editor on it, unsaved), *Cancel* and *Apply* (saves it as a custom theme and picks it). With 10 custom themes already, *Apply* is off and the card says to delete one first. Alfred never saves or applies a theme itself, and only proposes one in a turn that follows your message |
 
 A change without `--apply` (all but `setting set`, which is only proposed) changes nothing: it prints what it would do (`dryRun`, `change`) and
 the command that makes it. Alfred shows you those lines and runs that command, with `--apply`,
@@ -105,7 +106,7 @@ written to `notes/.log.jsonl` with who made it.
 | --- | --- |
 | `wherdr alfred notes list [--scope all\|<tab>]` | the notes (id, title, scope, dates) and the linked files |
 | `wherdr alfred notes show <id\|path>` | one note, or one linked file |
-| `wherdr alfred notes add "<title>" [--scope all\|<tab>] < lines.md` | adds a note: at most 12 short lines, checkboxes (`- [ ]`) and links allowed; scope `all` (every tab, the default) or one home tab (a tab group or a machine shown as its own tab), by name |
+| `wherdr alfred notes add "<title>" [--scope all\|<tab>] < lines.md` | adds a note: at most 12 content lines and 1500 characters (blank lines, `---` separators and `#` to `####` headings do not count toward the 12), checkboxes (`- [ ]`) and links allowed; scope `all` (every tab, the default) or one home tab (a tab group or a machine shown as its own tab), by name |
 | `wherdr alfred notes edit <id> [--title "<title>"] [--scope all\|<tab>] < lines.md` | changes a note; new lines on stdin replace its own, empty stdin keeps them |
 | `wherdr alfred notes remove <id>` | removes a note |
 | `wherdr alfred notes file put <folder/name.md> < file.md` | writes a linked file under a folder of the notes, for anything too long for a note |
@@ -161,6 +162,10 @@ new commit counts as an update too.
 Alfred and the coordinators never explain wherdr from memory: they read `docs/llms.txt` (the
 docs index) first, then only the sections that answer. These are the docs of the build that runs, wherever
 wherdr was started from (see `WHERDR_ROOT` in [Configuration](configuration.md#configuration)).
+A coordinator on another machine than wherdr's reads them with `wherdr pm docs` (the index),
+`wherdr pm docs workspaces.md` (a page) or `wherdr pm docs workspaces.md#shared-workflow` (one
+section, the anchor of the index's link): read-only, in a wake too, and a page too long is cut
+with the list of its sections.
 
 Alfred answers with this server's own address and port (and its published address, if any),
 not the defaults the docs quote. Other commands meant for the server itself (a restart, a

@@ -230,7 +230,7 @@ order), and the choice follows you across devices. A tab shows its own notes and
 scoped All; a group's tab also shows the notes of its machines, so a machine's note stays
 there when the machine joins a group. A tab with no note of its own says so (*No notes for
 Work yet*) above the All notes. Each note shows its title, its
-scope and its lines: checkboxes you cannot tick, project key badges (a task id opens its
+scope and its lines: headings, `---` separators drawn as a thin rule, checkboxes you cannot tick, project key badges (a task id opens its
 sheet), the agents' own badges, and links. A link to a place in wherdr opens it in place, a
 link to another note scrolls to it. A link to a Markdown file the agents wrote under the
 notes folder (`plans/x.md`, see [notes file put](alfred.md#notes)) opens it rendered in the

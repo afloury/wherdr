@@ -3,6 +3,7 @@
 // reading and verdict. Read only when an automatic start or a scheduled wake
 // asks for it.
 import { accountFor } from '../../shared/quotaAccount'
+import { limitState } from '../../shared/quotaLimit'
 import { DEFAULT_PACE, paceVerdict } from '../../shared/pm/pacing'
 import { accountQuota, paceRows, type PaceRow, type PaceState } from '../../shared/pm/pace'
 import { workerPlan, type Task } from '../../shared/pm/run'
@@ -29,7 +30,10 @@ export async function projectPace(store: PmStore, project: string, task?: Pick<T
   const quota = q && account ? accountQuota(q, account) : null
   const policy = account ? policyIn(await readPolicies(), account.key) : DEFAULT_PACE
   const today = account && withToday ? await accountUsedToday(account.key, now).catch(() => null) : null
-  return { program, account, quota, policy, verdict: paceVerdict(policy, quota, now), today }
+  // A stale "limit reached" lets one agent of the account start, to find out.
+  const probed = !!quota && limitState(quota, now) === 'stale' && (await store.runs())
+    .some(r => r.program === program && r.startedAt > quota.at && accountFor(q?.accounts, r.machine, program)?.key === account?.key)
+  return { program, account, quota, policy, verdict: paceVerdict(policy, quota, now, 'auto', probed), today }
 }
 
 // Settings › Pace: every account read, plus a program with no reading at all.

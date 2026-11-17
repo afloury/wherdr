@@ -52,7 +52,7 @@ const when = (t: number) => new Date(t).toLocaleString('en-GB', { weekday: 'shor
 
 // "ahead of the target line until Fri 00:00".
 export function paceWait(v: Extract<PaceVerdict, { go: false }>): string {
-  return `${REASONS[v.reason]}${v.until ? ` until ${when(v.until)}` : ' until the next reading'}`
+  return `${REASONS[v.reason]}${v.readAgo ? ` (last read ${v.readAgo} ago)` : ''}${v.until ? ` until ${when(v.until)}` : ' until the next reading'}`
 }
 
 // Why the pace holds this automatic start, or undefined.
@@ -95,7 +95,7 @@ export function paceLine(s: PaceState, now: number): string {
   }
   if (s.today !== null) parts.push(`today +${pct(s.today)}`)
   if (five) parts.push(`5 h ${pct(five.used)}`)
-  parts.push(s.verdict.go ? 'go' : `wait: ${paceWait(s.verdict)}`)
+  parts.push(!s.verdict.go ? `wait: ${paceWait(s.verdict)}` : s.verdict.probe ? 'go: one probe start (the limit read is over an hour old)' : 'go')
   return parts.join(' · ')
 }
 
