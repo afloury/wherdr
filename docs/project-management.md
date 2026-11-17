@@ -132,8 +132,9 @@ data, and post it only on your yes.
 
 **Settings › Projects** holds the *Project management* switch, then two
 sections: **Workspaces**, each [workspace](workspaces.md)'s row with its member
-projects indented under it, and **Projects**, those outside any workspace,
-followed by the [template library](#template-library). A workspace folds or
+projects indented under it, and **Projects**, those outside any workspace
+(the [template library](#template-library) is on a project's Workflow tab).
+A workspace folds or
 opens with the chevron on its left (open by default; the choice stays on the
 device). Each row is compact: the key as its colored badge, the name (with a
 **Public** badge for a public repository) and the machine on one line, the
@@ -604,7 +605,10 @@ every account.
 
 ### Template library
 
-**Settings › Projects › Template library** lists your saved templates (each
+**Manage templates** on a project's **Workflow** tab (in its ⋯ menu, or beside
+*Start from a template* when the project has no workflow yet) opens the
+template library; a link to `#/settings?section=projects&library=1` opens it
+too. It lists your saved templates (each
 with its version) and the built-in examples. Tap one to read it: the plan of
 each task type, then its JSON. A saved template's ⋯ menu renames it (its version
 and change log come along) or deletes it, after a confirmation. A project never
