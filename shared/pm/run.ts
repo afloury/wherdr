@@ -125,7 +125,7 @@ export interface Run {
   id: string
   task: string
   role: 'worker' | 'reviewer'
-  program: string // claude or codex
+  program: string // claude, codex or omp
   model: string // pinned at launch
   machine: string // herdr-core machine key, '' = the wherdr host
   worktree: string
@@ -254,7 +254,7 @@ export function workerPlan(t: Template, task: Task): { program: string, model: s
   if (!typeSteps(t, task.type).some(s => s.holder === 'worker')) return { reason: `Task type "${task.type}" has no worker step` }
   const pick = (k: 'agent' | 'model') => task.prefs?.[k] || tt.prefs?.[k] || t.prefs?.[k] || ''
   const program = pick('agent'), model = pick('model')
-  if (!(PROGRAMS as readonly string[]).includes(program)) return { reason: program ? `The engine cannot start "${program}": claude or codex` : 'No agent set: add prefs.agent to the template' }
+  if (!(PROGRAMS as readonly string[]).includes(program)) return { reason: program ? `The engine cannot start "${program}": claude, codex or omp` : 'No agent set: add prefs.agent to the template' }
   if (!MODEL_RE.test(model)) return { reason: model ? `Invalid model "${model}"` : 'No model set: add prefs.model to the template (the model is always pinned)' }
   return { program, model }
 }

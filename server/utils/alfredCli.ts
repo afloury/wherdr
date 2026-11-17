@@ -4,7 +4,7 @@
 // after the user's yes. Nothing here removes data.
 import path from 'node:path'
 import { CHANGES, SETTING_TARGETS, SETTING_VALUES, alfredCommandList, dryRun, memoryLines, parseAlfredCommand, workflowEditRefusal, type AlfredPlan } from '../../shared/pm/alfredCli'
-import { GUARDED_PROGRAMS, MAIN, templateDiff, type CoordinatorAgent } from '../../shared/pm/coordinator'
+import { GUARDED_PROGRAMS, MAIN, TOOL_GUARDED_PROGRAMS, defaultProjectProgram, templateDiff, type CoordinatorAgent } from '../../shared/pm/coordinator'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges } from '../../shared/pm/templateText'
 import { ALFRED } from '../../shared/pm/alfred'
@@ -85,13 +85,14 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
   const knownTemplate = async (id: string) => {
     if (id && !EXAMPLES.some(e => `example:${e.id}` === id) && !(await store.overview()).templates.some(t => t.id === id)) throw new HerdrError('not_found', `No template ${id} (see wherdr alfred templates)`)
   }
-  // A project coordinator's agent: its default while the user offers it, else
-  // their first offered agent that can run it (Settings › Agents), else Claude.
+  // A project coordinator's agent: its default while the user offers it (omp
+  // too: choosing it is the opt-in), else their first offered agent that can run
+  // it (Settings › Agents), a Claude or Codex before omp, else Claude.
   const projectAgent = async (key: string): Promise<CoordinatorAgent> => {
     const s = await readSettings(deps.settingsFile)
-    const offered = offeredAgents(GUARDED_PROGRAMS, readHiddenAgents(s.hiddenAgents ?? null), readAgentOrder(s.agentOrder ?? null)) as CoordinatorAgent['program'][]
+    const offered = offeredAgents([...GUARDED_PROGRAMS, ...TOOL_GUARDED_PROGRAMS], readHiddenAgents(s.hiddenAgents ?? null), readAgentOrder(s.agentOrder ?? null)) as CoordinatorAgent['program'][]
     const own = (await coordinatorsView(store)).find(x => x.project === key)?.agent
-    return own && offered.includes(own.program) ? own : { program: offered[0] ?? 'claude' }
+    return own && offered.includes(own.program) ? own : { program: defaultProjectProgram(offered) ?? 'claude' }
   }
   // Its conversation runs: its terminal is a live pane. stopped: it ended (its
   // machine restarted, say), and `coordinator start --resume` takes it up again.

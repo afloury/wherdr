@@ -138,6 +138,8 @@ describe('coordinator of a folder without git', () => {
     expect(coordinatorArgs('codex', '/c', '/home/user/clients', true)).toContain('--add-dir')
     expect(coordinatorArgs('codex', '/c', '/home/user/clients')).not.toContain('--add-dir')
     expect(coordinatorArgs('claude', '/c', '/home/user/clients', true)).toEqual(['claude', '--add-dir', '/home/user/clients'])
+    expect(coordinatorArgs('omp', '/c', '/home/user/clients', true)).toEqual(['omp', '--add-dir', '/home/user/clients'])
+    expect(coordinatorArgs('omp', '/c', '/home/user/clients')).toEqual(expect.arrayContaining(['--tools']))
   })
 
   it('a workspace is no plain folder: members denied, root writable, work through tasks, the root\'s rules copied', () => {
@@ -157,5 +159,10 @@ describe('coordinator of a folder without git', () => {
     expect(agents).toContain('### AGENTS.md\n\nUse pnpm everywhere.')
     expect(agents).not.toContain('### CLAUDE.md')
     expect(coordinatorArgs('codex', '/c', ws.path, isPlainFolder(ws))).not.toContain('--add-dir')
+    // omp has no member-path rule: its tool list (no edit or write) keeps it out of the members, the root is added.
+    const omp = coordinatorArgs('omp', '/c', ws.path, isPlainFolder(ws))
+    expect(omp.slice(0, 2)).toEqual(['omp', '--tools'])
+    expect(omp[2]).not.toMatch(/edit|write|ast_edit|eval|task|debug/)
+    expect(omp.slice(3)).toEqual(['--add-dir', ws.path])
   })
 })

@@ -34,11 +34,16 @@ describe('worker plan and command line', () => {
     expect(workerPlan(template, task({ prefs: { model: 'haiku' } }))).toEqual({ program: 'claude', model: 'haiku' })
     expect(workerPlan(template, task({ type: 'talk' }))).toEqual({ reason: 'Task type "talk" has no worker step' })
     expect(workerPlan({ ...template, prefs: { agent: 'claude' } }, task())).toMatchObject({ reason: expect.stringMatching(/^No model set/) })
-    expect(workerPlan(template, task({ prefs: { agent: 'pi' } }))).toMatchObject({ reason: expect.stringContaining('"pi"') })
+    expect(workerPlan(template, task({ prefs: { agent: 'pi' } }))).toEqual({ reason: 'The engine cannot start "pi": claude, codex or omp' })
+    // omp starts with a pinned model too (a provider/model name is a valid model).
+    expect(workerPlan(template, task({ prefs: { agent: 'omp', model: 'anthropic/claude-sonnet-5-5' } }))).toEqual({ program: 'omp', model: 'anthropic/claude-sonnet-5-5' })
     expect(workerPlan(template, task({ prefs: { model: 'x; rm -rf ~' } }))).toMatchObject({ reason: expect.stringMatching(/^Invalid model/) })
   })
 
   it('quotes everything after the program', () => {
+    // omp: the model and the first message only; no session flag, so its conversation is never taken up again.
+    expect(agentLine('omp', 'anthropic/claude-sonnet-5-5', "/h/it's.md")).toBe(`exec omp '--model' 'anthropic/claude-sonnet-5-5' 'Read /h/it'\\''s.md and follow it.'`)
+    expect(agentLine('omp', 'sonnet', '/h/i.md', { id: 's1' }, 'Then stop.')).toBe(`exec omp '--model' 'sonnet' 'Read /h/i.md and follow it. Then stop.'`)
     expect(agentLine('codex', 'gpt-5', "/h/it's.md")).toBe(`exec codex '-c' 'check_for_update_on_startup=false' '--model' 'gpt-5' 'Read /h/it'\\''s.md and follow it.'`)
   })
 })
