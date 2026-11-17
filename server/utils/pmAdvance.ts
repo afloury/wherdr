@@ -233,6 +233,10 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   const told = { ...s, told: s.since }
   if (due.holder === 'reviewer') return oneStart(id, 'reviewer', () => reviewer(deps, c, due.text, alive(rv) && rv)).catch(busy)
   const worker = latest(runs, id, 'worker')
+  // The report file is kept, a copy of it too, before the worker is told or revived:
+  // this round's section, added at its end, alone gives this step's proofs (parseRead).
+  const files = runFiles(worker?.instructions ?? '')
+  if (worker) await exec(deps, c.on, 'if [ -s "$1" ]; then cp -f "$1" "$2"; else rm -f "$2"; fi', [files.note, files.before])
   // Released while the task waited for the user, or ended earlier (on its own, or
   // by a stop the task went on from) with no incident: a step due for it (a
   // send-back, the user's or the engine's) starts it again, the handover gives the step.
@@ -248,9 +252,6 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
     return void await interruptTask(deps, task, i)
   }
   await clearSignal(deps, worker!.terminal!)
-  // The report file is kept, a copy of it too: this round's section, added at its end, alone gives this step's proofs (parseRead).
-  const files = runFiles(worker!.instructions)
-  await exec(deps, c.on, 'if [ -s "$1" ]; then cp -f "$1" "$2"; else rm -f "$2"; fi', [files.note, files.before])
   // The workspace's instructions files changed since the worker read them: the step gives them again.
   const ws = await workspaceFiles(deps, task, c.p, true)
   const again = ws.changed ? ['', '', 'The workspace\'s instructions files changed: follow them from now on.', '', ...ws.lines].join('\n') : ''
