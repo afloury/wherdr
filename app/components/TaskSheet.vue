@@ -138,7 +138,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
         <p v-if="card.archived" class="muted" data-testid="task-archived">{{ tl('Archived') }} {{ fmtWhen(new Date(card.archived).toISOString()) }}</p>
         <div class="task-sheet-actions">
           <UButton v-if="!todo && canStart(card) && !waitsFor?.length" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="task-start" @click="start">{{ card.sameFiles ? tl('Start anyway') : tl('Start', 'Lancer') }}</UButton>
-          <UButton v-if="failedAction" :color="fixable(card, todo) ? 'neutral' : 'primary'" :variant="fixable(card, todo) ? 'outline' : 'solid'" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="task-retry" @click="press">{{ tl('Try again', 'Réessayer') }}</UButton>
+          <UButton v-if="failedAction" :color="fixFirst(card, todo) ? 'neutral' : 'primary'" :variant="fixFirst(card, todo) ? 'outline' : 'solid'" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="task-retry" @click="press">{{ tl('Try again', 'Réessayer') }}</UButton>
           <UButton v-if="canReport && !reportOpen" color="neutral" variant="outline" size="xl" icon="i-lucide-flag" data-testid="task-report-start" @click="reportOpen = true">{{ tl('Report a problem') }}</UButton>
           <AgentButton v-if="!card.archived" :card="card" :primary="todo === 'ask'" />
           <UButton v-if="canStop(card) && !confirmStop" color="error" variant="outline" size="xl" icon="i-lucide-square" data-testid="task-stop" @click="confirmStop = true">{{ tl('Stop', 'Arrêter') }}</UButton>

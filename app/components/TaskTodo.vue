@@ -65,8 +65,10 @@ const reviewSay = computed(() => (props.card.terminal
 const coord = computed(() => (props.kind === 'coordinator' ? coordinatorWait(props.card) : undefined))
 const coordFor = computed(() => (coord.value ? fmtDuration(Math.floor((Date.now() - coord.value.since) / 60_000) * 60) : ''))
 
-// A block its worker could fix: Ask the agent to fix it, the step's first button.
+// A block its worker could fix: Ask the agent to fix it, the step's first button
+// unless the failure may be outside the code (fixFirst: Try again first).
 const fixes = computed(() => fixable(props.card, props.kind))
+const fixesFirst = computed(() => fixFirst(props.card, props.kind))
 
 const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent asks a question', 'Son agent pose une question'], permission: ['Its agent asks for a permission', 'Son agent demande une autorisation'], auth: ['Its agent needs its login again', 'Son agent doit se reconnecter'] }
 </script>
@@ -133,7 +135,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       </template>
       <div v-else class="task-sheet-actions todo-buttons">
         <!-- A refused action is tried again from the sheet's top (Try again). -->
-        <UButton v-if="fixes" color="primary" size="xl" icon="i-lucide-wrench" :loading="busy" data-testid="todo-fix" @click="emit('fix')">{{ tl('Ask the agent to fix it') }}</UButton>
+        <UButton v-if="fixes" :color="fixesFirst ? 'primary' : 'neutral'" :variant="fixesFirst ? 'solid' : 'outline'" size="xl" icon="i-lucide-wrench" :loading="busy" data-testid="todo-fix" @click="emit('fix')">{{ tl('Ask the agent to fix it') }}</UButton>
         <UButton v-if="card.userLabel && kind !== 'refused'" color="primary" size="xl" :loading="busy || goes" :disabled="!open && (!!stuck || (waits !== undefined && !goes))" data-testid="step-user" @click="emit('press')">{{ waits !== undefined && !stuck ? tl('Merging') : card.userLabel }}</UButton>
         <UButton v-if="pr" color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" :to="pr.url" target="_blank" data-testid="todo-pr">{{ tl('Open the PR') }}</UButton>
         <UButton v-if="stuck" color="primary" size="xl" icon="i-lucide-play" :loading="busy" data-testid="todo-worker-start" @click="emit('worker')">{{ tl('Start the worker') }}</UButton>

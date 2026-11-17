@@ -16,6 +16,7 @@ import { taskAgents, type TaskAgent } from '../../shared/pm/taskAgents'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { tellTarget } from '../../shared/pm/coordinator'
 import { actionShell, dropMergedBranch, runAction } from './pmActions'
+import { thrownReason } from '../../shared/pm/refusal'
 import type { CoreAdminDeps } from './coreCreate'
 import { runOn, wherdrBase } from './pmLaunch'
 import { HerdrError } from './herdr'
@@ -203,7 +204,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
           task, shown: shownTaskId(p ? [p] : [], task.id), step: act.step, attempt: act.attempt, action: act.action, by: approved ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
           reviewed: reviewedCommit(plan, state), ...(approved && state.approved!.commit ? { approved: state.approved!.commit } : {}),
           halted: async () => !!(await store.task(task.id))?.stopped,
-        }).catch((e: Error) => ({ ok: false, error: e.message }))
+        }).catch((e: Error) => ({ ok: false, error: thrownReason(e) }))
       : { ok: false, error: 'No worktree: the task never started' }
     // Past its time limit, the step was the engine's again: this late result is only said.
     if (lost()) return store.logTask(await fresh(), 'engine', `${act.step}: a run past its time limit ended (${result.ok ? 'done' : result.error ?? 'failed'}): its result is dropped`)

@@ -10,7 +10,7 @@
 // shows its To do tab's answers (TaskTodo, the same actions as the task's sheet,
 // useTaskActions), Try again for a failed action, and Open the task. An agent's
 // question (ReviewQuestion) is answered here; a block its worker could fix has Ask
-// the agent to fix it (TaskTodo, Try again then secondary): it leaves with The agent is
+// the agent to fix it (TaskTodo, Try again then secondary; Try again first when the failure may be outside the code, none when it is): it leaves with The agent is
 // fixing it, back only once its badge changes (the agent's question, a new failure);: its choices or another answer go
 // to the agent (POST /api/pm/answer), it leaves the list like an approved one;
 // Open the task stays. Open the agent (AgentButton) is on every task, whatever
@@ -108,7 +108,7 @@ const motion = computed(() => (still.value || !card.value ? 'review-fade' : dir.
 const kind = computed(() => (card.value ? taskTodo(card.value) : undefined))
 // Only a merge to accept: another step of the user's (Create these tasks…) keeps its own button, in the task's sheet.
 const approves = computed(() => !!card.value && (kind.value === 'merge' || kind.value === 'step') && mayAccept(card.value))
-const fixes = computed(() => !!card.value && fixable(card.value, kind.value))
+const fixes = computed(() => !!card.value && fixFirst(card.value, kind.value))
 const acts = computed(() => approves.value && !gone.value)
 const row = computed<ToHandle | undefined>(() => (card.value ? taskRow(card.value) : undefined))
 const shotStep = computed(() => (card.value ? shotSteps(card.value)[0] : undefined))

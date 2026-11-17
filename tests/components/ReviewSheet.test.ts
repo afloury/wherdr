@@ -233,6 +233,23 @@ it('asks the agent to fix a blocked merge: it leaves at once, and comes back on 
   w.unmount()
 })
 
+it('a merge refused outside the code (herdr-core, the network) has Try again first, and no Ask the agent to fix it', async () => {
+  const error = 'merge: herdr-core rejected the request (unavailable)', badge = `Merge: ${error}`
+  cards = [card('HO-C', 'home', { yourTurn: badge, state: { at: 2, started: true, proofs: {}, rounds: {}, yourTurn: { reason: 'action', badge, error } } })]
+  reviewOpen.value = true
+  const w = await mountSuspended(ReviewCard)
+  await expect.poll(shown).toBe('HO-C')
+  expect(q('review-retry')?.className).toContain('bg-primary')
+  expect(q('todo-fix')).toBeNull()
+  // Failed for a reason nobody knows: Try again first, the agent second.
+  cards = [card('HO-C', 'home', { yourTurn: 'Merge: merge: exit code 1', state: { at: 2, started: true, proofs: {}, rounds: {}, yourTurn: { reason: 'action', badge: 'Merge: merge: exit code 1', error: 'merge: exit code 1' } } })]
+  taskSheetTick.value++
+  await expect.poll(() => !!q('todo-fix')).toBe(true)
+  expect(q('todo-fix')?.className).not.toContain('bg-primary')
+  expect(q('review-retry')?.className).toContain('bg-primary')
+  w.unmount()
+})
+
 it('copies the task id from its badge, with the Copied toast, and the task stays on screen', async () => {
   cards = [card('HO-1', 'home'), card('HO-2', 'home')]
   const writeText = vi.fn(async () => {})

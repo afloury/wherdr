@@ -6,6 +6,11 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **A new Devin shows its conversation.** Devin 3000.12 runs a launcher as the terminal's program and its engine (`devin acp`) as a child, and the session lock names the engine, so a Devin started without `-r` (a fresh session) showed "No conversation for this agent yet". The lock of a Devin process under the launcher now counts.
+- **An idle Devin keeps its conversation.** Devin's input field was recognized only when its footer showed the token quota, which real footers rarely do (model only, `· smart`, an edits hint, a footer cut short on a phone), so an idle Devin opened the interactive terminal over the conversation. The field is now recognized by its frame, whatever the footer says. A Devin screen caught mid-redraw also no longer opens the interactive terminal for a single read: it opens once two reads in a row agree (other agents are unchanged).
+
 ## [3.1.0] — 2026-11-16
 
 wherdr 3.1 adds workspaces (one coordinator for several repositories), lets Alfred pass your requests to the right project's coordinator and give briefs, and brings themes with Dark, Light and System modes, custom themes and keyboard shortcuts you can change. It also fixes several conversation and engine problems, including two that users reported. Release notes: [docs/release-notes-3.1.0.md](docs/release-notes-3.1.0.md).
