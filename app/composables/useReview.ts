@@ -23,7 +23,7 @@ export function reviewShows(pick: string, project: string) {
   if (pick === REVIEW_FOLLOW) return projectOnBar(project)
   if (pick.startsWith('p:')) return pick.slice(2) === project
   const group = machineGroups.value.find(g => g.id === pick)
-  return !group || projectOnTab(projectTabPlaces.value.get(project) ?? null, group.machines)
+  return !group || projectOnBarItem(project, pick)
 }
 
 // What happened to a task that left the open list elsewhere (`was` as last shown,

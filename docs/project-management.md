@@ -143,6 +143,14 @@ Autopilot; on a computer it is a wide window, and its General fields pair up
 side by side (name and key, worker and reviewer). Its ⋯ menu removes the project from wherdr, after a confirmation:
 its folder, branches and task worktrees stay on the machine.
 
+Above the list, a tab filter picks which projects it shows, with the sidebar's
+home tabs: *Follow tab* (the default: the projects of the home tab open now, the
+same rule as the board's *Follow machine tab*), *All*, then each machine tab
+and tab group. The choice stays on the device. Past 8 projects under the filter,
+a search field finds a project by name, key (a former one too) or folder, any
+case. When nothing shows, the list says so with *Show all tabs*. A link that
+names a project (`?project=KEY`) opens it even when the filter hides it.
+
 A project can also be a [workspace](workspaces.md): a folder without git whose
 coordinator runs several linked repositories, each one a member project that
 takes the workspace's settings unless it sets its own.

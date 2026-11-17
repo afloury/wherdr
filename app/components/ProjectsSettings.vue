@@ -9,10 +9,14 @@
 // Off, the server refuses every change but the switch. Until the overview is
 // read: skeletons (SettingsSkeleton), not an off switch and no project; a failed
 // read shows its error and Try again.
+// Above the list, a tab filter as the sidebar's home tabs: Follow tab (the home
+// tab open now, by default), All, or one tab (projectOnBar's rule, kept on the
+// device), and past 8 projects a search (name, key, path). A project opened from
+// a link (`?project=KEY`) opens even when the filter hides it.
 import type { PmOverview } from '#shared/pm/project'
 import { shownKey } from '#shared/pm/projectKey'
 import { EXAMPLES } from '#shared/pm/examples'
-import { projectTab, type ProjectTab } from '~/utils/projectTabs'
+import { projectTab, projectsMatching, type ProjectTab } from '~/utils/projectTabs'
 
 const props = defineProps<{ active: boolean }>()
 const route = useRoute()
@@ -65,6 +69,25 @@ const libraryOpen = computed({
   get: () => props.active && route.query.library === '1',
   set: (o: boolean) => { const { library: _l, ...query } = route.query; router.replace({ query: { ...query, ...(o ? { library: '1' } : {}) } }) },
 })
+const TAB_FOLLOW = 'follow'
+const TAB_ALL = 'all'
+const TAB_KEY = 'projectsSettingsTab'
+const savedTab = ref<string>((() => { try { return localStorage.getItem(TAB_KEY) || TAB_FOLLOW } catch { return TAB_FOLLOW } })())
+watch(savedTab, (v) => { try { localStorage.setItem(TAB_KEY, v) } catch { /* storage unavailable */ } })
+// A tab's value: its bar id after `tab:` (the local machine's id is '', which a select item cannot be).
+const tabValue = (id: string) => `tab:${id}`
+const barTabs = computed(() => machineBarItems.value.filter(x => x.shown && x.id !== BAR_ALL).map(x => x.id))
+// A tab removed since it was picked falls back to Follow tab.
+const tabPick = computed({
+  get: () => (savedTab.value === TAB_ALL || barTabs.value.some(id => tabValue(id) === savedTab.value) ? savedTab.value : TAB_FOLLOW),
+  set: (v: string) => { savedTab.value = v },
+})
+const tabItems = computed(() => [{ label: tl('Follow tab'), value: TAB_FOLLOW }, { label: tl('All'), value: TAB_ALL }, ...barTabs.value.map(id => ({ label: barItemLabel(id), value: tabValue(id) }))])
+const onTab = computed(() => (data.value?.projects ?? []).filter(p => tabPick.value === TAB_ALL || (tabPick.value === TAB_FOLLOW ? projectOnBar(p.key) : projectOnBarItem(p.key, tabPick.value.slice(4)))))
+const query = ref('')
+const searchable = computed(() => onTab.value.length > 8)
+const listed = computed(() => (searchable.value ? projectsMatching(onTab.value, query.value) : onTab.value))
+const showAll = () => { savedTab.value = TAB_ALL } // the search, if any, then covers every project
 const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.some(t => t.id === e.id)).length)
 </script>
 
@@ -94,12 +117,17 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
         <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-boxes" data-testid="pm-add-workspace" @click="workspaceOpen = true">{{ tl('Add workspace') }}</UButton>
         <UButton v-if="data.projects.length" to="/board" color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" data-testid="pm-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
       </div>
-      <div v-if="data.projects.length" class="settings-card">
-        <button v-for="p in data.projects" :key="p.key" type="button" class="pm-row" data-testid="pm-project" @click="show(p.key)">
+      <div v-if="data.projects.length && (barTabs.length || searchable)" class="pm-filter">
+        <USelect v-if="barTabs.length" v-model="tabPick" :items="tabItems" size="lg" class="pm-tab" :aria-label="tl('Tab')" data-testid="pm-tab" />
+        <NameFilter v-if="searchable" v-model="query" class="pm-search" :label="tl('Search projects')" data-testid="pm-search" />
+      </div>
+      <div v-if="listed.length" class="settings-card">
+        <button v-for="p in listed" :key="p.key" type="button" class="pm-row" data-testid="pm-project" @click="show(p.key)">
           <span class="pm-id"><b>{{ p.name }}<span v-if="p.visibility?.value === 'public'" class="pm-public" data-testid="pm-public">{{ tl('Public', 'Public') }}</span></b><small class="mono-label">{{ shownKey(p) }} · {{ machineName(p.machine) }}</small><small v-if="proposes(p.key)" class="mono-label pm-review" data-testid="pm-review"><span class="card-state blocked" aria-hidden="true"><i /></span>{{ tl('1 to review') }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
           <UIcon name="i-lucide-chevron-right" class="pm-chevron" />
         </button>
       </div>
+      <p v-else-if="data.projects.length" class="muted settings-hint" data-testid="pm-none">{{ searchable && query.trim() ? tl('No project matches.') : tl('No project on this tab.') }} <UButton v-if="tabPick !== TAB_ALL" variant="link" color="primary" class="pm-show-all" data-testid="pm-show-all" @click="showAll">{{ tl('Show all tabs') }}</UButton></p>
       <p v-else class="muted settings-hint" data-testid="pm-empty">{{ tl('No project yet.', 'Aucun projet pour l’instant.') }}</p>
       <button type="button" class="settings-card pm-row pm-library" data-testid="pm-library" @click="libraryOpen = true">
         <span class="pm-id"><b>{{ tl('Template library') }}</b><small class="mono-label">{{ tl(`${data.templates.length} saved · ${exampleCount} examples`) }}</small></span>
@@ -125,5 +153,9 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
 .pm-chevron { flex: none; color: var(--muted); }
 .pm-public { margin-left: 8px; padding: 2px 6px; border: 1px solid var(--blocked); color: var(--blocked); font: 600 11px/1 var(--font-mono, 'JetBrains Mono', monospace); letter-spacing: .08em; text-transform: uppercase; vertical-align: 2px; }
 .pm-settings .pm-library { margin-top: 16px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+.pm-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.pm-filter > .pm-tab { flex: 0 1 auto; min-width: 0; }
+.pm-filter > .pm-search { flex: 1 1 240px; height: auto; min-height: 40px; }
+.pm-show-all { padding: 0; }
 .pm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 </style>
