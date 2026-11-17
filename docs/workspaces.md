@@ -15,7 +15,7 @@ at most, and a workspace is never itself in a workspace.
 
 ## Creating a workspace
 
-In Settings › Projects, *Add workspace* (next to *Add project*), or in the
+In Settings › Projects, *Add workspace* (in the *Workspaces* section's header), or in the
 sidebar's *New* sheet › *Project* with its *Project | Workspace* switch on
 *Workspace*, asks for (the same form in both places):
 
