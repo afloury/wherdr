@@ -48,6 +48,15 @@ const PHOTO_PATH = /(?:~|\/)\S*\/(?:\.cache\/herdr-web\/uploads\/\S+|\d{4}-\d{2}
 const looseForm = (t: string) => String(t || '').replace(IMAGE_TAG, '').replace(PHOTO_PATH, '').replace(/\s+/g, '')
 const PASTE_TAG = /\[Pasted text #\d+(?: \+\d+ lines)?\]/
 const messageForm = (text: string) => tagsFirst(withoutUploads(text), uploadNames(text).length + imageTagCount(text))
+// Claude's field holds this message alone with at least one photo still as
+// its path (the others as "[Image #N]"), the lone "\" aside: Claude took the
+// path as typed text and will not turn it into an image any more (WHR-454).
+export function fieldHoldsRawPhoto(field: string | null | undefined, text: string): boolean {
+  const f = String(field || '').replace(/\\\s*$/, '')
+  const raw = (f.match(PHOTO_PATH) || []).length
+  return raw > 0 && !PASTE_TAG.test(f) && raw + imageTagCount(f) === uploadNames(text).length
+    && looseForm(f) === looseForm(withoutUploads(text))
+}
 // Why a field does not hold a message, for the server log: sizes, never text.
 export const fieldGap = (field: string, text: string) =>
   `${fieldForm(field).length} chars, ${imageTagCount(field)} images${PASTE_TAG.test(field) ? ', a paste stand-in' : ''}; expected ${messageForm(text).length} chars, ${uploadNames(text).length} images, ${text.split('\n').length} lines`

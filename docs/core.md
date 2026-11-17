@@ -145,6 +145,19 @@ message is still there (up to ten times over about 16 seconds). A message with p
 with a lone `\` on its last line: core presses Enter right after its paste, and Claude,
 before it has turned a photo path into `[Image #N]`, would submit the path as plain text;
 `\` + Enter is a new line in Claude, so the message waits in the box for wherdr's Enter.
+Claude Code checks and reads a pasted photo path within one second, or keeps it as typed text
+for good (after an idle, on a loaded machine): a message whose photo shows as its path is
+cleared and pasted once more, only once its field is seen empty; a field that does not empty,
+or can no longer be read, after that clear refuses the send (**Not sent**, with Retry for the
+whole message), never submitting part of it.
+A photo still shown as its path after that, or when the wait ends, is never left there: wherdr takes the
+`\` out (Backspace, only while the box ends with it), presses Enter, and the message goes
+with its path, which the agent can still open; this leaves one line in the server log (the
+wait's duration and the sizes, never the text). The whole send (paste, wait, Enters) runs
+on the server: switching conversation, closing the page or a phone going to sleep never
+stops it. Meanwhile the message reads **Sending… adding the photo**, also on another device
+or after a reload (the server marks the terminal as sending), never **Not sent**, and
+**Send now** / **Clear** are not offered.
 A message whose photo still reached Claude as its path is shown as sent, its photo as a
 photo, and leaves one line in the server log (photo count and text size, never the text). This also holds for a
 message sent while Claude works or ends its turn: Enter then puts it in Claude's own queue.

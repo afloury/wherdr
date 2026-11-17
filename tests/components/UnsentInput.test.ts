@@ -54,6 +54,16 @@ describe('text left unsent in Claude’s input', () => {
     } finally { w.unmount() }
   })
 
+  it('still being submitted by the server (a photo becoming an image): on its way, never "Not sent", no actions', async () => {
+    const w = await mount({ ...base, sending: true, draft: { text: 'look at this\n~/files/2026-01-01T10-00-00-000Z-a1b2c3.png', lines: 2 } })
+    try {
+      const box = w.find('[data-testid="unsent-input"]')
+      expect(box.find('[data-testid="unsent-sending"]').text()).toBe('Sending… adding the photo')
+      expect(box.text()).not.toContain('Not sent')
+      expect(box.findAll('button')).toHaveLength(0)
+    } finally { w.unmount() }
+  })
+
   it('Send now for Claude’s queue: loading at once, one send, until the queue is taken', async () => {
     let release!: () => void
     answer = () => new Promise(r => { release = () => r({ ok: true }) })

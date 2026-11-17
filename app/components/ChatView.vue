@@ -9,7 +9,7 @@ import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolVie
 import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
-import { uploadSrc } from '#shared/queuedMatch'
+import { uploadNames, uploadSrc } from '#shared/queuedMatch'
 import { userMessageParts } from '~/utils/userMessage'
 import { type PendingMessage, type WaitingOn, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
@@ -1307,8 +1307,12 @@ async function retryQueued(q: { id: string }) {
     retrying.value = null
   }
 }
-function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' | 'inInput'>) {
+function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' | 'inInput' | 'raw'>) {
   const l = pendingLabel(q, waitFor.value, props.pane.agent)
+  // The server still waits for a photo to become an image (or sends its path): on its way, never "Not sent" (WHR-454).
+  if ((l.kind === 'sending' && q.state === 'sending') || (l.kind === 'input' && props.pane.sending)) {
+    if (uploadNames(q.raw).length) return t('Sending… adding the photo')
+  }
   switch (l.kind) {
     case 'read': return t('Read by the agent')
     case 'input': return t('Not sent yet · waiting in the agent’s input')
