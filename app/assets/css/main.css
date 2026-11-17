@@ -968,7 +968,6 @@ body.short-bottom { --safe-bottom: 0px; }
 .note-body :is(p, ul, ol) { margin: 0; }
 .note-body :is(ul, ol) { padding-left: 20px; }
 .note-body :is(h1, h2, h3, h4) { margin: 8px 0 2px; font: 650 14px/1.35 var(--sans); color: var(--text-strong); }
-.note-body h1 { font-size: 15px; }
 .note-body > :first-child { margin-top: 0; }
 .note-body hr { border: 0; border-top: 1px solid var(--line); margin: 8px 0; }
 .note-body ul:has(> li > input[type=checkbox]) { padding-left: 0; list-style: none; }
