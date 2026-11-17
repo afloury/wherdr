@@ -73,14 +73,14 @@ describe('parking on the server', () => {
     await store.addTask({ project: 'WH', title: 'Client', type: 'simple' })
     await store.saveTask({ ...(await store.addTask({ project: 'WH', title: 'API', type: 'simple' })), ...second })
     const calls: [string, Record<string, unknown>][] = []
-    const env = { label: '' }
+    const env = { label: '', fail: false }
     const call = async (method: string, p: Record<string, unknown>) => {
       calls.push([method, p])
       if (method === 'machine.exec') {
         const [, , script] = p.argv as string[]
         if (script!.includes('command -v')) return { code: 0, stdout: Buffer.from('claude').toString('base64') }
         if (script!.includes('$HOME')) return { code: 0, stdout: Buffer.from('/home/u').toString('base64') }
-        return { code: 0, stdout: '' }
+        return { code: env.fail ? 1 : 0, stdout: '' }
       }
       if (method === 'terminal.run') return { address: `m1/t${calls.filter(c => c[0] === 'terminal.run').length}` }
       if (method === 'terminal.list') return { terminals: [{ address: 'm1/t1', labels: { 'wherdr.report': env.label }, state: 'running', status: { state: 'idle' } }] }
@@ -149,7 +149,11 @@ describe('parking on the server', () => {
   })
   it('paused for room: out of the user\'s lists, kept to its machine\'s cap, resumed in its conversation before a new task starts there', async () => {
     expect(parseCommand(['task', 'stop', 'WH-1', '--for-room', '--reason', 'machine over its cap'])).toMatchObject({ name: 'task stop', forRoom: true })
-    const { store, calls, deps } = await setup()
+    const { store, calls, env, deps } = await setup()
+    const first = (await store.runs())[0]!
+    await store.saveRun({ ...first, program: 'codex' })
+    await expect(pauseForRoom(deps, 'WH-1', 'full', 'coordinator WH')).rejects.toThrow('cannot be taken up again')
+    await store.saveRun(first)
     cap.n = 1
     await pauseForRoom(deps, 'WH-1', 'machine over its cap', 'coordinator WH')
     const run = (await store.runs())[0]!
@@ -170,11 +174,21 @@ describe('parking on the server', () => {
     const fresh = await store.addTask({ project: 'WH', title: 'Next', type: 'simple' })
     expect(await placeFor(deps, fresh)).toMatchObject({ hold: expect.stringContaining('WH-1, paused for room there, starts first') })
 
-    // The room is back: WH-1 goes on in the same conversation, told why it paused.
+    // The room is back but its start fails: still paused (never the user's turn), tried again 10 min later.
     const other = (await store.runs()).find(r => r.task === 'WH-2')!
     await store.saveRun({ ...other, state: 'ended', endedBy: 'released' })
-    await resumeParked(deps)
-    const line = String(calls.filter(c => c[0] === 'terminal.run')[2]![1].line)
+    env.fail = true
+    await resumeParked(deps, 1000)
+    const failed = (await store.task('WH-1'))!
+    expect(failed).toMatchObject({ state: 'working', parked: { room: 'm1' } })
+    expect(cardOf(failed, taskPlan(wherdr, failed), await store.runs()).yourTurn).toBeUndefined()
+    env.fail = false
+    const runsBefore = calls.filter(c => c[0] === 'terminal.run').length
+    await resumeParked(deps, 2000)
+    expect(calls.filter(c => c[0] === 'terminal.run')).toHaveLength(runsBefore)
+    // The room is back: WH-1 goes on in the same conversation, told why it paused.
+    await resumeParked(deps, 1000 + 10 * 60_000)
+    const line = String(calls.filter(c => c[0] === 'terminal.run').at(-1)![1].line)
     expect(line).toContain(`'--resume' '${run.session}'`)
     expect(line).toContain('There is room again')
     expect((await store.task('WH-1'))!.parked).toBeUndefined()

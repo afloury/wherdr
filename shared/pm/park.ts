@@ -85,7 +85,8 @@ export function resumeText(task: Task, tasks: Task[], projects: Project[]): stri
 
 // A started task a coordinator pauses to free its machine: why not, or undefined.
 // Only a worker's step: the worker is what the engine starts again.
-export function roomPauseRefusal(task: Task, holder: string | undefined, live: { role: string }[]): string | undefined {
+// Its worker's conversation must be one the engine takes up again (a Claude worker's pinned session).
+export function roomPauseRefusal(task: Task, holder: string | undefined, live: { role: string, program?: string, session?: string }[]): string | undefined {
   if (task.step?.done) return `${task.id} is done`
   if (task.stopped) return `${task.id} is stopped: it holds no room`
   if (task.parked) return task.parked.room ? `${task.id} is already paused for room` : `${task.id} is parked: it holds no room`
@@ -93,6 +94,8 @@ export function roomPauseRefusal(task: Task, holder: string | undefined, live: {
   if (task.state === 'waiting' || task.step.yourTurn) return `${task.id} waits for the user: pausing it would hide that from them`
   if (holder !== 'worker') return `${task.id} is at a step its worker does not hold: only a worker's step is paused for room`
   if (!live.length) return `${task.id} has no agent running: it holds no room`
+  const worker = live.find(r => r.role === 'worker')
+  if (!worker || worker.program !== 'claude' || !worker.session) return `${task.id}'s worker conversation cannot be taken up again later (only a Claude worker's can): stop it instead, or let it finish`
 }
 
 // The task paused for room on a machine (key, name): no agent, no stall, out of the user's lists.
