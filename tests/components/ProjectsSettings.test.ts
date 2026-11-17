@@ -249,3 +249,22 @@ it('a key saves only on blur, then stays in the field and the badge, and the sha
   expect(document.body.querySelector('.pm-key-row .project-badge')?.textContent?.trim()).toBe('SITE')
   expect(coordinatorReads).toBeGreaterThan(reads)
 })
+
+// WHR-442: past 8 projects in the filter, a search (name, key, path); nothing found says so.
+it('shows a search past 8 projects', async () => {
+  state = { ...state, enabled: true, projects: Array.from({ length: 8 }, (_, i) => ({ ...web(), key: `P${i}`, name: `Project ${i}`, path: `~/src/p${i}` })) }
+  const w = await mountSuspended(ProjectsSettings, { props: { active: true } })
+  mounted = w
+  await vi.waitFor(() => expect(w.findAll('[data-testid="pm-project"]')).toHaveLength(8))
+  expect(w.find('[data-testid="pm-search"]').exists()).toBe(false)
+  w.unmount()
+
+  state = { ...state, projects: [...state.projects, { ...web(), key: 'DOC', name: 'Docs', path: '~/src/handbook' }] }
+  const v = await mountSuspended(ProjectsSettings, { props: { active: true } })
+  mounted = v
+  await vi.waitFor(() => expect(v.findAll('[data-testid="pm-project"]')).toHaveLength(9))
+  await v.get('[data-testid="pm-search"] input').setValue('HANDBOOK')
+  expect(v.findAll('[data-testid="pm-project"]').map(r => r.text())).toEqual([expect.stringContaining('Docs')])
+  await v.get('[data-testid="pm-search"] input').setValue('zzz')
+  expect(v.get('[data-testid="pm-none"]').text()).toContain('No project matches.')
+})
