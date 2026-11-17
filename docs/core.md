@@ -155,7 +155,7 @@ A photo still shown as its path after that, or when the wait ends, is never left
 with its path, which the agent can still open; this leaves one line in the server log (the
 wait's duration and the sizes, never the text). The whole send (paste, wait, Enters) runs
 on the server: switching conversation, closing the page or a phone going to sleep never
-stops it. Meanwhile the message reads **Sending… adding the photo**, also on another device
+stops it. Meanwhile a photo message reads **Sending… adding the photo**, also on another device
 or after a reload (the server marks the terminal as sending), never **Not sent**, and
 **Send now** / **Clear** are not offered.
 A message whose photo still reached Claude as its path is shown as sent, its photo as a
@@ -169,8 +169,15 @@ was expected: characters, images, lines, never the text). A send in progress is 
 it at startup, the same way and only on a box that holds that message alone.
 A message another terminal sent with `hc send` (wrapped in `<hc from="…">`) is shown
 without that wrapper, its photos as photos.
-Until the send answers, the bubble reads **sending…**, not **Not sent**. While it stays there, its bubble reads **Not sent yet · waiting in
-the agent's input**, never **Read by the agent**, and the box's own bubble is not shown
+A message only tells what wherdr knows: from the tap until it is in the agent's transcript,
+its bubble reads **Sending…** with a small turning loader, whatever the send answered or the
+screen shows, also on another device or after a reload (the server marks the terminal as
+sending while it submits a message, text or photos); it never claims the agent read it.
+Held in Claude's own queue, it reads **Queued by Claude · sent when it finishes**. Once in
+the transcript, the transcript's own message replaces it. Only once the server is done
+(its Enters over) and the message is still in the box does its bubble read **Not sent yet ·
+waiting in the agent's input** (the box's **Not sent — still in Claude's input**, with
+**Send now** / **Clear**), never while the server still tries; and the box's own bubble is not shown
 twice: the box is matched to the message by its text alone, whitespace, `[Image #N]`
 placeholders and photo paths left out, since the box may show fewer placeholders than the
 message has photos, or a photo still as its path. A new message is never typed into a box that holds text: Claude would submit both
