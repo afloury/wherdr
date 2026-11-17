@@ -5,7 +5,7 @@
 // (POST /api/pm/project, kind workspace), then starts its coordinator, whose
 // first reply offers to build the map; a coordinator that does not start is
 // said here, the workspace stays added.
-import { proposeKey } from '#shared/pm/newProject'
+import { proposeKey, shortHome } from '#shared/pm/newProject'
 import { workspaceInput } from '#shared/pm/workspace'
 import { machineGroups } from '~/composables/useMachineBar'
 
@@ -27,7 +27,7 @@ const busy = ref(false)
 const error = ref('')
 const tried = ref(false)
 
-watch(open, (o) => { if (o) { name.value = ''; key.value = ''; keyEdited.value = false; group.value = ''; on.value = ['']; roots.value = { '': '~/work' }; error.value = ''; tried.value = false } })
+watch(open, (o) => { if (o) { browsing.value = null; name.value = ''; key.value = ''; keyEdited.value = false; group.value = ''; on.value = ['']; roots.value = { '': '~/work' }; error.value = ''; tried.value = false } })
 // The key follows the name until the user types one.
 watch(name, (n) => { if (!keyEdited.value) key.value = n.trim() ? proposeKey(n, props.taken) : '' })
 
@@ -40,6 +40,24 @@ function toggle(m: string, checked: boolean) {
 }
 // In the list's order, the home first: the first one checked.
 const picked = computed(() => machines.value.filter(m => on.value.includes(m.key)))
+
+// Browse: DirBrowser on that machine, from the typed folder when it exists,
+// else the machine's home; the form stays mounted (hidden) meanwhile.
+const browsing = ref<{ machine: string, start: string | null } | null>(null)
+const cfgOf = (k: string) => (appConfig.value.machines ?? []).find(m => m.key === k)
+const homeOf = (k: string) => (k ? cfgOf(k)?.home : appConfig.value.home) || ''
+const offline = (k: string) => { const c = cfgOf(k); return !!k && (!c || !machineOnline(c)) }
+async function browse(m: string) {
+  const typed = roots.value[m]?.trim() || ''
+  const q = (p: string) => `/api/dirs?path=${encodeURIComponent(p)}${m ? `&machine=${encodeURIComponent(m)}` : ''}`
+  const start = typed ? await api(q(typed)).then(() => typed, () => null) : null
+  browsing.value = { machine: m, start }
+}
+function chooseRoot(d: string) {
+  const m = browsing.value!.machine
+  roots.value = { ...roots.value, [m]: shortHome(d, homeOf(m)) }
+  browsing.value = null
+}
 
 const problems = computed(() => ({
   name: !name.value.trim() ? tl('Give it a name') : '',
@@ -67,7 +85,7 @@ async function create() {
 
 <template>
   <AppSheet v-model:open="open" :title="tl('Add workspace')" tall>
-    <form id="add-workspace" class="sheet-form" data-testid="add-workspace" novalidate @submit.prevent="create">
+    <form v-show="!browsing" id="add-workspace" class="sheet-form" data-testid="add-workspace" novalidate @submit.prevent="create">
       <p class="muted ws-hint">{{ tl('A workspace\'s coordinator runs the repositories cloned under its root folder, for work that spans several of them.') }}</p>
       <label class="field-label" for="add-workspace-name">{{ tl('Name') }}</label>
       <UInput id="add-workspace-name" v-model="name" size="xl" class="w-full" maxlength="60" data-testid="add-workspace-name" />
@@ -85,13 +103,21 @@ async function create() {
       <div class="ws-machines">
         <div v-for="m in machines" :key="m.key" class="ws-machine" data-testid="add-workspace-machine">
           <UCheckbox :model-value="on.includes(m.key)" :label="m.label" size="xl" @update:model-value="v => toggle(m.key, v === true)" />
-          <UInput v-if="on.includes(m.key)" v-model="roots[m.key]" size="lg" class="w-full mono" :aria-label="`${tl('Root folder')} · ${m.label}`" data-testid="add-workspace-root" />
+          <div v-if="on.includes(m.key)" class="ws-root">
+            <UInput v-model="roots[m.key]" size="xl" class="w-full mono" :aria-label="`${tl('Root folder')} · ${m.label}`" data-testid="add-workspace-root" />
+            <UButton
+              color="neutral" variant="outline" size="xl" icon="i-lucide-folder-open" :disabled="offline(m.key)"
+              :aria-label="`${tl('Browse')} · ${m.label}`" :title="offline(m.key) ? tl('This machine is offline') : tl('Browse')"
+              data-testid="add-workspace-browse" @click="browse(m.key)"
+            />
+          </div>
         </div>
       </div>
       <p v-if="shown('machines')" class="form-error">{{ shown('machines') }}</p>
     </form>
+    <DirBrowser v-if="browsing" :start="browsing.start" :machine="browsing.machine" @choose="chooseRoot" @cancel="browsing = null" />
     <template #footer>
-      <div class="sheet-form">
+      <div v-if="!browsing" class="sheet-form">
         <p v-if="error" class="form-error" role="alert" data-testid="add-workspace-refused">{{ error }}</p>
         <UButton type="submit" form="add-workspace" block size="xl" color="primary" class="hw-cta" icon="i-lucide-plus" :loading="busy" data-testid="add-workspace-submit">{{ tl('Create') }}</UButton>
       </div>
@@ -103,4 +129,6 @@ async function create() {
 .ws-hint { margin: 6px 2px 10px; font-size: 13px; }
 .ws-machines { display: grid; gap: 10px; }
 .ws-machine { display: grid; gap: 6px; }
+.ws-root { display: flex; gap: 8px; }
+.ws-root > :last-child { flex: none; width: 48px; justify-content: center; }
 </style>

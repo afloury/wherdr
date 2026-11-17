@@ -75,9 +75,11 @@ with the agent you chose (*Start with Claude*, *Codex*…), and its first
 message proposes a workflow ([its first
 conversation](#the-coordinators-first-conversation)). A folder without git
 needs no workflow: it has no tasks (a task needs git for its own worktree),
-and its coordinator does the work in it directly. Below, *Existing projects*
-lists the projects whose coordinator does not run, to start it again; those
-running are in the sidebar, and with none stopped the heading is hidden. On a
+and its coordinator does the work in it directly. Below, *Restart a
+coordinator* (with their number, collapsed until you open it) lists the
+projects whose coordinator does not run, to start it again; those running are
+in the sidebar, and with none stopped the section is hidden. The agent
+picker comes after it, for a new folder as for a project to restart. On a
 computer the sheet is wider, with a taller repository list.
 
 Then ask the coordinator for tasks, and answer what shows under *Your turn* and
@@ -129,7 +131,8 @@ data, and post it only on your yes.
 **Settings › Projects** holds the *Project management* switch, *Set up a project*,
 the project list and the [template library](#template-library): each row shows
 the name (with a **Public** badge for a public repository), the key, the machine
-and the folder. *Add project* opens the setup window on a new project; *Open the
+and the folder. *Add project*, *Add workspace* and *Open the board* sit above
+the list. *Add project* opens the setup window on a new project; *Open the
 board* goes to the board. Until the list is read, the switch and the rows show
 as grey blocks and both buttons wait; a failed read says why, with *Try again*. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and

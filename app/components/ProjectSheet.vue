@@ -428,6 +428,9 @@ async function remove() {
 <style scoped>
 .project-sheet { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; }
 .project-panel { min-width: 0; }
+/* The global hint pulls itself up under a settings group's heading (-20px):
+   under the tab bar, and in the tabs' own content, it flows like the rest. */
+.project-panel :deep(.settings-hint) { margin: 0 2px 12px; }
 .project-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pm-id { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .pm-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
