@@ -88,8 +88,8 @@ sent by wherdr* line, never as your message nor as the conversation's title. Alf
 change first and makes it only after your yes.
 
 With no project yet, Alfred's first message also offers to set up the first one
-with you: here, one question at a time, or in the setup window, which it can open
-for you (Settings › Projects › *Set up a project*). A user coming from wherdr v2 gets
+with you: here, one question at a time, or with the New › Project form, which it can open
+for you (Settings › Projects › *Add project*). A user coming from wherdr v2 gets
 the offer to set up their v2 projects instead. Alfred asks one question per message: with
 such an offer, it asks whether you want to give it another name only once the offer is answered.
 Home's empty list says so too: *Set up a project with Alfred* opens Alfred's conversation with the

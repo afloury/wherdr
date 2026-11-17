@@ -13,9 +13,9 @@ Each step does the thing in place; Next waits until it is done, and Back shows
 only when there is a step to go back to (never on the first). While no project
 went through every step, the **Board** header shows *Finish setup (2/3)*,
 which opens it at the first step left; once one project's coordinator runs,
-the button is gone. **Settings › Projects › Set up a project** opens it too, on
-the first project with a step left, and *Add project* opens it on a new
-project.
+the button is gone. Home's *Open the setup window* opens it too.
+**Settings › Projects › Add project** adds a project with the New sheet's
+*Project* form instead (see below).
 
 There is no workflow to pick here: the project's coordinator sets it up with
 you, and you change it any time by talking to it or to Alfred. Templates stay
@@ -128,11 +128,12 @@ data, and post it only on your yes.
 
 ## Projects
 
-**Settings › Projects** holds the *Project management* switch, *Set up a project*,
+**Settings › Projects** holds the *Project management* switch,
 the project list and the [template library](#template-library): each row shows
 the name (with a **Public** badge for a public repository), the key, the machine
 and the folder. *Add project*, *Add workspace* and *Open the board* sit above
-the list. *Add project* opens the setup window on a new project; *Open the
+the list. *Add project* opens the **New** sheet on its *Project* form, as the sidebar's
+New › Project does; *Open the
 board* goes to the board. Until the list is read, the switch and the rows show
 as grey blocks and both buttons wait; a failed read says why, with *Try again*. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
@@ -1083,7 +1084,8 @@ Anything else that waits (a failure, a decision, another
 step of yours such as *Create these tasks*) shows the answers of its To do tab
 (its choices, *Try again* for a failed action), and *Open the task*. A block its
 worker could fix has **Ask the agent to fix it** first (*Try again* then
-secondary): *The agent is fixing it* for a moment, then it leaves the list, back
+secondary; a failure outside the code, such as herdr-core or the network, has
+only *Try again*): *The agent is fixing it* for a moment, then it leaves the list, back
 at its end only with the agent's question or the fix's new failure; *Open the
 agent* works again once its worker runs. Every
 task, whatever its step, also has *Open the agent*, as on the [task
@@ -1174,9 +1176,15 @@ it follows you across devices like the Board's picker.
   8 minutes later), then the error ends with the last lines of the output,
   private parts masked.
 - **Ask the agent to fix it**: on a block the task's worker could fix (a
-  failed step action such as a conflict, red checks or an unreadable PR, a
-  stalled or ended worker, a step past its time limit), this is the first
-  button; *Try again* stays, secondary. The worker gets the block's exact
+  failed step action such as a conflict, red checks, a refused push or new
+  commits to review, a stalled or ended worker, a step past its time limit),
+  this is the first button; *Try again* stays, secondary. An action that failed
+  outside the code (herdr-core or a machine refused the call, the network, a
+  timeout, the Git host's server error or rate limit, a machine offline) has
+  only *Try again*, first; its reason keeps herdr-core's error kind and hint,
+  as in *herdr-core rejected the request (unavailable: …)*. An action that
+  failed for a reason the engine does not know has *Try again* first and *Ask
+  the agent to fix it* second. The worker gets the block's exact
   reason (started again in its worktree if it ended, as a coordinator's
   `tell --fix` does): fix it if it can (merge the base and solve the conflict,
   fix the CI, push), then say it is done; if it needs a decision or access only

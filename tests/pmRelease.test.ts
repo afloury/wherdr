@@ -380,6 +380,8 @@ describe('ask the agent to fix it', () => {
     const at = (s: Partial<Task['step']>, over: Partial<Task> = {}) => task({ step: { ...task().step!, ...s }, ...over })
     const refused = at({ at: 1, yourTurn: { reason: 'action', badge: 'Merge: conflict', error: 'The PR conflicts with v3' } })
     expect(fixableBlock(refused)).toBe('The PR conflicts with v3')
+    // Refused outside the code (herdr-core, the network): nothing for its agent.
+    expect(fixableBlock(at({ at: 1, yourTurn: { reason: 'action', badge: 'Merge: x', error: 'merge: herdr-core rejected the request (unavailable)' } }))).toBeUndefined()
     expect(fixableBlock(at({ yourTurn: { reason: 'timeout', badge: 'Check work: over 2h' } }))).toBe('Check work: over 2h')
     expect(fixableBlock(task({ state: 'waiting', waiting: 'claude stopped' }))).toBe('claude stopped')
     // A stall (an idle worker, red CI with no new push): the board's own words.
