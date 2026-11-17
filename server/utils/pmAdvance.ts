@@ -5,7 +5,7 @@
 // stop. All of it is read again from the task's state, so a restart loses
 // nothing (shared/pm/advance.ts holds the rules).
 import { randomUUID } from 'node:crypto'
-import { DONE_CMD, READ_SEP, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent, signalKept } from '../../shared/pm/advance'
+import { DONE_CMD, READ_SEP, appendLine, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent, signalKept } from '../../shared/pm/advance'
 import { onEvent, type PlannedStep } from '../../shared/pm/steps'
 import { followedBranch } from '../../shared/pm/branchName'
 import { LABEL, agentEnv, agentLine, duplicateAgents, prefOf, programName, quotaOut, reviewerPlan, runLabels, taskPlan, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
@@ -48,7 +48,8 @@ m=
 [ -n "$base" ] && { m=$(git -C "$wt" merge-base HEAD "origin/$base" 2>/dev/null) || m=$(git -C "$wt" merge-base HEAD "$base" 2>/dev/null); }
 [ -n "$m" ] || m=$s
 git -C "$wt" log --no-merges --format='%at %s' \${m:+"$m..HEAD"} 2>/dev/null | cksum; echo "${READ_SEP}"
-git -C "$wt" diff --numstat \${m:+"$m"} HEAD 2>/dev/null`
+git -C "$wt" diff --numstat \${m:+"$m"} HEAD 2>/dev/null; echo "${READ_SEP}"
+cat "$6" 2>/dev/null`
 // The task moves to the branch its worker pushed: its start point (and takeover tip) goes with it.
 const FOLLOW_SCRIPT = `for k in wherdrstart wherdrtaken; do s=$(git -C "$1" config "branch.$2.$k") && git -C "$1" config "branch.$3.$k" "$s"; done; exit 0`
 
@@ -135,8 +136,10 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   if (!c || c.task.step!.done) return
   const step = c.plan[c.task.step!.at]
   const files = runFiles(latest(await deps.store.runs(), run.task, 'worker')?.instructions ?? run.instructions)
-  const r = await exec(deps, c.on, SIGNAL_READ_SCRIPT, [run.worktree, run.branch, files.note, files.verdict, c.task.base ?? ''])
+  const r = await exec(deps, c.on, SIGNAL_READ_SCRIPT, [run.worktree, run.branch, files.note, files.verdict, c.task.base ?? '', files.before])
   const read = parseRead(r.out)
+  // The worker rewrote its report file: the earlier rounds go back on top.
+  if (read.rewrote && run.role === 'worker') await exec(deps, c.on, 'printf \'%s\\n\' "$2" > "$1"', [files.note, read.whole!])
   const ev = signalEvent(step, run.role, read)
   const moved = ev && 'kind' in ev && ev.kind === 'report' ? followedBranch(run.branch, read, c.task.branchStart ?? `task/${c.task.id}`) : undefined
   if (moved) await follow(deps, c, run, moved)
@@ -230,6 +233,10 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   const told = { ...s, told: s.since }
   if (due.holder === 'reviewer') return oneStart(id, 'reviewer', () => reviewer(deps, c, due.text, alive(rv) && rv)).catch(busy)
   const worker = latest(runs, id, 'worker')
+  // The report file is kept, a copy of it too, before the worker is told or revived:
+  // this round's section, added at its end, alone gives this step's proofs (parseRead).
+  const files = runFiles(worker?.instructions ?? '')
+  if (worker) await exec(deps, c.on, 'if [ -s "$1" ]; then cp -f "$1" "$2"; else rm -f "$2"; fi', [files.note, files.before])
   // Released while the task waited for the user, or ended earlier (on its own, or
   // by a stop the task went on from) with no incident: a step due for it (a
   // send-back, the user's or the engine's) starts it again, the handover gives the step.
@@ -245,12 +252,10 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
     return void await interruptTask(deps, task, i)
   }
   await clearSignal(deps, worker!.terminal!)
-  // A new note for this step: the last one's link must not pass as this step's proof.
-  await exec(deps, c.on, 'rm -f "$1"', [runFiles(worker!.instructions).note])
   // The workspace's instructions files changed since the worker read them: the step gives them again.
   const ws = await workspaceFiles(deps, task, c.p, true)
   const again = ws.changed ? ['', '', 'The workspace\'s instructions files changed: follow them from now on.', '', ...ws.lines].join('\n') : ''
-  await deps.call('terminal.send', { terminal: worker!.terminal, text: showIds([c.p], due.text + again) }, 30000)
+  await deps.call('terminal.send', { terminal: worker!.terminal, text: showIds([c.p], `${due.text}\n\n${appendLine(files.note)}${again}`) }, 30000)
   await deps.store.logTask({ ...ws.task, step: told, run: worker!.id }, 'engine', `${plan[s.at]!.id}: sent to the worker`)
 }
 
