@@ -7,7 +7,7 @@
 // read-only, only while agy holds both sidecars (node:sqlite would create
 // them otherwise); every other local read uses the same kept copy.
 import { createHash } from 'node:crypto'
-import { appendFileSync, closeSync, existsSync, mkdtempSync, openSync, readSync, rmSync, truncateSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, mkdtempSync, openSync, readdirSync, readSync, rmSync, truncateSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { ChatItem, ChatResponse, ModelInfo } from '../../shared/types'
@@ -49,6 +49,34 @@ const hash12 = (s: string) => createHash('sha1').update(s).digest('hex').slice(0
 const HEAD = /^(.*):(\d+):(null|\d+):([0-9a-f]{12})(?=[/~#]|$)/
 const ANCHOR = /\/(\d+)\.([0-9a-f]{12})(?=[~#]|$)/
 const AGY_SESSION = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i
+// Prefix of the kept copies in the temp dir (conv.db and conv.db-wal each),
+// followed by the owning process's pid: `wherdr-agy-<pid>-XXXXXX`.
+const KEPT_PREFIX = 'wherdr-agy-'
+const KEPT_NAME = /^wherdr-agy-(\d+)-/
+
+// Whether a process with this pid exists: another user's (EPERM) counts as
+// alive, only a missing one (ESRCH) does not.
+function alive(pid: number): boolean {
+  try { process.kill(pid, 0); return true } catch (e) { return (e as { code?: string } | null)?.code !== 'ESRCH' }
+}
+
+// A kept copy of a previous run (a restart while one was open) stays in the
+// temp dir — often tmpfs — up to the snapshot limit each. Called once at
+// startup (server/plugins/poller.ts): only a folder whose pid no longer runs is
+// removed, so a second server sharing the temp dir keeps the copies it is
+// reading. A reused pid only delays the cleanup to a later start. Anything
+// else in the temp dir is left alone.
+export function sweepAgyCopies(dir = tmpdir()): void {
+  let names: string[]
+  try { names = readdirSync(dir) } catch { return }
+  for (const name of names) {
+    const found = KEPT_NAME.exec(name)
+    const pid = found ? Number(found[1]) : 0
+    if (!pid || !Number.isSafeInteger(pid) || alive(pid)) continue
+    try { rmSync(path.join(dir, name), { recursive: true, force: true }) } catch { /* held by another process */ }
+  }
+}
+
 
 // End of the last whole WAL frame a file of `keptSize` bytes holds
 // (32 + n * (24 + page size)); the page size sits in the WAL header's
@@ -246,6 +274,8 @@ interface SnapBase {
   walSize: number
   walHead: Buffer | null
   refs: number
+  // Its pane is gone: the directory goes as soon as no read holds it.
+  gone: boolean
   queue: Promise<void>
 }
 
@@ -376,9 +406,9 @@ export function createAgyTranscripts({
   function acquireBase(file: string): SnapBase {
     let base = bases.get(file)
     if (!base) {
-      const dir = mkdtempSync(path.join(tmpdir(), 'wherdr-agy-'))
+      const dir = mkdtempSync(path.join(tmpdir(), `${KEPT_PREFIX}${process.pid}-`))
       const db = path.join(dir, 'conv.db')
-      base = { dir, db, wal: `${db}-wal`, shm: `${db}-shm`, dbId: null, walSize: 0, walHead: null, refs: 0, queue: Promise.resolve() }
+      base = { dir, db, wal: `${db}-wal`, shm: `${db}-shm`, dbId: null, walSize: 0, walHead: null, refs: 0, gone: false, queue: Promise.resolve() }
     }
     bases.delete(file)
     bases.set(file, base)
@@ -391,6 +421,21 @@ export function createAgyTranscripts({
     return base
   }
 
+  // The pane left the state: its copy is dropped now, or as soon as the read
+  // holding it lets go (a read still needs the pair on disk).
+  function forgetFile(file: string): void {
+    const base = bases.get(file)
+    if (!base) return
+    base.gone = true
+    if (base.refs) return
+    dropBase(file, base)
+  }
+
+  function dropBase(file: string, base: SnapBase): void {
+    if (bases.get(file) === base) bases.delete(file)
+    rmSync(base.dir, { recursive: true, force: true })
+  }
+
   async function lockBase(file: string): Promise<{ base: SnapBase, unlock: () => void }> {
     const base = acquireBase(file)
     base.refs++
@@ -398,7 +443,14 @@ export function createAgyTranscripts({
     let release = () => {}
     base.queue = new Promise<void>(resolve => { release = resolve })
     await prev
-    return { base, unlock: () => { base.refs--; release() } }
+    return {
+      base,
+      unlock: () => {
+        base.refs--
+        release()
+        if (base.gone && !base.refs) dropBase(file, base)
+      },
+    }
   }
 
   // Brings the kept copy to the remote state dbSt/walSt describe, then stats
@@ -702,5 +754,5 @@ export function createAgyTranscripts({
     }
   }
 
-  return { chat, image, search, model, pathOf }
+  return { chat, image, search, model, pathOf, forgetFile }
 }
