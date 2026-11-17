@@ -4,12 +4,11 @@
 import { createHash } from 'node:crypto'
 import path from 'node:path'
 import type { ChatItem, ModelInfo } from '../../shared/types'
+import { clip } from './transcriptText'
 import { ompModelLabel } from './models'
 import { fieldOf, isoOf, subOf, textOf, tsOf, wireFields, type WireField } from './agyProtobuf'
 
-const MAX_TEXT = 20000
 const hash12 = (s: string) => createHash('sha1').update(s).digest('hex').slice(0, 12)
-const clip = (s: unknown) => typeof s === 'string' ? s.slice(0, MAX_TEXT) : ''
 const HEAD = /^(.*):(\d+):(null|\d+):([0-9a-f]{12})(?=[/~#]|$)/
 const ANCHOR = /\/(\d+)\.([0-9a-f]{12})(?=[~#]|$)/
 const AGY_SESSION = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i
