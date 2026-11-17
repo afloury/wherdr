@@ -213,7 +213,7 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
 .pm-ws-members > .pm-member { padding-left: 60px; }
 :deep(.pm-ws-fold) { animation: none !important; }
 .pm-settings .pm-library { margin-top: 16px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
-.pm-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.pm-filter { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0; }
 .pm-filter > .pm-tab { flex: 0 1 auto; min-width: 0; }
 .pm-filter > .pm-search { flex: 1 1 240px; height: auto; min-height: 40px; }
 .pm-show-all { padding: 0; }
