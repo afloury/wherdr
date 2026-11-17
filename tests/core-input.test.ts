@@ -261,6 +261,32 @@ describe('core input routes', () => {
     expect(t.calls.some(c => c[0] === 'terminal.keys')).toBe(false)
   })
 
+  it('slow field reads: too little of the wait left to paste again, the message goes as it is, Enter within the wait from the paste', async () => {
+    const msg = 'Three things to check:\nthe header\nthe menu\nthe list\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png'
+    const keys: string[] = []
+    let enterAt = 0
+    let field: string | null = null
+    const t = deps((m, params) => {
+      if (m === 'terminal.send') field = '[Pasted text #12 +4 lines]'
+      if (m === 'terminal.keys') { keys.push(...params.keys); if (params.keys[0] === 'enter') { enterAt ||= Date.now(); field = null } }
+      return m === 'terminal.send' ? { started: false } : {}
+    })
+    t.d.settleMs = 1
+    t.d.photoWaitMs = 600
+    let looks = 0
+    // Each read takes 120 ms: the fourth look at the missing photo comes with about a sixth of the wait left.
+    t.d.field = async () => { if (!looks++) return null; await new Promise(r => setTimeout(r, 120)); return field }
+    const warn = console.warn
+    console.warn = () => {}
+    const at = Date.now()
+    try {
+      expect(await coreSend(t.d, { pane_id: 't1', text: msg })).toEqual({ ok: true, started: null })
+    } finally { console.warn = warn }
+    expect(keys).not.toContain('ctrl+u')
+    expect(t.calls.filter(c => c[0] === 'terminal.send')).toHaveLength(1)
+    expect(enterAt - at).toBeLessThan(600 + 200)
+  })
+
   it('no client after the first request: the send still runs to its Enter, its terminal shown as sending until then', async () => {
     const msg = 'look at this\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png'
     let enters = 0

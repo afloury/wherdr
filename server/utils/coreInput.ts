@@ -125,6 +125,8 @@ async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknow
   const forget = field && deps.submitting ? deps.submitting(p.coreAddress!, text) : () => {}
   try {
     const send = () => deps.call<{ started?: boolean | null, status?: string | null }>('terminal.send', { terminal: p.coreAddress, text: field ? holdEnter(text) : text }, 30000)
+    // The photo wait counts from here: before core's send returns (WHR-472).
+    const pastedAt = Date.now()
     const r = await send()
     let started = r?.started ?? null
     // Claude takes a multi-line send (photo lines, text + "\n@file") as a paste and
@@ -137,7 +139,7 @@ async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknow
     // took the message (WHR-398). So the field is always looked at: empty, the
     // message was taken; holding it, it is submitted (WHR-413).
     if (field) {
-      const enters = await submitLeftInput(deps, p, field, text, async () => { await send() })
+      const enters = await submitLeftInput(deps, p, field, text, async () => { await send() }, pastedAt)
       if (enters) started = null // unconfirmed: Enter pressed, no turn observed yet
     } else if (started === false && text.includes('\n')) {
       // Without a field reading: on an empty input, one more Enter is harmless.
@@ -176,9 +178,11 @@ export async function resumeSubmitting(deps: CoreInputDeps, list: Submitting[]) 
 // for the photos to show, and never longer than PHOTO_WAIT_MS from the paste:
 // a slow field read (an idle Claude) never stretches the wait to minutes.
 const SUBMIT_LOOKS = 60
-// 18 s: then the message goes as it is (its photo as a path), or is refused
-// for Retry when its field could not be confirmed (WHR-472). A paste made
-// again near the end still gets AGAIN_WAIT_MS of its own.
+// 18 s from the first paste, whatever happens meanwhile (clears, a second
+// paste): then the message goes as it is (its photo as a path), or is refused
+// for Retry when its field could not be confirmed (WHR-472). It is cleared
+// and pasted again only with AGAIN_WAIT_MS still left for that paste to show;
+// otherwise it goes as it is at once.
 export const PHOTO_WAIT_MS = 18_000
 const AGAIN_WAIT_MS = 6_000
 // Claude Code (2.1.319) checks a pasted photo path, then reads it, each
@@ -206,10 +210,11 @@ const RESUBMIT_AFTER = [1, 2, 3, 4, 5, 5, 5, 5, 5, 5]
 // A photo left as its path: pasted `again` once (RAW_LOOKS); still a path
 // then, or when the wait ends, the message goes as it is, which the agent
 // can still open, the lone "\" of holdEnter taken out first (WHR-454).
-async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) => Promise<string | null>, text: string, again?: () => Promise<void>): Promise<number> {
+async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) => Promise<string | null>, text: string, again?: () => Promise<void>, pastedAt = Date.now()): Promise<number> {
   const settle = deps.settleMs ?? 400
-  const started = Date.now()
-  let deadline = started + (deps.photoWaitMs ?? PHOTO_WAIT_MS)
+  const started = pastedAt
+  const waitMs = deps.photoWaitMs ?? PHOTO_WAIT_MS
+  const deadline = started + waitMs
   let last: string | undefined
   let raw = false
   const look = async (times = 1) => {
@@ -250,6 +255,8 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
     }
     if (clearing) {
       // Pasted again only on a field seen empty: never twice in it.
+      // The wait is over before the field emptied: the message is no longer whole there, refused for Retry.
+      if (late) giveUp(clearing)
       if (now === null) {
         console.warn(`[wherdr] message to ${p.coreAddress}: a photo stayed a path after ${Date.now() - started} ms, pasted again`)
         const paste = again!
@@ -257,7 +264,6 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
         clearing = rawLooks = 0
         last = undefined
         await paste()
-        deadline = Math.max(deadline, Date.now() + AGAIN_WAIT_MS)
         continue
       }
       // What is left is ours (the field held our message alone): cleared again, a few times.
@@ -272,10 +278,9 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
     if (now === null) return 0
     if (fieldHolds(now, text, true)) break
     rawLooks = fieldHoldsRawPhoto(now, text) ? rawLooks + 1 : 0
-    if (rawLooks >= RAW_LOOKS && again && !late) {
+    if (rawLooks >= RAW_LOOKS && again && deadline - Date.now() >= Math.min(AGAIN_WAIT_MS, waitMs / 3)) {
       await keys(clearKeys(now.split('\n').length))
       clearing = 1
-      deadline = Math.max(deadline, Date.now() + AGAIN_WAIT_MS)
       continue
     }
     if (!rawLooks && late) giveUp(0)

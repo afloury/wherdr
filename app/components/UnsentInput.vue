@@ -38,10 +38,11 @@ async function act(action: 'send' | 'clear' | 'send-queued') {
     busy.value = null
   }
 }
-// While the server submits it, the user's own text: Claude's field may show
-// only "[Pasted text #N +K lines]" for it (WHR-472). Its photos are not listed.
+// The message wherdr sent, as the user wrote it, while it is submitted and
+// after: Claude's field may show only "[Pasted text #N +K lines]" for it
+// (WHR-472). Its photos are not listed.
 const ownText = computed(() => {
-  const own = props.pane.sending ? props.pane.sendingText : undefined
+  const own = props.pane.inputText
   return own && fieldHolds(props.pane.draft?.text, own, true, true) ? own : null
 })
 const shownText = computed(() => (ownText.value === null ? props.pane.draft?.text || '' : withoutUploads(ownText.value)))

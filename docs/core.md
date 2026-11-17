@@ -152,6 +152,8 @@ or can no longer be read, after that clear refuses the send (**Not sent**, with 
 whole message), never submitting part of it. A multi-line message shows in the box as
 `[Pasted text #N +K lines]`, its photo paths hidden inside: a photo missing from the
 `[Image #N]` tags before it is such a path, and is pasted once more the same way.
+The 18 seconds count from the first paste, clears and the second paste included: the message
+is pasted again only with 6 seconds still left, otherwise it goes as it is at once.
 A photo still shown as its path after that, or when the wait ends, is never left there: wherdr takes the
 `\` out (Backspace, only while the box ends with it), presses Enter, and the message goes
 with its path, which the agent can still open; this leaves one line in the server log (the
@@ -162,7 +164,7 @@ on the server: switching conversation, closing the page or a phone going to slee
 stops it. Meanwhile a photo message reads **Sending… adding the photo**, also on another device
 or after a reload (the server marks the terminal as sending, with the message), never **Not sent**, and
 **Send now** / **Clear** are not offered; the box's text shows as the user's own message, never as
-Claude's `[Pasted text #N]` stand-in. Every change (sending, sent, refused) reaches the open
+Claude's `[Pasted text #N]` stand-in, also once the send is over and the message is still there. Every change (sending, sent, refused) reaches the open
 conversation at once, without leaving it.
 A message whose photo still reached Claude as its path is shown as sent, its photo as a
 photo, and leaves one line in the server log (photo count and text size, never the text). This also holds for a

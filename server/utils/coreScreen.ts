@@ -9,7 +9,8 @@ import { hasTranscript } from '../../shared/agentKind'
 import { parseOmpStatus } from '../../shared/ompStatus'
 import { parseChoices, parseOmpPrompt, promptIdentity, completeClaudeAsk, type ClaudeAsked } from './choices'
 import { queueSendNow, readDraft, sameText } from './coreDraft'
-import { sendingText } from './submitting'
+import { lastSentText, sendingTo } from './submitting'
+import { fieldHolds } from '../../shared/queuedMatch'
 import { parseClaudeScreen } from './claudeScreen'
 
 const WORKING = /\besc(?:ape)? to interrupt\b/i
@@ -205,8 +206,7 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         if (parsed.sendNow) p.queueSendNow = true
         // wherdr is still submitting a message here (a photo becoming an image):
         // what its field holds is that message on its way, not "Not sent".
-        const sending = p.agent === 'claude' ? sendingText(p.coreAddress) : undefined
-        if (sending) { p.sending = true; p.sendingText = sending }
+        if (p.agent === 'claude' && sendingTo(p.coreAddress)) p.sending = true
         // A working Claude's screen: the "!" command running (its output so far)
         // and its queue, which the transcript only has at the end (ChatView).
         if (p.agent === 'claude' && p.status === 'working' && !failed.has(p.id)) {
@@ -222,6 +222,9 @@ export function createCoreScreens(deps: CoreScreenDeps) {
             // Once per text: is it typed, or Claude's gray suggestion (same bytes on the plain screen)?
             seen.real ??= await deps.colors(p).then(ansi => sameText(readDraft(ansi, p.agent)?.text ?? '', draft.text), () => false)
             if (seen.real) p.draft = draft
+            // Claude's field may show only "[Pasted text #N]": the message wherdr sent it, as the user wrote it (WHR-472).
+            const own = seen.real ? lastSentText(p.coreAddress) : undefined
+            if (own && fieldHolds(draft.text, own, true, true)) p.inputText = own
           }
         }
       }
