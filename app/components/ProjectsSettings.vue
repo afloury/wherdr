@@ -117,10 +117,10 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
         <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-boxes" data-testid="pm-add-workspace" @click="workspaceOpen = true">{{ tl('Add workspace') }}</UButton>
         <UButton v-if="data.projects.length" to="/board" color="neutral" variant="outline" size="xl" icon="i-lucide-kanban" data-testid="pm-board">{{ tl('Open the board', 'Ouvrir le tableau') }}</UButton>
       </div>
-      <template v-if="data.projects.length">
+      <div v-if="data.projects.length && (barTabs.length || searchable)" class="pm-filter">
         <USelect v-if="barTabs.length" v-model="tabPick" :items="tabItems" size="lg" class="pm-tab" :aria-label="tl('Tab')" data-testid="pm-tab" />
         <NameFilter v-if="searchable" v-model="query" class="pm-search" :label="tl('Search projects')" data-testid="pm-search" />
-      </template>
+      </div>
       <div v-if="listed.length" class="settings-card">
         <button v-for="p in listed" :key="p.key" type="button" class="pm-row" data-testid="pm-project" @click="show(p.key)">
           <span class="pm-id"><b>{{ p.name }}<span v-if="p.visibility?.value === 'public'" class="pm-public" data-testid="pm-public">{{ tl('Public', 'Public') }}</span></b><small class="mono-label">{{ shownKey(p) }} · {{ machineName(p.machine) }}</small><small v-if="proposes(p.key)" class="mono-label pm-review" data-testid="pm-review"><span class="card-state blocked" aria-hidden="true"><i /></span>{{ tl('1 to review') }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
@@ -153,8 +153,9 @@ const exampleCount = computed(() => EXAMPLES.filter(e => !data.value?.templates.
 .pm-chevron { flex: none; color: var(--muted); }
 .pm-public { margin-left: 8px; padding: 2px 6px; border: 1px solid var(--blocked); color: var(--blocked); font: 600 11px/1 var(--font-mono, 'JetBrains Mono', monospace); letter-spacing: .08em; text-transform: uppercase; vertical-align: 2px; }
 .pm-settings .pm-library { margin-top: 16px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
-.pm-settings .pm-tab { width: 100%; max-width: 320px; margin-bottom: 8px; }
-.pm-search { margin-bottom: 8px; }
+.pm-filter { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+.pm-filter > .pm-tab { flex: 0 1 auto; min-width: 0; }
+.pm-filter > .pm-search { flex: 1 1 240px; height: auto; min-height: 40px; }
 .pm-show-all { padding: 0; }
 .pm-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 </style>
