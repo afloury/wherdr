@@ -7,7 +7,7 @@
 // read-only, only while agy holds both sidecars (node:sqlite would create
 // them otherwise); every other local read uses the same kept copy.
 import { createHash } from 'node:crypto'
-import { appendFileSync, closeSync, existsSync, mkdtempSync, openSync, readdirSync, readSync, rmSync, truncateSync, writeFileSync } from 'node:fs'
+import { closeSync, existsSync, mkdtempSync, openSync, readdirSync, readSync, rmSync, truncateSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { ChatItem, ChatResponse, ModelInfo } from '../../shared/types'
@@ -385,17 +385,20 @@ export function createAgyTranscripts({
     return at !== undefined && now() - at < failQuietMs
   }
 
-  // `size` bytes of `src` (or its tail from `start`) in bounded chunks. A
-  // short read means the file shrank under the copy: a move, to be retried.
-  async function readAll(src: string, size: number, start = 0): Promise<Buffer> {
-    const chunks: Buffer[] = []
-    for (let pos = start; pos < size; pos += READ_CHUNK_BYTES) {
-      const len = Math.min(READ_CHUNK_BYTES, size - pos)
-      const chunk = await fs.read(src, pos, len)
-      if (chunk.length !== len) throw moved('Incomplete Antigravity conversation read')
-      chunks.push(chunk)
-    }
-    return Buffer.concat(chunks, size - start)
+  // `size` bytes of `src` (or its tail from `start`) written to `dest` as they
+  // arrive, in bounded chunks: a conversation at the snapshot limit never sits
+  // in memory. A short read means the file shrank under the copy — a move, to
+  // be retried.
+  async function copyInto(src: string, size: number, dest: string, start = 0, append = false): Promise<void> {
+    const fd = openSync(dest, append ? 'a' : 'w')
+    try {
+      for (let pos = start; pos < size; pos += READ_CHUNK_BYTES) {
+        const len = Math.min(READ_CHUNK_BYTES, size - pos)
+        const chunk = await fs.read(src, pos, len)
+        if (chunk.length !== len) throw moved('Incomplete Antigravity conversation read')
+        writeSync(fd, chunk)
+      }
+    } finally { closeSync(fd) }
   }
 
   const bases = new Map<string, SnapBase>()
@@ -462,7 +465,11 @@ export function createAgyTranscripts({
     const walPath = `${file}-wal`
     try {
       if (base.dbId !== idOf(dbSt)) {
-        writeFileSync(base.db, await readAll(file, dbSt.size))
+        // The copy truncates the kept file before its first chunk: until it
+        // completes, the kept state must not claim the old database is there,
+        // or a failure would leave the next read appending to a partial copy.
+        base.dbId = null
+        await copyInto(file, dbSt.size, base.db)
         base.dbId = idOf(dbSt)
       }
       const live = walSt && walSt.size > 0 ? walSt : null
@@ -480,15 +487,24 @@ export function createAgyTranscripts({
         const current = !!probe && (await fs.read(walPath, probe.start, probe.len))
           .equals(localSlice(base.wal, probe.start, probe.len))
         if (current && live.size > base.walSize) {
-          appendFileSync(base.wal, await readAll(walPath, live.size, base.walSize))
+          // A failed tail leaves the kept file where it was: the next attempt
+          // appends from the same offset, never after half a chunk.
+          try { await copyInto(walPath, live.size, base.wal, base.walSize, true) } catch (e) {
+            truncateSync(base.wal, base.walSize)
+            throw e
+          }
           base.walSize = live.size
         } else if (!current || live.size !== base.walSize) {
           // No WAL yet, a shrink, a restart (another header) or a kept frame
-          // rewritten in place: full copy.
-          const buf = await readAll(walPath, live.size)
-          writeFileSync(base.wal, buf)
+          // rewritten in place: full copy. It truncates the kept file before
+          // its first chunk, so the kept state is emptied first: a failure
+          // here can only lead to another full copy, never to a tail appended
+          // after the bytes the failure left behind.
+          base.walSize = 0
+          base.walHead = null
+          await copyInto(walPath, live.size, base.wal)
           base.walSize = live.size
-          base.walHead = Buffer.from(buf.subarray(0, Math.min(WAL_HEADER_BYTES, buf.length)))
+          base.walHead = localSlice(base.wal, 0, Math.min(WAL_HEADER_BYTES, live.size))
         }
         // Either path can end mid-frame — a frame's 24-byte header and its
         // page are separate writes — and a later rewrite starts exactly at

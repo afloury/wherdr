@@ -293,13 +293,16 @@ it('never guesses a session from the summaries index', async () => {
 // A remote filesystem over an in-memory store: `read` bytes are counted like
 // data transferred over SSH, `sync` reloads a fixture file's real bytes after
 // the remote moved (the store mtime is bumped so a rewrite is another
-// generation), and `setHook` can move the store in the middle of a copy.
+// generation), `setHook` can move the store in the middle of a copy, and
+// `failReads` answers a chosen read short.
 function remoteMachine() {
   const store = new Map<string, { buf: Buffer, mtimeMs: number, ino: number }>()
   const bytes = new Map<string, number>()
   let clock = 1000
   let ino = 100
   let hook: ((p: string) => void) | null = null
+  let shortLeft = 0
+  let shortWhen: ((p: string, start: number, len: number) => boolean) | null = null
   const enoent = (p: string) => Object.assign(new Error(`not found: ${p}`), { code: 'ENOENT' })
   const fs: MachineFs = {
     async stat(p) {
@@ -314,8 +317,12 @@ function remoteMachine() {
       const f = store.get(p)
       if (!f) throw enoent(p)
       bytes.set(p, (bytes.get(p) ?? 0) + len)
-      const out = Buffer.from(f.buf.subarray(start, start + len))
+      let out = Buffer.from(f.buf.subarray(start, start + len))
       hook?.(p)
+      if (shortLeft > 0 && shortWhen?.(p, start, len)) {
+        shortLeft--
+        out = out.subarray(0, Math.max(0, out.length - 1))
+      }
       return out
     },
   }
@@ -331,6 +338,8 @@ function remoteMachine() {
       store.set(p, { buf: Buffer.from(buf), mtimeMs: clock += 10, ino: store.get(p)?.ino ?? (ino += 7) })
     },
     setHook: (h: typeof hook) => { hook = h },
+    // The next `n` reads that `when` picks out lose their last byte.
+    failReads: (n: number, when: (p: string, start: number, len: number) => boolean) => { shortLeft = n; shortWhen = when },
   }
 }
 
@@ -360,6 +369,47 @@ it('retries a remote read that moved under the copy', async () => {
   const r = await agy.chat(pane)
   expect(r.items?.map(i => i.text)).toEqual(['First request', 'First reply', 'Second reply'])
   expect(remote.bytes.get(live.file) ?? 0).toBeGreaterThan(remote.sizeOf(live.file)) // copied again after the move
+})
+
+it('recopies the whole WAL after a full copy failed part-way', async () => {
+  const { home } = fixture()
+  const live = openAgyFixture(home, { wal: true, rows: [
+    { role: 'user', text: 'First request' },
+    { role: 'agent', text: 'First reply' },
+  ] })
+  keepers.push(live)
+  const remote = remoteMachine()
+  remote.sync(live.file)
+  remote.sync(`${live.file}-wal`)
+  const agy = createAgyTranscripts({ home, fs: remote.fs })
+  const walFile = `${live.file}-wal`
+
+  // A transaction spills about a megabyte of frames, and the kept copy takes
+  // them; the WAL stays under the 4 MiB copy chunk.
+  live.db.exec('PRAGMA cache_size=1')
+  live.db.exec('BEGIN; SAVEPOINT spill')
+  live.append([{ role: 'agent', text: `Spilled ${'x'.repeat(1_000_000)}` }])
+  remote.sync(walFile)
+  expect((await agy.chat(pane)).items?.map(i => i.text)).toEqual(['First request', 'First reply'])
+  expect(remote.sizeOf(walFile)).toBeLessThan(4 * 1024 * 1024)
+
+  // Rewinding the savepoint makes the transaction write over those frames and
+  // commit a WAL of over 5 MiB on top: the kept frame is stale, so the next
+  // read must ship the whole WAL, in two chunks.
+  live.db.exec('ROLLBACK TO spill; RELEASE spill')
+  live.append([{ role: 'agent', text: `Rewritten ${'y'.repeat(5_000_000)}` }, { role: 'agent', text: 'Final reply' }])
+  live.db.exec('COMMIT')
+  remote.sync(walFile)
+  expect(remote.sizeOf(walFile)).toBeGreaterThan(4 * 1024 * 1024)
+
+  // The second chunk comes back one byte short: that attempt fails as `moved`
+  // after the first chunk was already written to the kept file. The retry must
+  // not append a tail to what the failed copy left behind.
+  remote.failReads(1, (p, start) => p === walFile && start >= 4 * 1024 * 1024)
+  const r = await agy.chat(pane)
+  expect(r.items?.length).toBe(4)
+  expect(r.items?.[2]?.text.startsWith('Rewritten')).toBe(true)
+  expect(r.items?.[3]?.text).toBe('Final reply')
 })
 
 it('keeps a remote base copy and ships only the grown WAL tail', async () => {
@@ -427,7 +477,8 @@ it('recopies the WAL in full when a kept frame was rewritten in place', async ()
   expect(remote.sizeOf(walFile)).toBeGreaterThan(keptWal)
 
   const next = await agy.chat(pane, { since: first.token })
-  expect(next.items?.map(i => i.text)).toEqual(['First request', 'First reply', expect.stringMatching(/^Rewritten y+$/), 'Final reply'])
+  // A reply past the text limit ends with the shared truncation marker.
+  expect(next.items?.map(i => i.text)).toEqual(['First request', 'First reply', expect.stringMatching(/^Rewritten y+…$/), 'Final reply'])
   // The rewritten kept frame was detected: the whole WAL shipped again, the
   // main file did not.
   expect(remote.bytes.get(live.file) ?? 0).toBe(dbBytes)
@@ -468,7 +519,8 @@ it('cuts a kept WAL ending mid-frame back to the last whole frame', async () => 
   expect(remote.sizeOf(walFile)).toBeGreaterThan(boundary + 24)
 
   const next = await agy.chat(pane, { since: first.token })
-  expect(next.items?.map(i => i.text)).toEqual(['First request', 'First reply', expect.stringMatching(/^Rewritten y+$/), 'Final reply'])
+  // A reply past the text limit ends with the shared truncation marker.
+  expect(next.items?.map(i => i.text)).toEqual(['First request', 'First reply', expect.stringMatching(/^Rewritten y+…$/), 'Final reply'])
   // The stale partial frame was not kept: the tail ships from the last
   // whole-frame boundary, still far below a full WAL copy.
   expect(remote.bytes.get(live.file) ?? 0).toBe(dbBytes)
