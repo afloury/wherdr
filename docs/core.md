@@ -123,10 +123,13 @@ pickers remain v2 only.
 
 Antigravity CLI (`agy`, tested with 1.5.8) is read through its saved
 conversations at `~/.gemini/antigravity-cli/conversations/<uuid>.db` (SQLite,
-WAL mode; the database and its `-wal` sidecar are copied to a snapshot before
-`node:sqlite` opens them, so remote machines read a consistent view through
-`machine.exec`, and 256 MiB is the snapshot limit). Step payloads are protobuf
-blobs decoded by a small bounds-checked reader (`server/utils/agyProtobuf.ts`).
+WAL mode; locally it is opened in place, read-only, only while agy holds both
+`-wal` and `-shm` sidecars — a read-only open creates them otherwise and would
+leave them in agy's folder. Otherwise the database and its `-wal` sidecar are
+copied to a snapshot before `node:sqlite` opens them, so remote machines read a
+consistent view through `machine.exec`, and 256 MiB is the snapshot limit). Step
+payloads are protobuf blobs decoded by a small bounds-checked reader
+(`server/utils/agyProtobuf.ts`).
 The session is resolved fail-closed from what the `agy` process holds open —
 `conversations/<uuid>.db`, its WAL/SHM sidecars or `presence/<uuid>.lock` —
 checked on Linux through `/proc/<pid>/fd` and elsewhere through `lsof`, then the
