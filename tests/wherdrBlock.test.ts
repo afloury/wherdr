@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { marked } from 'marked'
 import { md, messageChoices, parseWherdrBlock } from '../app/utils/markdown'
 import { questionsReply, readQuestionsReply } from '../app/utils/questionsCard'
+import { markQuestions } from '../app/utils/questionReply'
 import { taskRow, type Card } from '../shared/pm/board'
 
 describe('wherdr blocks', () => {
@@ -44,6 +45,12 @@ describe('wherdr blocks', () => {
     md('') // installs the app's code renderer
     const html = (text: string) => marked.parse(`\`\`\`wherdr\n${text}\n\`\`\``, { gfm: true, async: false }) as string
     expect(html('choices "OK"')).toContain('<button type="button" class="q-choice" data-a="OK">OK</button>')
+    // A questions card answers its own questions: no reply button, not counted as unanswered.
+    const root = document.createElement('div')
+    root.innerHTML = html('questions\n1 "Which database?" | "Postgres" | "SQLite"')
+    expect(root.querySelector('.w-questions')?.getAttribute('data-questions')).toContain('Which database?')
+    markQuestions(root, { reply: 'Reply', quoted: 'Quoted', discuss: 'Discuss', yes: 'Yes', no: 'No', okAll: 'OK to all', decisions: 'Decisions' })
+    expect(root.querySelector('.q-reply')).toBeNull()
     for (const text of ['choices "A" | "B" | "C" | "D" | "E"', 'choices', 'merge WHR-12']) {
       expect(html(text)).toContain('class="code-block"')
       expect(html(text)).not.toContain('q-choice')
