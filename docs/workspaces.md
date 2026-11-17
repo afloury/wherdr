@@ -22,6 +22,9 @@ In Settings › Projects, *Add workspace* (next to *Add project*) asks for:
 - its **machines and root folders**: each machine it runs on, with the root
   folder there under which the repositories are cloned (`~/work`). The first
   one checked is its home; its root must exist there. Nothing is cloned for you.
+  *Browse* beside a root opens that machine's folders (from the typed folder
+  when it exists, else the machine's home) to pick it; it is disabled while
+  the machine is offline.
 
 *Create* adds it and starts its coordinator, whose first reply runs
 `wherdr pm map list` and offers to build the [map](#the-workspace-map) from
