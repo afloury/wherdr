@@ -127,6 +127,20 @@ describe('a message Claude took in the same turn as a wake', () => {
       expect(w.find('.chat').text()).toContain('Nothing to do.')
     } finally { w.unmount() }
   })
+
+  it('gives a photo Claude kept apart from the text (images/ref) its own bubble when the turn holds only wakes', async () => {
+    herdrState.value = { ok: true, workspaces: [], panes: [pane] }
+    items = [
+      { role: 'user', text: `Autopilot: wake a1\n\nScheduled wake\n\n${ACK('a1')}\n\nAutopilot: wake a2\n\nScheduled wake\n\n${ACK('a2')}`, ts: at(8), ref: 'shot', images: 1 },
+      { role: 'assistant', text: 'Nothing to do.', ts: at(8, 1) },
+    ]
+    const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] }, global: { stubs: { UTooltip: { template: '<slot />' } } } })
+    try {
+      await expect.poll(() => w.findAll('[data-testid="wake"]').length).toBe(2)
+      expect(w.find('.msg-user img').attributes('src')).toContain('ref=shot')
+      expect(w.find('.msg-user').text()).not.toContain('Autopilot')
+    } finally { w.unmount() }
+  })
 })
 
 describe('a turn the coordinator takes by itself after routine wakes', () => {

@@ -724,10 +724,13 @@ const blocks = computed<Block[]>(() => {
       // A wake Claude took in the same turn as the user's message: each part
       // its own block, in order (the wakes fold, the user's keeps its bubble
       // and the turn's photos).
-      const parts = splitWakes(it.text)
-      if (parts.length < 2) { userBlock(it, it.text, key, itemImageSrcs(it)); return }
+      // Photos Claude keeps apart from the text (images/ref) with only wakes
+      // around them: their own bubble, first (they came with the user's send).
+      const parts = splitWakes(it.text), embedded = itemImageSrcs(it)
+      if (embedded.length && parts.some(p => p.wake) && !parts.some(p => !p.wake)) parts.unshift({ wake: false, text: '' })
+      if (parts.length < 2) { userBlock(it, it.text, key, embedded); return }
       const mineAt = parts.findIndex(p => !p.wake)
-      parts.forEach((p, n) => userBlock(it, p.text, n ? `${key}:${n}` : key, n === mineAt ? itemImageSrcs(it) : [], mineAt >= 0))
+      parts.forEach((p, n) => userBlock(it, p.text, n ? `${key}:${n}` : key, n === mineAt ? embedded : [], mineAt >= 0))
     } else if (it.role === 'assistant') {
       lastReply = it.text
       const time = it.ts ? fmtTime(it.ts) : null
