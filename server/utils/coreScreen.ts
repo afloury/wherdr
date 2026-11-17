@@ -9,7 +9,8 @@ import { hasTranscript } from '../../shared/agentKind'
 import { parseOmpStatus } from '../../shared/ompStatus'
 import { parseChoices, parseOmpPrompt, promptIdentity, completeClaudeAsk, type ClaudeAsked } from './choices'
 import { queueSendNow, readDraft, sameText } from './coreDraft'
-import { sendingTo } from './submitting'
+import { lastSentText, sendingTo } from './submitting'
+import { fieldHolds } from '../../shared/queuedMatch'
 import { parseClaudeScreen } from './claudeScreen'
 
 const WORKING = /\besc(?:ape)? to interrupt\b/i
@@ -221,6 +222,9 @@ export function createCoreScreens(deps: CoreScreenDeps) {
             // Once per text: is it typed, or Claude's gray suggestion (same bytes on the plain screen)?
             seen.real ??= await deps.colors(p).then(ansi => sameText(readDraft(ansi, p.agent)?.text ?? '', draft.text), () => false)
             if (seen.real) p.draft = draft
+            // Claude's field may show only "[Pasted text #N]": the message wherdr sent it, as the user wrote it (WHR-472).
+            const own = seen.real ? lastSentText(p.coreAddress) : undefined
+            if (own && fieldHolds(draft.text, own, true, true)) p.inputText = own
           }
         }
       }
