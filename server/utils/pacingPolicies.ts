@@ -4,7 +4,7 @@
 // default, 'unlimited' (shown as 'Free'). A saved policy keeps its mode.
 import fs from 'node:fs/promises'
 import path from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { writeFileAtomic } from './atomicWrite'
 import { ACCOUNT_KEY } from '../../shared/quotaAccount'
 import { DEFAULT_PACE, mergePolicy, type PacePolicy } from '../../shared/pm/pacing'
 import { DATA_DIR } from './env'
@@ -33,15 +33,7 @@ export function setPolicy(key: string, patch: unknown, file = PACING_FILE, now =
     const policies = await readPolicies(file, now)
     const policy = mergePolicy(policyIn(policies, key), patch, now)
     policies[key] = policy
-    await fs.mkdir(path.dirname(file), { recursive: true })
-    const temp = `${file}.${randomUUID()}.tmp`
-    try {
-      await fs.writeFile(temp, JSON.stringify({ v: 1, policies }) + '\n', { mode: 0o600 })
-      await fs.rename(temp, file)
-    } catch (error) {
-      await fs.rm(temp, { force: true }).catch(() => {})
-      throw error
-    }
+    await writeFileAtomic(file, JSON.stringify({ v: 1, policies }) + '\n')
     return policy
   })
   queue = run.catch(() => {})

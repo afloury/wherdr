@@ -984,6 +984,20 @@ describe('wakes', () => {
     expect(recheck.sent[0]!.text).toContain('Check again: ')
   })
 
+  it('keeps a step the user moved between the tick\'s read and its save', async () => {
+    const id = await atDeploy(1000)
+    const tick = deliver('idle', 2000)
+    // The user's action lands once the tick has read the tasks.
+    const tasks = async () => {
+      const list = await store.tasks()
+      await store.saveTask({ ...(await store.task(id))!, step: { ...(await store.task(id))!.step!, done: true } })
+      return list
+    }
+    expect(await wakeTick({ ...tick.d, store: { ...store, tasks } }, 2000)).toEqual([])
+    expect((await store.task(id))!.step).toMatchObject({ done: true })
+    expect(tick.sent).toEqual([])
+  })
+
   it('waits while the user\'s message is being typed, so Claude never takes both as one turn', async () => {
     await atDeploy(1000)
     let typed!: () => void
