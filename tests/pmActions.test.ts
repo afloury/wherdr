@@ -110,7 +110,7 @@ describe('runAction', () => {
     const r = await runAction(f.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))
     expect(r).toEqual({ ok: true, link: 'https://pr/1', base: 'dev', commit: 'abc', alert: 'A-1\'s commit abc is on main without a step of yours' })
     expect(f.sleeps).toEqual([])
-    expect(f.calls[4]).toEqual(['/w', 'https://pr/1', 'abc', '']) // no method: the first the repo allows
+    expect(f.calls[4]).toEqual(['/w', 'https://pr/1', 'abc', '', '']) // no method: the first the repo allows
     const p = fakeDeps([info('COMPLETED', 'main')])
     expect(await runAction(p.deps, job({ step: 'merge', action: { kind: 'github.merge' } }))).toMatchObject({ error: expect.stringMatching(/only you/) })
     expect(p.calls.length).toBe(1)
@@ -175,7 +175,7 @@ describe('a merge interrupted by a restart', () => {
     // Started by the user into protected main: resumed by the engine, still theirs.
     const f = cut([pr({ baseRefName: 'main' }), { code: 0, out: 'same' }, { code: 0, out: 'https://pr/1' }, { code: 0, out: 'origin/main' }], { by: 'user' })
     expect(await f.go()).toEqual({ ok: true, link: 'https://pr/1', base: 'main', commit: 'abc' })
-    expect(f.calls[2]).toEqual(['/w', 'https://pr/1', 'abc', ''])
+    expect(f.calls[2]).toEqual(['/w', 'https://pr/1', 'abc', '', ''])
   })
 
   it('is run again twice at most, then goes to the user', async () => {
@@ -316,6 +316,27 @@ describe('on a real repo', () => {
     git(repo, 'update-ref', 'refs/heads/dev', git(repo, 'commit-tree', '-p', 'refs/heads/dev', '-m', 'x', git(repo, 'rev-parse', 'main^{tree}')))
     fs.writeFileSync(path.join(wt, 'b.txt'), 'again\n'); git(wt, 'commit', '-qam', 'again')
     expect(await runAction(deps, at(4))).toEqual({ ok: false, error: 'land: conflict in b.txt', toAgent: true })
+  })
+
+  it('gives a squash merge the commit title, and git.land\'s merge commit the message', async () => {
+    const repo = path.join(tmp, 'subject'), bin = path.join(tmp, 'bin-subject')
+    fs.mkdirSync(bin); git(tmp, 'init', '-q', repo); git(repo, 'commit', '-q', '--allow-empty', '-m', 'x')
+    fs.writeFileSync(path.join(bin, 'gh'), '#!/bin/sh\nprintf "%s|" "$@" >&2; exit 1\n', { mode: 0o755 })
+    const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` }
+    const gh = (method: string, msg: string) => spawnSync('sh', ['-c', SCRIPT.merge, 'sh', repo, 'https://pr/1', 'abc', method, msg], { encoding: 'utf8', env }).stdout
+    expect(gh('squash', 'ABC-123: Fix it')).toContain('pr|merge|https://pr/1|--squash|--subject|ABC-123: Fix it|--match-head-commit|abc|')
+    expect(gh('squash', '')).toContain('--squash|--match-head-commit|')
+    expect(gh('merge', 'ABC-123: Fix it')).toContain('--merge|--match-head-commit|')
+    // git.land: dev moved on, so the land makes a merge commit, with the message.
+    const origin = path.join(tmp, 'msg.git'), clone = path.join(tmp, 'msg'), wt = path.join(tmp, 'msg-wt')
+    git(tmp, 'init', '-q', '--bare', '-b', 'main', origin); git(tmp, 'clone', '-q', origin, clone)
+    git(clone, 'commit', '-q', '--allow-empty', '-m', 'init'); git(clone, 'push', '-q', 'origin', 'main:dev')
+    git(clone, 'worktree', 'add', '-q', '-b', 'task/A-1', wt, 'origin/dev')
+    fs.writeFileSync(path.join(wt, 'a.txt'), 'a\n'); git(wt, 'add', '.'); git(wt, 'commit', '-qm', 'task')
+    fs.writeFileSync(path.join(clone, 'b.txt'), 'b\n'); git(clone, 'add', '.'); git(clone, 'commit', '-qm', 'other'); git(clone, 'push', '-q', 'origin', 'HEAD:dev')
+    const f = fakeDeps([])
+    expect(await runAction({ ...f.deps, sh: localSh }, job({ worktree: wt, message: 'ABC-123: Fix it' }))).toMatchObject({ ok: true })
+    expect(git(origin, 'log', '-1', '--format=%s', 'dev')).toBe('ABC-123: Fix it')
   })
 
   it('sees a gh error printed on stderr even when only stdout comes back, and tries again', async () => {
