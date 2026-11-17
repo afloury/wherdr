@@ -558,11 +558,13 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     // A new key: a key no other project has (any case, former keys too); the old one stays an alias.
     updateProject: (key: unknown, update: ProjectUpdate) => write(async () => {
       const { list, i } = await findProject(key)
-      const { base: _base, label: _label, aliases: _aliases, branchName: _bn, deleteBranch: _db, coordinatorName: _cn, reach: _r, ...rest } = list[i]!
+      const { base: _base, label: _label, aliases: _aliases, branchName: _bn, commitMessage: _cm, deleteBranch: _db, coordinatorName: _cn, reach: _r, ...rest } = list[i]!
       const keepBranch = (update.deleteBranch ?? list[i]!.deleteBranch) === false
       const base = update.base ?? list[i]!.base
       // '' goes back to task/{id}.
       const branchName = update.branchName ?? list[i]!.branchName
+      // '' goes back to the usual commit message.
+      const commitMessage = update.commitMessage ?? list[i]!.commitMessage
       // '' (or the project's own name) goes back to following the project's name.
       const coordinatorName = update.coordinatorName ?? list[i]!.coordinatorName
       // Only other projects that exist, never its own.
@@ -577,11 +579,17 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const { instructionsFiles: _sf, ...sharedRest } = rest.shared ?? {}
       const instr = rest.workspace && files ? { instructionsFiles: files }
         : isWorkspace(rest) && update.instructionsFiles !== undefined ? { shared: { ...sharedRest, ...(update.instructionsFiles ? { instructionsFiles: update.instructionsFiles } : {}) } } : {}
+      // A workspace's commit message template is the one its members take: it goes in its shared settings.
+      const sharedNow = 'shared' in instr ? instr.shared : rest.shared
+      const { commitMessage: _scm, ...sharedOther } = sharedNow ?? {}
+      const sharedMessage = isWorkspace(rest) && update.commitMessage !== undefined
+        ? { shared: { ...sharedOther, ...(update.commitMessage ? { commitMessage: update.commitMessage } : {}) } } : {}
+      const ownMessage = !isWorkspace(rest) && commitMessage ? { commitMessage } : {}
       const placement = update.placement ?? rest.placement
       const allowed = machinesOf(rest, update)
       if (allowed.errors.length) throw badInput(allowed.errors)
       const overrides = memberOverrides(list[i]!, update)
-      list[i] = { ...kept, ...overrides, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...ownName, ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(allowed.paused ? { paused: allowed.paused } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}), ...(update.archiveAfter !== undefined ? { archiveAfter: update.archiveAfter } : {}), ...(keepBranch ? { deleteBranch: false as const } : {}), ...(reach.length ? { reach } : {}), ...instr }
+      list[i] = { ...kept, ...overrides, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...ownName, ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...ownMessage, ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(allowed.paused ? { paused: allowed.paused } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}), ...(update.archiveAfter !== undefined ? { archiveAfter: update.archiveAfter } : {}), ...(keepBranch ? { deleteBranch: false as const } : {}), ...(reach.length ? { reach } : {}), ...instr, ...sharedMessage }
       await saveProjects(list)
       return list[i]!
     }),

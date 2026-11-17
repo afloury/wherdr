@@ -12,6 +12,7 @@ import { allowedMachines, type Project } from '../../shared/pm/project'
 import type { MachineInfo } from '../../shared/types'
 import { lastReadiness } from './pmReady'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
+import { commitMessageFor } from '../../shared/pm/branchName'
 import { taskAgents, type TaskAgent } from '../../shared/pm/taskAgents'
 import { CHOICES, type Choice } from '../../shared/pm/verdict'
 import { tellTarget } from '../../shared/pm/coordinator'
@@ -172,6 +173,12 @@ export function startAction(deps: CoreAdminDeps & { store: PmStore }, id: string
 // The step actions started so far, settled (tests, and a shutdown that waits).
 export const actionsSettled = async () => { while (started.size) await Promise.allSettled([...started]) }
 
+// A squash merge's or git.land's commit message from the project's template, when it has one.
+const messageOf = (p: Project | undefined, task: Task) => {
+  const message = commitMessageFor(p?.commitMessage, { ...task, id: shownTaskId(p ? [p] : [], task.id) })
+  return message ? { message } : {}
+}
+
 // lost: its hold went past its limit; another run of the step may have ended it since.
 async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task, by: MergeBy, userSaid: boolean, lost: () => boolean): Promise<Task> {
   const { store } = deps
@@ -201,7 +208,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const run = await workerRun(store, task.id)
     let result: ActionResult = run
       ? await runAction({ store, sh: actionShell(deps, runOn(deps, run)) }, {
-          task, shown: shownTaskId(p ? [p] : [], task.id), step: act.step, attempt: act.attempt, action: act.action, by: approved ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
+          task, shown: shownTaskId(p ? [p] : [], task.id), ...messageOf(p, task), step: act.step, attempt: act.attempt, action: act.action, by: approved ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
           reviewed: reviewedCommit(plan, state), ...(approved && state.approved!.commit ? { approved: state.approved!.commit } : {}),
           halted: async () => !!(await store.task(task.id))?.stopped,
         }).catch((e: Error) => ({ ok: false, error: thrownReason(e) }))

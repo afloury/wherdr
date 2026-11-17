@@ -177,6 +177,12 @@ describe('template library', () => {
     expect(await store.project('PAY')).toMatchObject({ base: 'main', overrides: ['base'] })
     await store.updateProject('PAY', { base: '' })
     expect((await store.project('PAY'))?.base).toBe('develop')
+    // The workspace's commit message template is shared: its members take it, '' clears it.
+    await store.updateProject('WS', { commitMessage: '{tag}: {title}' })
+    expect((await store.project('WS'))?.shared).toMatchObject({ base: 'develop', commitMessage: '{tag}: {title}' })
+    expect((await store.project('PAY'))?.commitMessage).toBe('{tag}: {title}')
+    await store.updateProject('WS', { commitMessage: '' })
+    expect((await store.project('PAY'))?.commitMessage).toBeUndefined()
     await store.setBase('PAY', 'main')
     expect((await store.project('PAY'))?.base).toBe('main')
     await store.setBase('PAY', '')

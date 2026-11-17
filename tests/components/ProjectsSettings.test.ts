@@ -152,7 +152,7 @@ it('opens the project sheet on the URL\'s tab; Guards saves a branch added; Gene
   copy.dispatchEvent(new Event('input'))
   await pick(w, 'pm-reach-DOC', 'act') // a pick saves at once, with what was typed
   await vi.waitFor(() => expect(calls[0]).toEqual({ url: '/api/pm/project-update', body: {
-    key: 'WEB', name: 'Website', coordinatorName: '', base: '', branchName: '', archiveAfter: 7, deleteBranch: true, reach: [{ project: 'DOC', level: 'act' }], prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' },
+    key: 'WEB', name: 'Website', coordinatorName: '', base: '', branchName: '', commitMessage: '', archiveAfter: 7, deleteBranch: true, reach: [{ project: 'DOC', level: 'act' }], prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' },
     worktree: { copy: ['.env', 'config/local.json'], share: [], lockfile: '', command: '', timeout: '' }, // share none kept
   } }))
 

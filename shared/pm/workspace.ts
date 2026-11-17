@@ -19,6 +19,7 @@ export interface WorkspaceShared {
   placement?: Strategy
   base?: string
   branchName?: string
+  commitMessage?: string
   prefs?: Prefs // agents, models and reviewer fallback of the members' tasks
   worktree?: WorktreeSetup
   archiveAfter?: number
@@ -30,7 +31,7 @@ export interface WorkspaceShared {
 
 // The fields a member may set itself (`overrides`); 'machines' covers its
 // machines, clones and paused ones.
-export const SHARED_FIELDS = ['machines', 'placement', 'base', 'branchName', 'prefs', 'worktree', 'archiveAfter', 'deleteBranch', 'instructionsFiles'] as const
+export const SHARED_FIELDS = ['machines', 'placement', 'base', 'branchName', 'commitMessage', 'prefs', 'worktree', 'archiveAfter', 'deleteBranch', 'instructionsFiles'] as const
 export type SharedField = typeof SHARED_FIELDS[number]
 const isSharedField = (f: unknown): f is SharedField => (SHARED_FIELDS as readonly unknown[]).includes(f)
 
@@ -109,12 +110,12 @@ function sharedMachines(member: Project, ws: Project): Pick<Project, 'machines' 
 export function effectiveProject(member: Project, ws: Project | undefined): Project {
   if (!member.workspace || !ws || !isWorkspace(ws)) return member
   const own = new Set(member.overrides ?? []), s = ws.shared ?? {}
-  const { machines, clones, paused, placement, base, branchName, archiveAfter, deleteBranch, ...rest } = member
-  const pick = <K extends 'placement' | 'base' | 'branchName' | 'archiveAfter' | 'deleteBranch'>(k: K) => (own.has(k) ? member[k] : s[k])
+  const { machines, clones, paused, placement, base, branchName, commitMessage, archiveAfter, deleteBranch, ...rest } = member
+  const pick = <K extends 'placement' | 'base' | 'branchName' | 'commitMessage' | 'archiveAfter' | 'deleteBranch'>(k: K) => (own.has(k) ? member[k] : s[k])
   return {
     ...rest,
     ...(own.has('machines') ? defined({ machines, clones, paused }) : sharedMachines(member, ws)),
-    ...defined({ placement: pick('placement'), base: pick('base'), branchName: pick('branchName'), archiveAfter: pick('archiveAfter'), deleteBranch: pick('deleteBranch') }),
+    ...defined({ placement: pick('placement'), base: pick('base'), branchName: pick('branchName'), commitMessage: pick('commitMessage'), archiveAfter: pick('archiveAfter'), deleteBranch: pick('deleteBranch') }),
   }
 }
 
@@ -144,14 +145,14 @@ export function ownWorkflow(t: Template): Template {
 }
 
 // A member's overrides once an update applies: each shared field it sets
-// becomes its own; a base or branch name of '' clears it (back to the shared one).
+// becomes its own; a base, branch name or commit message of '' clears it (back to the shared one).
 export function memberOverrides(member: Project, update: ProjectUpdate): Pick<Project, 'overrides'> {
   if (!member.workspace) return {}
   const own = new Set(member.overrides ?? [])
   const set = (f: SharedField, on: boolean) => (on ? own.add(f) : own.delete(f))
   if (update.machines || update.clones || update.paused) set('machines', true)
   for (const f of ['placement', 'archiveAfter', 'deleteBranch'] as const) if (update[f] !== undefined) set(f, true)
-  for (const f of ['base', 'branchName'] as const) if (update[f] !== undefined) set(f, update[f] !== '')
+  for (const f of ['base', 'branchName', 'commitMessage'] as const) if (update[f] !== undefined) set(f, update[f] !== '')
   // null: the workspace's again; [] turns them off; a list replaces them.
   if (update.instructionsFiles !== undefined) set('instructionsFiles', update.instructionsFiles !== null)
   return own.size ? { overrides: SHARED_FIELDS.filter(f => own.has(f)) } : {}
@@ -198,8 +199,8 @@ export function cleanShared(raw: unknown): { shared?: WorkspaceShared, errors: W
   checkPrefs(prefs, 'prefs', errors)
   checkSetup(worktree, errors)
   if (errors.length || !update) return { errors: errors.map(e => ({ ...e, path: `shared.${e.path}` })) }
-  const { deleteBranch, base, branchName, instructionsFiles, ...kept } = update
-  return { errors, shared: defined({ ...kept, instructionsFiles: instructionsFiles ?? undefined, base: base || undefined, branchName: branchName || undefined, deleteBranch: deleteBranch === false ? false as const : undefined, prefs: prefs as Prefs | undefined, worktree: worktree as WorktreeSetup | undefined }) }
+  const { deleteBranch, base, branchName, commitMessage, instructionsFiles, ...kept } = update
+  return { errors, shared: defined({ ...kept, instructionsFiles: instructionsFiles ?? undefined, base: base || undefined, branchName: branchName || undefined, commitMessage: commitMessage || undefined, deleteBranch: deleteBranch === false ? false as const : undefined, prefs: prefs as Prefs | undefined, worktree: worktree as WorktreeSetup | undefined }) }
 }
 
 // A new project's workspace fields: { kind: 'workspace', group?, shared? } or

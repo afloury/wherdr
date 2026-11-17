@@ -190,6 +190,16 @@ its message under the field and keeps what you typed.
   `Branch: <name>` line or a link with `?source=<branch>`, as a Bitbucket pull
   request link), wherdr follows that branch: its pushes, PR and merge checks
   use it, never the old one.
+- **Commit message**: the template of the commit title of a squash merge
+  (`github.merge` or `bitbucket.merge` with `method: "squash"`) and of the merge
+  commit `git.land` makes when the target moved on, for teams that require a
+  ticket key prefix. Fields: those of the branch name (`{tag}` without the task
+  id fallback) and `{title}` (the task's title). Example: `{tag}: {title}`, so a
+  task tagged `ABC-123` lands as `ABC-123: Fix the login`. A field left empty
+  drops with the separator next to it: without a tag, the same task lands as
+  `Fix the login`. Empty: the usual message (GitHub's or Bitbucket's, git's
+  *Merge branch…*). A merge commit or rebase on GitHub or Bitbucket keeps its
+  own message.
 - **Archive done tasks after**: 1, 3, 7 (the default), 14 or 30 days, or
   *Never*. A done task stays in the Done column that long, then the engine
   archives it (see [Archived tasks](#archived-tasks)). A shorter delay archives
@@ -384,7 +394,8 @@ PR into a protected branch waits for you, as on GitHub, and a merge Bitbucket
 refuses (approvals, branch restrictions) says why. The credentials come from
 the machine that runs the task: `BITBUCKET_TOKEN` (an access token), or
 `BITBUCKET_USERNAME` with `BITBUCKET_APP_PASSWORD`, in the environment
-herdr-core runs with; wherdr never stores them.
+herdr-core runs with; wherdr never stores them. A squash takes the project's
+[commit message](#general) template when it has one.
 
 The ⋯ menu adds *Change log* and *Save as template* (copies the saved workflow
 into your templates; the project is untouched).
