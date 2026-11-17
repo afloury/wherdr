@@ -30,7 +30,7 @@
     "dev": "nuxt dev",
     "build": "nuxt build",
     "build:demo": "VITE_WHERDR_DEMO=1 nuxt generate",
-    "start": "HOST=${HOST:-127.0.0.1} PORT=${PORT:-7683} node .output/server/index.mjs",
+    "start": "node scripts/start.mjs",
     "typecheck": "nuxt typecheck",
     "test": "vitest run",
     "test:e2e": "playwright test",

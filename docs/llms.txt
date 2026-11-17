@@ -16,7 +16,7 @@
 
 ## Install and update
 
-- [Requirements](docs/installation.md#requirements): hc, Linux or macOS, Node.js 22 and Git.
+- [Requirements](docs/installation.md#requirements): hc, Linux or macOS, Node.js 22 and Git; [Windows](docs/installation.md#on-windows-experimental) experimental, not supported yet (Files view and git changes call `sh`): hc via `install.ps1`, `HC_SOCKET` a named pipe `\\.\pipe\herdr-core-<user>-<session>.sock`, `npm.cmd` when PowerShell blocks `npm`.
 - [The hc socket](docs/installation.md#the-hc-socket): the default `HC_SOCKET`: `$XDG_RUNTIME_DIR/herdr-core/<session>.sock` on Linux, `~/.local/state/herdr-core/<session>/<session>.sock` on macOS; session `default`.
 - [v2 and v3 on one computer](docs/installation.md#v2-and-v3-on-one-computer): v2 and a by-hand v3 both default to port 7683; start v3 with `PORT=7684`.
 - [A second v3 on one computer](docs/installation.md#a-second-v3-on-one-computer): a second v3 keeps its own pm folders (`WHERDR_PM_DIR`, `.wherdr/pm-<name>` from the install script for another `--name`); its uninstall removes them.
