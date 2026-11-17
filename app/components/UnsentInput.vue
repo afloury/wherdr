@@ -4,7 +4,9 @@
 import type { Pane } from '#shared/types'
 
 // `shown`: the field holds a message the conversation already shows as
-// waiting there: no second bubble, only its actions.
+// waiting there: no second bubble, only its actions. `pane.sending`: wherdr's
+// server is still submitting it (a photo becoming an image, WHR-454): it reads
+// as on its way, with no actions that would race the server's own Enter.
 const props = defineProps<{ pane: Pane, shown?: boolean }>()
 const busy = ref<'send' | 'clear' | 'send-queued' | null>(null)
 // Why the last send failed, shown under the row until the next try.
@@ -60,10 +62,13 @@ const icon = (a: typeof busy.value, idle: string) => (busy.value === a ? 'i-luci
     <div v-if="error" class="queued-tag failed" role="alert" data-testid="send-error">
       <UIcon name="i-lucide-circle-alert" /><span>{{ error }}</span>
     </div>
+    <div v-else-if="pane.sending" class="queued-tag" role="status" data-testid="unsent-sending">
+      <UIcon name="i-lucide-loader-circle" class="spin" /><span>{{ t('Sending… adding the photo') }}</span>
+    </div>
     <div v-else-if="!shown" class="queued-tag failed" role="status">
       <UIcon name="i-lucide-circle-alert" /><span>{{ t('Not sent — still in Claude’s input') }}</span>
     </div>
-    <div class="queued-tag unsent-actions">
+    <div v-if="!pane.sending" class="queued-tag unsent-actions">
       <button type="button" class="queued-cancel" :disabled="Boolean(busy)" @click="act('send')">
         <UIcon :name="icon('send', 'i-lucide-send')" :class="{ spin: busy === 'send' }" />{{ t('Send now') }}
       </button>

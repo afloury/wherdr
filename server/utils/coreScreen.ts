@@ -9,6 +9,7 @@ import { hasTranscript } from '../../shared/agentKind'
 import { parseOmpStatus } from '../../shared/ompStatus'
 import { parseChoices, parseOmpPrompt, promptIdentity, completeClaudeAsk, type ClaudeAsked } from './choices'
 import { queueSendNow, readDraft, sameText } from './coreDraft'
+import { sendingTo } from './submitting'
 import { parseClaudeScreen } from './claudeScreen'
 
 const WORKING = /\besc(?:ape)? to interrupt\b/i
@@ -202,6 +203,9 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         }
         if (choices && r.interaction === 'native') p.prompt = choices
         if (parsed.sendNow) p.queueSendNow = true
+        // wherdr is still submitting a message here (a photo becoming an image):
+        // what its field holds is that message on its way, not "Not sent".
+        if (p.agent === 'claude' && sendingTo(p.coreAddress)) p.sending = true
         // A working Claude's screen: the "!" command running (its output so far)
         // and its queue, which the transcript only has at the end (ChatView).
         if (p.agent === 'claude' && p.status === 'working' && !failed.has(p.id)) {

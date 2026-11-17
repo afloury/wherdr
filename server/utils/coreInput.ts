@@ -7,6 +7,7 @@ import { keepPastes } from './pastes'
 import { fieldGap, fieldHolds, fieldHoldsRawPhoto, isBareBang, isSlashCommand, uploadNames } from '../../shared/queuedMatch'
 import { corePaint, pasting, readDraft, sameText } from './coreDraft'
 import { noteSubmitting, type Submitting } from './submitting'
+import { clearKeys } from './unqueue'
 import { inTurn, typingInto } from './terminalTurns'
 import type { Pane } from '../../shared/types'
 
@@ -121,7 +122,8 @@ async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknow
   // Noted before the send: a restart during it or during the Enters resumes it.
   const forget = field && deps.submitting ? deps.submitting(p.coreAddress!, text) : () => {}
   try {
-    const r = await deps.call<{ started?: boolean | null, status?: string | null }>('terminal.send', { terminal: p.coreAddress, text: field ? holdEnter(text) : text }, 30000)
+    const send = () => deps.call<{ started?: boolean | null, status?: string | null }>('terminal.send', { terminal: p.coreAddress, text: field ? holdEnter(text) : text }, 30000)
+    const r = await send()
     let started = r?.started ?? null
     // Claude takes a multi-line send (photo lines, text + "\n@file") as a paste and
     // may leave it in its input: core reports no turn started. A large photo is
@@ -133,7 +135,7 @@ async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknow
     // took the message (WHR-398). So the field is always looked at: empty, the
     // message was taken; holding it, it is submitted (WHR-413).
     if (field) {
-      const enters = await submitLeftInput(deps, p, field, text)
+      const enters = await submitLeftInput(deps, p, field, text, async () => { await send() })
       if (enters) started = null // unconfirmed: Enter pressed, no turn observed yet
     } else if (started === false && text.includes('\n')) {
       // Without a field reading: on an empty input, one more Enter is harmless.
@@ -171,6 +173,12 @@ export async function resumeSubmitting(deps: CoreInputDeps, list: Submitting[]) 
 // Looks at Claude's field after a send: up to this many, settleMs apart
 // (about 24 s by default), for the photos to show.
 const SUBMIT_LOOKS = 60
+// Claude Code (2.1.319) checks a pasted photo path, then reads it, each
+// within 1 s; one that misses it (its process slowed after an idle, a loaded
+// machine) is put in the field as typed text, never turned into an image
+// later (WHR-454). Seen there this many looks in a row (about 1.6 s), the
+// message is cleared and pasted once more: the file and Claude are warm now.
+const RAW_LOOKS = 4
 // After each Enter, the look that decides on the next one, in settleMs: the
 // field may still be drawing, or Claude switching turns, and drop an Enter.
 // After a long idle, Claude ignored Enter for 2-3 s with "[Image #N]" already
@@ -185,10 +193,10 @@ const RESUBMIT_AFTER = [1, 2, 3, 4, 5, 5, 5, 5, 5, 5]
 // on it. Never sent twice: the field holds one copy, and an empty field (the
 // message taken, or queued during a turn) ends it; an empty field under
 // "Pasting…" is not read yet (WHR-419). Returns the Enters pressed.
-// Never left there for a photo: one still a path when the wait ends goes as
-// its path, which the agent can still open; the
-// lone "\" of holdEnter is taken out first (WHR-454).
-async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) => Promise<string | null>, text: string): Promise<number> {
+// A photo left as its path: pasted `again` once (RAW_LOOKS); still a path
+// then, or when the wait ends, the message goes as it is, which the agent
+// can still open, the lone "\" of holdEnter taken out first (WHR-454).
+async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) => Promise<string | null>, text: string, again?: () => Promise<void>): Promise<number> {
   const settle = deps.settleMs ?? 400
   const started = Date.now()
   let last: string | undefined
@@ -207,16 +215,33 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
   // Evidence for the next report: sizes, never the text.
   const why = () => (last === undefined ? 'field never read with text' : `field held ${fieldGap(last, text)}`)
   // Wait for it whole (null: the field emptied, the message was taken).
-  for (let i = 0; ; i++) {
+  const keys = (k: string[]) => deps.call('terminal.keys', { terminal: p.coreAddress, keys: k }, 10000)
+  for (let i = 0, rawLooks = 0; ; i++) {
     const seen = await holds()
     if (seen === null) return 0
     if (seen) break
-    if (i + 1 >= SUBMIT_LOOKS && last !== undefined && fieldHoldsRawPhoto(last, text)) {
+    rawLooks = last !== undefined && fieldHoldsRawPhoto(last, text) ? rawLooks + 1 : 0
+    if (rawLooks >= RAW_LOOKS && again) {
+      const paste = again
+      again = undefined
+      // Pasted again only on a field seen empty after the clear: never twice in it.
+      await keys(clearKeys(last!.split('\n').length))
+      let empty = false
+      for (let k = 0; k < 3 && !empty; k++) empty = await look() === null
+      if (empty) {
+        console.warn(`[wherdr] message to ${p.coreAddress}: a photo stayed a path after ${Date.now() - started} ms, pasted again`)
+        await paste()
+        last = undefined
+        rawLooks = 0
+        continue
+      }
+    }
+    if ((rawLooks >= RAW_LOOKS && !again) || (i + 1 >= SUBMIT_LOOKS && rawLooks)) {
       raw = true
       const gap = fieldGap(last!, text)
       // The lone "\" (and only it): one Backspace at a time while the field still ends with it.
       for (let k = 0; k < 3 && /\\\s*$/.test(last || ''); k++) {
-        await deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['backspace'] }, 10000)
+        await keys(['backspace'])
         const now = await look()
         if (now === null) return 0
         if (now === undefined) break
