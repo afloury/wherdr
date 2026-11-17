@@ -46,14 +46,14 @@ const TARGET_RE = /^[A-Za-z0-9_][A-Za-z0-9_.@:%[\]-]{0,199}$/
 const NAME_RE = /^[a-z0-9_][a-z0-9_.-]{0,31}$/
 
 // Machine of a request (key '' = this one): its `on` name, or undefined for the local core.
-export function machineOn(deps: CoreAdminDeps, key: unknown): { m: MachineInfo, on?: string } {
+export function machineOn(deps: Pick<CoreAdminDeps, 'machines'>, key: unknown): { m: MachineInfo, on?: string } {
   const m = deps.machines().find(x => x.key === String(key || ''))
   if (!m) throw new HerdrError('bad_machine', 'unknown machine')
   if (!m.local && m.status !== 'online') throw new HerdrError('unreachable', fmt('{machine} is unreachable', { machine: m.label }))
   return { m, on: m.local ? undefined : m.label }
 }
 
-async function exec(deps: CoreAdminDeps, on: string | undefined, script: string, args: string[] = []) {
+async function exec(deps: Pick<CoreAdminDeps, 'call'>, on: string | undefined, script: string, args: string[] = []) {
   try {
     const r = await deps.call<{ code: number | null, stdout: string, timed_out?: boolean }>('machine.exec',
       { argv: ['sh', '-c', script, 'sh', ...args], ...(on ? { on } : {}), timeout: 10 }, 15000)
@@ -62,7 +62,7 @@ async function exec(deps: CoreAdminDeps, on: string | undefined, script: string,
   } catch (e) { return failure(e) }
 }
 
-export async function homeOf(deps: CoreAdminDeps, on?: string) {
+export async function homeOf(deps: Pick<CoreAdminDeps, 'call'>, on?: string) {
   const r = await exec(deps, on, 'printf %s "$HOME"')
   return r.code === 0 ? r.stdout.trim() : ''
 }

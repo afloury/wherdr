@@ -6,6 +6,7 @@ import type { RepoVisibility } from './visibility'
 import { isProjectColor, type ProjectColor } from './projectKey'
 import { PAUSED, isStrategy, type Strategy } from './placement'
 import { branchNameError, commitMessageError } from './branchName'
+import { cleanOnState, type OnStateChange } from './onState'
 import { ARCHIVE_DAYS } from './archive'
 import { cleanReach, type Reach } from './reach'
 import type { SharedField, WorkspaceShared } from './workspace'
@@ -33,6 +34,7 @@ export interface Project {
   base?: string
   branchName?: string // its tasks' branch template (branchName.ts); missing: task/{id}
   commitMessage?: string // its squash merges' and git.land's commit message template (branchName.ts); missing: the usual message
+  onStateChange?: OnStateChange // the user's command run when a task changes state (onState.ts); missing: none
   // The library template (or example) its workflow was copied from: information
   // only, never followed. None: no workflow yet, no task can start.
   from?: { template: string, version: number }
@@ -71,7 +73,7 @@ export const isGitBranch = (b: string) => b !== '' && b !== '@' && !/[\x00-\x20\
 export const isTemplateId = (id: unknown): id is string => typeof id === 'string' && ID_RE.test(id)
 
 const KEY_HINT = '2 to 10 letters or digits, starting with a letter'
-export interface ProjectUpdate { name?: string, coordinatorName?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, paused?: string[], placement?: Strategy, branchName?: string, commitMessage?: string, archiveAfter?: number, deleteBranch?: boolean, reach?: Reach[], instructionsFiles?: string[] | null }
+export interface ProjectUpdate { name?: string, coordinatorName?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, paused?: string[], placement?: Strategy, branchName?: string, commitMessage?: string, onStateChange?: OnStateChange | '', archiveAfter?: number, deleteBranch?: boolean, reach?: Reach[], instructionsFiles?: string[] | null }
 
 // A project's coordinator is named after the project unless the user named it.
 export const projectCoordinatorName = (p: { name: string, coordinatorName?: string }) => p.coordinatorName || p.name
@@ -174,6 +176,8 @@ export function cleanProjectUpdate(raw: unknown): { update?: ProjectUpdate, erro
     if (why) errors.push({ path: 'commitMessage', message: why })
     else update.commitMessage = tpl
   }
+  const onState = cleanOnState(o.onStateChange, errors)
+  if (onState !== undefined) update.onStateChange = onState
   const isKey = (m: unknown): m is string => typeof m === 'string' && m.length <= 64
   if (o.machines !== undefined) {
     if (!Array.isArray(o.machines) || o.machines.length > 16 || !o.machines.every(isKey)) errors.push({ path: 'machines', message: 'a list of machine keys' })

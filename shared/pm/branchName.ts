@@ -47,7 +47,7 @@ const safe = (s: string) => s.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/\.{2,}/
 
 type Named = Pick<Task, 'id' | 'title' | 'type' | 'tags'>
 // The card's ticket key, else its first tag, else '' (kept to branch characters).
-const tagOf = (task: Named) => {
+export const tagOf = (task: Named) => {
   const tags = (task.tags ?? []).map(safe).filter(Boolean)
   return tags.find(t => TICKET_RE.test(t)) ?? tags[0] ?? ''
 }

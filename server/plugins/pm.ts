@@ -27,6 +27,7 @@ import { mergesSettled } from '../utils/pmActions'
 import { sweepOrphans } from '../utils/pmProcs'
 import { summaryTick } from '../utils/pmSummary'
 import { Holds } from '../utils/pmHold'
+import { runOnState } from '../utils/pmOnState'
 
 // Under Nitro's 30 s shutdown and the updater's wait before it kills the server.
 const MERGE_WAIT_MS = 20_000
@@ -49,6 +50,8 @@ const every = (name: string, ms: number, fn: (doing: (what: string) => void) => 
 }
 
 export default defineNitroPlugin((nitroApp) => {
+  // A project's On state change command, in the background (pmOnState.ts).
+  pmStore().onStateChanges((t, states) => { void runOnState({ ...coreAdminDeps(), store: pmStore() }, t, states).catch(() => {}) })
   void repairDoneTasks(pmStore()).catch(() => {})
   let tries = 0
   const timer = setInterval(() => {

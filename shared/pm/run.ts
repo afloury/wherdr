@@ -15,6 +15,7 @@ import { CODEX_NO_UPDATE } from '../codexLaunch'
 import type { Recovery } from './incident'
 import type { Parked } from './park'
 import { uiGuide } from './uiGuide'
+import type { StateEvent } from './onState'
 
 // Who made a task: the user (the board, their turn), the coordinator in a
 // wake, an automation, a mission.
@@ -31,6 +32,7 @@ export interface Task {
   waitKind?: 'question' | 'permission' | 'auth' // what it waits for
   answered?: number // when a coordinator's tell answered its question; cleared once the agent's question is gone (no second wake: autopilot.ts)
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
+  stateRan?: Partial<Record<StateEvent, number>> // the state changes seen (onState.ts), each once: when
   ci?: { head: string, red: boolean, running?: true } // its PR's CI at the task's commit, as the engine last read it
   prBase?: { base: string, commits?: number } // its PR's base and commit count, as the engine last read them: kept once done
   queue?: number // its place in its project's merge queue (mergeQueue.ts), 1: merging now

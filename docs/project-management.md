@@ -200,6 +200,27 @@ its message under the field and keeps what you typed.
   `Fix the login`. Empty: the usual message (GitHub's or Bitbucket's, git's
   *Merge branch…*). A merge commit or rebase on GitHub or Bitbucket keeps its
   own message.
+- **On state change**: a shell command run on the project's home machine, in
+  its clone, when one of its tasks **starts**, **waits for you**, is **done**,
+  or **fails or is stopped** (tick the events you want), to keep an external
+  tracker in sync. Each event runs at most once per task. The facts come as
+  environment variables, never written into the command line:
+  `WHERDR_TASK_ID` (as shown on the card), `WHERDR_TASK_TAG` (the card's ticket
+  key, else its first tag), `WHERDR_TASK_TITLE`, `WHERDR_TASK_STATE` (`started`,
+  `waits`, `done`, `failed` or `stopped`), `WHERDR_TASK_PR` (its PR's address,
+  else empty) and `WHERDR_PROJECT`. It runs in the background, 30 s at most,
+  and never holds the task: its exit code and first lines of output go to the
+  task's log (*on state change (done): exit 0*), a failure or timeout is logged
+  and never tried again. It runs with your rights on that machine, so only you
+  set it here: a coordinator's or Alfred's request to change it is refused.
+  Example, a Jira transition (placeholders):
+
+  ```sh
+  [ -n "$WHERDR_TASK_TAG" ] && [ "$WHERDR_TASK_STATE" = done ] && curl -s -u "user@example.com:$JIRA_TOKEN" -H 'Content-Type: application/json' -d '{"transition":{"id":"31"}}' "https://example.atlassian.net/rest/api/3/issue/$WHERDR_TASK_TAG/transitions"
+  ```
+
+  A longer one goes in a script of the repository, such as
+  `./scripts/tracker-sync.sh`.
 - **Archive done tasks after**: 1, 3, 7 (the default), 14 or 30 days, or
   *Never*. A done task stays in the Done column that long, then the engine
   archives it (see [Archived tasks](#archived-tasks)). A shorter delay archives

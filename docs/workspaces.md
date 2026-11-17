@@ -84,6 +84,7 @@ A workspace holds the settings its members take:
   its clone under the root: nothing is cloned for you;
 - the paused machines and the placement;
 - the base branch, the branch name template and the commit message template;
+- the On state change command and its events;
 - the agents, models and [reviewer fallback](project-management.md#reviewer-fallback);
 - the worktree setup;
 - the [workspace instructions files](#workspace-instructions-files);
@@ -92,9 +93,9 @@ A workspace holds the settings its members take:
 A member stores only its key, name, color, machine, folder, workspace and
 repository visibility. Each setting comes from the workspace unless the member **overrides**
 it: a field the member sets itself is its own from then on (the list is kept
-in its `overrides`). Clearing the member's base branch, branch name template or
-commit message template gives the workspace's back. Everything that reads a
-project's settings, the engine and the coordinator's commands included, reads
+in its `overrides`). Clearing the member's base branch, branch name template,
+commit message template or On state change command gives the workspace's back.
+Everything that reads a project's settings, the engine and the coordinator's commands included, reads
 them with the overrides applied.
 
 ## Workspace instructions files
