@@ -45,7 +45,7 @@ const ready = ref<Record<string, string>>({}) // each other machine's last readi
 const loaded = ref(false)
 const error = ref('')
 const busy = ref('')
-const form = reactive({ name: '', coordinatorName: '', key: '', color: '', base: '', branchName: '', archiveAfter: '', deleteBranch: true, agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '', reach: {} as Record<string, string> })
+const form = reactive({ name: '', coordinatorName: '', key: '', color: '', base: '', branchName: '', commitMessage: '', archiveAfter: '', deleteBranch: true, agent: '', model: '', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '', reach: {} as Record<string, string> })
 const others = computed(() => (props.projects ?? []).filter(x => x.key !== p.value.key))
 // The sheet's latest copy of the project (a save answers before the prop follows).
 const last = shallowRef(props.project)
@@ -67,7 +67,7 @@ async function load() {
   keyInput.value = form.key
   loaded.value = true
 }
-const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
+const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', commitMessage: (x.kind === 'workspace' ? x.shared?.commitMessage : x.commitMessage) ?? '', archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
 // The worktree setup: paths one per line (or comma separated). Folders to
 // share: empty is node_modules (no `share`), noShare is none (`share: []`).
 const setup = reactive({ copy: '', share: '', noShare: false, lockfile: '', command: '', timeout: '' })
@@ -101,9 +101,9 @@ const invalid = (): Record<string, string> => {
 // Every field saves by itself (useAutosave): the whole form in one call, each
 // field's Saved mark on its group (agent and model together, key and color).
 const send = async () => {
-  const { name, coordinatorName, key, color, base, branchName, archiveAfter, deleteBranch, reach, ...prefs } = form
+  const { name, coordinatorName, key, color, base, branchName, commitMessage, archiveAfter, deleteBranch, reach, ...prefs } = form
   const was = last.value
-  const r = await api<{ project: Project }>('/api/pm/project-update', { key: was.key, name, coordinatorName, base, branchName, archiveAfter: Number(archiveAfter), deleteBranch, reach: Object.entries(reach).map(([project, level]) => ({ project, level })), ...(color && color !== was.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(was) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}), ...(wsKind.value ? { instructionsFiles: instrBody() } : {}) })
+  const r = await api<{ project: Project }>('/api/pm/project-update', { key: was.key, name, coordinatorName, base, branchName, commitMessage, archiveAfter: Number(archiveAfter), deleteBranch, reach: Object.entries(reach).map(([project, level]) => ({ project, level })), ...(color && color !== was.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(was) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}), ...(wsKind.value ? { instructionsFiles: instrBody() } : {}) })
   // The form keeps what was typed; the shared lists that show its key, color and agents are read again.
   last.value = r.project
   emit('changed')
@@ -117,7 +117,7 @@ const GROUP: Record<string, string> = { instrFiles: 'instrMode', color: 'key', a
 // pause mid-rename would make a partial key a real rename and a former key for good.
 const keyInput = ref('')
 const commitKey = () => { form.key = keyInput.value }
-const TYPED = ['name', 'coordinatorName', 'branchName', 'model', 'reviewModel', 'reviewFallbackModel', 'copy', 'share', 'lockfile', 'command', 'timeout', 'instrFiles']
+const TYPED = ['name', 'coordinatorName', 'branchName', 'commitMessage', 'model', 'reviewModel', 'reviewFallbackModel', 'copy', 'share', 'lockfile', 'command', 'timeout', 'instrFiles']
 let filling = false
 for (const [o, keys] of [[form, Object.keys(form)], [setup, Object.keys(setup)], [instr, Object.keys(instr)]] as const)
   for (const k of keys) watch(() => JSON.stringify((o as Record<string, unknown>)[k]), () => { if (!filling) auto.change(GROUP[k] ?? k, !TYPED.includes(k)) }, { flush: 'sync' })
@@ -279,6 +279,13 @@ async function remove() {
             <UInput v-model="form.branchName" size="lg" class="pm-base-pick mono" placeholder="task/{id}" :aria-label="tl('Branch name')" maxlength="80" data-testid="pm-branch-name" />
             <small v-if="auto.errors.branchName" class="form-error pm-field-error" role="alert">{{ t(auto.errors.branchName) }}</small>
             <small class="muted">{{ tl('Each new task\'s branch. Fields: {id}, {tag} (the card\'s ticket key, else the task id), {type} (bugfix or feature), {slug} (from the title). Example: {type}/{tag}-{slug}.') }}</small>
+          </span>
+
+          <span class="field-label">{{ tl('Commit message') }}<SavedMark :s="auto.state.commitMessage" /></span>
+          <span class="pm-field">
+            <UInput v-model="form.commitMessage" size="lg" class="pm-base-pick mono" placeholder="{tag}: {title}" :aria-label="tl('Commit message')" maxlength="120" data-testid="pm-commit-message" />
+            <small v-if="auto.errors.commitMessage" class="form-error pm-field-error" role="alert">{{ t(auto.errors.commitMessage) }}</small>
+            <small class="muted">{{ tl('The commit title of a squash merge, and of the merge commit a land makes. Fields: those of the branch name, and {title}. A field left empty drops with its separator. Unset: the usual message.') }}</small>
           </span>
 
           <span class="field-label">{{ tl('Archive done tasks after') }}<SavedMark :s="auto.state.archiveAfter" /></span>
