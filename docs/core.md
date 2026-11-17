@@ -138,7 +138,7 @@ shows, and an Enter pressed before that is lost; after a long idle, Claude may a
 Enter for a few seconds with the placeholder already shown) is submitted by wherdr. After
 every send to Claude, idle or busy, whatever core reports, wherdr looks at the box: empty,
 the message was taken (but an empty box with *Pasting…* under it is Claude still reading
-the photos, several seconds for three large ones: wherdr keeps waiting); otherwise it waits up to about 24 seconds for the box to hold that
+the photos, several seconds for three large ones: wherdr keeps waiting); otherwise it waits up to 18 seconds from the paste for the box to hold that
 message alone, each photo as its placeholder (Claude draws the placeholders before the
 text; only their count is compared), presses Enter, and presses it again while the
 message is still there (up to ten times over about 16 seconds). A message with photos ends
@@ -149,15 +149,23 @@ Claude Code checks and reads a pasted photo path within one second, or keeps it 
 for good (after an idle, on a loaded machine): a message whose photo shows as its path is
 cleared and pasted once more, only once its field is seen empty; a field that does not empty,
 or can no longer be read, after that clear refuses the send (**Not sent**, with Retry for the
-whole message), never submitting part of it.
+whole message), never submitting part of it. A multi-line message shows in the box as
+`[Pasted text #N +K lines]`, its photo paths hidden inside: a photo missing from the
+`[Image #N]` tags before it is such a path, and is pasted once more the same way.
+The 18 seconds count from the first paste, clears and the second paste included: the message
+is pasted again only with 6 seconds still left, otherwise it goes as it is at once.
 A photo still shown as its path after that, or when the wait ends, is never left there: wherdr takes the
 `\` out (Backspace, only while the box ends with it), presses Enter, and the message goes
 with its path, which the agent can still open; this leaves one line in the server log (the
-wait's duration and the sizes, never the text). The whole send (paste, wait, Enters) runs
+wait's duration and the sizes, never the text). A box that never holds the message alone
+when the wait ends (part of it, or other text) gets no Enter: the send is refused, so the
+message reads **Not sent** with Retry, and that text shows with **Send now** / **Clear**. The whole send (paste, wait, Enters) runs
 on the server: switching conversation, closing the page or a phone going to sleep never
 stops it. Meanwhile a photo message reads **Sending… adding the photo**, also on another device
-or after a reload (the server marks the terminal as sending), never **Not sent**, and
-**Send now** / **Clear** are not offered.
+or after a reload (the server marks the terminal as sending, with the message), never **Not sent**, and
+**Send now** / **Clear** are not offered; the box's text shows as the user's own message, never as
+Claude's `[Pasted text #N]` stand-in, also once the send is over and the message is still there. Every change (sending, sent, refused) reaches the open
+conversation at once, without leaving it.
 A message whose photo still reached Claude as its path is shown as sent, its photo as a
 photo, and leaves one line in the server log (photo count and text size, never the text). This also holds for a
 message sent while Claude works or ends its turn: Enter then puts it in Claude's own queue.

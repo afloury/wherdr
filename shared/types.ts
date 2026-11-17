@@ -167,6 +167,8 @@ export interface Pane {
   draft?: CoreDraft
   // herdr-core, Claude: wherdr's server is still submitting a message to it (see server/utils/submitting.ts).
   sending?: boolean
+  // The message wherdr sent that its field holds (being submitted, or left there), as the user wrote it, photo lines included: the field may only show Claude's "[Pasted text #N]".
+  inputText?: string
   // herdr-core, Claude: its queue offers "ctrl+enter to send now".
   queueSendNow?: boolean
   // Codex: the error its last turn ended with ("You've hit your usage limit…"), read from the screen.
