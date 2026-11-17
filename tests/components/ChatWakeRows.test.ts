@@ -107,6 +107,28 @@ describe('wakes in a conversation', () => {
   })
 })
 
+describe('a message Claude took in the same turn as a wake', () => {
+  afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] } })
+
+  it('shows the user\'s photo as its own bubble, the wake folded beside it, and the answer in full', async () => {
+    herdrState.value = { ok: true, workspaces: [], panes: [pane] }
+    items = [
+      { role: 'user', text: `/home/user/.cache/herdr-web/uploads/shot.png\n\nAutopilot: scheduled wake a1\n\nScheduled wake\n\n${ACK('a1')}`, ts: at(8) },
+      { role: 'assistant', text: 'Nothing to do.', ts: at(8, 1) },
+    ]
+    const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] }, global: { stubs: { UTooltip: { template: '<slot />' } } } })
+    try {
+      await expect.poll(() => w.findAll('[data-testid="wake"]').length).toBe(1)
+      const bubble = w.find('.msg-user')
+      expect(bubble.find('img').attributes('src')).toBe('/uploads/shot.png')
+      expect(bubble.text()).not.toContain('Autopilot')
+      // The answer is the user's too: never folded under the wake.
+      expect(w.find('.wake-answer').exists()).toBe(false)
+      expect(w.find('.chat').text()).toContain('Nothing to do.')
+    } finally { w.unmount() }
+  })
+})
+
 describe('a turn the coordinator takes by itself after routine wakes', () => {
   afterEach(() => { herdrState.value = { ok: false, workspaces: [], panes: [] } })
 
