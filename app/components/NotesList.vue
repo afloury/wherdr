@@ -80,6 +80,8 @@ async function openFile(path: string) {
 // Kept on the device (useNotes.ts): after a reload, the file shown reopens if
 // it still exists, else the list.
 watch(file, (f) => { notesFile.value = f?.path ?? null })
+// Set from elsewhere (a notes path in a conversation, ChatView.vue): opened here.
+watch(notesFile, (p) => { if (p && p !== file.value?.path) void openFile(p) })
 onMounted(async () => {
   const path = notesFile.value
   if (!path) return
@@ -106,6 +108,15 @@ function markLinks() {
     if (why) a.setAttribute('title', why)
     else a.removeAttribute('title')
   }
+  // Inline code naming a notes file that exists (`plans/x.md`): opens like a link to it.
+  const codes = [...list.value?.querySelectorAll<HTMLElement>('code[data-k="path"]') ?? []].map(c => [c, ''] as [HTMLElement, string])
+  for (const c of view.value?.querySelectorAll<HTMLElement>('.note-file-body code[data-k="path"]') ?? []) codes.push([c, from()])
+  for (const [c, here] of codes) {
+    const to = noteTarget((c.textContent ?? '').trim(), here)
+    const open = to?.kind === 'file' && Boolean(noteFiles.value?.includes(to.path))
+    c.classList.toggle('note-path-link', open)
+    if (open) { c.dataset.notesPath = (to as { path: string }).path; c.setAttribute('role', 'link') }
+  }
 }
 function refresh() { mountBadges(); markLinks() }
 watch([rendered, file, notes, noteFiles], refresh, { flush: 'post' })
@@ -113,6 +124,11 @@ onMounted(refresh)
 onBeforeUnmount(() => { for (const s of slots) render(null, s) })
 
 async function onClick(e: MouseEvent) {
+  const code = (e.target as HTMLElement).closest<HTMLElement>('code.note-path-link')
+  if (code?.dataset.notesPath) {
+    if (!file.value) cameFrom = code.closest('.note')?.id ?? ''
+    return openFile(code.dataset.notesPath)
+  }
   const a = (e.target as HTMLElement).closest('a')
   const href = a?.getAttribute('href') ?? ''
   if (!a || /^[a-z][a-z0-9+.-]*:/i.test(href)) return // a web address: its new tab

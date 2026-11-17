@@ -108,3 +108,16 @@ it('opens a linked file in place, follows its links, mutes the missing and the e
   expect(w.find('#note-home a[href="plans/lost.md"]').classes()).toContain('note-link-missing') // marked from the folder again
   w.unmount()
 })
+
+// WHR-455: inline code naming a notes file opens it like a link; a missing one stays plain code.
+it('opens a notes file named in inline code', async () => {
+  notes.value = [note('home', 'all', 'Read `plans/steps.md`, not `plans/lost.md`')]
+  noteFiles.value = Object.keys(FILES)
+  const w = await mountSuspended(NotesList)
+  await nextTick()
+  const codes = w.findAll('#note-home code')
+  expect(codes.map(c => c.classes().includes('note-path-link'))).toEqual([true, false])
+  await codes[0]!.trigger('click')
+  await vi.waitFor(() => expect(w.find('.note-file-body').text()).toMatch(/^Steps/))
+  w.unmount()
+})

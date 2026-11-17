@@ -19,7 +19,8 @@ import path from 'node:path'
 import { DATA_DIR, WHERDR_DIR } from './env'
 import { shq } from './fsx'
 import type { FileEntry, FilePreview, FilesListing } from '../../shared/types'
-import { insideRoot, posixResolve, resolveAgentPath } from '../../shared/filePaths'
+import { insideRoot, posixResolve, resolveAgentPath, stripPosition, writtenCandidates, type PathFound } from '../../shared/filePaths'
+import { filePath as notesFilePath } from '../../shared/notes'
 import { chatFilesRoots, type ChatFilesPolicy } from '../../shared/chatFiles'
 import { gitToplevel } from './changes'
 import { HerdrError } from './herdr'
@@ -281,6 +282,43 @@ export function writtenTarget(m: Machine, cwd: string | null | undefined, writte
   if (!rel) throw new HerdrError('not_file', 'Not a file')
   if (!policy.protected) refuseProtected(m, abs)
   return { root, rel, abs, show: policy.protected ? '1' : '' }
+}
+
+// One line per (root, rel) pair after $1 (the protected switch): 1 when the
+// file opens as a preview would (symlinks resolved, under its root), else 0.
+export const EXISTS_SCRIPT = `show=$1; shift
+while [ "$#" -ge 2 ]; do
+  ( set -- "$1" "$2" "" "" "$show"
+${OPEN_FILE}
+  ) </dev/null >/dev/null 2>&1 && echo 1 || echo 0
+  shift 2
+done`
+
+const MAX_FIND = 200
+// Where each written path is found (shared/filePaths.ts: the agent's folder,
+// then `repos`), checked on the machine in one run, then the notes on this
+// server (`notes`: their folder and a reader, given when the policy allows that folder). Missing,
+// protected or outside the policy: not listed.
+export async function findWritten(m: Machine, cwd: string | null | undefined, repos: string[], written: unknown[], policy: ChatFilesPolicy = HOME_ONLY, notes?: { dir: string, read: (rel: string) => Promise<string | null> }): Promise<Record<string, PathFound[]>> {
+  const roots = chatFilesRoots(posixResolve('/', m.home), policy.level)
+  const paths = [...new Set(written.filter((w): w is string => typeof w === 'string' && w.length <= 1024 && !w.endsWith('/')))].slice(0, MAX_FIND)
+  const checks: { w: string, c: PathFound, root: string, rel: string }[] = []
+  for (const w of paths) {
+    for (const c of writtenCandidates(w, cwd, repos, m.home, roots)) {
+      try { checks.push({ w, c, ...writtenTarget(m, null, c.abs, policy) }) }
+      catch { /* protected or not a file: never offered */ }
+    }
+  }
+  const lines = checks.length ? (await run(m, EXISTS_SCRIPT, [policy.protected ? '1' : '', ...checks.flatMap(x => [x.root, x.rel])], { timeoutMs: 20000 })).toString('utf8').split('\n') : []
+  const found: Record<string, PathFound[]> = Object.fromEntries(paths.map(w => [w, []]))
+  checks.forEach((x, i) => { if (lines[i] === '1') found[x.w]!.push(x.c) })
+  if (notes) {
+    for (const w of paths) {
+      const rel = stripPosition(w.trim())
+      if (notesFilePath(rel) && (await notes.read(rel)) !== null) found[w]!.push({ where: 'notes', abs: path.posix.join(notes.dir, rel), notes: rel })
+    }
+  }
+  return found
 }
 
 // Early, on the path as written (the machine checks again once symlinks are resolved).

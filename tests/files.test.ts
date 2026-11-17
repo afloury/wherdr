@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, writtenTarget, isPdf, isVideo, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
+import { DOWNLOAD_BYTES, READ_SCRIPT, attachmentHeader, findWritten, writtenTarget, isPdf, isVideo, cleanRelative, listFiles, readFileBytes, readFilePreview, readWrittenBytes, readWrittenPreview } from '../server/utils/files'
 import type { Machine } from '../server/utils/machines'
 import { samplePdf } from './e2e/samplePdf.mjs'
 
@@ -241,5 +241,33 @@ describe('files named in a conversation', () => {
     expect(attachmentHeader('report.csv')).toBe(`attachment; filename="report.csv"; filename*=UTF-8''report.csv`)
     expect(attachmentHeader('guide.pdf', 'inline')).toBe(`inline; filename="guide.pdf"; filename*=UTF-8''guide.pdf`)
     expect(attachmentHeader('été "v2".csv')).toBe(`attachment; filename="_t_ _v2_.csv"; filename*=UTF-8''%C3%A9t%C3%A9%20%22v2%22.csv`)
+  })
+})
+
+// WHR-455: a written path looked for in the agent's folder, its repository, then the notes.
+describe('where a written path is found', () => {
+  const home = () => ({ exec: null, home: base }) as unknown as Machine
+  let coord = ''
+  beforeAll(() => {
+    coord = path.join(base, 'coord')
+    mkdirSync(path.join(base, '.ssh'), { recursive: true })
+    mkdirSync(coord, { recursive: true })
+    writeFileSync(path.join(base, '.ssh', 'key'), 'k\n')
+    writeFileSync(path.join(coord, 'README.md'), 'mine\n')
+  })
+  const notes = { dir: '/data/notes', read: async (rel: string) => (rel === 'plans/x.md' ? '# x\n' : null) }
+
+  it('offers each folder holding it, the agent folder first; found nowhere: none', async () => {
+    const found = await findWritten(home(), coord, [root], ['README.md', 'src/app.ts:3', 'plans/x.md', 'nope/x.md', 'src/'], undefined, notes)
+    expect(found['README.md']).toEqual([{ where: 'agent', abs: path.join(coord, 'README.md') }, { where: 'repo', abs: path.join(root, 'README.md') }])
+    expect(found['src/app.ts:3']).toEqual([{ where: 'repo', abs: path.join(root, 'src/app.ts') }])
+    expect(found['plans/x.md']).toEqual([{ where: 'notes', abs: '/data/notes/plans/x.md', notes: 'plans/x.md' }])
+    expect(found['nope/x.md']).toEqual([])
+    expect(found['src/']).toBeUndefined()
+  })
+
+  it('never offers a protected file, a folder outside the policy or a symlink leaving it', async () => {
+    const found = await findWritten(home(), coord, ['/etc'], ['~/.ssh/key', 'hosts', '~/leaves-home.txt'])
+    expect(found).toEqual({ '~/.ssh/key': [], 'hosts': [], '~/leaves-home.txt': [] })
   })
 })

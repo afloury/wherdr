@@ -984,6 +984,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .note-file-body pre { max-width: 100%; overflow-x: auto; }
 /* A link that leads nowhere or out of the notes folder: muted, its title says why. */
 .notes-wrap a.note-link-missing { color: var(--dim); text-decoration-style: dotted; cursor: not-allowed; }
+.notes-wrap code.note-path-link { cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .notes-empty { padding: 12px 0; border-top: 1px solid var(--line); }
 /* The tab the list follows: a muted line under the filter. */
 .notes-following { margin-top: -8px; font-size: 13px; overflow-wrap: anywhere; }
@@ -1177,6 +1178,8 @@ body.short-bottom { --safe-bottom: 0px; }
 }
 .chat-list .md-body .md-path:hover { text-decoration-style: solid; text-decoration-color: var(--lav); background: color-mix(in srgb, var(--lav) 14%, var(--surface-2)); }
 .chat-list .md-body .md-path:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+/* A path found in none of the agent's folders (ChatView.vue markPaths): muted, no underline. */
+.chat-list .md-body .md-path.md-path-missing { text-decoration: none; opacity: .6; }
 /* Command in a reply (utils/shellCommand.ts): the same, in the command's green;
    its menu copies it and, where the agent can run it, runs it. */
 .chat-list .md-body .md-cmd {
