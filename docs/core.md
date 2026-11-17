@@ -129,12 +129,12 @@ WAL mode; the database and its `-wal` sidecar are copied to a snapshot before
 blobs decoded by a small bounds-checked reader (`server/utils/agyProtobuf.ts`).
 The session is resolved fail-closed from what the `agy` process holds open —
 `conversations/<uuid>.db`, its WAL/SHM sidecars or `presence/<uuid>.lock` —
-checked on Linux through `/proc/<pid>/fd` and elsewhere through `lsof`, with the
-exact `--conversation <uuid>` launch argument as fallback. Descriptors naming
-two conversations resolve to nothing rather than a wrong conversation; the
-`conversation_summaries.db` index only stands in for an unmatched process when
-one top-level live conversation claims the pane's folder. Local
-`ANTIGRAVITY_APP_DATA_DIR` is honored; remote machines use their home and the
+checked on Linux through `/proc/<pid>/fd` and elsewhere through `lsof`, then the
+exact `--conversation <uuid>` launch argument, then nothing: a descriptor set
+naming two conversations resolves to nothing rather than a wrong conversation,
+and the `conversation_summaries.db` index is never used (a relaunched `agy` in
+the same folder would show its previous conversation until the new one is
+written). Local `ANTIGRAVITY_APP_DATA_DIR` is honored; remote machines use their home and the
 default path. Checkpoints and internal system steps are not rendered; a tool
 result stored in a later step invalidates the pages that held the call, and
 model metadata comes from `gen_metadata`. `node:sqlite` needs Node 22.13 or

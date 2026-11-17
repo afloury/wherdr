@@ -466,62 +466,6 @@ export function createAgyTranscripts({
     return { st: { size: got.size, gen: got.gen }, file, doc: got.doc }
   }
 
-  async function exists(file: string | null) {
-    if (!file) return false
-    try { return (await fs.stat(file)).isFile }
-    catch (e) {
-      if (isMissing(e)) return false
-      throw e
-    }
-  }
-
-  // Last resort for a live pane whose descriptors could not be read: the
-  // summaries database is trusted only when a single top-level conversation
-  // claims this folder and no other agy pane on the machine does.
-  async function summariesSession(pane: { cwd?: string | null, bornAt?: number | null }, competing: boolean): Promise<string | null> {
-    if (competing || !pane.cwd || !(await ready())) return null
-    const file = path.join(agyCliDir(home, honorEnv), 'conversation_summaries.db')
-    const cwdUri = `file://${pane.cwd.replace(/\/+$/, '')}`
-    const rows: { id: string, uris: string, modified: string }[] = []
-    const Db = await ctor()
-    const collect = (db: DatabaseSync) => {
-      for (const r of db.prepare(`SELECT conversation_id id, workspace_uris uris, last_modified_time modified FROM conversation_summaries WHERE COALESCE(nesting_depth, 0) = 0 AND COALESCE(killed, 0) IN (0, 'false')`).all() as { id?: unknown, uris?: unknown, modified?: unknown }[]) {
-        const id = String(r.id || '')
-        if (AGY_SESSION.test(id)) rows.push({ id, uris: String(r.uris || ''), modified: String(r.modified || '') })
-      }
-    }
-    try {
-      const st = await fs.stat(file)
-      if (!st.isFile) return null
-      if (fs === localFs) {
-        const db = new Db(file, { readOnly: true })
-        try { collect(db) } finally { db.close() }
-      } else {
-        const wal = await fs.stat(`${file}-wal`).catch(() => null)
-        const snap = await snapshot(file, st, wal?.isFile ? wal : null)
-        try {
-          const db = new Db(snap.db, { readOnly: true })
-          collect(db)
-          db.close()
-        } finally { rmSync(snap.dir, { recursive: true, force: true }) }
-      }
-    } catch (e) {
-      if (isMissing(e) || isMoved(e) || isSqliteUnsupported(e)) return null
-      throw e
-    }
-    const matches = rows.filter(r => {
-      try { return (JSON.parse(r.uris) as unknown[]).some(u => typeof u === 'string' && u.replace(/\/+$/, '') === cwdUri) } catch { return false }
-    })
-    if (matches.length !== 1) return null
-    const m = matches[0]!
-    // A conversation untouched since the pane started belongs to an older run.
-    if (pane.bornAt) {
-      const touched = Date.parse(m.modified.replace(' ', 'T'))
-      if (Number.isFinite(touched) && touched < pane.bornAt - 120_000) return null
-    }
-    return await exists(conversationPath(home, m.id, honorEnv)) ? m.id : null
-  }
-
   async function chat(pane: TranscriptPane, opts: AgyOptions = {}): Promise<ChatResponse> {
     const session = pane.agentSession
     if (!session) return { available: false, reason: 'not_found' }
@@ -639,5 +583,5 @@ export function createAgyTranscripts({
     }
   }
 
-  return { chat, image, search, model, pathOf, summariesSession }
+  return { chat, image, search, model, pathOf }
 }
