@@ -73,7 +73,7 @@ function onKey(e: KeyboardEvent) {
         <button v-if="live" type="button" class="qs-opt qs-other-btn" :aria-pressed="!!other[i]" :data-testid="`questions-other-${i}`" @click="typeOther(i)">{{ tl('Other…') }}</button>
       </div>
       <input v-if="live && other[i]" class="qs-input" :data-other="i" maxlength="400" :placeholder="tl('Your answer')" :aria-label="tl('Your answer')"
-        :value="isText(mine[i]) ? (mine[i] as { text: string }).text : ''" @input="setText(i, ($event.target as HTMLInputElement).value)" @keydown.enter.prevent="send">
+        :value="isText(mine[i]) ? (mine[i] as { text: string }).text : ''" @input="setText(i, ($event.target as HTMLInputElement).value)" @keydown.enter="!imeComposing($event) && ($event.preventDefault(), send())">
       <p v-else-if="isText(picks[i])" class="qs-given">↳ {{ (picks[i] as { text: string }).text }}</p>
       <p v-else-if="given !== null && !answered(picks[i])" class="qs-given">{{ SKIP }}</p>
     </div>
