@@ -122,8 +122,9 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   button), or answer a workflow or automation change, wherdr tells the agent that proposed it in
   its conversation, so it goes on by itself (Alfred moves to the next project): *Applied:
   Project WEB › Guards*, *Cancelled: …*, or *Not applied: …* with why (changed since, a check
-  that failed). It shows as a muted *From the card* row, not as a message you typed, and counts as
-  your turn (the agent may propose the next card). A second click on a closed card tells nothing.
+  that failed). It shows as a muted *From the card* row, not as a message you typed: the agent may
+  propose the next card, but the click is never your yes to anything else (a *Cancel* cannot end
+  a step that waits for you or merge a PR). A second click on a closed card tells nothing.
   While that agent does not run, nothing is typed: its next start's first message lists what you
   applied or cancelled since.
 - **Files and screenshots beside the conversation**: an agent can show you a file of its own
