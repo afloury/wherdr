@@ -7,7 +7,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { dryRun, parseAlfredCommand } from '../shared/pm/alfredCli'
 import { applyProposedChange, runAlfredCommand } from '../server/utils/alfredCli'
-import { ALFRED_TOKEN_FILE, answerProposal, issueAlfredToken, userMessageTo } from '../server/utils/pmCoordinator'
+import { ALFRED_TOKEN_FILE, answerProposal, issueAlfredToken, setCoordinatorAgent, userMessageTo } from '../server/utils/pmCoordinator'
 import { MAIN } from '../shared/pm/coordinator'
 import { createPmStore } from '../server/utils/pmStore'
 import { actOnCard } from '../server/utils/uiActions'
@@ -68,7 +68,8 @@ describe('parseAlfredCommand', () => {
   it('says what is wrong', () => {
     expect(parseAlfredCommand(['project', 'add', 'WEB', '--path', '/x'])).toEqual({ error: 'usage: wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template example:<id>] [--apply]' })
     expect(parseAlfredCommand(['project', 'add', 'WEB', '--machine', '', '--path', '/x', '--force', 'y'])).toEqual({ error: 'unknown option --force' })
-    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'omp'])).toEqual({ error: '--program is claude or codex' })
+    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'omp'])).toMatchObject({ name: 'coordinator start', key: 'WEB', program: 'omp' })
+    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'pi'])).toEqual({ error: '--program is claude, codex or omp' })
     expect(parseAlfredCommand(['setting', 'set', 'password', 'x'])).toMatchObject({ error: /^password is not a setting Alfred changes/ })
     // Only a value the app reads: no theme "light", no list setting.
     expect(parseAlfredCommand(['setting', 'set', 'theme', 'light'])).toMatchObject({ error: /^light is not a value of theme: one of wherdr-titanium, wherdr-neon/ })
@@ -375,12 +376,23 @@ describe('runAlfredCommand', () => {
   it('starts a project coordinator with the user\'s first offered agent that can run it, no model', async () => {
     await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--apply')
     expect(await run('coordinator', 'start', 'WEB')).toMatchObject({ dryRun: true, change: ['start the coordinator of WEB with claude on this machine'] })
-    // Settings › Agents: OMP first (it cannot run a project coordinator), Claude unchecked.
+    // Settings › Agents: omp first (it may run a project coordinator, but never by default), Claude unchecked.
     await fs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ v: 1, settings: { agentOrder: '["omp","claude","codex"]', hiddenAgents: '["claude"]' } }))
     expect(await run('coordinator', 'start', 'WEB')).toMatchObject({ change: ['start the coordinator of WEB with codex on this machine'] })
     expect(await run('coordinators')).toMatchObject({ coordinators: [{ project: '_main' }, { project: 'WEB', agent: 'codex' }] })
     expect(await run('coordinator', 'start', 'WEB', '--program', 'claude')).toMatchObject({ change: ['start the coordinator of WEB with claude on this machine'] })
+    expect(await run('coordinator', 'start', 'WEB', '--program', 'omp')).toMatchObject({ change: ['start the coordinator of WEB with omp on this machine'] })
     await expect(run('coordinator', 'start', 'WEB', '--program', 'codex', '--model', 'gpt-6')).rejects.toThrow()
+    // An explicit omp default is kept while omp is offered.
+    await setCoordinatorAgent(store, 'WEB', { program: 'omp' })
+    expect(await run('coordinators')).toMatchObject({ coordinators: [{ project: '_main' }, { project: 'WEB', agent: 'omp' }] })
+    // Hidden, omp is no longer offered: the default moves back to a Claude or Codex.
+    await fs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ v: 1, settings: { agentOrder: '["omp","claude","codex"]', hiddenAgents: '["omp"]' } }))
+    expect(await run('coordinators')).toMatchObject({ coordinators: [{ project: '_main' }, { project: 'WEB', agent: 'claude' }] })
+    // omp is the default only when neither Claude nor Codex is offered.
+    await store.saveCoordinator({ ...(await store.coordinator('WEB'))!, agent: undefined })
+    await fs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ v: 1, settings: { agentOrder: '["omp","claude","codex"]', hiddenAgents: '["claude","codex"]' } }))
+    expect(await run('coordinator', 'start', 'WEB')).toMatchObject({ change: ['start the coordinator of WEB with omp on this machine'] })
   })
 
   // WHR-387: the tab open at the user's message, the tabs with their projects, a brief per tab or all.

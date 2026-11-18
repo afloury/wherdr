@@ -36,7 +36,7 @@ import { FEATURE_COMMANDS, parseFeature, type FeatureCommand } from './feature'
 
 // The agent of a coordinator: the project's default, and the one its kept
 // conversation ran with (changing it starts a new conversation, never a
-// resume of another program's session). model: passed to Claude or Codex at
+// resume of another program's session). model: passed to Claude, Codex or omp at
 // its start; none, the harness's default (changed inside the agent).
 export interface CoordinatorAgent { program: CoordinatorProgram, model?: string }
 // The harnesses that can carry a coordinator or Alfred: each reads its role
@@ -47,11 +47,22 @@ export type CoordinatorProgram = typeof COORDINATOR_PROGRAMS[number]
 export const isCoordinatorProgram = (v: unknown): v is CoordinatorProgram => COORDINATOR_PROGRAMS.includes(v as CoordinatorProgram)
 // A project's coordinator must not change the project's repository: only
 // Claude (Edit deny rule in .claude/settings.json) and Codex (its sandbox) can
-// be held to that. The others start bare, so they run Alfred (its own home,
+// be held to that by wherdr. omp has no such rule: it is held by its tool list
+// (OMP_COORDINATOR_TOOLS), without edit or write tools. Like Claude's Edit
+// deny, that leaves the shell able to write: an omp coordinator is the opt-in,
+// never the default. The others start bare, so they run Alfred (its own home,
 // no repository) but not a project coordinator.
 export const GUARDED_PROGRAMS = ['claude', 'codex'] as const satisfies readonly CoordinatorProgram[]
+export const TOOL_GUARDED_PROGRAMS = ['omp'] as const satisfies readonly CoordinatorProgram[]
 export const canRunCoordinator = (program: unknown, key: string): program is CoordinatorProgram =>
-  key === MAIN ? isCoordinatorProgram(program) : (GUARDED_PROGRAMS as readonly unknown[]).includes(program)
+  key === MAIN ? isCoordinatorProgram(program) : ([...GUARDED_PROGRAMS, ...TOOL_GUARDED_PROGRAMS] as readonly unknown[]).includes(program)
+// The program a project coordinator starts with when nobody chose one: the first
+// of the offered programs (the user's order) that wherdr itself guards, and only
+// when none is offered, the first tool-guarded one (omp is never the default).
+export function defaultProjectProgram(offered: readonly string[]): CoordinatorProgram | undefined {
+  const among = (list: readonly CoordinatorProgram[]) => offered.find((p): p is CoordinatorProgram => (list as readonly string[]).includes(p))
+  return among(GUARDED_PROGRAMS) ?? among(TOOL_GUARDED_PROGRAMS)
+}
 // Each harness's own instructions file, pointing to AGENTS.md.
 export const ROLE_POINTERS: Record<string, string> = { 'CLAUDE.md': '@AGENTS.md\n', 'GEMINI.md': '@AGENTS.md\n', 'QWEN.md': '@AGENTS.md\n' }
 
@@ -509,28 +520,45 @@ export function citedSpecChange(task: Pick<Task, 'specNotes' | 'log'>, reason: s
 // What a running agent of the task reads at once when its spec changed.
 export const specChangedText = (what: string) => `The task's spec changed: ${what}\n\n${SPEC_RULE} Follow the new spec from now on.`
 
+// The tools of an omp project coordinator: it reads, searches and runs the shell
+// (`wherdr pm`). No edit, ast_edit, eval, task, debug or lsp tool (lsp can apply
+// edits: rename, code actions). Verified on omp 18.20: with this list omp has no
+// edit tool, and its `write` tool refuses filesystem paths (it writes only its
+// internal xd:// devices and local:// session scratch). The shell can still
+// write, as with Claude: the guard is the list.
+export const OMP_COORDINATOR_TOOLS = 'read,grep,glob,find,bash,todo,ask,web_search,wait'
+
 // How the coordinator starts, in its own folder, with its harness's default
 // model. Claude: the repo added with --add-dir, its edits denied in the
 // folder's .claude/settings.json. Codex: its --add-dir makes a folder
 // writable, so none. Its `workspace-write` sandbox has no network, which
 // `wherdr pm` needs: a permission profile given only by -c (nothing in
 // ~/.codex) extends :workspace (reads everywhere, writes in its folder and
-// temp folders) with the network on. The others start bare in the folder.
+// temp folders) with the network on. omp: its --tools list (OMP_COORDINATOR_TOOLS)
+// has no edit, write, ast_edit, eval, task or debug, and its repo or workspace
+// root is added with --add-dir; the shell can still write, as with Claude's Edit
+// deny, so the guard is the list. A plain folder (works) and Alfred (no repo)
+// keep omp's default tools. The others start bare in the folder.
 // works: the project's folder is the coordinator's to change (a plain folder
 // without git, not a workspace: Codex keeps a workspace's root read-only, since a
 // writable --add-dir would open its members too).
 // resume: its last conversation again, the last one started in its own folder
-// (Claude and Codex only, see canResume), with the same options.
+// (Claude, Codex and omp only, see canResume), with the same options: omp's
+// `--continue` takes up the last conversation of its working folder, which is
+// the coordinator's own (its resume is for a project's coordinator, not Alfred).
 export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false, resume = false, model?: string): string[] {
   const m = model ? ['--model', model] : []
   if (program === 'claude') return ['claude', ...m, ...(resume ? ['--continue'] : []), ...(repo ? ['--add-dir', repo] : [])]
   if (program === 'codex') return ['codex', ...CODEX_NO_UPDATE, ...m, '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true', ...(resume ? ['resume', '--last'] : [])]
+  if (program === 'omp') return ['omp', ...m, ...(repo && !works ? ['--tools', OMP_COORDINATOR_TOOLS] : []), ...(repo ? ['--add-dir', repo] : []), ...(resume ? ['--continue'] : [])]
   return [program]
 }
-export const canResume = (program: CoordinatorProgram) => program === 'claude' || program === 'codex'
-// Claude and Codex take the first message as an argument; the others get it
-// typed once they are ready.
-export const promptAsArg = (program: CoordinatorProgram) => program === 'claude' || program === 'codex'
+// Claude and Codex, and omp for a project's coordinator, can take up their last
+// conversation again. Alfred on omp stays as before: always a new conversation.
+export const canResume = (program: CoordinatorProgram, key: string) => program === 'claude' || program === 'codex' || (program === 'omp' && key !== MAIN)
+// Claude and Codex, and omp for a project's coordinator, take the first message
+// as an argument; the others (Alfred on omp too) get it typed once they are ready.
+export const promptAsArg = (program: CoordinatorProgram, key: string) => program === 'claude' || program === 'codex' || (program === 'omp' && key !== MAIN)
 
 // `wherdr` in the coordinator's folder (bin/, first in its PATH): the project's
 // machine may have no wherdr installed, and a build ships none. sh, base64 and

@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **omp as a worker, a reviewer and a project coordinator.** A task's `agent`, `reviewAgent` and `reviewFallbackAgent` may be `omp` (started as `omp --model <model> '<message>'`, not resumable, with no quota reading: only the task-count limits hold). A project's or workspace's coordinator may run on omp too, as an option that is never the default: it starts with a tool list without an edit tool, `ast_edit`, `eval`, `task`, `debug` and `lsp` (its shell can still write, as Claude's can), and its conversation can be resumed. With no explicit choice, the first offered Claude or Codex is the default, even when omp comes first in Settings › Agents; `wherdr alfred coordinator start --program omp` accepts it ([Projects](docs/project-management.md#worker-and-reviewer-agents), [Home](docs/home.md)).
+
 ### Fixed
 
 - **A new Devin shows its conversation.** Devin 3000.12 runs a launcher as the terminal's program and its engine (`devin acp`) as a child, and the session lock names the engine, so a Devin started without `-r` (a fresh session) showed "No conversation for this agent yet". The lock of a Devin process under the launcher now counts.
