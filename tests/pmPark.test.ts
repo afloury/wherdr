@@ -194,6 +194,25 @@ describe('parking on the server', () => {
     expect((await store.task('WH-1'))!.parked).toBeUndefined()
     expect(await placeFor(deps, fresh)).toMatchObject({ hold: expect.not.stringContaining('paused for room') })
   })
+
+  it('paused for room, its start failing for another reason: the pause ends at the third try, the real reason shown, its coordinator woken', async () => {
+    const { store, env, deps } = await setup()
+    await pauseForRoom(deps, 'WH-1', 'machine over its cap', 'coordinator WH')
+    env.fail = true // the room is there, but the worker cannot start (its files cannot be written)
+    const fresh = await store.addTask({ project: 'WH', title: 'Next', type: 'simple' })
+    for (const at of [0, 10 * 60_000]) {
+      await resumeParked(deps, at)
+      expect((await store.task('WH-1'))!).toMatchObject({ state: 'working', parked: { room: 'm1' } })
+    }
+    await resumeParked(deps, 20 * 60_000)
+    const t = (await store.task('WH-1'))!
+    expect(t.parked).toBeUndefined()
+    expect(t).toMatchObject({ state: 'waiting', waiting: expect.not.stringContaining('room') })
+    expect(woken).toEqual([expect.stringContaining('its worker could not start again')])
+    // The machine no longer waits for it.
+    env.fail = false
+    expect(await placeFor(deps, fresh)).not.toHaveProperty('hold')
+  })
 })
 
 describe('pausing a task for room', () => {

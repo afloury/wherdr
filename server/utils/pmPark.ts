@@ -13,9 +13,11 @@ import { wakeCoordinators } from './pmWakes'
 
 const PARKED_WHY = 'the task waited for another task, so its agents were ended to free their machine'
 const ROOM_WHY = 'the coordinator paused the task to free room on its machine'
-// A paused task whose worker could not start again: tried again after this long, still paused meanwhile.
+// A paused task whose worker could not start again: tried again after this long, still paused meanwhile;
+// at its ROOM_TRIES-th failure the pause ends: the task waits with the real reason, its coordinator woken.
 const ROOM_RETRY_MS = 10 * 60_000
-const roomFailed = new Map<string, number>()
+const ROOM_TRIES = 3
+const roomFailed = new Map<string, { at: number, tries: number }>()
 
 export async function blockedOn(deps: PmLaunchDeps, run: Run, label: string, now: number) {
   const { store } = deps, projects = await store.projects()
@@ -58,18 +60,28 @@ export async function resumeParked(deps: PmLaunchDeps, now = Date.now()) {
     const p = task.parked!
     if (waits.has(p.on)) continue
     const wait = `${shownTaskId(projects, task.id)}, paused for room there, starts first`
-    if (now - (roomFailed.get(task.id) ?? -Infinity) < ROOM_RETRY_MS) { waits.set(p.on, wait); continue }
+    const failed = roomFailed.get(task.id)
+    if (failed && now - failed.at < ROOM_RETRY_MS) { waits.set(p.on, wait); continue }
     const worker = (await store.runs()).filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
     const text = roomResumeText(p)
     const t = await reviveWorker(deps, task.id, `there is room on ${p.room} again`, worker?.session ? undefined : text, undefined, ROOM_WHY, text)
     if (t?.state === 'working') { roomFailed.delete(task.id); await store.saveTask({ ...(await store.task(task.id))!, parked: undefined }); continue }
-    waits.set(p.on, wait)
-    // Its start failed (startTask left it waiting): still paused, never the user's turn; tried again later.
-    if (t) {
-      roomFailed.set(task.id, now)
-      const cur = (await store.task(task.id))!
-      await store.saveTask({ ...cur, state: 'working', waiting: undefined, waitKind: undefined, parked: cur.parked ?? p })
+    // No room yet (no task back): it keeps the machine for itself.
+    if (!t) { waits.set(p.on, wait); continue }
+    // Its start failed for another reason (startTask left it waiting with it): still paused, never
+    // the user's turn, tried again later; past ROOM_TRIES the pause ends and the real reason shows.
+    const tries = (failed?.tries ?? 0) + 1
+    const cur = (await store.task(task.id))!
+    if (tries >= ROOM_TRIES) {
+      roomFailed.delete(task.id)
+      const why = (cur.waiting ?? 'its start failed').split('\n')[0]
+      await store.logTask({ ...cur, parked: undefined }, 'engine', `paused for room: its worker could not start again ${tries} times, the pause ends: ${why}`)
+      await wakeCoordinators(deps, cur, showIds(projects, `${task.id} (${task.title}) was paused for room on ${p.room}; its worker could not start again (${why}). It waits: \`wherdr pm resume ${task.id}\` once that is fixed.`), now)
+      continue
     }
+    roomFailed.set(task.id, { at: now, tries })
+    waits.set(p.on, wait)
+    await store.saveTask({ ...cur, state: 'working', waiting: undefined, waitKind: undefined, parked: cur.parked ?? p })
   }
   roomWaits.clear()
   for (const [m, w] of waits) roomWaits.set(m, w)
