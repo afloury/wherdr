@@ -6,15 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **Antigravity CLI (`agy`) conversations** open on their saved transcript, locally or on another machine (Node 22.13 or later).
+- **Antigravity commands in the + menu.** An `agy` conversation's + menu offers `/compact`, `/clear`, `/context`, `/usage`, `/model` and `/diff`, as for Claude Code, Codex and omp. A command that opens a panel or the model picker shows the interactive terminal over the conversation; Esc there brings the message field back.
+
 ## [3.1.1] — 2026-11-18
 
 wherdr 3.1.1 rounds off workspaces (each member setting says whether it follows the workspace, a workspace from New › Project, a worker can wait on another task), adds a command run when a task changes state and a commit message template, and fixes photo messages to Claude, message states in the chat, keep awake on a remote Mac and two Devin conversation problems. Release notes: [docs/release-notes-3.1.1.md](docs/release-notes-3.1.1.md).
 
 ### New
 
-- **Antigravity CLI (`agy`) terminals** are recognized: their label, icon and live state.
-- **Antigravity CLI (`agy`) conversations** open on their saved transcript, locally or on another machine (Node 22.13 or later).
-- **Antigravity commands in the + menu.** An `agy` conversation's + menu offers `/compact`, `/clear`, `/context`, `/usage`, `/model` and `/diff`, as for Claude Code, Codex and omp. A command that opens a panel or the model picker shows the interactive terminal over the conversation; Esc there brings the message field back.
 - **A command when a task changes state.** *On state change* in a project's General tab runs a shell command on the project's home machine when a task starts, waits for you, is done or fails, for example to sync a tracker; the task's facts come as `WHERDR_TASK_*` environment variables, and a workspace shares it with its members ([Project management](docs/project-management.md#general)).
 - **Commit message template.** *Commit message* (`{tag}: {title}`…) sets the title of squash merges and of `git.land`'s merge commit, shared by a workspace like the branch name.
 - **Several questions in one card.** An agent's `questions` card asks up to 8 questions at once, and one *Send* answers them all in one message, in the chat and in Tasks to review ([Conversation](docs/conversation.md)).
