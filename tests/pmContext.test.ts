@@ -113,6 +113,7 @@ describe('what the agent is told', () => {
   it('the task log has one line: what it got, what it skipped and why', () => {
     expect(contextLine(folders, [{ key: 'API', why: 'no clone on laptop' }])).toBe('context: PAY @ 1a2b3c4, WEB @ 5d6e7f8 (skipped API: no clone on laptop)')
     expect(contextLine(folders, [])).toBe('context: PAY @ 1a2b3c4, WEB @ 5d6e7f8')
+    expect(contextLine([{ ...folders[0]!, changed: true }], [])).toBe('context: PAY @ 1a2b3c4 (it had been changed: built again)')
     expect(contextLine([], [{ key: 'API', why: 'no branch main' }, { key: 'DOC', why: 'not a git repository' }])).toBe('context: none (skipped API: no branch main; DOC: not a git repository)')
   })
 
@@ -208,10 +209,20 @@ describe('CONTEXT_SCRIPT', () => {
     // The clone's own branch is not touched: it stays on its commit, and a snapshot is detached.
     expect(git(m.clone, 'rev-parse', 'main')).toBe(m.first)
     expect(git(dir, 'rev-parse', '--abbrev-ref', 'HEAD')).toBe('HEAD')
-    // A pinned commit the clone has stays, however far the branch moved; an unknown one falls back to the branch.
+    // A pinned commit stays, however far the branch moved; one that is gone is said, never replaced by the branch's.
     expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main', m.first))).toEqual({ code: 0, out: `${m.first} pinned` })
     expect(fs.existsSync(path.join(root, m.first, 'src/a.txt'))).toBe(true)
-    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main', 'f'.repeat(40)))).toEqual({ code: 0, out: `${ahead} fetched` })
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main', 'f'.repeat(40)))).toEqual({ code: 5, out: 'commit fffffff pinned at the task\'s first start is gone' })
+    // A snapshot changed in place (made writable, edited) is not reused as is: built again, read-only, and said.
+    const file = path.join(dir, 'src/b.txt')
+    fs.chmodSync(path.dirname(file), 0o755); fs.chmodSync(file, 0o644); fs.writeFileSync(file, 'tampered')
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main', ahead))).toEqual({ code: 0, out: `${ahead} pinned changed` })
+    expect(fs.readFileSync(file, 'utf8')).toBe('two')
+    expect(isReadOnly(file)).toBe(true)
+    // Only writable again, unchanged: built again all the same (nothing writable is reused).
+    fs.chmodSync(file, 0o644)
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main', ahead)).out).toBe(`${ahead} pinned changed`)
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main', ahead)).out).toBe(`${ahead} pinned`)
   })
 
   it('a clone without an origin gives its local branch; the default branch when no base is named', () => {

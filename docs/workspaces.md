@@ -282,7 +282,10 @@ At the task's first start, for each member with a clone on the task's machine,
 wherdr fetches its base branch from `origin` and makes a detached, read-only
 worktree of that commit at `<home>/.wherdr/pm/context/<member>/<commit>`, shared
 by the machine's tasks. **The task keeps those commits**: a later start of its
-worker, and its reviewer, read the same ones even after the base moved on. The
+worker, and its reviewer, read the same ones even after the base moved on (a
+commit the clone and `origin` no longer have is skipped, never replaced). A
+snapshot is reused only when unchanged and still read-only; else it is built
+again and the log line says *(it had been changed: built again)*. The
 instructions (the review file for a reviewer) get a *Context (read only)*
 section listing each member, its repository path, the commit and the folder,
 and the task's log one line:

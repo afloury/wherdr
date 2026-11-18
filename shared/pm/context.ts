@@ -13,7 +13,8 @@ import { cleanupOf, underRoot } from './cleanup'
 // root, the commit and the folder (shared by every task on the machine).
 // how: not-fetched (origin's branch could not be fetched: the clone's copy of it) or
 // local (the clone has no origin); none: fetched just now.
-export interface ContextFolder { member: string, repo: string, sha: string, dir: string, how?: 'not-fetched' | 'local' }
+// changed: the shared snapshot had been changed since it was made, and was built again.
+export interface ContextFolder { member: string, repo: string, sha: string, dir: string, how?: 'not-fetched' | 'local', changed?: true }
 
 // A task's own setting wins over its task type's.
 export const taskContext = (t: Template | null | undefined, task: Pick<Task, 'type' | 'context'>): ContextSpec | undefined =>
@@ -75,7 +76,7 @@ export function contextSection(folders: ContextFolder[]): string[] {
 
 // The task log's one line for a start: what it got, and what it skipped.
 export function contextLine(folders: ContextFolder[], skipped: { key: string, why: string }[]) {
-  const got = folders.map(f => `${f.member} @ ${short(f)}`).join(', ') || 'none'
+  const got = folders.map(f => `${f.member} @ ${short(f)}${f.changed ? ' (it had been changed: built again)' : ''}`).join(', ') || 'none'
   return `context: ${got}${skipped.length ? ` (skipped ${skipped.map(s => `${s.key}: ${s.why}`).join('; ')})` : ''}`
 }
 
