@@ -148,7 +148,13 @@ as grey blocks and both buttons wait; a failed read says why, with *Try again*. 
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
 Autopilot; on a computer it is a wide window, and its General fields pair up
 side by side (name and key, worker and reviewer). Its ⋯ menu removes the project from wherdr, after a confirmation:
-its folder, branches and task worktrees stay on the machine.
+its folder, branches and task worktrees stay on the machine. Removing is refused,
+with why, while the project has open tasks (finish, abandon or close them first)
+and, for a workspace, while it still has member projects (remove them first). A
+task chained after a task whose project is gone anyway waits for you, its card
+saying so, instead of staying to do forever. A project whose workflow cannot be
+read starts none of its tasks; its log says why once, and every other project's
+tasks start as usual.
 
 Above the list, a tab filter picks which projects it shows, with the sidebar's
 home tabs: *Follow tab* (the default: the projects of the home tab open now, the
