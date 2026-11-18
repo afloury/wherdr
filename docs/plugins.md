@@ -51,7 +51,8 @@ Settings shows it as a link to the repository at that commit, with:
 
 - **Check for update**: looks up the ref again (the latest release when none was given) and shows the
   new commit and version. Nothing is installed until you press *Update*; wherdr never updates on its
-  own.
+  own. *Update* leaves [Community plugins](#community-plugins-switch) as it is: while it is off, the
+  new commit is written but nothing loads.
 - **Remove** (also for a plugin copied by hand): deletes the plugin's folder after a confirmation.
 
 ### Publish a plugin on GitHub

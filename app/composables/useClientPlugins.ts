@@ -52,9 +52,14 @@ export const previewPlugin = (spec: string) => api<{ preview: PluginPreview }>('
 export const checkPluginUpdate = (id: string) => api<{ update: PluginPreview | null }>('/api/client-plugins/check', { id }).then(r => r.update)
 // Installing comes after the full-access warning, so it also turns Community plugins on.
 export async function installPlugin(source: PluginSource) {
+  await updatePlugin(source)
+  communityPlugins.value = true
+}
+// Update writes the new commit and leaves Community plugins as it is: only the
+// Install sheet and the switch, each after the full-access warning, turn it on.
+export async function updatePlugin(source: PluginSource) {
   await api('/api/client-plugins/install', { source })
   await startClientPlugins().refresh()
-  communityPlugins.value = true
 }
 export async function removePlugin(id: string) {
   await api('/api/client-plugins/remove', { id })
