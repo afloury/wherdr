@@ -109,13 +109,6 @@ it('switches project management on; Add project opens New › Project, no Set up
   expect(w.find('[data-testid="pm-library"]').exists()).toBe(false)
 })
 
-// WHR-449: the library lives on the Workflow tab; its deep link still opens it.
-it('library=1 opens the template library', async () => {
-  state = { ...state, enabled: true }
-  mounted = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&library=1' })
-  await vi.waitFor(() => expect(inSheet('library-saved')?.dataset.id).toBe('vibe'))
-})
-
 // WHR-243: Alfred's `ui open --target projects.setup` opens Add project's form, not only a halo.
 it('the projects.setup target opens New › Project', async () => {
   state = { ...state, enabled: true }

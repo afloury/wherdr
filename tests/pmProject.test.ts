@@ -6,7 +6,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { ALFRED_TOKEN_FILE, issueAlfredToken, issueToken } from '../server/utils/pmCoordinator'
-import { guardsAuthor, projectView, saveProjectGuards, saveProjectWorkflow, templateFromProject, updateProject } from '../server/utils/pmProject'
+import { guardsAuthor, projectView, saveProjectGuards, saveProjectWorkflow, updateProject } from '../server/utils/pmProject'
 import { common, company, vibe } from '../shared/pm/examples'
 import { templateDiff } from '../shared/pm/coordinator'
 import { startOverFrom } from '../shared/pm/workflow'
@@ -115,14 +115,6 @@ describe('project settings', () => {
     const back = (await updateProject(store, 'CO', { machines: [] })).project
     expect(back).not.toHaveProperty('machines')
     expect(back).not.toHaveProperty('clones')
-  })
-
-  it('saves the workflow as a library template; the project is untouched, a taken id refused', async () => {
-    const before = (await store.workflow('CO'))!
-    expect(await templateFromProject(store, 'CO', 'co-flow')).toEqual({ template: { id: 'co-flow', version: 1 } })
-    expect(await store.template('co-flow')).toMatchObject({ id: 'co-flow', taskTypes: before.taskTypes, guards: before.guards })
-    expect(await store.workflow('CO')).toEqual(before)
-    await expect(templateFromProject(store, 'CO', 'common')).rejects.toThrow('A template already has this id')
   })
 
   it('previews a start over: the kept guards and worktree setup are not in the diff, only what changes', () => {

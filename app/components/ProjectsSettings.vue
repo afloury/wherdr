@@ -5,8 +5,6 @@
 // Add project opens the New sheet on its Project form (NewProjectForm), as the
 // sidebar's New › Project does (the `projects.setup` target: the switch while projects are off); Add workspace, WorkspaceAddSheet. A row whose coordinator
 // proposes a workflow change says so (reviewed on the sheet's Workflow tab).
-// `?library=1` opens the template library (TemplateLibrary), on its own or over
-// a project's sheet (its Workflow tab's Manage templates sets it).
 // Off, the server refuses every change but the switch. Until the overview is
 // read: skeletons (SettingsSkeleton), not an off switch and no project; a failed
 // read shows its error and Try again.
@@ -69,10 +67,6 @@ const show = (project?: string, tab?: ProjectTab) => {
   const { project: _p, tab: _t, review: _r, ...query } = route.query
   router.replace({ query: { ...query, ...(project ? { project, tab: tab ?? 'general' } : {}) } })
 }
-const libraryOpen = computed({
-  get: () => props.active && route.query.library === '1',
-  set: (o: boolean) => { const { library: _l, ...query } = route.query; router.replace({ query: { ...query, ...(o ? { library: '1' } : {}) } }) },
-})
 const TAB_FOLLOW = 'follow'
 const TAB_ALL = 'all'
 const TAB_KEY = 'projectsSettingsTab'
@@ -179,8 +173,7 @@ const noneText = (what: 'project' | 'workspace') => (searching.value ? tl(`No ${
       <p v-else-if="hasPlain" class="muted settings-hint" data-testid="pm-none">{{ noneText('project') }} <UButton v-if="tabPick !== TAB_ALL" variant="link" color="primary" class="pm-show-all" data-testid="pm-show-all" @click="showAll">{{ tl('Show all tabs') }}</UButton></p>
       <p v-else class="muted settings-hint" data-testid="pm-empty">{{ workspaces.length ? tl('No project outside a workspace.') : tl('No project yet.', 'Aucun projet pour l’instant.') }}</p>
       <WorkspaceAddSheet v-model:open="workspaceOpen" :taken="data.projects.flatMap(p => [p.key, ...(p.aliases ?? [])])" @added="k => { load(); show(k) }" />
-      <ProjectSheet v-if="opened" :key="opened.key" :project="opened" :tab="tab" :templates="data.templates" :projects="data.projects" :review="review" @tab="k => show(opened!.key, k)" @close="show()" @changed="load" />
-      <TemplateLibrary v-model:open="libraryOpen" :templates="data.templates" @changed="load" />
+      <ProjectSheet v-if="opened" :key="opened.key" :project="opened" :tab="tab" :projects="data.projects" :review="review" @tab="k => show(opened!.key, k)" @close="show()" @changed="load" />
     </template>
     <p v-if="error" class="form-error" role="alert">{{ t(error) }}</p>
   </div>

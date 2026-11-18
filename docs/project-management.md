@@ -18,8 +18,8 @@ the button is gone. Home's *Open the setup window* opens it too.
 *Project* form instead (see below).
 
 There is no workflow to pick here: the project's coordinator sets it up with
-you, and you change it any time by talking to it or to Alfred. Templates stay
-in the project's [Workflow](#workflow) tab for advanced use.
+you, and you change it any time by talking to it or to Alfred. To start from
+another project's workflow, ask Alfred: it reads that one and proposes it.
 
 1. **Turn on project management.** Off, wherdr changes nothing. *Turn on* is
    the main button; under it, a quieter *Let Alfred guide me*: it opens Alfred's conversation
@@ -60,9 +60,9 @@ in the project's [Workflow](#workflow) tab for advanced use.
    Codex…).
 
 Projects imported from v2 ([Migrate from v2](migrate-from-v2.md)) have no
-workflow either: ask their coordinator, or open the project, then
-*Workflow › Start from a template*. There, an example that needs a remote
-warns when the repository has none.
+workflow either: ask their coordinator to propose one (*Workflow › Ask the
+coordinator*). To reuse another project's workflow, ask Alfred: it reads that
+one and proposes it for this project.
 
 **New › Project** opens straight on adding a project (its *Project |
 Workspace* switch at the top: *Workspace* shows the
@@ -98,7 +98,7 @@ a first message, and its instructions say its first reply proposes one:
    what it understood of the project; on an empty or nearly empty repository,
    it says so and asks what you want to build.
 3. In that same reply, it proposes a workflow (`wherdr pm template edit`),
-   often from the closest example of the template library, its diff against
+   often from the closest built-in example, its diff against
    the minimal default, with the [guards](#guards) that fit, and says in a few
    lines why (what it saw). Starting the coordinator counts as your request,
    so it needs no message from you first. You accept or refuse it in the
@@ -132,8 +132,7 @@ data, and post it only on your yes.
 
 **Settings › Projects** holds the *Project management* switch, then two
 sections: **Workspaces**, each [workspace](workspaces.md)'s row with its member
-projects indented under it, and **Projects**, those outside any workspace
-(the [template library](#template-library) is on a project's Workflow tab).
+projects indented under it, and **Projects**, those outside any workspace.
 A workspace folds or
 opens with the chevron on its left (open by default; the choice stays on the
 device). Each row is compact: the key as its colored badge, the name (with a
@@ -361,8 +360,11 @@ Nothing in the tab edits the workflow. To create or change one, *Ask the
 coordinator* opens the project's coordinator with a first message to complete;
 it writes the new workflow (`wherdr pm template edit`) and you accept or refuse
 it (below). A project without an accepted workflow says its tasks follow a
-minimal one (*to do → work → done*) and shows *Start from a template*: pick a
-template or an example to start from, or ask the coordinator to propose one.
+minimal one (*to do → work → done*) and shows only *Ask the coordinator*: its
+coordinator proposes the first workflow (it already does in its first reply).
+To give a project another project's workflow, ask Alfred (or a coordinator
+that may read that project): it reads it (`wherdr pm template show --project
+<KEY>`) and proposes it.
 
 What a workflow holds: its task types, and the steps of each. Each step
 has an id, a column on the board, who holds it (worker, reviewer, coordinator
@@ -433,8 +435,7 @@ the machine that runs the task: `BITBUCKET_TOKEN` (an access token), or
 herdr-core runs with; wherdr never stores them. A squash takes the project's
 [commit message](#general) template when it has one.
 
-The ⋯ menu adds *Change log* and *Save as template* (copies the saved workflow
-into your templates; the project is untouched).
+The ⋯ menu adds *Change log*.
 
 An accepted workflow change reaches the tasks already under way: each stays on its step,
 found by its id. A task whose step is gone goes on to the first step of the new
@@ -602,20 +603,6 @@ The project coordinator's [autopilot](#autopilot), as in its window, under its
 line (*when the project works without you*) and a link to the Workflow tab
 (the tasks it starts follow it), and a link to the [pace](quotas.md#pace) of
 every account.
-
-### Template library
-
-**Manage templates** on a project's **Workflow** tab (in its ⋯ menu, or beside
-*Start from a template* when the project has no workflow yet) opens the
-template library; a link to `#/settings?section=projects&library=1` opens it
-too. It lists your saved templates (each
-with its version) and the built-in examples. Tap one to read it: the plan of
-each task type, then its JSON. A saved template's ⋯ menu renames it (its version
-and change log come along) or deletes it, after a confirmation. A project never
-follows the library: it starts from a copy (*Add project*, or *Workflow › Start
-from a template* when it has none), so renaming or deleting a template changes no
-project. To change a template, have a project's coordinator change
-its workflow, then *Save as template*.
 
 ## Autopilot
 

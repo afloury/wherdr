@@ -5,7 +5,7 @@
 import { uiOpenArgs } from '../uiOpen'
 import type { SyncedSetting } from '../settings'
 import type { UiTargetId } from '../uiTargets'
-import { MERGE_BY, type MergeBy, type Template } from './workflow'
+import { MERGE_BY, isDefaultWorkflow, type MergeBy, type Template } from './workflow'
 import { MEMORY_CAP, sameGuards, type Turn } from './coordinator'
 import { READY_SORTS } from '../spaces'
 import { NOTES_COMMANDS, NOTES_RULE, parseNotes, type NotesCommand } from '../notes'
@@ -34,7 +34,7 @@ export const SETTING_TARGETS: Partial<Record<SyncedSetting, UiTargetId>> = {
 const settable = (k: string): k is SyncedSetting => Object.hasOwn(SETTING_VALUES, k)
 
 export type AlfredCommand =
-  | { name: 'help' | 'projects' | 'templates' | 'machines' | 'coordinators' | 'settings' | 'v2' }
+  | { name: 'help' | 'projects' | 'examples' | 'machines' | 'coordinators' | 'settings' | 'v2' }
   | { name: 'project', key: string }
   | { name: 'coordinator open' | 'coordinator resend', key: string }
   | { name: 'last', key: string }
@@ -74,7 +74,7 @@ export type AlfredCommand =
 export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'projects', does: 'whether projects are on, and each project (key, name, machine, folder, template)' },
   { usage: 'project <KEY>', does: 'one project, its coordinator and its tasks by state' },
-  { usage: 'templates', does: 'the saved templates, and the examples (example:<id>) a project\'s template can start from' },
+  { usage: 'examples', does: 'the built-in example workflows (example:<id>) a project can start from' },
   { usage: 'machines', does: 'the machines herdr-core knows (key, label, status); the key "" is this machine' },
   { usage: 'coordinators', does: 'each coordinator: its agent and whether it runs' },
   { usage: 'coordinator resend <KEY>', does: 'send again the first message a coordinator never got (wherdr alfred coordinators says when: firstMessage)' },
@@ -88,9 +88,9 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'v2', does: 'when the user comes from wherdr v2: its projects, read now from the herdr-projects board of this machine (suggested key, name, folder on this machine and whether it is there: here, base branch, v2 settings to redo, open tasks), each with the v3 project made from it, if any, and the migration report' },
   { usage: 'v2 import [--only <KEY,KEY>] [--start no]', does: 'bring over every v2 project not made yet, in one change: each added on this machine with its v2 folder (one whose folder cannot be added is listed with why), then its coordinator started (no workflow needed: it starts with the minimal default and its first reply proposes a workflow). With --propose, one card: a checkbox per project and one for starting their coordinators; --only: the keys to add; --start no: add only. The outcome lists each project' },
   { usage: 'settings', does: 'the synced settings, their values, and the values each one Alfred may change accepts (1 = on, 0 = off)' },
-  { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]', does: 'add a project: a git folder on a machine' },
+  { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template example:<id>]', does: 'add a project: a git folder on a machine' },
   { usage: 'workspace add <KEY> --root <folder,folder> [--machine <key,key>] [--name <name>] [--group <tab group>]', does: 'add a workspace (docs/workspaces.md): a project with no git whose coordinator runs the repositories cloned under its root folder (~/work); --machine and --root pair up, the first machine its home (none: this machine); --group: the tab group (id or name) it shows in. Once applied, its coordinator starts and offers to build the map' },
-  { usage: 'project template <KEY> <id|none>', does: 'replace the project\'s workflow with a copy of a template or example:<id> (its guards come with it), or none' },
+  { usage: 'project template <KEY> <example:id|none>', does: 'replace the project\'s workflow with a copy of a built-in example (its guards come with it), or none. To reuse another project\'s workflow: read it (wherdr pm template show --project <KEY>), then project workflow edit' },
   { usage: 'project workflow edit <KEY> < workflow.json', does: 'propose a new workflow for the project (the whole JSON on stdin, guards unchanged): the user accepts or refuses it in wherdr, like a coordinator\'s proposal. Only in a turn that comes from the user' },
   { usage: 'project memory <KEY> < note.md', does: 'add the lines on stdin (at most 30, blank ones left out) to the end of the project coordinator\'s memory.md, on its machine; it is created when missing. For what the user wants it to know (a v2 handover note, a goal)' },
   { usage: 'project guards <KEY> [--protect <branch,branch|none>] [--merge-protected user|engine] [--merge-others user|engine] [--contributor-prs off|others|all]', does: 'the project\'s guards: protected branches, who merges into them and into the others (user: the user, engine: wherdr), and whether its coordinator may merge an outside contributor\'s PR after the user\'s yes (others: not into a branch reserved for the user; all: into any); without an option, shown only. A project coordinator never changes them' },
@@ -103,7 +103,7 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
 ]
 
 const KEY_RE = /^[A-Za-z][A-Za-z0-9]{1,9}$/
-const ID_RE = /^(example:)?[a-z0-9][a-z0-9-]{0,39}$/
+const ID_RE = /^example:[a-z0-9][a-z0-9-]{0,39}$/
 const FLAGS: Record<string, string[]> = {
   'project add': ['machine', 'path', 'name', 'template'],
   'workspace add': ['machine', 'root', 'name', 'group'],
@@ -161,7 +161,7 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
   if (all && w0 !== 'brief') return { error: '--all is for brief only' }
   const key = (k: string | undefined) => (k && KEY_RE.test(k) ? k.toUpperCase() : '')
 
-  if (['help', 'projects', 'templates', 'machines', 'coordinators', 'settings', 'v2'].includes(w0) && !w1)
+  if (['help', 'projects', 'examples', 'machines', 'coordinators', 'settings', 'v2'].includes(w0) && !w1)
     return { name: w0 as 'help' }
   if (w0 === 'groups' && !w1) return { name: 'groups' }
   if (w0 === 'brief') {
@@ -184,7 +184,7 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
   if (verb === 'project add') {
     const { machine, path, name, template } = flags
     if (!key(w2) || w3 || machine === undefined || !path) return usage(verb)
-    if (template !== undefined && !ID_RE.test(template)) return { error: '--template is a template id or example:<id> (see wherdr alfred templates)' }
+    if (template !== undefined && !ID_RE.test(template)) return { error: '--template is example:<id> (see wherdr alfred examples)' }
     return { name: verb, apply, input: { key: key(w2), machine, path, ...(name ? { name } : {}), ...(template ? { template } : {}) } }
   }
   if (verb === 'workspace add') {
@@ -196,7 +196,7 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
   }
   if (verb === 'project template') {
     if (!key(w2) || !w3 || rest.length) return usage(verb)
-    if (w3 !== 'none' && !ID_RE.test(w3)) return { error: 'The template is a template id, example:<id>, or none' }
+    if (w3 !== 'none' && !ID_RE.test(w3)) return { error: 'The template is example:<id> or none (see wherdr alfred examples)' }
     return { name: verb, apply, key: key(w2), template: w3 === 'none' ? '' : w3 }
   }
   if (verb === 'project memory') return key(w2) && !w3 ? { name: verb, apply, key: key(w2) } : usage(verb)
@@ -271,6 +271,7 @@ export const alfredCommandList = () => [...ALFRED_COMMANDS.map(c => `- \`wherdr 
 // Why Alfred may not propose `next` as project `key`'s workflow.
 export function workflowEditRefusal(old: Template | null, next: Template, turn: Turn, key: string): string | undefined {
   if (turn !== 'user') return 'project workflow edit is only for a turn that comes from the user, never a wake: tell the user what you would change'
-  if (!old) return `Project ${key} has no workflow: start one with wherdr alfred project template ${key} <id|example:id>`
-  if (!sameGuards(old, next)) return `Guards are not changed in a workflow edit: use wherdr alfred project guards ${key}, after the user's yes`
+  if (!old) return `Project ${key} has no workflow: start one with wherdr alfred project template ${key} example:<id>`
+  // The minimal default has no guards to keep: a first workflow brings its own.
+  if (!isDefaultWorkflow(old) && !sameGuards(old, next)) return `Guards are not changed in a workflow edit: use wherdr alfred project guards ${key}, after the user's yes`
 }

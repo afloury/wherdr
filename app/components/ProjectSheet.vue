@@ -15,7 +15,7 @@
 // review (ProposalReview), opened at once when the URL asks (`review=1`).
 // Workflow and Autopilot start with their name, what each is and a link to the
 // other (PartHead).
-import type { Project, TemplateInfo } from '#shared/pm/project'
+import type { Project } from '#shared/pm/project'
 import { PROJECT_COLORS, shownKey } from '#shared/pm/projectKey'
 import { ARCHIVE_DAYS, archiveDays } from '#shared/pm/archive'
 import type { LogEntry } from '#shared/pm/templateText'
@@ -29,7 +29,7 @@ import { projectTarget, uiTarget } from '#shared/uiTargets'
 import { showHalo, waitForElement } from '~/utils/uiHalo'
 
 // projects: every project, for the other projects its coordinator may act on (ProjectReach).
-const props = defineProps<{ project: Project, tab: ProjectTab, templates: TemplateInfo[], review?: boolean, projects?: Project[] }>()
+const props = defineProps<{ project: Project, tab: ProjectTab, review?: boolean, projects?: Project[] }>()
 const emit = defineEmits<{ tab: [tab: ProjectTab], close: [], changed: [] }>()
 const shown = ref(true)
 // Unsaved autopilot settings (CoordinatorAutopilot): asked before the sheet closes or the tab changes.
@@ -398,7 +398,7 @@ async function remove() {
               </span>
             </div>
           </template>
-          <p v-else-if="loaded" class="muted settings-hint">{{ tl('No workflow chosen yet: tasks follow a minimal one (to do, work, done). Ask the project’s coordinator to propose one, or start from a template.') }}</p>
+          <p v-else-if="loaded" class="muted settings-hint">{{ tl('No workflow chosen yet: tasks follow a minimal one (to do, work, done). Ask the project’s coordinator to propose one.') }}</p>
 
           <span class="field-label pm-later">{{ tl('Repository') }}</span>
           <span class="pm-vis">
@@ -409,8 +409,10 @@ async function remove() {
             <small class="mono-label">{{ visibilityNote(p.visibility) }}</small>
             <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-refresh-cw" :loading="busy === 'vis'" :disabled="busy !== ''" data-testid="pm-visibility-check" @click="setVisibility({ check: true })">{{ tl('Check again', 'Revérifier') }}</UButton>
           </span>
-          <span class="field-label">{{ tl('Template') }}</span>
-          <small class="muted" data-testid="pm-from">{{ p.from ? tl(`Based on: ${p.from.template} v${p.from.version}. Information only: changes to the template do not reach the project. To change the workflow, ask the project\'s coordinator.`) : tl('No template yet: start from one in the Workflow tab.') }}</small>
+          <template v-if="p.from">
+            <span class="field-label">{{ tl('Template') }}</span>
+            <small class="muted" data-testid="pm-from">{{ tl(`Based on: ${p.from.template} v${p.from.version}. Information only: changes to the template do not reach the project. To change the workflow, ask the project\'s coordinator.`) }}</small>
+          </template>
         </form>
         <template v-if="tab === 'general'">
           <span class="field-label pm-later">{{ tl('Machines') }}</span>
@@ -435,10 +437,10 @@ async function remove() {
           <p v-if="answerError" class="form-error" role="alert">{{ t(answerError) }}</p>
         </div>
         <p v-if="(tab === 'workflow' || tab === 'guards') && loaded && inherited" class="muted settings-hint" data-testid="pm-inherited">{{ tl(`Runs the workflow of workspace ${inherited}, whose guards apply too. A change saved here gives this project its own.`) }}</p>
-        <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" data-ui-target="project.workflow" :project="p" :workflow="workflow" :log="log" :templates="templates" @changed="workflowChanged" @templates="emit('changed')" />
+        <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" data-ui-target="project.workflow" :project="p" :workflow="workflow" :log="log" @changed="workflowChanged" />
         <template v-else-if="tab === 'guards' && loaded">
           <ProjectGuards v-if="workflow" data-ui-target="project.guards" :project="p" :workflow="workflow" @changed="workflowChanged" />
-          <p v-else class="muted settings-hint">{{ tl('No workflow chosen yet: tasks follow a minimal one (to do, work, done). Ask the project’s coordinator to propose one, or start from a template.') }}</p>
+          <p v-else class="muted settings-hint">{{ tl('No workflow chosen yet: tasks follow a minimal one (to do, work, done). Ask the project’s coordinator to propose one.') }}</p>
         </template>
         <ProjectAutomations v-else-if="tab === 'automations'" :project="p.key" :name="p.name" />
         <template v-else-if="tab === 'autopilot'">

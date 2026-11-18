@@ -34,7 +34,7 @@ async function workflowOf(store: PmStore, key: unknown) {
   const p = await store.project(key)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   const t = await store.workflow(p.key)
-  if (!t) throw new HerdrError('not_found', 'The project has no workflow: start it from a template')
+  if (!t) throw new HerdrError('not_found', 'The project has no workflow: ask its coordinator to propose one')
   return { p, t }
 }
 
@@ -115,12 +115,4 @@ export async function retryFreedMerges(deps: CoreAdminDeps & { store: PmStore },
     await deps.store.logTask(task, 'engine', `guards changed: the engine may now merge into ${into}, so it tries the step again`)
     startAction(deps, task.id, () => {})
   }
-}
-
-// Save as template: a copy of the project's workflow joins the library under
-// `id` (a taken id is refused). The project is untouched.
-export async function templateFromProject(store: PmStore, key: unknown, id: unknown) {
-  const { t } = await workflowOf(store, key)
-  const { version: _version, workspaceGuards: _ws, ...copy } = t
-  return { template: await store.saveTemplate({ ...copy, id }) }
 }
