@@ -1,6 +1,6 @@
 // A managed project: a folder (git, unless git: false) on a machine reached through herdr-core,
 // and its own workflow (DATA_DIR/projects/workflows/<KEY>.json), which its tasks follow. Stored in DATA_DIR/projects/projects.json.
-import { isRelPath, type WorkflowError } from './workflow'
+import { isRelPath, type Prefs, type WorkflowError, type WorktreeSetup } from './workflow'
 import type { Task } from './run'
 import type { RepoVisibility } from './visibility'
 import { isProjectColor, type ProjectColor } from './projectKey'
@@ -50,6 +50,8 @@ export interface Project {
   shared?: WorkspaceShared
   workspace?: string
   overrides?: SharedField[]
+  prefs?: Prefs // a member's own agents, set in its General tab without a workflow of its own (overrides: prefs)
+  worktree?: WorktreeSetup // the same for its worktree setup
   instructionsFiles?: string[] // a member's own workspace instructions files, when it overrides them ([]: none)
   addedAt: number
 }

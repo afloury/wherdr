@@ -298,6 +298,9 @@ describe('on a real repo', () => {
     git(tmp, 'init', '-q', '-b', 'main', repo); git(repo, 'commit', '-q', '--allow-empty', '-m', 'init')
     const land = vibe.taskTypes.simple!.steps.find((s): s is Step => typeof s !== 'string' && s.id === 'land')!.action!
     expect((await localSh(WORKTREE_SCRIPT, [repo, wt, 'task/A-1', ''])).code).toBe(0)
+    // A workspace's working branch the repository lacks: its current branch instead, said.
+    const fell = await localSh(WORKTREE_SCRIPT, [repo, `${wt}2`, 'task/A-2', 'develop', '', '1'])
+    expect(fell).toMatchObject({ code: 0, out: expect.stringContaining('wherdr-base-missing main') })
     const deps: ActionDeps = { store: { receipt: async () => null, saveReceipt: async () => {} }, sh: localSh }
     const at = (n: number) => job({ worktree: wt, attempt: n, action: land })
 

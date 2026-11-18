@@ -259,8 +259,10 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       await needPm()
       const p = projectOf(cmd.key)
       await knownTemplate(cmd.template)
-      if (!cmd.template && !p.from) return { unchanged: true, project: p.key, template: 'none' }
-      return change({ change: [`project ${p.key} template: ${p.from?.template ?? 'none'} → ${cmd.template || 'none'}`] }, () => store.setTemplate(p.key, cmd.template))
+      // none on a workspace's project with its own workflow: it follows the workspace's again.
+      const own = !cmd.template && p.workspace && !!(await store.savedWorkflow(p.key))
+      if (!cmd.template && !p.from && !own) return { unchanged: true, project: p.key, template: 'none' }
+      return change({ change: [own ? `project ${p.key}: remove its own workflow, follow workspace ${p.workspace}'s again` : `project ${p.key} template: ${p.from?.template ?? 'none'} → ${cmd.template || 'none'}`] }, () => store.setTemplate(p.key, cmd.template))
     }
     case 'project memory': {
       await needPm()

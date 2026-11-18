@@ -127,6 +127,27 @@ export function effectiveProject(member: Project, ws: Project | undefined): Proj
   }
 }
 
+// The shared settings a workspace once kept on itself (before they went in
+// `shared`, where its members read them); lift / sink move them out of and back into it.
+export const MOVED_FIELDS = ['base', 'branchName', 'placement', 'archiveAfter', 'deleteBranch'] as const
+type Moved = typeof MOVED_FIELDS[number]
+// A workspace with these fields in `shared` gets them on itself (updateProject works there), any other as is.
+export function liftShared(ws: Project): Project {
+  if (!isWorkspace(ws)) return ws
+  return { ...ws, ...defined(Object.fromEntries(MOVED_FIELDS.map(f => [f, ws.shared?.[f]]))) }
+}
+// A workspace's fields on itself go into `shared` (the ones missing leave it).
+export function sinkShared(ws: Project): Project {
+  if (!isWorkspace(ws)) return ws
+  const out = { ...ws } as Project & Partial<Record<Moved, unknown>>, shared = { ...ws.shared } as Record<string, unknown>
+  for (const f of MOVED_FIELDS) { shared[f] = out[f]; delete out[f] }
+  const kept = defined(shared) as WorkspaceShared
+  const { shared: _, ...rest } = out
+  return { ...rest, ...(Object.keys(kept).length ? { shared: kept } : {}) }
+}
+// Migration: a workspace that kept them on itself and has none in `shared` (the keys moved).
+export const needsSink = (p: Project) => isWorkspace(p) && MOVED_FIELDS.some(f => p[f] !== undefined) && !MOVED_FIELDS.some(f => p.shared?.[f] !== undefined)
+
 export const effectiveProjects = (list: Project[]) => list.map(p => effectiveProject(p, workspaceOf(p, list)))
 
 // The workflow a member runs: its own file (`saved`) when it has one, else
@@ -141,7 +162,8 @@ export function effectiveWorkflow(key: string, saved: Template | null, member: P
   const { prefs, worktree, workspaceGuards: _, ...rest } = t
   return {
     ...rest,
-    ...defined({ prefs: own.has('prefs') ? prefs : ws.shared?.prefs ?? prefs, worktree: own.has('worktree') ? worktree : ws.shared?.worktree }),
+    // Its own ones: from its file, else the ones set in its General tab (member.prefs, member.worktree).
+    ...defined({ prefs: own.has('prefs') ? (saved ? prefs : member.prefs ?? prefs) : ws.shared?.prefs ?? prefs, worktree: own.has('worktree') ? (saved ? worktree : member.worktree) : ws.shared?.worktree }),
     ...(shared?.guards ? { workspaceGuards: shared.guards } : {}),
   }
 }
@@ -164,6 +186,13 @@ export function memberOverrides(member: Project, update: ProjectUpdate): Pick<Pr
   // null: the workspace's again; [] turns them off; a list replaces them.
   if (update.instructionsFiles !== undefined) set('instructionsFiles', update.instructionsFiles !== null)
   return own.size ? { overrides: SHARED_FIELDS.filter(f => own.has(f)) } : {}
+}
+
+// A member whose own workflow is removed: its agents and worktree setup are its workspace's again.
+export function backToWorkspace(member: Project): Project {
+  const { prefs: _p, worktree: _w, overrides, ...rest } = member
+  const own = (overrides ?? []).filter(f => f !== 'prefs' && f !== 'worktree')
+  return { ...rest, ...(own.length ? { overrides: own } : {}) }
 }
 
 // A member's overrides once its workflow is saved: its agents or worktree
