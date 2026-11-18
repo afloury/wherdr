@@ -17,7 +17,7 @@ import { reviewAccount, reviewCap, reviewTurn, reviewerOut, runningReviews } fro
 import { policyIn, readPolicies } from './pacingPolicies'
 import { showIds } from '../../shared/pm/projectKey'
 import { PATH_SETUP, launchFailure } from './coreCreate'
-import { WRITE_SCRIPT, exec, oneStart, prepareTmp, runOn, workspaceFiles, type PmLaunchDeps } from './pmLaunch'
+import { WRITE_SCRIPT, exec, linkSkills, oneStart, prepareTmp, runOn, workspaceFiles, type PmLaunchDeps } from './pmLaunch'
 import { HerdrError } from './herdr'
 import { startAction } from './pmBoard'
 import { cleanTask } from './pmCleanup'
@@ -315,6 +315,9 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
   }
   const tmpWhy = await prepareTmp(deps, on, worker.worktree)
   if (tmpWhy) return void await waitFor(deps, task.id, `The reviewer was not started: ${tmpWhy}`)
+  // Skills added at the workspace's root since the worker started are linked too (the worker's start logged them).
+  const skills = await linkSkills(deps, store, on, p, worker.machine, worker.worktree)
+  if (skills.includes('could not')) task = await store.logTask(task, 'engine', skills)
   const { switched, ...who } = plan
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'reviewer', ...who, machine: worker.machine, worktree: worker.worktree, branch: worker.branch, instructions: files.review, attempt: 1, state: 'starting', startedAt: Date.now() }
   // The receipt first: an unconfirmed start is found again by its labels, never started twice.

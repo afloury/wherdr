@@ -30,6 +30,8 @@ export interface WorkspaceShared {
   // Files under the root whose text every member task's worker and reviewer
   // get (workspaceInstructions); missing: AGENTS.md, else CLAUDE.md; []: none.
   instructionsFiles?: string[]
+  // false: the root's skills (workspaceSkills) reach no member task.
+  rootSkills?: false
 }
 
 // The fields a member may set itself (`overrides`); 'machines' covers its
@@ -72,6 +74,18 @@ export function workspaceInstructions(member: Project, list: Project[]): { machi
   const own = (member.overrides ?? []).includes('instructionsFiles'), set = own ? member.instructionsFiles ?? [] : ws.shared?.instructionsFiles
   if (set && !set.length) return undefined
   return { machine: ws.machine, root: ws.path, paths: set ?? DEFAULT_INSTRUCTIONS, ...(set ? {} : { first: true as const }) }
+}
+
+// The root's skills folder a member task's worktree on `machine` links (one
+// link per skill, linkSkills in pmLaunch.ts): <root there>/.claude/skills,
+// `~` read as `home`. None: not a member, the root's own repository (its
+// worktree holds them), turned off, or no root on that machine.
+export const SKILLS_DIR = '.claude/skills'
+export function workspaceSkills(member: Project, list: Project[], machine: string, home: string): string | undefined {
+  const ws = workspaceOf(member, list)
+  if (!ws || isRootMember(member, ws) || ws.shared?.rootSkills === false) return undefined
+  const root = rootOn(ws, machine)
+  return root ? `${trim(root).replace(/^~(?=\/|$)/, () => home)}/${SKILLS_DIR}` : undefined
 }
 
 // A workspace's members (none for any other project).
@@ -238,7 +252,7 @@ export function cleanShared(raw: unknown): { shared?: WorkspaceShared, errors: W
   checkSetup(worktree, errors)
   if (errors.length || !update) return { errors: errors.map(e => ({ ...e, path: `shared.${e.path}` })) }
   // On state change is the user's own, from the project sheet (pmProject.ts): never in a new workspace's fields.
-  const { deleteBranch, base, branchName, commitMessage, onStateChange: _os, instructionsFiles, ...kept } = update
+  const { deleteBranch, base, branchName, commitMessage, onStateChange: _os, instructionsFiles, rootSkills: _rs, ...kept } = update
   return { errors, shared: defined({ ...kept, instructionsFiles: instructionsFiles ?? undefined, base: base || undefined, branchName: branchName || undefined, commitMessage: commitMessage || undefined, deleteBranch: deleteBranch === false ? false as const : undefined, prefs: prefs as Prefs | undefined, worktree: worktree as WorktreeSetup | undefined }) }
 }
 

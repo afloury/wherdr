@@ -27,7 +27,7 @@ import { isOpen, type Incident, type Recovery } from '../../shared/pm/incident'
 import { recordGone, type CoreList } from './pmIncidents'
 import { interruptTask } from './pmRecovery'
 import { pmDir } from './pmHome'
-import { INSTRUCTIONS_CAP, workspaceInstructions } from '../../shared/pm/workspace'
+import { INSTRUCTIONS_CAP, workspaceInstructions, workspaceSkills } from '../../shared/pm/workspace'
 import type { Project } from '../../shared/pm/project'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base,
@@ -80,6 +80,43 @@ if ! grep -qxF "/$name/" "$x" 2>/dev/null; then
   printf '/%s/\\n' "$name" >> "$x" || exit 1
 fi
 df -Pk /tmp | awk 'NR==2 {print $4}'`
+// The workspace root's skills ($2, its .claude/skills) in a member task's
+// worktree ($1): a link per skill (a folder with a SKILL.md) at
+// .claude/skills/<name>, ignored through the repository's info/exclude, so
+// nothing reaches its commits and an edit at the root is read at once. A name
+// the worktree already has is its own and stays (said `own <name>`); a link
+// whose skill left the root goes. Prints `linked <name>` for each linked one.
+export const SKILLS_SCRIPT = `dir=$1 src=$2 d=$1/.claude/skills
+for l in "$d"/*; do [ -L "$l" ] && [ ! -e "$l" ] && case $(readlink "$l") in "$src"/*) rm -f "$l";; esac; done
+[ -d "$src" ] || exit 0
+x=$(git -C "$dir" rev-parse --git-path info/exclude) || exit 1
+case $x in /*) ;; *) x=$dir/$x;; esac
+for s in "$src"/*/; do
+  s=\${s%/}; n=\${s##*/}
+  [ -f "$s/SKILL.md" ] || continue
+  if [ -L "$d/$n" ] && [ "$(readlink "$d/$n")" = "$s" ]; then echo "linked $n"; continue; fi
+  if [ -e "$d/$n" ] || [ -L "$d/$n" ]; then echo "own $n"; continue; fi
+  mkdir -p "$d" && ln -s "$s" "$d/$n" || exit 1
+  if ! grep -qxF "/.claude/skills/$n" "$x" 2>/dev/null; then
+    mkdir -p "$(dirname "$x")" || exit 1
+    [ -s "$x" ] && [ -n "$(tail -c1 "$x")" ] && echo >> "$x"
+    printf '/.claude/skills/%s\\n' "$n" >> "$x" || exit 1
+  fi
+  echo "linked $n"
+done`
+// Links the workspace root's skills into a member task's worktree (before each
+// worker or reviewer start): the log line to keep, if any. home: read when the root needs it.
+export async function linkSkills(deps: Pick<CoreAdminDeps, 'call'>, store: PmStore, on: string | undefined, p: Project, machine: string, worktree: string, home?: string) {
+  if (!p.workspace) return ''
+  const list = await store.projects(), at = workspaceSkills(p, list, machine, '~')
+  if (!at) return ''
+  const src = at.startsWith('~/') ? workspaceSkills(p, list, machine, home ?? await homeOf(deps, on))! : at
+  const r = await exec(deps, on, SKILLS_SCRIPT, [worktree, src]).catch((e: Error) => ({ code: 1, out: e.message }))
+  if (r.code !== 0) return `Workspace skills: could not link them (${r.out.split('\n').pop() || 'failed'})`
+  const of = (k: string) => r.out.split('\n').filter(l => l.startsWith(`${k} `)).map(l => l.slice(k.length + 1))
+  const linked = of('linked'), own = of('own')
+  return linked.length || own.length ? `Workspace skills: ${linked.join(', ') || 'none'}${own.length ? ` (the project's own kept: ${own.join(', ')})` : ''}` : ''
+}
 // A branch to continue, fetched now. Exits 2 only when the remote answers and no
 // longer has it; any other failure (remote unreachable…) is not that.
 export const FETCH_BRANCH_SCRIPT = `git -C "$1" ls-remote -q --exit-code origin "refs/heads/$2" >/dev/null 2>&1; c=$?
@@ -313,6 +350,8 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   if (task.machine !== machine) task = await store.saveTask({ ...task, machine })
   const tmpWhy = await prepareTmp(deps, on, paths.worktree)
   if (tmpWhy) return wait(store, task, tmpWhy)
+  const skills = await linkSkills(deps, store, on, p, machine, paths.worktree, home)
+  if (skills) task = await store.logTask(task, 'engine', skills)
   // The project's worktree setup (files copied, folders shared, its command); a failed command: the user's turn.
   const setup = await prepareWorktree(deps, on, repo, paths.worktree, t)
   if (setup.log) task = await store.logTask(task, 'engine', setup.log)
