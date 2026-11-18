@@ -7,9 +7,9 @@
 import { exec, runOn, type PmLaunchDeps } from './pmLaunch'
 import { contextBase, staleSnapshots } from '../../shared/pm/context'
 import { homeOf } from './coreCreate'
-import { taskPaths } from '../../shared/pm/run'
+import { taskPaths, taskPlan } from '../../shared/pm/run'
 import { cloneOn } from '../../shared/pm/project'
-import { cleanupOf, cleanupRefusal, factsRefusal, parseFacts } from '../../shared/pm/cleanup'
+import { cleanupOf, cleanupRefusal, factsRefusal, mergedByStep, parseFacts } from '../../shared/pm/cleanup'
 import { KILL_UNDER } from '../../shared/pm/procs'
 import { countKilled } from './pmProcs'
 import { pmDir } from './pmHome'
@@ -31,10 +31,10 @@ if [ -n "$refs" ]; then u=$(git -C "$repo" rev-list --count $refs --not --exclud
 echo "$e $l $d $u"`
 
 // $4 = 1: the local branch goes too. The processes working in it go first
-// (\`killed <n>\`), so none runs on in a removed folder.
+// (\`killed <n>\`), so none runs on in a removed folder; \`freed <KB>\` is its size.
 export const WORKTREE_REMOVE_SCRIPT = `repo=$1 dir=$2 branch=$3
 ${KILL_UNDER}
-if [ -d "$dir" ]; then git -C "$repo" worktree remove "$dir" 2>&1 || exit 1; fi
+if [ -d "$dir" ]; then echo "freed $(du -sk "$dir" 2>/dev/null | cut -f1)"; git -C "$repo" worktree remove "$dir" 2>&1 || exit 1; fi
 git -C "$repo" worktree prune 2>&1
 [ "$4" = 1 ] || exit 0
 git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null || exit 0
@@ -110,15 +110,21 @@ async function clean(deps: Deps, id: string) {
   const probe = await exec(deps, on, WORKTREE_PROBE_SCRIPT, [repo, run.worktree, run.branch])
   const facts = probe.code === 0 ? parseFacts(probe.out) : undefined
   if (!facts) return
-  const why = factsRefusal(facts)
+  // Squash-merged, its commits are on no other branch: its merge step's proof says it is merged.
+  const t = await store.workflow(p.key)
+  const why = factsRefusal(facts, !!t && mergedByStep(taskPlan(t, task, p), task.step))
   if (why) return keep(why)
-  const branch = kind === 'worktree+branch'
+  // Its local branch follows Delete the task's branch after its merge.
+  const branch = kind === 'worktree+branch' && p.deleteBranch !== false
   const r = await exec(deps, on, WORKTREE_REMOVE_SCRIPT, [repo, run.worktree, run.branch, branch ? '1' : '0'])
   const n = Number(/^killed (\d+)$/m.exec(r.out)?.[1] ?? 0)
   if (n) countKilled(run.machine, n)
   if (r.code === 3) return keep(r.out.split('\n').pop()!)
   if (r.code !== 0) return keep(`git could not remove it: ${r.out.split('\n').pop()?.slice(0, 200) || 'timeout'}`)
-  const what = (n ? `killed ${n} process${n === 1 ? '' : 'es'} working in it, then ` : '') + (facts.exists ? 'removed its worktree' : 'its worktree was already gone')
+  const kb = Number(/^freed (\d+)$/m.exec(r.out)?.[1] ?? 0)
+  const freed = kb ? ` (${kb >= 1024 * 1024 ? `${(kb / 1024 / 1024).toFixed(1)} GB` : `${Math.ceil(kb / 1024)} MB`} freed)` : ''
+  const what = (n ? `killed ${n} process${n === 1 ? '' : 'es'} working in it, then ` : '') + (facts.exists ? `removed its worktree${freed}` : 'its worktree was already gone')
+  console.log(`[pm] ${task.id}: ${what}`)
   return finish(branch ? `${what} and its local branch ${run.branch}` : `${what}; its branch ${run.branch} stays`)
 }
 

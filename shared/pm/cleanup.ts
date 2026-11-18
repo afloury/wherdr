@@ -2,12 +2,18 @@
 // local branch go. Archived: its worktree goes, its branch stays. Pure: which
 // worktree may go and why not; server/utils/pmCleanup.ts runs git.
 import type { Run, Task } from './run'
+import type { PlannedStep } from './steps'
 
 export type Cleanup = 'worktree+branch' | 'worktree'
 
 // What a task's end allows: nothing while it is not done.
 export const cleanupOf = (task: Task): Cleanup | undefined =>
   !task.step?.done ? undefined : task.step.abandoned ? 'worktree' : 'worktree+branch'
+
+// The steps that merge a task's PR, and whether one of them proved it merged.
+export const MERGE_KINDS = ['github.merge', 'bitbucket.merge', 'git.verify-merged']
+export const mergedByStep = (plan: PlannedStep[], s: Task['step']) =>
+  !!s?.done && plan.some(p => p.action && MERGE_KINDS.includes(p.action.kind) && Object.keys(s.proofs?.[p.id] ?? {}).length > 0)
 
 // dir is root itself or deeper, with no '..' or '.' segment to climb out.
 export function underRoot(dir: string, root: string) {
@@ -30,10 +36,13 @@ export function cleanupRefusal(task: Task, runs: Run[], dir: string, root: strin
 export interface Facts { exists: boolean, listed: boolean, dirty: number, unique: number }
 
 // Why the worktree stays (or, already gone, its branch), or undefined: it may go.
-export function factsRefusal(f: Facts): string | undefined {
+// merged: a merge step proved its PR merged. A squash merge leaves the branch's
+// own commits on no other branch once its remote branch is deleted, so they
+// count only for a task not merged.
+export function factsRefusal(f: Facts, merged = false): string | undefined {
   if (f.exists && !f.listed) return 'the folder is not a worktree of the project'
   if (f.exists && f.dirty) return `${f.dirty} uncommitted change${f.dirty > 1 ? 's' : ''}`
-  if (f.unique) return `${f.unique} commit${f.unique > 1 ? 's' : ''} neither pushed nor merged`
+  if (f.unique && !merged) return `${f.unique} commit${f.unique > 1 ? 's' : ''} neither pushed nor merged`
 }
 
 // The probe's output: one line, `exists listed dirty unique` as 0/1 and counts.
