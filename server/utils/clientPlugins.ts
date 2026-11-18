@@ -4,7 +4,7 @@ import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { DATA_DIR } from './env'
 import { patchSettings, readSettings } from './settings'
-import { PLUGIN_FILE_RE, PLUGIN_ID_RE, communityOn, parseManifest, type ClientPluginInfo } from '../../shared/clientPlugins'
+import { PLUGIN_FILE_RE, PLUGIN_ID_RE, SOURCE_FILE, communityOn, parseManifest, parseSource, type ClientPluginInfo, type PluginSource } from '../../shared/clientPlugins'
 
 export const PLUGINS_DIR = path.join(DATA_DIR, 'plugins')
 
@@ -17,10 +17,16 @@ export async function listClientPlugins(dir = PLUGINS_DIR): Promise<ClientPlugin
     try {
       const raw = JSON.parse(await fsp.readFile(path.join(dir, id, 'manifest.json'), 'utf8'))
       const info = parseManifest(id, raw)
-      if (info) out.push(info)
+      const source = info && await readSource(dir, id)
+      if (info) out.push(source ? { ...info, source } : info)
     } catch { /* no manifest or unreadable: not a plugin */ }
   }
   return out
+}
+
+// Where a plugin installed from GitHub came from, or null (copied by hand).
+export async function readSource(dir: string, id: string): Promise<PluginSource | null> {
+  try { return parseSource(JSON.parse(await fsp.readFile(path.join(dir, id, SOURCE_FILE), 'utf8'))) } catch { return null }
 }
 
 // Absolute path of a file of a plugin, or null when the name is not a plain file name.

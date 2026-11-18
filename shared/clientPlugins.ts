@@ -8,6 +8,19 @@ export interface ClientPluginInfo {
   description: string
   // Bundle file, relative to the plugin's folder.
   main: string
+  // Installed from GitHub (pluginInstall.ts): the repo, the ref asked ('' = the
+  // latest release, else the default branch) and the exact commit.
+  source?: PluginSource
+}
+
+export interface PluginSource { repo: string, ref: string, commit: string }
+// Next to the plugin's files; a dot file, so never served nor taken from a repo.
+export const SOURCE_FILE = '.source.json'
+
+export function parseSource(raw: unknown): PluginSource | null {
+  const s = raw as Partial<PluginSource> | null
+  if (!s || typeof s.repo !== 'string' || typeof s.commit !== 'string') return null
+  return { repo: s.repo, ref: typeof s.ref === 'string' ? s.ref : '', commit: s.commit }
 }
 
 export const PLUGIN_ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/
