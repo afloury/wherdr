@@ -18,10 +18,10 @@
 import type { Project } from '#shared/pm/project'
 import { PROJECT_COLORS, shownKey } from '#shared/pm/projectKey'
 import { ARCHIVE_DAYS, archiveDays } from '#shared/pm/archive'
-import { liftShared } from '#shared/pm/workspace'
+import { liftShared, type SharedField } from '#shared/pm/workspace'
 import type { LogEntry } from '#shared/pm/templateText'
 import { SETUP_TIMEOUT, checkSetup, isRelPath, type Prefs, type Template, type WorkflowError, type WorktreeSetup } from '#shared/pm/workflow'
-import { workflowBase } from '#shared/pm/run'
+import { missingBaseNote, workflowBase } from '#shared/pm/run'
 import { STATE_EVENTS, type OnStateChange, type StateEvent } from '#shared/pm/onState'
 import ProjectWorkflow from '~/components/ProjectWorkflow.vue'
 import type { RepoVisibility } from '#shared/pm/visibility'
@@ -59,12 +59,12 @@ async function read() {
   log.value = r.log
   ready.value = r.ready ?? {}
 }
-async function load() {
+async function load(x = p.value) {
   await read()
   filling = true
-  fill(p.value, workflow.value?.prefs ?? {})
+  fill(x, workflow.value?.prefs ?? {})
   fillSetup(workflow.value?.worktree)
-  fillInstr(p.value)
+  fillInstr(x)
   sentWas = snap(fields())
   filling = false
   keyInput.value = form.key
@@ -105,6 +105,17 @@ const invalid = (): Record<string, string> => {
   const files = instr.instrMode === 'files' ? paths(instr.instrFiles) : []
   if (files.length > 10 || !files.every(isRelPath)) out.instrFiles = tl('Up to 10 paths under the workspace\'s root (no *, no .., not absolute).')
   return out
+}
+
+// A member's settings: each one follows its workspace (shown "From <workspace>")
+// until changed here (ProjectFollow); "Use <workspace>'s" clears that one and
+// fills the form again from the project the server answers.
+const wsName = computed(() => (props.projects ?? []).find(x => x.key === p.value.workspace)?.name ?? p.value.workspace ?? '')
+const follows = (f: SharedField) => !!p.value.workspace && !(last.value.overrides ?? []).includes(f)
+const followed = (x: Project) => {
+  last.value = x
+  emit('changed')
+  load(x).catch((e) => { error.value = (e as Error).message })
 }
 
 // Every field saves by itself (useAutosave): the whole form in one call, each
@@ -156,11 +167,15 @@ const archiveItems = ARCHIVE_DAYS.map(d => ({ label: d ? tl(`${d} day${d > 1 ? '
 
 // The working branch: a remote branch of the repo, or a name typed in.
 const branches = ref<string[] | null>(null)
+const head = ref({ current: '', local: [] as string[] }) // its current branch and local ones
 const loadBranches = async () => {
   if (branches.value) return
-  try { branches.value = (await api<{ branches: string[] }>(`/api/pm/branches?key=${encodeURIComponent(p.value.key)}`)).branches }
+  try { ({ branches: branches.value, ...head.value } = await api<{ branches: string[], current: string, local: string[] }>(`/api/pm/branches?key=${encodeURIComponent(p.value.key)}`)) }
   catch (e) { branches.value = []; error.value = (e as Error).message }
 }
+// A member following its workspace's working branch, which its repository lacks: tasks start from its current one (pmLaunch).
+const baseMissing = computed(() => (follows('base') && form.base && branches.value?.length && !branches.value.includes(form.base) && !head.value.local.includes(form.base) ? missingBaseNote(form.base, head.value.current) : ''))
+watch(() => loaded.value && follows('base') && !!form.base, (v) => { if (v) loadBranches() }, { immediate: true })
 const branchItems = computed(() => [
   { label: tl('Current branch of the repo', 'Branche actuelle du dépôt'), value: NONE },
   ...[...new Set([...(form.base ? [form.base] : []), ...(branches.value ?? [])])].map(b => ({ label: b, value: b })),
@@ -241,6 +256,7 @@ async function remove() {
 
       <div class="project-panel" role="tabpanel" :aria-labelledby="`project-tab-${tab}`" data-testid="project-panel">
         <form v-if="tab === 'general'" class="sheet-form" :aria-busy="busy !== '' || auto.busy.value" data-testid="pm-general" @submit.prevent="commitKey(); auto.flush()" @focusout="commitKey(); auto.flush()">
+          <p v-if="wsKind === 'member'" class="muted pm-follow-intro" data-testid="pm-follow-intro">{{ tl(`Settings come from ${wsName} unless you change one here.`) }}</p>
           <div class="pm-cols">
             <span class="pm-col">
               <label class="field-label" for="pmName">{{ t('Name') }}<SavedMark :s="auto.state.name" /></label>
@@ -284,6 +300,7 @@ async function remove() {
 
           <span class="field-label">{{ tl('Base branch') }}<SavedMark :s="auto.state.base" /></span>
           <span class="pm-field">
+            <ProjectFollow :project="last" field="base" :workspace="wsName" @followed="followed" />
             <USelectMenu
             v-model="base" :items="branchItems" value-key="value" size="lg" class="pm-base-pick mono" create-item
             :search-input="{ placeholder: tl('Branch name', 'Nom de branche'), autocomplete: 'off', ui: { base: 'pointer-coarse:text-[16px]' } }"
@@ -292,10 +309,12 @@ async function remove() {
           <small v-if="auto.errors.base" class="form-error pm-field-error" role="alert">{{ t(auto.errors.base) }}</small>
           <small class="muted">{{ tl('New tasks start their worktree from it, and a step that names no branch opens its PR to it or merges into it. Unset: the branch the workflow opens its PRs to, else the repo\'s default branch. Running tasks keep theirs.') }}</small>
           <small v-if="fromWorkflow" class="muted" data-testid="pm-base-workflow">{{ tl(`No working branch set: using ${fromWorkflow} from the workflow.`) }}</small>
+          <small v-if="baseMissing" class="pm-on-state-warn" data-testid="pm-base-missing">{{ tl(baseMissing) }}</small>
           </span>
 
           <span class="field-label">{{ tl('Branch name') }}<SavedMark :s="auto.state.branchName" /></span>
           <span class="pm-field">
+            <ProjectFollow :project="last" field="branchName" :workspace="wsName" @followed="followed" />
             <UInput v-model="form.branchName" size="lg" class="pm-base-pick mono" placeholder="task/{id}" :aria-label="tl('Branch name')" maxlength="80" data-testid="pm-branch-name" />
             <small v-if="auto.errors.branchName" class="form-error pm-field-error" role="alert">{{ t(auto.errors.branchName) }}</small>
             <small class="muted">{{ tl('Each new task\'s branch. Fields: {id}, {tag} (the card\'s ticket key, else the task id), {type} (bugfix or feature), {slug} (from the title). Example: {type}/{tag}-{slug}.') }}</small>
@@ -303,6 +322,7 @@ async function remove() {
 
           <span class="field-label">{{ tl('Commit message') }}<SavedMark :s="auto.state.commitMessage" /></span>
           <span class="pm-field">
+            <ProjectFollow :project="last" field="commitMessage" :workspace="wsName" @followed="followed" />
             <UInput v-model="form.commitMessage" size="lg" class="pm-base-pick mono" placeholder="{tag}: {title}" :aria-label="tl('Commit message')" maxlength="120" data-testid="pm-commit-message" />
             <small v-if="auto.errors.commitMessage" class="form-error pm-field-error" role="alert">{{ t(auto.errors.commitMessage) }}</small>
             <small class="muted">{{ tl('The commit title of a squash merge, and of the merge commit a land makes. Fields: those of the branch name, and {title}. A field left empty drops with its separator. Unset: the usual message.') }}</small>
@@ -310,6 +330,7 @@ async function remove() {
 
           <span class="field-label">{{ tl('On state change') }}<SavedMark :s="auto.state.onState" /></span>
           <span class="pm-field">
+            <ProjectFollow :project="last" field="onStateChange" :workspace="wsName" @followed="followed" />
             <UInput v-model="form.onStateCommand" size="lg" class="pm-base-pick mono" placeholder="./scripts/tracker-sync.sh" :aria-label="tl('On state change')" maxlength="2000" data-testid="pm-on-state" />
             <span class="pm-on-state-events">
               <UCheckbox v-for="e in STATE_EVENTS" :key="e" :model-value="form.onStateEvents.includes(e)" :label="tl(STATE_LABEL[e])" size="lg" :data-testid="`pm-on-state-${e}`" @update:model-value="v => toggleEvent(e, v === true)" />
@@ -321,6 +342,7 @@ async function remove() {
 
           <span class="field-label">{{ tl('Archive done tasks after') }}<SavedMark :s="auto.state.archiveAfter" /></span>
           <span class="pm-field">
+            <ProjectFollow :project="last" field="archiveAfter" :workspace="wsName" @followed="followed" />
             <USelect v-model="form.archiveAfter" :items="archiveItems" size="lg" class="pm-base-pick" :aria-label="tl('Archive done tasks after')" data-testid="pm-archive-after" />
             <small v-if="auto.errors.archiveAfter" class="form-error pm-field-error" role="alert">{{ t(auto.errors.archiveAfter) }}</small>
             <small class="muted">{{ tl('A done task leaves the Done column after this time; the column\'s footer lists archived tasks. Its branch, PR and log stay.') }}</small>
@@ -329,6 +351,7 @@ async function remove() {
           <template v-if="wsKind">
             <span class="field-label" data-ui-target="project.instructions">{{ tl('Workspace instructions files') }}<SavedMark :s="auto.state.instrMode" /></span>
             <span class="pm-field">
+              <ProjectFollow :project="last" field="instructionsFiles" :workspace="wsName" @followed="followed" />
               <USelect v-model="instr.instrMode" :items="instrItems" size="lg" class="pm-base-pick" :aria-label="tl('Workspace instructions files')" data-testid="pm-ws-files-mode" />
               <UTextarea v-if="instr.instrMode === 'files'" v-model="instr.instrFiles" :rows="2" autoresize size="lg" class="w-full mono" placeholder="AGENTS.md" :aria-label="tl('Paths under the workspace\'s root, one per line')" maxlength="2000" data-testid="pm-ws-files" />
               <small v-if="auto.errors.instrFiles" class="form-error pm-field-error" role="alert">{{ t(auto.errors.instrFiles) }}</small>
@@ -338,12 +361,14 @@ async function remove() {
 
           <span class="field-label">{{ tl('Delete the task\'s branch after its merge') }}<SavedMark :s="auto.state.deleteBranch" /></span>
           <span class="pm-field">
+            <ProjectFollow :project="last" field="deleteBranch" :workspace="wsName" @followed="followed" />
             <USwitch v-model="form.deleteBranch" size="lg" :aria-label="tl('Delete the task\'s branch after its merge')" data-testid="pm-delete-branch" />
             <small v-if="auto.errors.deleteBranch" class="form-error pm-field-error" role="alert">{{ t(auto.errors.deleteBranch) }}</small>
             <small class="muted">{{ tl('Once its PR is merged, wherdr deletes the task\'s remote branch, unless a commit came after the merge, another open PR uses it, or it is protected or a base. Off: branches stay.') }}</small>
           </span>
 
           <template v-if="workflow">
+            <ProjectFollow :project="last" field="prefs" :workspace="wsName" :own-workflow="!inherited" @followed="followed" />
             <div class="pm-cols">
               <span class="pm-col pm-agent">
                 <span class="field-label">{{ tl('Worker') }}<SavedMark :s="auto.state.worker" /></span>
@@ -368,6 +393,7 @@ async function remove() {
           <small v-if="workflow" class="muted">{{ tl('Fallback: the reviewer started instead while the reviewer\'s account is out of quota. None: reviews wait for it.') }}</small>
           <template v-if="workflow">
             <span class="field-label pm-later">{{ tl('Worktree setup') }}</span>
+            <ProjectFollow :project="last" field="worktree" :workspace="wsName" :own-workflow="!inherited" @followed="followed" />
             <!-- Help first, then a two-column grid (one column on the phone) with
                  no hole: Share no folder takes a full row, Time limit the left cell. -->
             <span class="pm-help muted" data-testid="pm-setup-help">
@@ -425,7 +451,8 @@ async function remove() {
         </form>
         <template v-if="tab === 'general'">
           <span class="field-label pm-later">{{ tl('Machines') }}</span>
-          <ProjectMachines :project="p" :ready="ready" @changed="emit('changed')" />
+          <ProjectFollow :project="last" field="machines" :workspace="wsName" @followed="followed" />
+          <ProjectMachines :project="p" :ready="ready" :workspace="wsName" @changed="emit('changed')" />
           <span class="field-label pm-later">{{ tl('Shown in') }}</span>
           <ProjectShownIn :project="p" />
         </template>
@@ -445,8 +472,8 @@ async function remove() {
           </span>
           <p v-if="answerError" class="form-error" role="alert">{{ t(answerError) }}</p>
         </div>
-        <p v-if="(tab === 'workflow' || tab === 'guards') && loaded && inherited" class="muted settings-hint" data-testid="pm-inherited">{{ tl(`Runs the workflow of workspace ${inherited}, whose guards apply too. A change saved here gives this project its own.`) }}</p>
-        <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" data-ui-target="project.workflow" :project="p" :workflow="workflow" :log="log" :inherited="inherited" @changed="workflowChanged" />
+        <p v-if="tab === 'guards' && loaded && inherited" class="muted settings-hint" data-testid="pm-inherited">{{ tl(`Runs the workflow of workspace ${inherited}, whose guards apply too. A change saved here gives this project its own.`) }}</p>
+        <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" data-ui-target="project.workflow" :project="p" :workflow="workflow" :log="log" :inherited="inherited" :workspace="wsName" @changed="workflowChanged" />
         <template v-else-if="tab === 'guards' && loaded">
           <ProjectGuards v-if="workflow" data-ui-target="project.guards" :project="p" :workflow="workflow" @changed="workflowChanged" />
           <p v-else class="muted settings-hint">{{ tl('No workflow chosen yet: tasks follow a minimal one (to do, work, done). Ask the project’s coordinator to propose one.') }}</p>
@@ -487,6 +514,7 @@ async function remove() {
 .pm-color:focus-visible { outline: 1px solid var(--accent); outline-offset: -4px; }
 .pm-path { color: var(--muted); font-family: var(--font-mono, 'JetBrains Mono', monospace); font-size: 12px; overflow-wrap: anywhere; }
 .pm-later { margin-top: 18px; }
+.pm-follow-intro { margin: 0 2px 14px; }
 /* A field's save error, right under it. */
 .pm-field-error { display: block; margin: 4px 2px 0; font-size: 13px; }
 .pm-on-state-events { display: flex; flex-wrap: wrap; gap: 0 16px; }

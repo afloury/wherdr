@@ -36,7 +36,7 @@ export interface WorkspaceShared {
 // machines, clones and paused ones.
 export const SHARED_FIELDS = ['machines', 'placement', 'base', 'branchName', 'commitMessage', 'onStateChange', 'prefs', 'worktree', 'archiveAfter', 'deleteBranch', 'instructionsFiles'] as const
 export type SharedField = typeof SHARED_FIELDS[number]
-const isSharedField = (f: unknown): f is SharedField => (SHARED_FIELDS as readonly unknown[]).includes(f)
+export const isSharedField = (f: unknown): f is SharedField => (SHARED_FIELDS as readonly unknown[]).includes(f)
 
 // The only task type a workspace holds (its sub-tasks are its members' tasks).
 export const FEATURE = 'feature'
@@ -186,6 +186,16 @@ export function memberOverrides(member: Project, update: ProjectUpdate): Pick<Pr
   // null: the workspace's again; [] turns them off; a list replaces them.
   if (update.instructionsFiles !== undefined) set('instructionsFiles', update.instructionsFiles !== null)
   return own.size ? { overrides: SHARED_FIELDS.filter(f => own.has(f)) } : {}
+}
+
+// A member back on its workspace's value for one field (its sheet's "Use
+// <workspace>'s"): its own value and that override removed, the others kept.
+export function followShared(member: Project, field: SharedField): Project {
+  const out = { ...member } as Record<string, unknown>
+  for (const k of field === 'machines' ? ['machines', 'clones', 'paused'] : [field]) delete out[k]
+  const own = (member.overrides ?? []).filter(f => f !== field)
+  delete out.overrides
+  return { ...out, ...(own.length ? { overrides: own } : {}) } as unknown as Project
 }
 
 // A member whose own workflow is removed: its agents and worktree setup are its workspace's again.

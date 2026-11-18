@@ -10,8 +10,8 @@ import type { LogEntry } from '#shared/pm/templateText'
 import type { Template } from '#shared/pm/workflow'
 import type { Project } from '#shared/pm/project'
 
-// inherited: the workspace whose workflow a member runs ('' : its own, or not a member).
-const props = defineProps<{ project: Project, workflow: Template | null, log: LogEntry[], inherited?: string }>()
+// inherited: the workspace whose workflow a member runs ('' : its own, or not a member); workspace: its workspace's name.
+const props = defineProps<{ project: Project, workflow: Template | null, log: LogEntry[], inherited?: string, workspace?: string }>()
 const emit = defineEmits<{ changed: [] }>()
 
 const type = ref('')
@@ -56,6 +56,15 @@ defineExpose({ menu })
 
 <template>
   <div class="tpl-editor" data-testid="project-workflow">
+    <!-- A member: whether it runs its workspace's workflow, as its General tab's settings say it (ProjectFollow). -->
+    <p v-if="own" class="wf-follow own" data-testid="wf-own">
+      <span>{{ tl('Own workflow') }} ·</span>
+      <button type="button" class="wf-follow-use" :disabled="busy !== ''" data-testid="wf-reset" @click="reset">{{ tl(`Follow ${workspace || project.workspace}'s`) }}</button>
+    </p>
+    <p v-else-if="inherited" class="wf-follow" data-testid="wf-follows">
+      <span>{{ tl(`Follows ${workspace || inherited}'s workflow`) }}</span>
+      <span class="muted">{{ tl('Its guards apply too. A change saved here gives this project its own.') }}</span>
+    </p>
     <template v-if="workflow">
       <div class="wf-bar">
         <div v-if="types.length > 1" class="segmented wf-types" role="tablist" :aria-label="tl('Task type')" :style="{ '--segment-count': types.length }">
@@ -70,10 +79,6 @@ defineExpose({ menu })
     <div class="settings-card wf-ask">
       <p>{{ tl('To create or change a workflow, ask the project’s coordinator (or Alfred). You accept or refuse its proposal here.') }}</p>
       <UButton size="lg" color="primary" icon="i-lucide-message-square" :loading="busy === 'ask'" :disabled="!coordinator || busy !== ''" data-testid="wf-ask" @click="ask">{{ tl('Ask the coordinator') }}</UButton>
-    </div>
-    <div v-if="own" class="settings-card wf-ask" data-testid="wf-own">
-      <p>{{ tl(`This project runs its own workflow, not workspace ${project.workspace}'s: the workspace's changes no longer reach it.`) }}</p>
-      <UButton size="lg" color="neutral" variant="outline" icon="i-lucide-undo-2" :loading="busy === 'reset'" :disabled="busy !== ''" data-testid="wf-reset" @click="reset">{{ tl(`Follow workspace ${project.workspace}'s workflow`) }}</UButton>
     </div>
     <p v-if="error && !dialog" class="form-error" role="alert">{{ t(error) }}</p>
 
@@ -102,6 +107,12 @@ defineExpose({ menu })
 .wf-ask { display: grid; gap: 10px; padding: 14px 16px; }
 .wf-ask p { margin: 0; font-size: 14px; line-height: 1.45; color: var(--text-2); }
 .wf-ask :deep(button) { justify-self: start; }
+.wf-follow { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin: 0; color: var(--muted); font: 12px/1.5 var(--font-mono); overflow-wrap: anywhere; }
+.wf-follow.own { color: var(--text-2); }
+.wf-follow .muted { flex-basis: 100%; font-family: var(--font-sans); font-size: 13px; }
+.wf-follow-use { position: relative; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.wf-follow-use::after { content: ''; position: absolute; inset: -14px -6px; }
+.wf-follow-use:disabled { color: var(--muted); cursor: default; }
 .wf-json { margin: 0; max-height: 60vh; overflow: auto; padding: 10px; border: 1px solid var(--line); background: var(--bg); font: 12px/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .tpl-log { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; overflow-wrap: anywhere; font-size: 14px; }
 </style>
