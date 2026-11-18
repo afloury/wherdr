@@ -26,7 +26,7 @@ import { createCodexStatus, dirWritable } from './codexStatus'
 import { runLocal, setCodexKnownWeek } from './quotas'
 import { pmStore } from './pmStore'
 import { projectCoordinatorName } from '../../shared/pm/project'
-import { createHeld } from './coreHeld'
+import { createHeld, heldFile } from './coreHeld'
 import { coreInputDeps, coreSend } from './coreInput'
 import { onSubmittingChange } from './submitting'
 
@@ -161,14 +161,16 @@ export function takeBackFromClaude(p: Pane, io: { screen: () => Promise<string>,
 }
 
 // ---------------------------------------------------------------- held messages
-// Sent while Codex installs or updates itself: typed once it is ready (coreHeld.ts).
-export const heldMessages = createHeld((p, q) => coreSend(coreInputDeps(), { pane_id: p.id, text: q.text }))
+// Sent while Codex installs or updates itself: typed once it is ready (coreHeld.ts),
+// kept on disk so that a restart of wherdr resumes them.
+export const heldMessages = createHeld((p, q) => coreSend(coreInputDeps(), { pane_id: p.id, text: q.text }), Date.now, heldFile(path.join(DATA_DIR, 'held.json')))
 
 // ---------------------------------------------------------------- poll
 export async function poll() {
   lastCorePoll = Date.now()
   state = await readCoreState(state)
-  heldMessages.apply(state.panes)
+  // Core unreadable (its panes are the last known, none at startup): nothing is dropped.
+  if (state.ok !== false) heldMessages.apply(state.panes)
   await coreScreens().enrich(state.panes).catch(() => {})
   void coreTranscriptsOf().observe(state.panes)
   corePreviews().apply(state.panes)

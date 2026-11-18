@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { deliverFirst, queuedFirst, resendFirst, resumeFirst, startTurn, type FirstDeps } from '../server/utils/coordinatorFirst'
 import type { CoordinatorRecord } from '../server/utils/pmStore'
+import { CoreError } from '../server/utils/core'
 
 // Terminals that become idle at a given time (ms after the start), or end; `flaky`: the
 // first terminal.get of each (or of those named) fails (a timeout).
@@ -55,6 +56,20 @@ describe('first messages of coordinators', () => {
     await expect.poll(() => g.sent).toEqual([['D2', 'hello']])
     await expect.poll(() => g.recs.get('D')!.undelivered).toBeUndefined()
     await expect(resendFirst(g.deps, 'D', restarted)).rejects.toThrow('No first message')
+  })
+
+  it('a send core did not confirm is never typed again: not delivered, left to Send again', async () => {
+    const f = fake({ E: 0 })
+    const call = f.deps.call
+    let tries = 0
+    f.deps.call = (async (m: string, p: { terminal: string, text?: string }, t: number) => {
+      if (m === 'terminal.send') { tries++; f.sent.push([p.terminal, p.text!]); throw new CoreError('timeout', 'timeout') }
+      return call(m, p, t)
+    }) as never
+    expect(await deliverFirst(f.deps, 'E', 'E', ['prompt', 'propose'])).toBe('failed')
+    expect(tries).toBe(1)
+    expect(f.recs.get('E')!.undelivered).toMatchObject({ texts: ['prompt', 'propose'], why: expect.stringContaining('did not confirm') })
+    expect(f.recs.get('E')!.undelivered!.queued).toBeUndefined()
   })
 
   it('a fresh start with its messages on its command line: watched until up, a failed status query retried', async () => {

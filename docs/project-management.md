@@ -119,7 +119,9 @@ message still does not get through, the coordinator's row says *First message
 not delivered* (a stopped one too), its menu offers *Send again* (a new
 conversation when its session ended), and Alfred tells you
 (`wherdr alfred coordinator resend <KEY>`). Its next start, whichever, gives
-it the message again.
+it the message again. When herdr-core does not confirm the message was typed
+(it did not answer in time), it is never typed a second time on its own: it
+shows as not delivered, so check the conversation before *Send again*.
 
 Along the way, the coordinator (and Alfred) may suggest a setting you may like,
 or one that solves a problem you mention: once, highlighted with
