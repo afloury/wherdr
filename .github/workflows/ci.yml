@@ -24,6 +24,14 @@ env:
 jobs:
   smoke:
     runs-on: ubuntu-24.04
+    # Playwright's own image: WebKit, Chromium and their system libraries are baked in,
+    # so no step downloads apt packages (a slow Ubuntu mirror used to stall the WebKit
+    # install). Keep its tag on the @playwright/test version in package-lock.json; if
+    # they drift, the install steps below fetch the browsers from Playwright's CDN.
+    # --user 1001 is the runner's user, who owns the checked-out workspace.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble
+      options: --user 1001
     # Safety net, about 3x a normal run (4-7 min). It stays above the point where a hung
     # install step hits its own limit (~4 min in + 10), so that step fails the run first:
     # a job timeout ends as "cancelled", a step timeout as "failed", which is re-run.
@@ -44,11 +52,14 @@ jobs:
       - name: Unit tests
         run: npx vitest run
 
+      # Not root in the container: install into a folder of our own on the PATH.
       - name: Install gitleaks
         run: |
+          mkdir -p "$RUNNER_TEMP/bin"
           curl -fsSL --retry 5 --retry-delay 15 --retry-all-errors "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
-            | tar -xz -C /usr/local/bin gitleaks
-          gitleaks version
+            | tar -xz -C "$RUNNER_TEMP/bin" gitleaks
+          echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/bin/gitleaks" version
 
       - name: Leak check
         run: npm run check:leaks
@@ -56,8 +67,7 @@ jobs:
       - name: Build (herdr-core)
         run: npm run build
 
-      # The runner image already has Chromium's libraries; --with-deps would only
-      # add fonts through apt, which can stall for minutes on an unreachable mirror.
+      # Already in the image (a no-op then); never --with-deps, which goes through apt.
       - name: Install Chromium
         timeout-minutes: 10
         run: npx playwright install chromium
@@ -67,11 +77,10 @@ jobs:
 
       # Safari's engine: catches what iOS rejects and Chromium accepts (the /ws/events
       # handshake). Only tests/e2e/core-smoke.spec.ts runs here (playwright.config.ts).
-      # A slow apt mirror can trickle bytes for hours without apt failing; the limit
-      # turns that into a failed step (a re-run gets a fresh runner and mirror).
+      # Already in the image, system libraries included (see `container` above).
       - name: Install WebKit
         timeout-minutes: 10
-        run: npx playwright install --with-deps webkit
+        run: npx playwright install webkit
 
       - name: E2e (core smoke, WebKit)
         run: npx playwright test --project=webkit-phone
