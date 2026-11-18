@@ -12,6 +12,25 @@ wherdr plugins are small JavaScript bundles that run in the wherdr page, Obsidia
 behaves exactly as without the feature. There is no install from GitHub yet; you copy the plugin
 yourself. A plugin has full access to the page, so only install code you trust.
 
+### Community plugins switch
+
+No plugin loads until **Settings › Plugins › Community plugins** is on. It is **off by default**
+and is stored once for the wherdr server (`settings.json` in the data directory), so every device
+agrees. Turning it on first shows this warning, with *Turn on* and *Cancel*:
+
+> Plugins run inside wherdr with full access: they can read your conversations, write to your
+> agents and run commands on your machines. Only turn this on for plugins you trust.
+
+Full access means there is no sandbox and no permission: a plugin runs as wherdr's own page code
+and can call wherdr's API as you do, so it can read every conversation, type into and send to your
+agents, and run `!` commands, on every connected machine. While the switch is off, each plugin keeps
+its own switch, greyed; turning Community plugins off stops the running plugins at once on every open
+device.
+
+An install from before the switch that already had plugins in its folder keeps loading them: the
+first time the server reads the switch and finds it unset, it stores *on* when the plugins folder
+holds a plugin and *off* otherwise. A plugin copied in later therefore waits for the switch.
+
 ### Install
 
 Put one folder per plugin in `plugins/` of wherdr's data directory (`DATA_DIR`, `./data` by
@@ -29,7 +48,7 @@ data/plugins/my-plugin/index.js
 The folder name is the plugin id (`a-z`, `0-9`, `.`, `_`, `-`). `main` is optional (default
 `index.js`): a plain file name of a prebuilt ES module in the same folder (no build step in wherdr,
 no sub-folders). **Settings › Plugins** lists the installed plugins with a switch each; the choice
-is kept per device.
+is kept per device. They load only while [Community plugins](#community-plugins-switch) is on.
 
 ### Build and install a plugin (step by step)
 
@@ -47,7 +66,7 @@ writing code, install it as is.
    For the example: `npm run build:example-plugin` from the repo root.
 3. **Install**: copy `manifest.json` and `index.js` (not the sources) to
    `<DATA_DIR>/plugins/<id>/`, e.g. `mkdir -p data/plugins/hello-mic && cp docs/examples/plugins/hello-mic/{manifest.json,index.js} data/plugins/hello-mic/`.
-   Reload the page: no restart needed.
+   Reload the page: no restart needed. Turn on Community plugins if it is off.
 4. **Check**: Settings › Plugins lists it as "On". If it says "Disabled after an error", the message is
    the exception; fix it and flip the switch.
 5. **Remove**: delete the folder and reload; wherdr is back to exactly how it was.
