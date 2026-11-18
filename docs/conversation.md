@@ -2,11 +2,11 @@
 
 [Documentation](README.md) · [Project](../README.md)
 
-Claude Code, Codex and Devin terminals open in conversation mode; any other terminal shows only its
+Claude Code, Codex, Devin and Antigravity terminals open in conversation mode; any other terminal shows only its
 [terminal](terminal.md). How wherdr finds the conversation file on herdr-core is described in
 [herdr-core › Conversations](core.md#conversations).
 
-- **Conversation view**: the agent's real transcript (Claude Code, Codex and Devin), rendered as
+- **Conversation view**: the agent's real transcript (Claude Code, Codex, Devin and Antigravity), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan),
   timestamps, search and infinite scroll back to the first message. Every message shows its time,
   muted and always on the right: under your messages, at the end of the agent reply's action
@@ -166,7 +166,9 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   conversations from v2; a tap opens or downloads it. A photo stays a picture in the message,
   never its file path, also when the message was sent again (**Send now**, **Retry**) or waited
   in the agent's queue.
-  Slash commands typed in the field (`/compact`, `/clear`…) are sent as text. **Stop** (or `Esc`
+  Slash commands typed in the field (`/compact`, `/clear`…) are sent as text; **+** also lists
+  the common ones of Claude Code, Codex, omp and Antigravity. A command that opens a panel or a
+  picker (`/context`, `/model`…) shows the interactive terminal over the conversation. **Stop** (or `Esc`
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
   inside the field on its right, on a phone. A long pasted text (log, output) becomes a

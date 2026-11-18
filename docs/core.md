@@ -76,7 +76,7 @@ after each reply and have a three-second deadline and a 16 MiB reply limit.
 
 ## Conversations
 
-Claude Code, Codex and Devin terminals open in conversation mode, as in v2, with the same
+Claude Code, Codex, Devin and Antigravity terminals open in conversation mode, as in v2, with the same
 conversation view, search, queued messages and quotas. The conversation file is found
 the way v2 does for Herdr panes, from what core gives: `terminal.get` supplies the
 foreground process and pid (Claude Code's `~/.claude/sessions/<pid>.json` names its
@@ -120,6 +120,48 @@ only what Devin retained. A tool observation saved in a later step invalidates
 older pages that held the call, so reloaded history includes its result. Only
 inline image data is shown; image paths in ATIF are never opened. Model metadata comes from that checkpoint too; model
 pickers remain v2 only.
+
+Antigravity CLI (`agy`, tested with 1.5.8) is read through its saved
+conversations at `~/.gemini/antigravity-cli/conversations/<uuid>.db` (SQLite,
+WAL mode; locally it is opened in place, read-only, only while agy holds both
+`-wal` and `-shm` sidecars — a read-only open creates them otherwise and would
+leave them in agy's folder. Otherwise the database and its `-wal` sidecar are
+copied to a snapshot before `node:sqlite` opens them, so remote machines read a
+consistent view through `machine.exec`, and 256 MiB is the snapshot limit). A remote conversation keeps
+one local base copy between reads: the main file ships over again only when
+its own identity moves, a WAL still under the same 32-byte header ships only
+its grown tail and is appended to the kept copy — but only after the last
+frame that copy holds is re-read unchanged, since a rewound savepoint can
+rewrite a spilled frame's header in place inside one generation; a restart or
+a stale kept frame rewrites the file once. A copy that ends mid-frame is cut
+back to the last whole frame (a frame's 24-byte header and its page are
+separate writes), so a partial frame is never trusted across reads — and both
+files are stat'ed fresh after the copy so a move under it retries rather than
+opening a torn pair.
+A WAL-mode checkpoint rewrites the database file, so the next read ships it
+in full again; a page-level delta would need a page-hash helper on the remote
+machine (no such primitive exists on `MachineFs` today), which is why the
+copy stays whole — bounded by the snapshot limit — until one lands. Kept
+copies live in the system temp dir under `wherdr-agy-<pid>-*` (often tmpfs, up
+to 256 MiB each): a restart removes the folders whose process no longer runs
+(so a second server on the same host keeps its own), and a pane that goes
+takes its copy with it. Step
+payloads are protobuf blobs decoded by a small bounds-checked reader
+(`server/utils/agyProtobuf.ts`).
+The session is resolved fail-closed from what the `agy` process holds open —
+`conversations/<uuid>.db`, its WAL/SHM sidecars or `presence/<uuid>.lock` —
+checked on Linux through `/proc/<pid>/fd` and elsewhere through `lsof`, then the
+exact `--conversation <uuid>` launch argument, then nothing: a descriptor set
+naming two conversations resolves to nothing rather than a wrong conversation,
+and the `conversation_summaries.db` index is never used (a relaunched `agy` in
+the same folder would show its previous conversation until the new one is
+written). Local `ANTIGRAVITY_APP_DATA_DIR` is honored; remote machines use their home and the
+default path. Checkpoints and internal system steps are not rendered; a tool
+result stored in a later step invalidates the pages that held the call, and
+model metadata comes from `gen_metadata`. `node:sqlite` needs Node 22.13 or
+later and is loaded only when an Antigravity conversation is read: on an older
+Node the pane stays in Terminal mode (Conversation unavailable), and no other
+agent loads or warns about it.
 
 Text left unsent in Claude Code's own input box (a draft or paste never submitted, or the
 prompt Claude puts back after an interrupt) shows at the end of the conversation as

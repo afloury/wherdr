@@ -72,6 +72,14 @@ const CASES: Case[] = [
   { name: 'codex-usage-limit', status: 'idle', interaction: 'input', preview: CODEX_LIMIT, error: CODEX_LIMIT },
   { name: 'codex-queued', status: 'working', interaction: 'working', preview: '⌥ + ↑ edit' },
   { name: 'codex-interrupted', status: 'idle', interaction: 'input', preview: CODEX_INTERRUPTED, error: CODEX_INTERRUPTED },
+  // Antigravity: `>` between rules at rest, "esc to cancel" only while it runs.
+  { name: 'agy-idle', status: 'idle', interaction: 'input', preview: 'Added three cases for the date parser; all tests pass.' },
+  { name: 'agy-working', status: 'working', interaction: 'working', preview: '⠋ Working… (12s)' },
+  {
+    name: 'agy-question', status: 'blocked', interaction: 'native', preview: '3. No',
+    question: 'Allow Antigravity to run this command?',
+    options: ['Yes', 'Always allow', 'No'],
+  },
 ]
 
 const agentOf = (c: Case) => c.name.split('-')[0]!
@@ -109,6 +117,36 @@ describe('readCoreScreen on recorded screens (no core status)', () => {
 
   it('reads Claude\'s usage-limit footer as a native wait once core reports the agent idle', () => {
     expect(readCoreScreen(screen('claude-usage-limit'), 'claude', 'idle')).toMatchObject({ status: null, choices: null, interaction: 'native' })
+  })
+})
+
+// Antigravity reports its own status (idle under these panels). A slash command
+// from the conversation (+ menu or typed) that opens a panel or a picker shows
+// the interactive terminal over the conversation; Esc there brings the field back.
+// The model list is never offered as choices: a tap must not switch the model.
+describe('Antigravity slash-command panels', () => {
+  const PANELS = ['agy-context', 'agy-usage', 'agy-diff', 'agy-model']
+
+  it.each(PANELS)('%s opens the terminal', (name) => {
+    expect(readCoreScreen(screen(name), 'agy', 'idle')).toEqual({ status: null, choices: null, interaction: 'terminal' })
+    expect(readCoreScreen(screen(name), 'agy', 'blocked').choices).toBeNull()
+  })
+
+  it(`${PANELS[0]}: read as the terminal, Esc back to the field`, async () => {
+    const name = PANELS[0]!
+    let text = screen(name)
+    const screens = createCoreScreens({ call: async () => ({ text }), viewed: () => true })
+    const p = { id: name, agent: 'agy', status: 'idle', coreAddress: 'host-a/t2' } as Pane
+    await screens.enrich([p])
+    expect(p.interaction).toBe('terminal')
+    // The overlay itself opens once 'terminal' has held for 500 ms.
+    const window = createInteractionWindow()
+    expect(window.update(p.interaction!, 0)).toBe(false)
+    expect(window.update(p.interaction!, 500)).toBe(true)
+    text = screen('agy-idle')
+    screens.forget(p.id)
+    await screens.enrich([p])
+    expect(p.interaction).toBe('input')
   })
 })
 
