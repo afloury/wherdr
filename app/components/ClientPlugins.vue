@@ -23,7 +23,7 @@ const stateText = (s: string) => ({
     <p v-if="!rows.length" class="client-plugins-empty">
       {{ tl('No plugin installed. Put a plugin folder in the plugins folder of the data directory (plugins/<name>/manifest.json) and reload the page.', 'Aucun plugin installé. Dépose un dossier de plugin dans le dossier plugins du dossier de données (plugins/<nom>/manifest.json) puis recharge la page.') }}
     </p>
-    <ul v-else class="client-plugins-list">
+    <ul v-else class="client-plugins-list" :class="{ paused: !communityPlugins }">
       <li v-for="p in rows" :key="p.id" class="client-plugin" :class="p.status" :data-plugin="p.id">
         <div class="client-plugin-head">
           <strong>{{ p.name }}</strong>
@@ -45,6 +45,8 @@ const stateText = (s: string) => ({
 .client-plugins-empty, .client-plugin-note { color: var(--dim); font-size: 13px; margin: 6px 0; }
 .client-plugins-list { list-style: none; margin: 0; padding: 0; }
 .client-plugin { border-top: 1px solid var(--line); padding: 10px 0; }
+/* Community plugins off: each plugin keeps its switch, greyed. */
+.client-plugins-list.paused .client-plugin { opacity: .5; }
 .client-plugin-head { display: flex; align-items: center; gap: 8px; }
 .client-plugin-head strong { flex: 1; min-width: 0; overflow-wrap: anywhere; }
 .client-plugin-head small, .client-plugin-state { font-family: var(--font-mono, monospace); font-size: 11px; text-transform: uppercase; color: var(--dim); }
