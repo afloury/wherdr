@@ -120,6 +120,18 @@ its repository has no such branch (on origin, else locally), the task starts
 from the repository's current branch, and its log says so (*develop not found
 in this repository: using main*); a member's own base branch is used as is.
 
+A member's sheet shows, for each of these settings, whether it follows its
+workspace. Its General tab starts with *Settings come from WS unless you change
+one here.*, and each setting (on the Machines part too, and its placement)
+says *From WS* while it takes the workspace's value, shown in the field. Change
+one and it says *Own value · Use WS's*: that setting alone is the member's, the
+others still follow. *Use WS's* gives that one setting back to the workspace at
+once (its own value is dropped; `project-update` with `{ follow: <field> }`).
+The base branch also warns when the workspace's working branch is missing from
+the member's repository (*develop not found in this repository: using main*).
+A member running its own workflow shows *Own workflow* on its agents and
+worktree setup: they come back with the workspace's workflow (below).
+
 ## Workspace instructions files
 
 A member's task runs in a worktree outside the workspace's root, so its agents
@@ -226,9 +238,10 @@ without a workflow of its own runs the workspace's; a member may have its own
 instead (a repository with a different review, for instance): the first
 workflow accepted for the member becomes its own, and its tasks move to it.
 The member's Workflow and Guards tabs show the workspace's workflow it runs,
-with a line that says so; a change saved there gives the member its own.
-A member with its own workflow can follow the workspace's again: *Follow
-workspace WS's workflow* in its Workflow tab (after a confirmation), or Alfred's
+with a line that says so (*Follows WS's workflow* on the Workflow tab); a change
+saved there gives the member its own. A member with its own workflow says *Own
+workflow · Follow WS's* there, and can follow the workspace's again: *Follow
+WS's* (after a confirmation), or Alfred's
 `wherdr alfred project template <member> none`. Its own workflow is removed
 (its agents and worktree setup are the workspace's again), its tasks move to
 the workspace's, and its log says so.

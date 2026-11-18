@@ -59,7 +59,13 @@ export async function projectView(store: PmStore, key: string) {
 // { name?, base?, prefs? }: prefs (worker and reviewer agents) live in the workflow.
 // authorization: the request's; with a token (a coordinator, Alfred) the On state change command is refused.
 export async function updateProject(store: PmStore, key: unknown, body: Record<string, unknown>, authorization?: unknown) {
-  if (body.onStateChange !== undefined && bearer(authorization)) throw new HerdrError('forbidden', 'Only the user sets the On state change command, in the project\'s settings')
+  if ((body.onStateChange !== undefined || body.follow === 'onStateChange') && bearer(authorization)) throw new HerdrError('forbidden', 'Only the user sets the On state change command, in the project\'s settings')
+  // { follow: <field> }: a member takes its workspace's value of that field again.
+  if (body.follow !== undefined) {
+    const project = await store.followWorkspace(key, body.follow)
+    if (body.follow === 'archiveAfter') await archiveDone(store)
+    return { project }
+  }
   const { update, errors } = cleanProjectUpdate(body)
   if (!update) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
   // A member without a workflow of its own: its agents and worktree setup are

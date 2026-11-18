@@ -37,7 +37,7 @@ import type { Automation, AutomationProposal, Mark } from '../../shared/pm/autom
 import { EXAMPLES } from '../../shared/pm/examples'
 import { afterRefusal, subTasks } from '../../shared/pm/feature'
 import { eventOf, stateChanges, type TaskStateName } from '../../shared/pm/onState'
-import { SHARED_FIELDS, backToWorkspace, cleanWorkspaceFields, effectiveProjects, liftShared, needsSink, sinkShared, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
+import { SHARED_FIELDS, backToWorkspace, effectiveProject, followShared, isSharedField, cleanWorkspaceFields, effectiveProjects, liftShared, needsSink, sinkShared, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
 import type { MapFile } from '../../shared/pm/workspaceMap'
 import { DATA_DIR } from './env'
 import { writeFileAtomic, writeJsonAtomic } from './atomicWrite'
@@ -574,6 +574,19 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
         await writeJson(path.join(files.projectLog, `${rest.key}.json`), { v: 1, entries: [...await projectLog(rest.key), { at: Date.now(), by, text: `its own workflow removed: it follows workspace ${ws.key}'s again` }].slice(-500) })
       }
       return list[i]!
+    }),
+
+    // A member back on its workspace's value for one field (followShared); its
+    // agents or worktree setup only while it runs the workspace's workflow.
+    followWorkspace: (key: unknown, field: unknown) => write(async () => {
+      const { list, i } = await findProject(key)
+      const ws = workspaceOf(list[i]!, list)
+      if (!ws) throw new HerdrError('refused', 'Only a workspace\'s project follows its workspace\'s settings')
+      if (!isSharedField(field)) throw badInput([{ path: 'follow', message: 'a shared setting' }])
+      if ((field === 'prefs' || field === 'worktree') && await readJson<Template>(workflowFile(list[i]!.key))) throw new HerdrError('refused', `${list[i]!.key} runs its own workflow: follow workspace ${ws.key}'s workflow in its Workflow tab`)
+      list[i] = followShared(list[i]!, field)
+      await saveProjects(list)
+      return effectiveProject(list[i]!, ws)
     }),
 
     // A member's own agents (prefs) or worktree setup, from its General tab,
