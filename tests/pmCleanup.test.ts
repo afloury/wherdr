@@ -111,7 +111,18 @@ describe('a worktree an earlier removal left halfway, in a temporary folder', ()
       // WH-1: only deletions. Its removal's prune does not forget WH-2 (locked).
       const wt1 = path.join(root, 'WH-1')
       expect(parseFacts(sh(WORKTREE_PROBE_SCRIPT, repo, wt1, 'task/WH-1'))).toMatchObject({ exists: true, listed: true, dirty: 0 })
-      expect(sh(WORKTREE_REMOVE_SCRIPT, repo, wt1, 'task/WH-1', '0')).toMatch(/^freed \d+$/m)
+      // No timeout command (a plain macOS) and a du that never ends: removed all the same, its size not said.
+      const bin = path.join(root, 'bin')
+      fs.mkdirSync(bin)
+      for (const d of (process.env.PATH ?? '').split(':').filter(d => fs.existsSync(d))) {
+        for (const f of fs.readdirSync(d)) {
+          if (['timeout', 'gtimeout', 'du'].includes(f) || fs.existsSync(path.join(bin, f))) continue
+          fs.symlinkSync(path.join(d, f), path.join(bin, f))
+        }
+      }
+      fs.writeFileSync(path.join(bin, 'du'), '#!/bin/sh\nexec sleep 600\n', { mode: 0o755 })
+      const out = execFileSync('sh', ['-c', WORKTREE_REMOVE_SCRIPT, 'sh', repo, wt1, 'task/WH-1', '0'], { encoding: 'utf8', env: { ...process.env, PATH: bin } })
+      expect(out).not.toMatch(/^freed/m)
       expect(fs.existsSync(wt1)).toBe(false)
       // WH-2: a modified file besides the deletions: kept, the probe and the removal both say so.
       const wt2 = path.join(root, 'WH-2')

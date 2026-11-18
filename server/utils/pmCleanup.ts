@@ -45,7 +45,8 @@ if [ -n "$refs" ]; then u=$(git -C "$repo" rev-list --count $refs --not $merged 
 echo "$e $l $d $u"`
 
 // The removal's own timeout (s): a worktree of several GB takes minutes. Its size
-// is measured first within DU_TIMEOUT, or not said.
+// is measured first within DU_TIMEOUT (timeout, or gtimeout on macOS), or not
+// said: with neither, never measured (an unbounded du could eat the timeout).
 export const WORKTREE_REMOVE_TIMEOUT = 600
 const DU_TIMEOUT = 30
 
@@ -77,8 +78,7 @@ if [ -d "$dir" ]; then
     [ "$n" = 0 ] || { echo "$n uncommitted change(s)"; exit 3; }
     [ -e "$dir/.git" ] || printf 'gitdir: %s\\n' "$admin" > "$dir/.git" || exit 1
   fi
-  t=; command -v timeout >/dev/null 2>&1 && t="timeout ${DU_TIMEOUT}"
-  echo "freed $($t du -sk "$dir" 2>/dev/null | cut -f1)"
+  t=$(command -v timeout || command -v gtimeout) && echo "freed $("$t" ${DU_TIMEOUT} du -sk "$dir" 2>/dev/null | cut -f1)"
   git -C "$repo" worktree remove $force "$dir" 2>&1 || exit 1
 fi
 git -C "$repo" worktree prune 2>&1
