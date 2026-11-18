@@ -377,7 +377,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const old = await readJson<Template>(workflowFile(key)), ws = workspaceOf(list[i]!, list)
       const shared = ws ? await readJson<Template>(workflowFile(ws.key)) : null
       const version = await saveVersioned(workflowFile(key), workflowLogFile(key), { ...(t as Template), id: key.toLowerCase() }, old, by, said)
-      await keepOverrides(i, p => workflowOverrides(p, ws, t as Template), list)
+      await keepOverrides(i, p => workflowOverrides(p, ws, t as Template, shared), list)
       // Before the first one, the tasks followed the workspace's or the default workflow.
       await replanTasks(key, old ?? (shared && { ...shared, id: key.toLowerCase() }) ?? defaultWorkflow(key), t as Template)
       // A workspace's: the tasks of its members without their own follow it too.
