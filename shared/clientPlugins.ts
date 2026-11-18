@@ -41,3 +41,10 @@ export function readPrefs(raw: string | null): PluginPrefs {
     return { off: Array.isArray(p.off) ? p.off.filter((x): x is string => typeof x === 'string') : [], failed }
   } catch { return { off: [], failed: {} } }
 }
+
+// The Community plugins switch, one for the server (settings.json). Unset is
+// an install from before the switch: on when its plugins folder already holds
+// plugins (they keep loading after the update), off otherwise.
+export function communityOn(raw: string | null | undefined, installed: number): boolean {
+  return raw === '1' || (raw !== '0' && installed > 0)
+}

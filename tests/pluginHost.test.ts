@@ -4,12 +4,12 @@ import { readPrefs, type ClientPluginInfo, type PluginPrefs } from '../shared/cl
 
 const info = (id: string): ClientPluginInfo => ({ id, name: id, version: '1', description: '', main: 'index.js' })
 
-function setup(plugins: Record<string, unknown>, prefs: PluginPrefs = { off: [], failed: {} }) {
+function setup(plugins: Record<string, unknown>, prefs: PluginPrefs = { off: [], failed: {} }, enabled = true) {
   let saved = prefs
   const navs = new Set<(p: string) => void>()
   const insert = vi.fn()
   const deps: HostDeps = {
-    list: async () => Object.keys(plugins).map(info),
+    list: async () => ({ plugins: Object.keys(plugins).map(info), enabled }),
     load: async i => ({ default: plugins[i.id] }),
     insertDraft: insert,
     currentAgent: () => ({ id: 'w1:p1', agent: 'claude', name: 'demo', machine: null }),
@@ -96,6 +96,22 @@ describe('plugin host', () => {
     await s.host.setEnabled('p', false)
     expect(s.navs.size).toBe(0)
     expect(deactivate).toHaveBeenCalled()
+  })
+
+  it('loads nothing while Community plugins is off, then starts the wanted ones', async () => {
+    const run = vi.fn()
+    const s = setup({ a: run, b: run }, { off: ['b'], failed: {} }, false)
+    await s.host.init()
+    expect(run).not.toHaveBeenCalled()
+    expect(s.host.rows().map(r => [r.status, r.wanted])).toEqual([['off', true], ['off', false]])
+    await s.host.setEnabled('b', true)
+    expect(run).not.toHaveBeenCalled()
+    await s.host.setCommunity(true)
+    expect(run).toHaveBeenCalledTimes(1)
+    expect(s.status('a')).toBe('running')
+    await s.host.setCommunity(false)
+    expect(s.status('a')).toBe('off')
+    expect(s.host.rows()[0]!.wanted).toBe(true)
   })
 
   it('survives a failing manifest list', async () => {

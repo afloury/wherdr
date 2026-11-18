@@ -3,7 +3,8 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { DATA_DIR } from './env'
-import { PLUGIN_FILE_RE, PLUGIN_ID_RE, parseManifest, type ClientPluginInfo } from '../../shared/clientPlugins'
+import { patchSettings, readSettings } from './settings'
+import { PLUGIN_FILE_RE, PLUGIN_ID_RE, communityOn, parseManifest, type ClientPluginInfo } from '../../shared/clientPlugins'
 
 export const PLUGINS_DIR = path.join(DATA_DIR, 'plugins')
 
@@ -26,4 +27,15 @@ export async function listClientPlugins(dir = PLUGINS_DIR): Promise<ClientPlugin
 export function pluginFile(id: string, file: string, dir = PLUGINS_DIR): string | null {
   if (!PLUGIN_ID_RE.test(id) || !PLUGIN_FILE_RE.test(file)) return null
   return path.join(dir, id, file)
+}
+
+// Whether Community plugins is on. The first read after the update writes the
+// answer down, so a plugin installed later starts off until the user turns it on.
+export async function communityPluginsOn(installed: number, file?: string): Promise<boolean> {
+  const raw = (await readSettings(file)).communityPlugins
+  const on = communityOn(raw, installed)
+  if (raw !== '1' && raw !== '0') {
+    await patchSettings({ communityPlugins: on ? '1' : '0' }, { onlyMissing: true, file }).catch(() => { /* logged by settings.ts */ })
+  }
+  return on
 }

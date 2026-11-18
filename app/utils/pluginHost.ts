@@ -14,7 +14,8 @@ export interface WherdrApi {
 type Plugin = ((w: WherdrApi) => unknown) | { activate: (w: WherdrApi) => unknown, deactivate?: () => unknown }
 
 export interface HostDeps {
-  list: () => Promise<ClientPluginInfo[]>
+  // The installed plugins and the Community plugins switch (off: none loads).
+  list: () => Promise<{ plugins: ClientPluginInfo[], enabled: boolean }>
   load: (info: ClientPluginInfo) => Promise<{ default?: unknown }>
   insertDraft: (text: string) => void
   currentAgent: () => CurrentAgent | null
@@ -28,7 +29,8 @@ export interface HostDeps {
 }
 
 export type PluginStatus = 'running' | 'off' | 'failed' | 'loading'
-export interface PluginRow extends ClientPluginInfo { status: PluginStatus, error: string }
+// `wanted`: the plugin's own switch, kept while Community plugins is off.
+export interface PluginRow extends ClientPluginInfo { status: PluginStatus, error: string, wanted: boolean }
 
 const msg = (e: unknown) => String((e as Error)?.message || e).slice(0, 300)
 
@@ -38,6 +40,7 @@ export function createPluginHost(deps: HostDeps) {
   const subs = new Map<string, Set<() => void>>()
   const instances = new Map<string, Plugin>()
   let listError = ''
+  let community = false
 
   function fail(id: string, e: unknown) {
     const p = deps.prefs()
@@ -86,13 +89,15 @@ export function createPluginHost(deps: HostDeps) {
       if (!fn) throw new Error('The bundle has no default export (a function or { activate })')
       if (typeof plugin === 'object') instances.set(info.id, plugin)
       await withTimeout(Promise.resolve(fn(apiFor(info.id))), deps.timeoutMs ?? 8000, 'Activation timed out')
+      // Community plugins turned off while it loaded.
+      if (!community) { stop(info.id); status.delete(info.id); deps.changed(); return }
       status.set(info.id, 'running')
       deps.changed()
     } catch (e) { fail(info.id, e) }
   }
 
-  async function init() {
-    try { infos.splice(0, infos.length, ...await deps.list()) } catch (e) { listError = msg(e); deps.changed(); return }
+  // The plugins to start: wanted, not failed, not already started.
+  function startAll() {
     const p = deps.prefs()
     for (const info of infos) {
       if (p.off.includes(info.id)) status.set(info.id, 'off')
@@ -100,13 +105,35 @@ export function createPluginHost(deps: HostDeps) {
     }
     deps.changed()
     // A plugin's failure never reaches the others or the app.
-    await Promise.all(infos.filter(i => !status.has(i.id)).map(start))
+    return Promise.all(infos.filter(i => !status.has(i.id)).map(start))
+  }
+
+  async function init() {
+    try {
+      const res = await deps.list()
+      infos.splice(0, infos.length, ...res.plugins)
+      community = res.enabled
+    } catch (e) { listError = msg(e); deps.changed(); return }
+    if (community) await startAll()
+    else deps.changed()
+  }
+
+  // Community plugins turned on or off (here or on another device).
+  async function setCommunity(on: boolean) {
+    if (on === community) return
+    community = on
+    if (on) return startAll()
+    for (const id of [...status.keys()]) {
+      stop(id)
+      if (status.get(id) !== 'failed') status.delete(id)
+    }
+    deps.changed()
   }
 
   // Turning on also clears an earlier failure (the person retries).
   async function setEnabled(id: string, on: boolean) {
     const info = infos.find(i => i.id === id)
-    if (!info) return
+    if (!info || !community) return
     const p = deps.prefs()
     const failed = { ...p.failed }
     delete failed[id]
@@ -117,9 +144,9 @@ export function createPluginHost(deps: HostDeps) {
 
   function rows(): PluginRow[] {
     const p = deps.prefs()
-    return infos.map(i => ({ ...i, status: status.get(i.id) || 'off', error: p.failed[i.id] || '' }))
+    return infos.map(i => ({ ...i, status: status.get(i.id) || 'off', error: p.failed[i.id] || '', wanted: !p.off.includes(i.id) }))
   }
-  return { init, setEnabled, rows, listError: () => listError }
+  return { init, setEnabled, setCommunity, rows, community: () => community, listError: () => listError }
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, why: string): Promise<T> {

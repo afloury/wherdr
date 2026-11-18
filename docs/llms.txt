@@ -128,6 +128,7 @@
 ## Extending and fixing
 
 - [Plugins](docs/plugins.md#wherdr-plugins): optional page plugins and how to install them.
+- [Community plugins switch](docs/plugins.md#community-plugins-switch): the server-wide switch, off by default, that lets plugins load after a full-access warning; existing installs with plugins stay on.
 - [The plugin module](docs/plugins.md#the-module): what a plugin file exports.
 - [Markers](docs/plugins.md#markers-data-wherdr): `data-wherdr` markers a plugin can find.
 - [Troubleshooting](docs/troubleshooting.md#troubleshooting): hc connection, conversations, machines and network problems.
