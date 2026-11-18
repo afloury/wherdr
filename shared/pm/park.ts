@@ -53,7 +53,7 @@ export function parkOf(task: Task, on: string, need: string, tasks: Task[], proj
     return {
       refused: `Refused: ${show(other.id)} already waits for this task, so both would wait forever. Your coordinator decides how to go on; until it tells you, keep working on what does not need it.`,
       key: `cycle:${other.id}`,
-      wake: `Decision: ${head} asked to wait for ${show(other.id)} (${other.title}): ${need}. But ${show(other.id)} already waits for ${show(task.id)}: a cycle, so ${show(task.id)} was not parked. Choose one: pull the shared contract (proto, API, schema) into its own task both wait for, or merge the two tasks into one. Then add or edit the tasks (wherdr pm task add, task edit --after). If you cannot decide, do not ack this wake: tell the user both options, and the choice goes to them in Decisions.`,
+      wake: `Decision: ${head} asked to wait for ${show(other.id)} (${other.title}): ${need}. But ${show(other.id)} already waits for ${show(task.id)}: a cycle, so ${show(task.id)} was not parked. Choose one: pull the shared contract (proto, API, schema) into its own task both wait for, or merge the two tasks into one. Then add or edit the tasks (wherdr pm task add, task edit --after). If you cannot decide, do not ack this wake: tell the user both options in your next message, and the choice is theirs.`,
     }
   }
   if (why) return { refused: `${on} is not a task of this project or workspace: name one of them, or the repository you need something from.` }

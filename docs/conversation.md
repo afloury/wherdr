@@ -2,11 +2,11 @@
 
 [Documentation](README.md) · [Project](../README.md)
 
-Claude Code, Codex, Devin and Antigravity terminals open in conversation mode; any other terminal shows only its
+Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conversation mode; any other terminal shows only its
 [terminal](terminal.md). How wherdr finds the conversation file on herdr-core is described in
 [herdr-core › Conversations](core.md#conversations).
 
-- **Conversation view**: the agent's real transcript (Claude Code, Codex, Devin and Antigravity), rendered as
+- **Conversation view**: the agent's real transcript (Claude Code, Codex, Devin, Antigravity and Hermes Agent), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan),
   timestamps, search and infinite scroll back to the first message. Every message shows its time,
   muted and always on the right: under your messages, at the end of the agent reply's action
@@ -57,7 +57,7 @@ Claude Code, Codex, Devin and Antigravity terminals open in conversation mode; a
   Settings › Projects › KEY › Guards*, *Open Task KEY-12*, *Open Board › KEY › ui*). A tap opens
   the place in the app, on a computer and a phone,
   without reloading; Back returns to the conversation. Other links open in a new tab, other
-  inline code stays plain. The addresses: `#/`, `#/decisions`, `#/board` (with `?project=KEY`,
+  inline code stays plain. The addresses: `#/`, `#/review` (Tasks to review; the former `#/decisions` opens it too), `#/board` (with `?project=KEY`,
   `?tag=TAG` or `?task=ID`), `#/settings?section=<section>`, a tab of Settings › Conversation
   `#/settings?section=conversation&tab=<tab>` (`display`, `dictation`, `read-aloud`) and a
   project's sheet `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in

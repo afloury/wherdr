@@ -644,7 +644,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       const r = onEvent(plan, state, { kind: 'decide', by: 'coordinator', choice: cmd.choice, note: cmd.reason, ...(cited ? { spec: true as const } : {}) }, now)
       if (r.refused) throw new HerdrError('refused', r.refused)
       const line = r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])).join('; ')
-      const next = { ...task, step: r.state, ...(cited ? { specPass: { at: now, step, reason: cmd.reason } } : {}) }
+      const next = { ...task, step: r.state }
       return { task: await store.logTask(next, by, line), effects: r.effects.filter(e => e.kind !== 'log'),
         ...(cited ? { tellUser: `In your next message, tell the user you passed ${step} of ${task.id} on the spec change of ${new Date(cited.at).toISOString().slice(0, 10)}: ${cmd.reason}` } : {}) }
     }

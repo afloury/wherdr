@@ -33,7 +33,7 @@ export function processInfo(d: CoreDetail) {
   return { process_info: { foreground_processes: procs } }
 }
 
-const AGENT_PROGRAMS = new Set(['claude', 'codex', 'omp', 'devin', 'agy', 'antigravity', 'antigravity-cli'])
+const AGENT_PROGRAMS = new Set(['claude', 'codex', 'omp', 'devin', 'agy', 'antigravity', 'antigravity-cli', 'hermes'])
 const baseName = (s: string | undefined) => (s || '').split('/').pop() || ''
 // Programs under the terminal's process, from `ps -e -o pid=,ppid=,args=`: an agent started by a
 // shell, or hosted by a helper, is not the foreground process of the terminal.
@@ -102,6 +102,7 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
   }
   const herdr = async (method: string, params: Record<string, unknown> = {}) => {
     const address = deps.pane(String(params.pane_id || ''))?.coreAddress
+    if (method === 'pane.screen' && address) return { text: String((await deps.call<{ text?: string }>('terminal.read', { terminal: address, lines: 0 }, 4000)).text || '') }
     if (method !== 'pane.process_info' || !address) throw new CoreError('unsupported', 'unsupported')
     const d = await detail(address)
     const info = processInfo(d)
