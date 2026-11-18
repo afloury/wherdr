@@ -1,4 +1,4 @@
-wherdr 3.2 opens **plugins** to the community: a *Community plugins* switch, off by default, and plugins installed from GitHub at an exact commit. **omp** joins as a task agent and coordinator, **Antigravity CLI** conversations open on their transcript, and workspaces gain read-only context folders, shared skills and plan files ticked as tasks finish. It also ships everything prepared for 3.1.1, which was never released: workspace member settings, a workspace from New › Project, a command on task state changes, questions cards, and fixes to photo messages, message states, keep awake and Devin conversations. Update as usual: the banner's *Update with Alfred*, or `update.sh 3.2.0` in the install folder; no manual step is needed.
+wherdr 3.2 opens **plugins** to the community: a *Community plugins* switch, off by default, and plugins installed from GitHub at an exact commit. **omp** joins as a task agent and coordinator, **Antigravity CLI** and **Hermes Agent** conversations open on their transcript, and workspaces gain read-only context folders, shared skills and plan files ticked as tasks finish. It also ships everything prepared for 3.1.1, which was never released: workspace member settings, a workspace from New › Project, a command on task state changes, questions cards, and fixes to photo messages, message states, keep awake and Devin conversations. This release also carries security and reliability fixes from three bug hunts, Tasks to review in place of the Decisions page, and updates that roll back on their own. Update as usual: the banner's *Update with Alfred*, or `update.sh 3.2.0` in the install folder; no manual step is needed.
 
 ## New
 
@@ -23,7 +23,14 @@ wherdr 3.2 opens **plugins** to the community: a *Community plugins* switch, off
 **A workspace from New › Project.** A *Project | Workspace* switch creates either one, with a *Browse* button beside each machine's root folder. A workspace root may itself be a git repository, adopted as a member with `repo adopt .`. [Workspaces](https://github.com/afloury/wherdr/blob/v3.2.0/docs/workspaces.md)
 
 **Themes from Alfred.** Ask Alfred for a theme and it proposes one as a card with a preview and a contrast check. The theme editor previews a small version of the whole app and gets a *JSON* tab.
+
+**Hermes Agent conversations.** A `hermes` terminal shows its name and icon, and its conversation opens read-only on the session the pane shows, locally or on another machine. It is built from Hermes' source and not yet tested with a real Hermes: feedback is welcome on [#48](https://github.com/afloury/wherdr/issues/48).
+
 ## Improved
+
+**Tasks to review replaces the Decisions page.** The board's *To review* button and old `#/decisions` links open Tasks to review, where every decision waiting for you already is.
+
+**Updates roll back on their own.** If the new build does not answer with its version, or its restart fails, `update.sh` puts the previous build back, restarts and says so. A checkout of your own, and every macOS install, builds with `npm run build:aside`, which leaves the running build whole if the build fails. [Installation](https://github.com/afloury/wherdr/blob/v3.2.0/docs/installation.md)
 
 **Workspace members.** Each shared setting of a member says *From <workspace>* or *Own value · Use <workspace>'s*, and is overridden or reset one field at a time. The workspace's working branch, branch name, placement and archive settings now reach its members, and a member with its own workflow can follow the workspace's again. In the sidebar, each member shows its own counts, and *n waiting for you* opens the waiting task.
 
@@ -35,6 +42,12 @@ wherdr 3.2 opens **plugins** to the community: a *Community plugins* switch, off
 
 ## Fixed
 
+**Security fixes.** Alfred and coordinators now apply a change only in a turn that comes from your own message, and updating a plugin never turns *Community plugins* on without its full-access warning. An unreadable settings file is never taken as empty, so nothing is switched on or overwritten by mistake. Updating to 3.2.0 is recommended.
+
+**Worktrees and the engine.** A done task's worktree is now removed after a squash merge, big ones included, freeing disk space. Starts that herdr-core never confirmed no longer stay *starting*, parked tasks no longer hold autopilot slots, one project's failing starts no longer stop the others, and removing a project with open tasks is refused.
+
+**Messages.** Held Codex messages survive a restart and are never typed twice. Enter that confirms an input method candidate (on Safari too) never sends the message.
+
 **Photo messages to Claude.** A photo reaches Claude as an image, is never left stuck in Claude's field, and a multi-line message with a photo is submitted within about 20 s with your text kept in its bubble.
 
 **Message states.** A message reads *Sending…* until it is in the transcript, never *Read by the agent* before, and *Not sent* only once the server gave up. A message sent at the same moment as a wake keeps its own bubble, and a running '!' command keeps its place in time.
@@ -43,7 +56,7 @@ wherdr 3.2 opens **plugins** to the community: a *Community plugins* switch, off
 
 **Keep awake** works again on a remote Mac, and a failed read says *Could not reach <machine>* with the reason.
 
-**Tasks.** `feature split < plan.json` reaches the server from a coordinator's folder. A review round adds to the task's report instead of replacing it, a coordinator's first messages survive a restart, and a failed migration never stops the board.
+**Tasks.** Workspace members inherit the workspace's worktree setup and machines, and a machine's status card shows its RAM instead of *0.0 GB*. `feature split < plan.json` reaches the server from a coordinator's folder. A review round adds to the task's report instead of replacing it, a coordinator's first messages survive a restart, and a failed migration never stops the board.
 
 [Full changelog](https://github.com/afloury/wherdr/blob/v3.2.0/CHANGELOG.md)
 
