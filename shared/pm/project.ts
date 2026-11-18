@@ -75,7 +75,7 @@ export const isGitBranch = (b: string) => b !== '' && b !== '@' && !/[\x00-\x20\
 export const isTemplateId = (id: unknown): id is string => typeof id === 'string' && ID_RE.test(id)
 
 const KEY_HINT = '2 to 10 letters or digits, starting with a letter'
-export interface ProjectUpdate { name?: string, coordinatorName?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, paused?: string[], placement?: Strategy, branchName?: string, commitMessage?: string, onStateChange?: OnStateChange | '', archiveAfter?: number, deleteBranch?: boolean, reach?: Reach[], instructionsFiles?: string[] | null }
+export interface ProjectUpdate { name?: string, coordinatorName?: string, base?: string, key?: string, color?: ProjectColor, machines?: string[], clones?: Record<string, string>, paused?: string[], placement?: Strategy, branchName?: string, commitMessage?: string, onStateChange?: OnStateChange | '', archiveAfter?: number, deleteBranch?: boolean, reach?: Reach[], instructionsFiles?: string[] | null, rootSkills?: boolean }
 
 // A project's coordinator is named after the project unless the user named it.
 export const projectCoordinatorName = (p: { name: string, coordinatorName?: string }) => p.coordinatorName || p.name
@@ -206,6 +206,11 @@ export function cleanProjectUpdate(raw: unknown): { update?: ProjectUpdate, erro
     const v = o.instructionsFiles
     if (v !== null && !(Array.isArray(v) && v.length <= 10 && v.every(isRelPath))) errors.push({ path: 'instructionsFiles', message: 'up to 10 paths under the workspace\'s root (no *, no .., not absolute)' })
     else update.instructionsFiles = v === null ? null : [...new Set(v as string[])]
+  }
+  // A workspace's root skills (workspace.ts workspaceSkills): false turns them off.
+  if (o.rootSkills !== undefined) {
+    if (typeof o.rootSkills !== 'boolean') errors.push({ path: 'rootSkills', message: 'true or false' })
+    else update.rootSkills = o.rootSkills
   }
   if (o.reach !== undefined) {
     const r = cleanReach(o.reach)
