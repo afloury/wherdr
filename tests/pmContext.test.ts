@@ -225,6 +225,17 @@ describe('CONTEXT_SCRIPT', () => {
     expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main', ahead)).out).toBe(`${ahead} pinned`)
   })
 
+  it('a tracked symlink (always lrwxrwxrwx) does not make the snapshot look changed: reused, not rebuilt', () => {
+    const local = path.join(tmp, 'linked'), root = path.join(tmp, 'ctx', 'LNK')
+    fs.mkdirSync(local); git(local, 'init', '-q', '-b', 'main')
+    fs.writeFileSync(path.join(local, 'AGENTS.md'), 'rules'); fs.symlinkSync('AGENTS.md', path.join(local, 'CLAUDE.md'))
+    git(local, 'add', '-A'); git(local, 'commit', '-q', '-m', 'linked')
+    const sha = git(local, 'rev-parse', 'HEAD')
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(local, root, 'main'))).toEqual({ code: 0, out: `${sha} local` })
+    // A rebuild would say `changed`.
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(local, root, 'main'))).toEqual({ code: 0, out: `${sha} local` })
+  })
+
   it('a clone without an origin gives its local branch; the default branch when no base is named', () => {
     const local = path.join(tmp, 'local'), root = path.join(tmp, 'ctx', 'LOC')
     fs.mkdirSync(local); git(local, 'init', '-q', '-b', 'develop')

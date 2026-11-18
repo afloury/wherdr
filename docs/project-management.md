@@ -1668,7 +1668,11 @@ the task is not done (stopped, failed, waiting for you, its PR not merged),
 while an agent runs on it, with uncommitted changes, with commits neither
 pushed nor merged, or outside `~/.wherdr/pm/worktrees`. At start and every few
 hours, a sweep does the same for every done or archived task whose worktree is
-still there, on every machine that ran one.
+still there, on every machine that ran one. A removal has 10 minutes (a
+worktree of several GB with its `node_modules` takes a while) and locks the
+worktree first, so no `git worktree prune` forgets it: one a removal left
+halfway, its tracked files only deleted, is finished by the next sweep; one
+with a file changed or added stays, as one locked by you does.
 
 ### Processes an agent leaves behind
 
