@@ -169,7 +169,8 @@ wins; a link whose skill left the root goes. The task's log names the skills
 linked at the worker's start.
 
 The setting is in the General tab of the workspace's sheet, under *Workspace
-skills*: *Default* (the root's `.claude/skills`, when there) or *None*. The
+skills*: *Default* (the root's `.claude/skills`, when there) or *None*, which
+removes the links at the next agent start in each worktree (the member's own skills stay). The
 root's own repository is left as it is: its worktrees hold the root's skills.
 
 ## Adopting a repository

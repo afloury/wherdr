@@ -13,12 +13,12 @@ const member: Project = { key: 'PAY', name: 'payroll-api', machine: 'home', path
 const root: Project = { ...member, key: 'ROOT', path: '~/work' }
 
 describe('workspace root skills', () => {
-  it('a member task links the root\'s .claude/skills on its machine; not the root member, nor when turned off', () => {
-    expect(workspaceSkills(member, [ws, member], 'home', '/h')).toBe('/h/work/.claude/skills')
-    expect(workspaceSkills(member, [ws, member], 'big', '/h')).toBe('/srv/work/.claude/skills')
+  it('a member task links the root\'s .claude/skills on its machine; not the root member; turned off, it is said so', () => {
+    expect(workspaceSkills(member, [ws, member], 'home', '/h')).toEqual({ dir: '/h/work/.claude/skills' })
+    expect(workspaceSkills(member, [ws, member], 'big', '/h')).toEqual({ dir: '/srv/work/.claude/skills' })
     expect(workspaceSkills(member, [ws, member], 'other', '/h')).toBeUndefined()
     expect(workspaceSkills(root, [ws, root], 'home', '/h')).toBeUndefined()
-    expect(workspaceSkills(member, [{ ...ws, shared: { rootSkills: false } }, member], 'home', '/h')).toBeUndefined()
+    expect(workspaceSkills(member, [{ ...ws, shared: { rootSkills: false } }, member], 'home', '/h')).toEqual({ dir: '/h/work/.claude/skills', off: true })
     expect(workspaceSkills({ ...member, workspace: undefined }, [ws, member], 'home', '/h')).toBeUndefined()
   })
 
@@ -49,6 +49,10 @@ describe('workspace root skills', () => {
       sh(SKILLS_SCRIPT, wt, src)
       expect(fs.existsSync(path.join(wt, '.claude/skills/gone'))).toBe(false)
       expect(fs.readFileSync(path.join(repo, '.git/info/exclude'), 'utf8').split('\n').filter(l => l === '/.claude/skills/plan')).toHaveLength(1)
+      // Turned off: the links to the root go, the member's own skill stays.
+      expect(sh(SKILLS_SCRIPT, wt, src, 'off')).toBe('')
+      expect(fs.existsSync(path.join(wt, '.claude/skills/plan'))).toBe(false)
+      expect(fs.readFileSync(path.join(wt, '.claude/skills/own/SKILL.md'), 'utf8')).toBe('# mine')
       // No skills folder at the root: nothing to do.
       expect(sh(SKILLS_SCRIPT, wt, path.join(dir, 'none'))).toBe('')
     } finally { fs.rmSync(dir, { recursive: true, force: true }) }

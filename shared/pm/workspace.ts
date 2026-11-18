@@ -78,14 +78,14 @@ export function workspaceInstructions(member: Project, list: Project[]): { machi
 
 // The root's skills folder a member task's worktree on `machine` links (one
 // link per skill, linkSkills in pmLaunch.ts): <root there>/.claude/skills,
-// `~` read as `home`. None: not a member, the root's own repository (its
-// worktree holds them), turned off, or no root on that machine.
+// `~` read as `home`; off: turned off (the links made before go). None: not a
+// member, the root's own repository (its worktree holds them), or no root on that machine.
 export const SKILLS_DIR = '.claude/skills'
-export function workspaceSkills(member: Project, list: Project[], machine: string, home: string): string | undefined {
+export function workspaceSkills(member: Project, list: Project[], machine: string, home: string): { dir: string, off?: true } | undefined {
   const ws = workspaceOf(member, list)
-  if (!ws || isRootMember(member, ws) || ws.shared?.rootSkills === false) return undefined
+  if (!ws || isRootMember(member, ws)) return undefined
   const root = rootOn(ws, machine)
-  return root ? `${trim(root).replace(/^~(?=\/|$)/, () => home)}/${SKILLS_DIR}` : undefined
+  return root ? { dir: `${trim(root).replace(/^~(?=\/|$)/, () => home)}/${SKILLS_DIR}`, ...(ws.shared?.rootSkills === false ? { off: true as const } : {}) } : undefined
 }
 
 // A workspace's members (none for any other project).

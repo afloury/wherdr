@@ -85,10 +85,11 @@ df -Pk /tmp | awk 'NR==2 {print $4}'`
 // .claude/skills/<name>, ignored through the repository's info/exclude, so
 // nothing reaches its commits and an edit at the root is read at once. A name
 // the worktree already has is its own and stays (said `own <name>`); a link
-// whose skill left the root goes. Prints `linked <name>` for each linked one.
+// whose skill left the root goes, and with $3 = off (turned off) every link
+// to the root goes, nothing linked. Prints `linked <name>` for each linked one.
 export const SKILLS_SCRIPT = `dir=$1 src=$2 d=$1/.claude/skills
-for l in "$d"/*; do [ -L "$l" ] && [ ! -e "$l" ] && case $(readlink "$l") in "$src"/*) rm -f "$l";; esac; done
-[ -d "$src" ] || exit 0
+for l in "$d"/*; do [ -L "$l" ] && { [ "$3" = off ] || [ ! -e "$l" ]; } && case $(readlink "$l") in "$src"/*) rm -f "$l";; esac; done
+[ "$3" != off ] && [ -d "$src" ] || exit 0
 x=$(git -C "$dir" rev-parse --git-path info/exclude) || exit 1
 case $x in /*) ;; *) x=$dir/$x;; esac
 for s in "$src"/*/; do
@@ -110,8 +111,8 @@ export async function linkSkills(deps: Pick<CoreAdminDeps, 'call'>, store: PmSto
   if (!p.workspace) return ''
   const list = await store.projects(), at = workspaceSkills(p, list, machine, '~')
   if (!at) return ''
-  const src = at.startsWith('~/') ? workspaceSkills(p, list, machine, home ?? await homeOf(deps, on))! : at
-  const r = await exec(deps, on, SKILLS_SCRIPT, [worktree, src]).catch((e: Error) => ({ code: 1, out: e.message }))
+  const src = at.dir.startsWith('~/') ? workspaceSkills(p, list, machine, home ?? await homeOf(deps, on))!.dir : at.dir
+  const r = await exec(deps, on, SKILLS_SCRIPT, [worktree, src, ...(at.off ? ['off'] : [])]).catch((e: Error) => ({ code: 1, out: e.message }))
   if (r.code !== 0) return `Workspace skills: could not link them (${r.out.split('\n').pop() || 'failed'})`
   const of = (k: string) => r.out.split('\n').filter(l => l.startsWith(`${k} `)).map(l => l.slice(k.length + 1))
   const linked = of('linked'), own = of('own')
