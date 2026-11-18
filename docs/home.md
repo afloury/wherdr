@@ -115,7 +115,10 @@ phone, where it opens as a sheet) offers, in order: *Open the board* (filtered o
 with…*, which picks another agent that becomes its default (its folder and memory stay, the
 current session stops), and *Stop the coordinator*, after a short confirm: its agent ends and it
 starts again on the next message or wake. Mute and Stop show while it runs. Alfred's row keeps
-its own menu. A coordinator shows only in its own row, never again among the agents.
+its own menu. A coordinator shows only in its own row, never again among the agents. Its
+conversation header's ⋯ menu (on a phone and a computer) starts with the same three entries,
+*Open the board*, *Project settings* (*Workspace settings* for a workspace) and *Autopilot*,
+before the conversation's own; Alfred's and other agents' menus have none of them.
 
 A [workspace](workspaces.md)'s coordinator is its **workspace row**, in the same list (its
 members have none of their own): its key badge and name, its coordinator's state, then how many
@@ -219,7 +222,7 @@ Codex agents of online machines. Choosing a result opens it.
 The Notes button in a conversation's header, beside Search (Mod+Alt+P on a computer), opens
 and closes the [notes](alfred.md#notes); it shows as pressed while they are open. When the
 header is narrow (a phone, a side-by-side cell, a narrow window) Notes is the first entry of
-the header's ⋯ menu instead. Alfred and the coordinators write them for you:
+the header's ⋯ menu instead (after a coordinator's board, settings and autopilot entries). Alfred and the coordinators write them for you:
 read-only, a short whiteboard. On a computer of
 at least 1280 px they open beside the conversation or Home's list, like Settings (drag the panel's left edge
 to resize it); otherwise in a sheet. On a page without the panel (the board, a settings page) the open
