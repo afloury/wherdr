@@ -387,6 +387,13 @@ export function reconcile(runs: Run[], terminals: LabelledTerminal[], install: s
   })
 }
 
+// While wherdr runs: a run still 'starting' this long after its start was never
+// confirmed (terminal.run timed out or herdr-core dropped). Found by its labels,
+// it goes on; else it is lost (its task's watchdog starts the agent again).
+export const STARTING_MS = 60_000
+export const staleStarts = (runs: Run[], terminals: LabelledTerminal[], install: string, now: number) =>
+  reconcile(runs.filter(r => r.state === 'starting' && now - r.startedAt > STARTING_MS), terminals, install)
+
 // Two live agents of one role on a task (two starts that raced): the one the
 // engine tracks stays (the task's run, else its newest unended run), the others end.
 export function duplicateAgents(terminals: LabelledTerminal[], runs: Run[], tasks: Pick<Task, 'id' | 'run'>[], install: string) {

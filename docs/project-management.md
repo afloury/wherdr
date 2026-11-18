@@ -1541,8 +1541,12 @@ another is refused: stop it instead). The task is **parked** the same way:
 
 The engine continues it by itself (same worktree, the same conversation, told
 why it paused) once its machine has room, keeping the machine's cap, in board
-order, and before any new task starts on that machine. If its worker cannot start
-then, the task stays paused and the engine tries again 10 minutes later. From its sheet you can
+order, and before any new task starts on that machine. A paused or parked task
+takes no slot of the autopilot's **At once** limit. If its worker cannot start
+then, the task stays paused and the engine tries again 10 minutes later; at the
+third failure the pause ends: the task waits with the real reason (a program
+missing, a setup that failed…), the machine takes new tasks again, and the
+coordinator is woken. From its sheet you can
 still **Resume now** (past the cap) or **Stop** it.
 
 ### Why agents are gone
@@ -1743,7 +1747,8 @@ its worker or reviewer, which wherdr starts again at once, also a worker that
 had ended (on its own, or by a stop the task went on from). As a safety net,
 wherdr also watches every task under way: when the agent that holds its
 current step has not been running for 3 minutes (released, ended on its own,
-or gone in a wherdr restart), wherdr starts it again in its worktree, with a
+gone in a wherdr restart, or a start herdr-core never confirmed: found by its
+labels after a minute, else counted gone), wherdr starts it again in its worktree, with a
 note on where the work stands, and the log says so. When it cannot, the card's
 status says why (*Waits for its machine (offline)*, *Waits for its machine
 (paused)*, no room on the machine), wherdr tries again every 3 minutes, and at

@@ -17,7 +17,7 @@ import { reviewAccount, reviewCap, reviewTurn, reviewerOut, runningReviews } fro
 import { policyIn, readPolicies } from './pacingPolicies'
 import { showIds } from '../../shared/pm/projectKey'
 import { PATH_SETUP, launchFailure } from './coreCreate'
-import { WRITE_SCRIPT, contextFolders, exec, linkSkills, oneStart, prepareTmp, runOn, workspaceFiles, type PmLaunchDeps } from './pmLaunch'
+import { WRITE_SCRIPT, contextFolders, exec, linkSkills, oneStart, prepareTmp, runOn, unconfirmed, workspaceFiles, type PmLaunchDeps } from './pmLaunch'
 import { contextSection } from '../../shared/pm/context'
 import { HerdrError } from './herdr'
 import { startAction } from './pmBoard'
@@ -334,10 +334,18 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
   const said = task.recovery?.say ? loginRestartText('reviewer') : undefined
   await store.logTask({ ...task, step: told, run: run.id, ...(said ? { recovery: { ...task.recovery!, say: undefined } } : {}) }, 'engine',
     (switched ? `review: ${switched}, reviewed by ${plan.program} ${plan.model}` : `review: started the reviewer${again} (${plan.program} ${plan.model})`) + (said ? `; told it: ${said}` : ''))
-  const { address } = await deps.call<{ address: string }>('terminal.run', {
-    cwd: worker.worktree, ...(on ? { on } : {}), no_parent: true, wait: false, env: agentEnv(worker.worktree),
-    labels: runLabels(await store.install(), run), line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, files.review, undefined, said, ctx.folders.map(f => f.dir))}`,
-  }, 30000)
+  let address: string
+  try {
+    address = (await deps.call<{ address: string }>('terminal.run', {
+      cwd: worker.worktree, ...(on ? { on } : {}), no_parent: true, wait: false, env: agentEnv(worker.worktree),
+      labels: runLabels(await store.install(), run), line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, files.review, undefined, said, ctx.folders.map(f => f.dir))}`,
+    }, 30000)).address
+  } catch (e) {
+    // Unconfirmed: it may run anyway; the watchdog finds it by its labels, or ends the run (staleStarts).
+    if (unconfirmed(e)) return
+    await store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
+    return void await waitFor(deps, task.id, `herdr-core refused to start the reviewer (${plan.program}): ${(e as Error).message}`)
+  }
   run = { ...run, terminal: address, state: 'running', startedAt: Date.now() }
   await store.saveRun(run)
   const failed = await launchFailure(deps, address, deps.launchWatchMs ?? 5000)
