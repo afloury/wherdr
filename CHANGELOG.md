@@ -8,6 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### New
 
+- **Antigravity CLI (`agy`) conversations** open on their saved transcript, locally or on another machine (Node 22.13 or later).
+- **Antigravity commands in the + menu.** An `agy` conversation's + menu offers `/compact`, `/clear`, `/context`, `/usage`, `/model` and `/diff`, as for Claude Code, Codex and omp. A command that opens a panel or the model picker shows the interactive terminal over the conversation; Esc there brings the message field back.
 - **omp as a worker, a reviewer and a project coordinator.** A task's `agent`, `reviewAgent` and `reviewFallbackAgent` may be `omp` (started as `omp --model <model> '<message>'`, not resumable, with no quota reading: only the task-count limits hold). A project's or workspace's coordinator may run on omp too, as an option that is never the default: it starts with a tool list without an edit tool, `ast_edit`, `eval`, `task`, `debug` and `lsp` (its shell can still write, as Claude's can), and its conversation can be resumed. With no explicit choice, the first offered Claude or Codex is the default, even when omp comes first in Settings › Agents; `wherdr alfred coordinator start --program omp` accepts it ([Projects](docs/project-management.md#worker-and-reviewer-agents), [Home](docs/home.md)).
 ## [3.1.1] — 2026-11-18
 

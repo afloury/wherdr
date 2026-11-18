@@ -81,6 +81,20 @@ describe('files of a remote machine (shell)', () => {
     expect((await rfs.readdir(path.join(home, 'projets'))).sort()).toEqual(['.cache', 'app', 'fichier.txt', "l'apostrophe et espaces", 'node_modules', 'notes'])
   })
 
+  it('stat { fresh: true } bypasses the 700 ms stat cache', async () => {
+    const f = path.join(home, 'projets/fresh.txt')
+    writeFileSync(f, '0123456789')
+    const cached = createShellFs(localSh, { statTtlMs: 60_000 })
+    expect((await cached.stat(f)).size).toBe(10)
+    writeFileSync(f, '0123456789abcdef')
+    // A plain stat keeps answering the cached size within the TTL…
+    expect((await cached.stat(f)).size).toBe(10)
+    // …but a post-copy check must see the file as it is now.
+    expect((await cached.stat(f, { fresh: true })).size).toBe(16)
+    // The fresh answer replaces the cached one for the next plain stats.
+    expect((await cached.stat(f)).size).toBe(16)
+  })
+
   it('lists subfolders (Git repositories marked, hidden ones and node_modules excluded)', async () => {
     const r = await localSh(LIST_DIRS_SCRIPT, [path.join(home, 'projets')])
     const dirs = parseDirList(r.stdout.toString())

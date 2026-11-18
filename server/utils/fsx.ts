@@ -14,7 +14,10 @@ export interface FsStat { size: number, mtimeMs: number, isFile: boolean, isDir:
 export interface PidLock { name: string, pid: number, stat: FsStat }
 
 export interface MachineFs {
-  stat: (p: string) => Promise<FsStat> // rejette si absent
+  // `fresh` bypasses any stat cache: for the checks that verify a copy
+  // against the file's state *now*, never for plain reads (the cache is
+  // what keeps per-second polls cheap). Rejects when missing.
+  stat: (p: string, opts?: { fresh?: boolean }) => Promise<FsStat>
   statMany: (ps: string[]) => Promise<(FsStat | null)[]>
   readdir: (p: string) => Promise<string[]>
   readFile: (p: string) => Promise<string>
@@ -230,7 +233,8 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number, readC
   }
 
   return {
-    async stat(p) {
+    async stat(p, o) {
+      if (o?.fresh) statCache.delete(p)
       const [s] = await statMany([p])
       if (!s) throw new FsError('ENOENT', `not found: ${p}`)
       return s
