@@ -78,13 +78,16 @@ describe('a message sent while Codex installs or updates itself', () => {
     first.hold(pane(), 'Hi', 'w-abc')
     first.hold(pane({ id: 'p2', coreAddress: 't2' }), 'Typing', 'w-def')
     first.apply([pane(), pane({ id: 'p2', coreAddress: 't2', installing: undefined })])
+    // A first message its holder (coreCreate.ts) may be typing behind a dialog.
+    first.hold(pane({ id: 'p3', coreAddress: 't3' }), 'First', undefined, true)
     // wherdr restarts.
     const sent: string[] = []
     const second = createHeld(async (_p, q) => { sent.push(q.text) }, () => 6, store)
-    const panes = [pane({ installing: undefined }), pane({ id: 'p2', coreAddress: 't2', installing: undefined })]
+    const panes = [pane({ installing: undefined }), pane({ id: 'p2', coreAddress: 't2', installing: undefined }), pane({ id: 'p3', coreAddress: 't3', installing: undefined })]
     second.apply(panes)
     expect(sent).toEqual(['Hi'])
     expect(panes[1]!.queued).toMatchObject([{ id: 'w-def', state: 'failed', reason: 'unseen' }])
+    expect(panes[2]!.queued).toMatchObject([{ text: 'First', state: 'failed', reason: 'unseen' }])
   })
   it('a message sent again (its answer lost) is held once, and typed once', async () => {
     const sent: string[] = []

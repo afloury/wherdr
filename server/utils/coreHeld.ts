@@ -11,7 +11,8 @@
 // Never typed into a shell.
 // The queue is kept on disk (`store`, DATA_DIR/held.json in state.ts) so that a
 // restart of wherdr resumes it: a message whose send the restart cut is 'unseen'
-// (it may have been typed), and one typed by its holder is typed here after it.
+// (it may have been typed), and so is one its holder had not handed over yet (the
+// holder may have typed it, and is gone): its device puts it back for the user to check.
 import fs from 'node:fs'
 import type { Pane, QueuedMessage } from '../../shared/types'
 import { writeJsonAtomicSync } from './atomicWrite'
@@ -20,7 +21,7 @@ const CLIENT_ID = /^w-[a-z0-9]{1,32}$/
 const ready = (p: Pane) => p.agent === 'codex' && !p.installing && !p.stopped && p.status !== 'working' && p.status !== 'blocked'
 const mayHaveReached = (e: unknown) => (e as { code?: string })?.code === 'timeout'
 
-// On disk: the lists by core address, and the ids being typed when it was written.
+// On disk: the lists by core address, and the ids being typed (here or by their holder).
 export interface HeldSaved { held: Record<string, QueuedMessage[]>, typing: string[] }
 export interface HeldStore { load: () => HeldSaved | null, save: (s: HeldSaved) => void }
 
@@ -52,7 +53,7 @@ export function createHeld(send: (p: Pane, q: QueuedMessage) => Promise<unknown>
   const sending = new Map<string, string>() // address → id being typed
   const manual = new Set<string>() // ids typed by their holder, not here
   let seq = 0
-  const save = () => store?.save({ held: Object.fromEntries(held), typing: [...sending.values()] })
+  const save = () => store?.save({ held: Object.fromEntries(held), typing: [...sending.values(), ...manual] })
   const unsure = (address: string, id: string) => {
     const list = held.get(address)
     if (list) held.set(address, list.map(q => (q.id === id ? { ...q, state: 'failed' as const, reason: 'unseen' as const } : q)))
