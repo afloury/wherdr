@@ -48,6 +48,14 @@ wherdr 3.1.1 rounds off workspaces (each member setting says whether it follows 
 - **Keep awake** works again on a remote Mac, and a failed read says *Could not reach <machine>* with the reason and *Try again*, instead of *Not available*.
 - **Tasks.** A review round adds its section to the task's report instead of replacing the first one; a step's busy state in Tasks to review belongs to its own task; a coordinator's first messages survive a restart; a failed migration never stops the board; writes of wherdr's files are atomic.
 - **Sheets.** Notes open beside a conversation no longer turn into a sheet when you leave for the board; a menu sheet opens above the sheet it comes from; the project sheet's hints no longer overlap its tab bar; a long custom theme name ends with an ellipsis.
+### New
+
+- **Antigravity CLI (`agy`) terminals** are recognized: their label, icon and live state.
+
+### Fixed
+
+- **A new Devin shows its conversation.** Devin 3000.12 runs a launcher as the terminal's program and its engine (`devin acp`) as a child, and the session lock names the engine, so a Devin started without `-r` (a fresh session) showed "No conversation for this agent yet". The lock of the launcher's direct Devin child now counts; a Devin started further down, from the engine's shell, keeps its own session.
+- **An idle Devin keeps its conversation.** Devin's input field was recognized only when its footer showed the token quota, which real footers rarely do (model only, `· smart`, an edits hint, a footer cut short on a phone), so an idle Devin opened the interactive terminal over the conversation. The field is now recognized by its frame, whatever the footer says. A Devin screen caught mid-redraw also no longer opens the interactive terminal for a single read: it opens once two reads in a row agree (other agents are unchanged).
 
 ## [3.1.0] — 2026-11-16
 
