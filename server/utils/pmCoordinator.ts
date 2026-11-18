@@ -28,7 +28,7 @@ import { HerdrError } from './herdr'
 import { cardNotesMessage, tellCardOutcome } from './cardOutcome'
 import { answeredTask, clearQuestion } from './pmAnswer'
 import { PATH_SETUP, homeOf, machineOn, type CoreAdminDeps } from './coreCreate'
-import { deliverFirst, startTurn } from './coordinatorFirst'
+import { deliverFirst, queuedFirst, startTurn } from './coordinatorFirst'
 import { CREATE_SCRIPT, WRITE_SCRIPT, exec, launched, startTask } from './pmLaunch'
 import { actionShell } from './pmActions'
 import { SCRIPT } from '../../shared/pm/actions'
@@ -759,7 +759,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
           }),
       project: p.key, name: p.name, ...('coordinatorName' in p && p.coordinatorName ? { coordinatorName: p.coordinatorName } : {}), ...('machine' in p ? { machines: allowedMachines(p) } : {}), ...(paused.length ? { paused } : {}), ...(busy.length ? { busy } : {}), ...('git' in p && p.git === false ? { git: false as const } : {}), ...(c?.agent ? { agent: agentOf(c.agent) ?? FALLBACK } : {}), ...('from' in p && p.from ? { template: p.from.template } : {}),
       ...(c?.ran ? { ran: agentOf(c.ran) ?? FALLBACK } : {}), ...(c?.terminal ? { terminal: c.terminal } : {}),
-      ...(c?.undelivered ? { undelivered: { why: c.undelivered.why, at: c.undelivered.at } } : {}),
+      ...(c?.undelivered && !c.undelivered.queued ? { undelivered: { why: c.undelivered.why, at: c.undelivered.at } } : {}),
       ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, changes, template: c.proposal.template, by: c.proposal.by ?? (p.key === MAIN ? 'main' : p.key), ...(c.proposal.said ? { said: c.proposal.said } : {}), ...(c.proposal.saidAt ? { saidAt: c.proposal.saidAt } : {}) } } : {}),
       ...('label' in p && p.label ? { label: p.label } : {}), ...('color' in p && p.color ? { color: p.color } : {}),
       ...(answersOf(c).length ? { answers: answersOf(c) } : {}),
@@ -961,8 +961,9 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   void answerOwnTrust(deps, address, c.folder).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
   // version: what this session knows (takeUpdateNotice tells it of an update).
+  // Typed messages stay queued on its record until each is sent (a restart delivers the rest).
   const { told: _told, cardNotes: _said, undelivered: _lost, ...rec } = (await deps.store.coordinator(key))!
-  await deps.store.saveCoordinator({ ...rec, terminal: address, ran: a, version: wherdrVersion(), ...(key === MAIN ? { agent: a } : {}) })
+  await deps.store.saveCoordinator({ ...rec, terminal: address, ran: a, version: wherdrVersion(), ...(key === MAIN ? { agent: a } : {}), ...(!asArg && prompt.length ? { undelivered: queuedFirst(prompt) } : {}) })
   // Its turn follows the user's clicks (issueToken cleared it): it may propose the next card.
   // Its first reply's workflow proposal follows the user's start.
   const said = [...proposes, ...pending, ...notes]
