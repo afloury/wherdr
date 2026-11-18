@@ -22,6 +22,7 @@ import { contextSection } from '../../shared/pm/context'
 import { HerdrError } from './herdr'
 import { startAction } from './pmBoard'
 import { cleanTask } from './pmCleanup'
+import { tickPlanFile } from './pmPlan'
 import { readLeakCheck } from './pmVisibility'
 import { isPublic, leakText, scanDiff } from '../../shared/pm/visibility'
 import type { Project } from '../../shared/pm/project'
@@ -209,6 +210,8 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
     }
     // Its agents ended: its worktree (and, merged, its local branch) goes, once tried.
     if (!task.cleanup) void cleanTask(deps, id).catch(() => {})
+    // Done with its whole workflow: its plan lines are ticked, once (pmPlan.ts).
+    if (task.refs?.length && !s.abandoned && !task.planTick) void tickPlanFile(deps, id).catch(() => {})
     return
   }
   // Stopped on a failure: it waits for the user, nothing is tried again alone.

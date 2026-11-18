@@ -313,7 +313,7 @@ sub-task's card on the board shows its feature's id (`WS-3`) as a tag.
 The workspace's coordinator runs them with no question to you:
 
 - `wherdr pm feature add "<title>" [--description "<text>"]`: a new feature.
-- `wherdr pm feature split <WS-n> < plan.json`: in **one call**, adopts the
+- `wherdr pm feature split <WS-n> [--from <path>] < plan.json`: in **one call**, adopts the
   repositories the plan needs (as [repo adopt](#adopting-a-repository) does),
   adds one sub-task per repository, chains them and starts those that wait
   for nothing. It is all or nothing: the whole plan is checked first (each
@@ -334,17 +334,98 @@ The workspace's coordinator runs them with no question to you:
   `repo` is the repository's path under the root, or a member's key; `after`
   and `mergeAfter` name repositories of the plan or existing tasks. `order` is the
   coordinator's one-line reason for the order, kept on the feature.
-- `wherdr pm task add … --feature <WS-n> --project <member>`: one more
+
+  The plan comes on stdin, or from a file with `--from <path>` (stdin is then
+  ignored): a path under the workspace's root, read on the workspace's machine.
+  A path outside the root is refused, and so is a symbolic link that leads
+  out of it, as for `repo adopt`.
+
+  A plan made from a spec's `tasks.md` can name it, and the lines each
+  sub-task covers (see [Plan lines](#plan-lines)):
+
+  ```json
+  {
+    "order": "The API first: the app calls it",
+    "plan": "specs/018-export/tasks.md",
+    "tasks": [
+      { "repo": "payroll-api", "title": "Serve payslips as PDF", "type": "task", "refs": ["T010", "T011"] }
+    ]
+  }
+  ```
+- `wherdr pm task add … --feature <WS-n> --project <member> [--refs T012,T013]`: one more
   sub-task later (`--merge-after <task>,<task>` too); `wherdr pm task edit
   <task> --after <task>,<task>` changes what a task not started yet waits
   for, and `--merge-after <task>,<task>` what a task not done yet merges
   after (`""` for nothing).
-- `wherdr pm feature close <WS-n> [--reason "<one sentence>"]`: once every
-  sub-task is done or abandoned.
+- `wherdr pm feature close <WS-n> [--reason "<one sentence>"] [--anyway]`: once every
+  sub-task is done or abandoned. A feature with a plan file is refused while
+  lines of it are still unticked: the answer lists them (their ID and the
+  first 80 characters), and the coordinator asks you before it adds
+  `--anyway` to close it all the same.
 
 A task of a member may start after tasks of the workspace's other members
 (`after`), never after a task outside the workspace or a feature, and never
 in a cycle. A task others wait for cannot be removed.
+
+### Plan lines
+
+A spec's `tasks.md` holds checkbox lines with stable IDs, such as
+`- [ ] T012 [P] [US3] Write the tests` (notes may follow on the line). A feature
+keeps the path of that file as its **plan file** (`"plan"` of the split, a path
+under the root, relative; `show <WS-n>` gives it as `planFile`), and a
+sub-task keeps the IDs of the lines it covers as its **refs** (`"refs"` of its
+entry in the split, or `--refs` of `task add --feature`; an ID is letters,
+digits and dashes, ending in a number: `T012`, `US3`, `FR-12`). Both are
+checked with the rest of the plan, before anything is added: refs need a plan
+file, and the plan file must exist under the root. `show <task>` gives the
+refs, and the worker's instructions say *Plan lines: T010, T011 in
+specs/018-export/tasks.md*, with the rule that the engine ticks them.
+
+**wherdr ticks the lines itself**, not the coordinator (on Claude, a
+workspace coordinator's edits in the root are denied once the root is
+adopted). When a sub-task with refs is **done** (its whole workflow finished,
+the same *done* that releases a `mergeAfter` wait; an abandoned task ticks
+nothing), the engine, on the workspace's machine and in the root folder:
+
+- ticks each ref's first open line (`- [ ] T012 …` → `- [x] T012 … (done: PA-1,
+  1a2b3c4, 2026-11-17)`: the task, the merge's short commit when known, the
+  date in UTC), keeping the rest of the line. A line already ticked, or not
+  found, is left as it is and said in the task's log (*plan: T011 not ticked
+  (already ticked)*). An ID is matched whole: `T1` is neither `T10` nor `T1-2`.
+  Only checkbox bullets count (`-`, `*` or `+`, then `[ ]`): a numbered list
+  (`1. [ ] T012`) is not a plan line, and nothing inside a fenced code block
+  (opened by three backticks or `~~~`) is, so an example in the file is never ticked
+  or listed as open by `feature close`.
+- when the root is a git repository, commits that file only
+  (`git commit --only -- <file>`: other staged or unstaged work is untouched,
+  and git never prompts), and only when the root is on a branch (no detached
+  HEAD), with no merge, rebase, cherry-pick, revert or bisect under way, with
+  git's index not locked, the plan file tracked and with no uncommitted change
+  (staged or not), and the root member's base branch checked out (with no
+  root member, any branch). The file is written beside itself and moved into
+  place. The message is the workspace's commit message template when it
+  has one (`{tag}` and `{id}` of the sub-task, `{title}` as *tick T010 (the
+  sub-task's title)*), else `WS-1: tick T010, T011 (PA-1)`. A commit that
+  fails (a hook refuses it) or takes over 45 seconds puts the old text back,
+  unless the file changed meanwhile.
+- when the root has no git, writes the file and nothing else. It never reads
+  or writes a path that resolves under a `.git` folder or outside the root.
+
+Some conditions pass, and the engine waits and tries again, at most every 5
+minutes, 12 times or for an hour: git's index is locked, a merge or rebase is
+under way, the file changed while it was read. An offline machine is said
+once in the task's log and waited for. Past the bound, and for the others
+(local changes to the plan file, the file not tracked, another branch, no
+branch, a commit that failed or timed out, a plan file moved out of the root or
+deleted), **nothing is written and the engine does not try that task again**.
+The same goes for a pass where no ref could be ticked (each line missing or
+already ticked). Each of these is said in four places: the task's log (*plan
+file has local changes*, *the root is on branch dev (not main)*, *not tracked
+by git*…), `show` (as `planTick`), a notification to you, like a stalled
+task's (*PA-1: plan lines not ticked*, opening the task; it follows your
+*needs you* notification rules), and a wake to the workspace's coordinator,
+when its autopilot is on, so that it can ask you. Tick the lines by hand
+then, or leave them.
 
 ### Features on the board
 
