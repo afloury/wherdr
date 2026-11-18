@@ -20,7 +20,7 @@ function setup(plugins: Record<string, unknown>, prefs: PluginPrefs = { off: [],
     timeoutMs: 50,
   }
   const host = createPluginHost(deps)
-  return { host, insert, navs, saved: () => saved, status: (id: string) => host.rows().find(r => r.id === id)?.status }
+  return { host, deps, insert, navs, saved: () => saved, status: (id: string) => host.rows().find(r => r.id === id)?.status }
 }
 
 describe('plugin host', () => {
@@ -112,6 +112,20 @@ describe('plugin host', () => {
     await s.host.setCommunity(false)
     expect(s.status('a')).toBe('off')
     expect(s.host.rows()[0]!.wanted).toBe(true)
+  })
+
+  it('drops a load still pending when Community plugins is turned off', async () => {
+    let resolve!: (m: { default: unknown }) => void
+    const activate = vi.fn()
+    const s = setup({ p: activate })
+    const h = createPluginHost({ ...s.deps, load: () => new Promise(r => { resolve = r }) })
+    const init = h.init()
+    await vi.waitFor(() => expect(resolve).toBeTypeOf('function'))
+    await h.setCommunity(false)
+    resolve({ default: activate })
+    await init
+    expect(activate).not.toHaveBeenCalled()
+    expect(h.rows()[0]!.status).toBe('off')
   })
 
   it('survives a failing manifest list', async () => {

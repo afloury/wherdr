@@ -43,6 +43,10 @@ export function createPluginHost(deps: HostDeps) {
   const instances = new Map<string, Plugin>()
   let listError = ''
   let community = false
+  // One number per plugin, raised when it is turned off: a load still pending
+  // from before is dropped instead of activating.
+  const runs = new Map<string, number>()
+  const cancel = (id: string) => runs.set(id, (runs.get(id) ?? 0) + 1)
 
   function fail(id: string, e: unknown) {
     const p = deps.prefs()
@@ -84,18 +88,22 @@ export function createPluginHost(deps: HostDeps) {
   async function start(info: ClientPluginInfo) {
     status.set(info.id, 'loading')
     deps.changed()
+    const run = cancel(info.id).get(info.id)
+    // Still wanted: not turned off (or off and on again) since this load began.
+    const live = () => community && runs.get(info.id) === run
     try {
       const mod = await withTimeout(deps.load(info), deps.timeoutMs ?? 8000, 'Loading timed out')
+      if (!live()) return
       const plugin = mod.default as Plugin
       const fn = typeof plugin === 'function' ? plugin : plugin && typeof plugin.activate === 'function' ? plugin.activate.bind(plugin) : null
       if (!fn) throw new Error('The bundle has no default export (a function or { activate })')
       if (typeof plugin === 'object') instances.set(info.id, plugin)
       await withTimeout(Promise.resolve(fn(apiFor(info.id))), deps.timeoutMs ?? 8000, 'Activation timed out')
-      // Community plugins turned off while it loaded.
-      if (!community) { stop(info.id); status.delete(info.id); deps.changed(); return }
+      // Turned off while it activated: undo it.
+      if (!live()) { stop(info.id); return }
       status.set(info.id, 'running')
       deps.changed()
-    } catch (e) { fail(info.id, e) }
+    } catch (e) { if (live()) fail(info.id, e) }
   }
 
   // The plugins to start: wanted, not failed, not already started.
@@ -127,6 +135,7 @@ export function createPluginHost(deps: HostDeps) {
     community = on
     if (on) return startAll()
     for (const id of [...status.keys()]) {
+      cancel(id)
       stop(id)
       if (status.get(id) !== 'failed') status.delete(id)
     }
@@ -142,7 +151,7 @@ export function createPluginHost(deps: HostDeps) {
     delete failed[id]
     deps.savePrefs({ off: on ? p.off.filter(x => x !== id) : [...new Set([...p.off, id])], failed })
     if (on) await start(info)
-    else { stop(id); status.set(id, 'off'); deps.changed() }
+    else { cancel(id); stop(id); status.set(id, 'off'); deps.changed() }
   }
 
   function rows(): PluginRow[] {
