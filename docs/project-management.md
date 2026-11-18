@@ -1143,7 +1143,12 @@ agent* works again once its worker runs. Every
 task, whatever its step, also has *Open the agent*, as on the [task
 sheet](#task-sheet): its agent's conversation, *Worker* or *Reviewer* when both
 run, disabled with *Agent is terminated* once it ended. *3 of 12* with previous and next: a task you pass over stays in the list.
-On a computer, → next, ← previous, A approve, R reject. Approve and Send back
+On a computer, → next, ← previous, A approve, R reject. Every button that sends
+something (Approve, Send back, an answer's choice or *Send*, *Ask the
+coordinator*, *Try again*…) shows a loader from the tap until the server
+answered, on that button and that task only, the others disabled meanwhile, so
+a second tap sends nothing; the task sheet's To do tab does the same, a check on
+the button once it went through. Approve and Send back
 say so on their button (*Approved*, *Sent back*) for a moment, then the next
 task slides in (the arrows slide too, without it; a fade if your system reduces
 motion); a failed action keeps the task with its error. After the last one:
