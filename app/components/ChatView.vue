@@ -472,7 +472,11 @@ const TOOL_LABEL: Record<string, string> = {
   write_file: tl('Write', 'Écriture'), edit_file: TOOL_EDIT, multi_edit_file: TOOL_EDIT, replace_file_content: TOOL_EDIT,
   grep_search: tl('Search', 'Recherche'), codebase_search: tl('Search', 'Recherche'), find_by_name: tl('Files', 'Fichiers'), list_dir: tl('Files', 'Fichiers'),
   search_web: tl('Web search', 'Recherche web'), read_url_content: 'Web', invoke_subagent: TOOL_SUBAGENT, view_code_item: tl('Read', 'Lecture'),
+  // Hermes Agent tool names (read_file and write_file above).
+  terminal: TOOL_COMMAND, patch: TOOL_EDIT, delegate_task: TOOL_SUBAGENT, web_extract: 'Web',
 }
+TOOL_LABEL.search_files = TOOL_LABEL.Grep!
+TOOL_LABEL.web_search = TOOL_LABEL.WebSearch!
 const TOOL_ICON: Record<string, string> = {
   Bash: 'i-lucide-terminal', exec: 'i-lucide-terminal', shell: 'i-lucide-terminal',
   Read: 'i-lucide-file-text', Write: 'i-lucide-file-plus', Edit: 'i-lucide-file-pen', MultiEdit: 'i-lucide-file-pen',
@@ -485,6 +489,8 @@ const TOOL_ICON: Record<string, string> = {
   grep_search: 'i-lucide-text-search', codebase_search: 'i-lucide-text-search', find_by_name: 'i-lucide-folder-search', list_dir: 'i-lucide-folder-search',
   search_web: 'i-lucide-search', read_url_content: 'i-lucide-globe', invoke_subagent: 'i-lucide-bot',
   send_message: 'i-lucide-message-square', ask_question: 'i-lucide-message-circle-question',
+  terminal: 'i-lucide-terminal', patch: 'i-lucide-file-pen', search_files: 'i-lucide-text-search',
+  web_search: 'i-lucide-search', web_extract: 'i-lucide-globe', delegate_task: 'i-lucide-bot',
 }
 // Codex "exec" runs code: a shell command, or another tool (write_stdin…).
 // Tool summary: the task count comes from the server in English ("3 tasks").
