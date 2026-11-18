@@ -526,7 +526,10 @@ export const specChangedText = (what: string) => `The task's spec changed: ${wha
 // edit tool, and its `write` tool refuses filesystem paths (it writes only its
 // internal xd:// devices and local:// session scratch). The shell can still
 // write, as with Claude: the guard is the list.
-export const OMP_COORDINATOR_TOOLS = 'read,grep,glob,find,bash,todo,ask,web_search,wait'
+// omp refuses to start when a listed tool is unknown or unavailable, so the list
+// keeps to its core tools: no `find` (a semantic search on some versions, missing
+// when omp has no model for it, as on 18.11 without a login); glob and grep find files.
+export const OMP_COORDINATOR_TOOLS = 'read,grep,glob,bash,todo,ask,web_search,wait'
 
 // How the coordinator starts, in its own folder, with its harness's default
 // model. Claude: the repo added with --add-dir, its edits denied in the

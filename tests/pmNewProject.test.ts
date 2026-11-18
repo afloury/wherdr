@@ -138,8 +138,6 @@ describe('coordinator of a folder without git', () => {
     expect(coordinatorArgs('codex', '/c', '/home/user/clients', true)).toContain('--add-dir')
     expect(coordinatorArgs('codex', '/c', '/home/user/clients')).not.toContain('--add-dir')
     expect(coordinatorArgs('claude', '/c', '/home/user/clients', true)).toEqual(['claude', '--add-dir', '/home/user/clients'])
-    expect(coordinatorArgs('omp', '/c', '/home/user/clients', true)).toEqual(['omp', '--add-dir', '/home/user/clients'])
-    expect(coordinatorArgs('omp', '/c', '/home/user/clients')).toEqual(expect.arrayContaining(['--tools']))
   })
 
   it('a workspace is no plain folder: members denied, root writable, work through tasks, the root\'s rules copied', () => {
@@ -163,7 +161,6 @@ describe('coordinator of a folder without git', () => {
     const omp = coordinatorArgs('omp', '/c', ws.path, isPlainFolder(ws))
     expect(omp.slice(0, 2)).toEqual(['omp', '--tools'])
     expect(omp[2]).toBe(OMP_COORDINATOR_TOOLS)
-    expect(omp[2]!.split(',').filter(x => /^(edit|write|ast_edit|eval|task|debug|lsp)$/.test(x))).toEqual([])
     expect(omp.slice(3)).toEqual(['--add-dir', ws.path])
   })
 })

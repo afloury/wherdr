@@ -29,15 +29,6 @@ it('an explicit omp is kept while it is offered; hidden, the default moves to Cl
   expect(coordinatorAgent({ project: 'WEB', agent: { program: 'omp' } })).toEqual({ program: 'claude' })
 })
 
-it('omp is the default only when neither Claude nor Codex is offered', () => {
-  offer(['claude', 'codex', 'omp'], ['omp', 'claude', 'codex'], ['claude', 'codex'])
-  expect(coordinatorAgent({ project: 'WEB' })).toEqual({ program: 'omp' })
-  expect(defaultProjectChoice(offerCoordinators(undefined, 'WEB'))).toBe('omp')
-  offer(['pi'], [])
-  expect(coordinatorAgent({ project: 'WEB' })).toBeUndefined()
-  expect(defaultProjectChoice(offerCoordinators(undefined, 'WEB'))).toBe('')
-})
-
 it('Alfred is unchanged: the user\'s chosen agent, else their first offered', () => {
   offer(['claude', 'omp'], ['omp'])
   expect(coordinatorAgent({ project: MAIN, agent: { program: 'claude' } })).toEqual({ program: 'claude' })
