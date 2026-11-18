@@ -13,7 +13,7 @@ import { LIST_DIRS_SCRIPT, dirDeniedFromCode, parseDirList } from './fsx'
 import { toAgentName } from '../../shared/ids'
 import { cleanLabel } from '../../shared/spaceActions'
 import { fmt } from '../../shared/message'
-import { placementLabels } from '../../shared/coreLayout'
+import { placementLabels, splitLabels } from '../../shared/coreLayout'
 import { codexInstalling, codexLine } from '../../shared/codexLaunch'
 import { coreCapabilities, hasPort, type CoreCapabilities } from '../../shared/coreCapabilities'
 import type { ChatItem, DirEntry, DirListing, MachineConfig, MachineInfo, Pane, QueuedMessage, Workspace } from '../../shared/types'
@@ -192,7 +192,7 @@ export async function sendAfterDialog(deps: CoreAdminDeps, address: string, text
 // Codex runs in a line that keeps its terminal when an update ends it (shared/codexLaunch.ts).
 const launchLine = (kind: string, args: string[]) => (kind === 'codex' ? codexLine(args) : `exec ${[kind, ...args].join(' ')}`)
 
-export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown, workspace?: unknown, prompt?: unknown, resume?: unknown }
+export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown, workspace?: unknown, prompt?: unknown, resume?: unknown, beside?: unknown }
 
 const newId = (prefix: string) => prefix + crypto.randomBytes(16).toString('hex')
 // herdr-app placement: a new tab of the given space, else of the space holding the
@@ -203,6 +203,18 @@ export function creationLabels(deps: CoreAdminDeps, m: MachineInfo, cwd: string,
   const target = workspace ? mine.find(w => w.id === String(workspace)) : undefined
   if (workspace && !target?.coreSpace) return {}
   return placementLabels(mine.filter(w => w.coreSpace).map(w => ({ id: w.coreSpace!, folder: w.path })), cwd, newId, target?.coreSpace)
+}
+
+// Split down: labels that put the new terminal in the tab of pane `beside` (same
+// machine). A tab of its own folder terminal first labels that terminal too.
+async function besideLabels(deps: CoreAdminDeps, m: MachineInfo, paneId: string) {
+  const pane = deps.panes().find(p => p.id === paneId)
+  if (!pane?.coreAddress || (pane.machine || '') !== m.key) throw new HerdrError('not_found', 'Pane not found')
+  const space = deps.workspaces().find(w => w.id === pane.workspace)?.coreSpace
+  const split = splitLabels(pane, space, () => newId('wt'))
+  if (!split) throw new HerdrError('not_found', 'Tab not found')
+  if (split.relabel) await deps.call('terminal.label', { terminal: pane.coreAddress, labels: split.relabel }, 8000)
+  return split.labels
 }
 
 // Creates a terminal ('shell') or an agent CLI in a folder. The result is only
@@ -223,9 +235,10 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
   const name = toAgentName(typed)
   if (name && !NAME_RE.test(name)) throw new HerdrError('bad_name', 'Invalid name')
   const request = crypto.randomBytes(8).toString('hex')
+  const placement = body.beside ? await besideLabels(deps, m, String(body.beside)) : creationLabels(deps, m, cwd, body.workspace)
   const params = {
     cwd, ...(on ? { on } : {}), ...(name ? { name } : {}), no_parent: true, wait: false,
-    labels: { [REQUEST_LABEL]: request, ...creationLabels(deps, m, cwd, body.workspace) }, ...(kind === 'shell' ? {} : { line: `${PATH_SETUP}; ${launchLine(kind, body.resume === true ? RESUME_ARGS[kind] || [] : [])}` }),
+    labels: { [REQUEST_LABEL]: request, ...placement }, ...(kind === 'shell' ? {} : { line: `${PATH_SETUP}; ${launchLine(kind, body.resume === true ? RESUME_ARGS[kind] || [] : [])}` }),
   }
   let address: string
   try {
@@ -263,7 +276,7 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
       deps.onQueued?.(watch)
     }
   }
-  return { pane_id: pane.id, workspace_id: pane.workspace, name: kind === 'shell' ? null : name || kind, first_message: sent, ...(queued ? { queued } : {}) }
+  return { pane_id: pane.id, workspace_id: pane.workspace, tab_id: pane.tab, name: kind === 'shell' ? null : name || kind, first_message: sent, ...(queued ? { queued } : {}) }
 }
 
 // Adds a machine over SSH (like `hc machine add <target>`): no command (`via`) and no

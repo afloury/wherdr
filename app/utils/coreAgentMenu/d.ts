@@ -1,5 +1,6 @@
-// Items lot D (WHR-244) adds to the agent "…" menu with herdr-core. See app/utils/coreAgentMenu.ts.
+// Split down (WHR-494) in the agent "…" menu with herdr-core. See app/utils/coreAgentMenu.ts.
 import type { CoreMenuContribution } from '../coreAgentMenu'
+import { splitDownItem } from '~/composables/useSpaces'
 
-const contribute: CoreMenuContribution = () => []
+const contribute: CoreMenuContribution = ({ pane }) => (pane ? splitDownItem(pane) : [])
 export default contribute
