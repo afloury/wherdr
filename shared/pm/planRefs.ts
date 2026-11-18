@@ -33,7 +33,20 @@ export function parsePlanPath(raw: unknown): string | { error: string } {
 }
 
 const escape = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-const OPEN = /^\s*[-*] \[ \] ([A-Za-z][A-Za-z0-9-]*\d+)\b/
+// An ID ends where no ID character follows: T1 is not T10 nor T1-2.
+const END = '(?![A-Za-z0-9-])'
+const OPEN = new RegExp(`^\\s*[-*+] \\[ \\] ([A-Za-z][A-Za-z0-9-]*\\d+)${END}`)
+
+// The lines inside a fenced code block (``` or ~~~, the fences included): an example, never a plan line.
+function fenced(lines: string[]): boolean[] {
+  let fence = ''
+  return lines.map((l) => {
+    const m = /^ {0,3}(`{3,}|~{3,})/.exec(l)
+    if (!fence) { if (m) fence = m[1]!; return !!m }
+    if (m && m[1]![0] === fence[0] && m[1]!.length >= fence.length && !l.trim().slice(m[1]!.length).trim()) fence = ''
+    return true
+  })
+}
 
 export type Skipped = { ref: string, why: 'already ticked' | 'not found' }
 export interface Done { task: string, date: string, sha?: string }
@@ -42,14 +55,14 @@ export interface Done { task: string, date: string, sha?: string }
 // notes and line endings kept. A line already ticked, or none: left as it is and
 // named in skipped. Ticking twice changes nothing the second time.
 export function tickPlan(text: string, refs: string[], done: Done): { text: string, ticked: string[], skipped: Skipped[] } {
-  const lines = text.split('\n'), ticked: string[] = [], skipped: Skipped[] = []
+  const lines = text.split('\n'), skip = fenced(lines), ticked: string[] = [], skipped: Skipped[] = []
   const note = ` (done: ${[done.task, done.sha, done.date].filter(Boolean).join(', ')})`
   for (const ref of refs) {
-    const open = new RegExp(`^(\\s*[-*] )\\[ \\] ${escape(ref)}\\b`)
-    const i = lines.findIndex(l => open.test(l))
+    const open = new RegExp(`^(\\s*[-*+] )\\[ \\] ${escape(ref)}${END}`)
+    const i = lines.findIndex((l, n) => !skip[n] && open.test(l))
     if (i < 0) {
-      const was = new RegExp(`^\\s*[-*] \\[[xX]\\] ${escape(ref)}\\b`)
-      skipped.push({ ref, why: lines.some(l => was.test(l)) ? 'already ticked' : 'not found' })
+      const was = new RegExp(`^\\s*[-*+] \\[[xX]\\] ${escape(ref)}${END}`)
+      skipped.push({ ref, why: lines.some((l, n) => !skip[n] && was.test(l)) ? 'already ticked' : 'not found' })
       continue
     }
     const line = lines[i]!, head = open.exec(line)![1]!, cr = line.endsWith('\r') ? '\r' : ''
@@ -64,9 +77,10 @@ export const skippedText = (skipped: Skipped[]) => skipped.map(s => `plan: ${s.r
 
 // The lines still open (`- [ ] T012 …`), each as its ID and its text (the first 80 characters after the box).
 export function openLines(text: string): { id: string, text: string }[] {
-  return text.split('\n').flatMap((l) => {
-    const m = OPEN.exec(l)
-    return m ? [{ id: m[1]!, text: l.replace(/^\s*[-*] \[ \] /, '').trimEnd().slice(0, 80) }] : []
+  const all = text.split('\n'), skip = fenced(all)
+  return all.flatMap((l, n) => {
+    const m = skip[n] ? null : OPEN.exec(l)
+    return m ? [{ id: m[1]!, text: l.replace(/^\s*[-*+] \[ \] /, '').trimEnd().slice(0, 80) }] : []
   })
 }
 

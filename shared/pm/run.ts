@@ -68,6 +68,7 @@ export interface Task {
   plan?: { order: string, file?: string } // a feature's split: the coordinator's one-line reason for its order; file: its plan file (a spec's tasks.md) under the workspace's root, whose lines its sub-tasks' refs name (planRefs.ts)
   refs?: string[] // a sub-task's plan lines (IDs such as T010 in its feature's plan file): ticked once it is done
   planTick?: { at: number, ticked?: string[], skipped?: string } // its refs written to the plan file (pmPlan.ts): when, which lines, or why not (kept: never tried twice)
+  planTries?: { n: number, first: number, at: number, why?: string, offline?: true } // the write-back waiting on something that passes (a lock, a merge or rebase under way, a file changed meanwhile): its tries so far, bounded; offline: its machine is unreachable, said once
   closed?: { at: number, by: string, reason?: string } // a feature its coordinator closed: done
   stopped?: Stopped // who stopped it and why (stop.ts): it waits for the user
   autopilot?: true // started or added by the coordinator in a wake: its autopilot's own

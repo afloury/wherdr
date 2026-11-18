@@ -293,26 +293,43 @@ nothing), the engine, on the workspace's machine and in the root folder:
 
 - ticks each ref's first open line (`- [ ] T012 …` → `- [x] T012 … (done: PA-1,
   1a2b3c4, 2026-11-17)`: the task, the merge's short commit when known, the
-  date), keeping the rest of the line. A line already ticked, or not found, is
-  left as it is and said in the task's log (*plan: T011 not ticked (already
-  ticked)*). `T1` never matches `T10`.
+  date in UTC), keeping the rest of the line. A line already ticked, or not
+  found, is left as it is and said in the task's log (*plan: T011 not ticked
+  (already ticked)*). An ID is matched whole: `T1` is neither `T10` nor `T1-2`.
+  Only checkbox bullets count (`-`, `*` or `+`, then `[ ]`): a numbered list
+  (`1. [ ] T012`) is not a plan line, and nothing inside a fenced code block
+  (opened by three backticks or `~~~`) is, so an example in the file is never ticked
+  or listed as open by `feature close`.
 - when the root is a git repository, commits that file only
-  (`git commit --only -- <file>`: other staged or unstaged work is untouched),
-  and only when the plan file has no uncommitted change (staged or not) and
-  the root has the root member's base branch checked out (with no root member,
-  any branch). The message is the workspace's commit message template when it
+  (`git commit --only -- <file>`: other staged or unstaged work is untouched,
+  and git never prompts), and only when the root is on a branch (no detached
+  HEAD), with no merge, rebase, cherry-pick, revert or bisect under way, with
+  git's index not locked, the plan file tracked and with no uncommitted change
+  (staged or not), and the root member's base branch checked out (with no
+  root member, any branch). The file is written beside itself and moved into
+  place. The message is the workspace's commit message template when it
   has one (`{tag}` and `{id}` of the sub-task, `{title}` as *tick T010 (the
-  sub-task's title)*), else `WS-1: tick T010, T011 (PA-1)`. A commit that fails
-  (a hook refuses it) leaves the file as it was.
-- when the root has no git, writes the file and nothing else.
+  sub-task's title)*), else `WS-1: tick T010, T011 (PA-1)`. A commit that
+  fails (a hook refuses it) or takes over 45 seconds puts the old text back,
+  unless the file changed meanwhile.
+- when the root has no git, writes the file and nothing else. It never reads
+  or writes a path that resolves under a `.git` folder or outside the root.
 
-Nothing is written when one of those conditions fails: the task's log says
-why (*plan file has local changes*, *the root is on branch dev (not main)*,
-*not tracked by git*…), `show` gives it as `planTick`, and the workspace's
-coordinator is told once, in a wake, when its autopilot is on, to ask you.
-Tick the lines by hand then, or leave them; the engine does not try that task
-again. A machine that is offline, or a file that changed while it was read, is
-tried again at the next pass.
+Some conditions pass, and the engine waits and tries again, at most every 5
+minutes, 12 times or for an hour: git's index is locked, a merge or rebase is
+under way, the file changed while it was read. An offline machine is said
+once in the task's log and waited for. Past the bound, and for the others
+(local changes to the plan file, the file not tracked, another branch, no
+branch, a commit that failed or timed out, a plan file moved out of the root or
+deleted), **nothing is written and the engine does not try that task again**.
+The same goes for a pass where no ref could be ticked (each line missing or
+already ticked). Each of these is said in four places: the task's log (*plan
+file has local changes*, *the root is on branch dev (not main)*, *not tracked
+by git*…), `show` (as `planTick`), a notification to you, like a stalled
+task's (*PA-1: plan lines not ticked*, opening the task; it follows your
+*needs you* notification rules), and a wake to the workspace's coordinator,
+when its autopilot is on, so that it can ask you. Tick the lines by hand
+then, or leave them.
 
 ### Features on the board
 
