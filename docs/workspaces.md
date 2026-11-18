@@ -262,6 +262,46 @@ member keeps no copy), or the member's own. It never changes a member's own
 workflow: `template edit --project <member>` is refused, and the refusal points
 to the workspace's workflow, which every member without its own runs.
 
+## Context folders
+
+A member task's worktree holds its own repository only. **Context folders** give
+a task's worker and reviewer read-only snapshots of other members, so a spec
+task in the [root's own repository](#the-roots-own-repository) or a reviewer
+checking a contract between two repositories can read them.
+
+- On a task type, in the workflow JSON: `"context": "all"` or
+  `"context": ["PAY", "WEB"]`.
+- On one task: `wherdr pm task add "Spec the export" --type spec --context PAY,WEB`,
+  or `task edit <task> --context … --reason …` (from its next start; `""` puts
+  back the task type's, `none` turns it off). `all` is every other member.
+
+A task's own setting wins. wherdr refuses it outside a workspace, for a project
+that is not another member, and for the task's own project.
+
+At the task's first start, for each member with a clone on the task's machine,
+wherdr fetches its base branch from `origin` and makes a detached, read-only
+worktree of that commit at `<home>/.wherdr/pm/context/<member>/<commit>`, shared
+by the machine's tasks. **The task keeps those commits**: a later start of its
+worker, and its reviewer, read the same ones even after the base moved on (a
+commit the clone and `origin` no longer have is skipped, never replaced). A
+snapshot is reused only when unchanged and still read-only; else it is built
+again and the log line says *(it had been changed: built again)*. The
+instructions (the review file for a reviewer) get a *Context (read only)*
+section listing each member, its repository path, the commit and the folder,
+and the task's log one line:
+`context: PAY @ 1a2b3c4 (skipped API: no clone on laptop)`. A failed fetch shows
+*(not fetched)* (the clone's copy of the branch is used), a clone without
+`origin` *(local branch)*. A member that cannot give a snapshot is skipped with
+its reason, never stopping the task.
+
+Claude and omp agents get `--add-dir <folder>` for each snapshot. Codex gets
+none: its sandbox already reads everywhere, and `--add-dir` would make the
+folder writable.
+
+The worktree sweep removes a snapshot that no unfinished task's latest worker
+or reviewer reads and that no start used for an hour (`git worktree remove` in
+the member's clone, or the folder itself when the clone is gone).
+
 ## Features
 
 A workspace's tasks are **features**, never ordinary tasks: wherdr refuses any

@@ -43,6 +43,7 @@ import { reviveWorker } from './pmRelease'
 import { restartReview } from './pmWatchdog'
 import { handFix } from '../../shared/pm/release'
 import { CHAIN_WAIT, DONE_CMD, afterIds, mergeAfterIds } from '../../shared/pm/advance'
+import { checkTaskContext } from '../../shared/pm/context'
 import { READ_LINES, lastWords } from './pmRead'
 import { READ_COMMANDS, reachRefusal } from '../../shared/pm/reach'
 import { resumeRefusal } from '../../shared/pm/stop'
@@ -525,7 +526,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
         if (why) throw new HerdrError('refused', why)
         // No longer held by its chain: to do again, where the engine looks at it.
         const saved = await store.updateTask(task.id, x => ({ ...x, after: ids.join(',') || undefined, ...(x.state === 'waiting' && x.waiting?.includes(CHAIN_WAIT) ? { state: 'todo' as const, waiting: undefined } : {}) }), { by, text: `starts after ${ids.join(', ') || 'no task'} (${cmd.reason})` })
-        if (cmd.title === undefined && cmd.description === undefined && cmd.mergeAfter === undefined) return { task: saved }
+        if (cmd.title === undefined && cmd.description === undefined && cmd.mergeAfter === undefined && cmd.context === undefined) return { task: saved }
       }
       if (cmd.name === 'task edit' && cmd.mergeAfter !== undefined) {
         const task = await taskOf(cmd.task), ids = mergeAfterIds({ mergeAfter: cmd.mergeAfter }).map(a => storedTaskId(projects, a) ?? a)
@@ -533,6 +534,16 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
         const why = task.step?.done ? `${task.id} is done` : afterRefusal(task.project, ids, await store.tasks(), projects, task.id, 'mergeAfter')
         if (why) throw new HerdrError('refused', why)
         const saved = await store.updateTask(task.id, x => ({ ...x, mergeAfter: ids.join(',') || undefined }), { by, text: `merges after ${ids.join(', ') || 'no task'} (${cmd.reason})` })
+        if (cmd.title === undefined && cmd.description === undefined && cmd.context === undefined) return { task: saved }
+      }
+      if (cmd.name === 'task edit' && cmd.context !== undefined) {
+        const task = await taskOf(cmd.task)
+        if (turn !== 'user' && !pilot?.on) throw new HerdrError('refused', 'In a wake, context folders are changed only with the autopilot on')
+        if (task.step?.done) throw new HerdrError('refused', `${task.id} is done`)
+        const checked = cmd.context === null ? { context: undefined } : checkTaskContext(cmd.context, projects.find(x => x.key === task.project)!, projects)
+        if ('error' in checked) throw new HerdrError('refused', checked.error)
+        const said = checked.context === undefined ? 'its task type\'s' : checked.context === 'all' ? 'all other members' : checked.context.join(', ') || 'none'
+        const saved = await store.updateTask(task.id, x => ({ ...x, context: checked.context }), { by, text: `context folders: ${said}, from its next start (${cmd.reason})` })
         if (cmd.title === undefined && cmd.description === undefined) return { task: saved }
       }
       const why = specChangeRefusal(turn)
@@ -582,7 +593,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
       // Added in the user's turn: their request, never held by the pace.
-      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.mergeAfter ? { mergeAfter: cmd.mergeAfter } : {}), files: cmd.files ?? [], ...(cmd.feature ? { feature: cmd.feature } : {}), ...(cmd.weight ? { weight: cmd.weight } : {}), ...(cmd.fromBranch ? { fromBranch: cmd.fromBranch } : {}), origin: turn === 'user' ? 'user' : 'coordinator', addedBy: scope })
+      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.mergeAfter ? { mergeAfter: cmd.mergeAfter } : {}), files: cmd.files ?? [], ...(cmd.feature ? { feature: cmd.feature } : {}), ...(cmd.weight ? { weight: cmd.weight } : {}), ...(cmd.fromBranch ? { fromBranch: cmd.fromBranch } : {}), ...(cmd.context ? { context: cmd.context } : {}), origin: turn === 'user' ? 'user' : 'coordinator', addedBy: scope })
       const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
       if (look) await store.saveCoordinator({ ...rec!, lookAdded: bump(rec!.lookAdded, Date.now()) })
       if (look && cross) { const c = (await store.coordinator(cross.project))!; await store.saveCoordinator({ ...c, lookAdded: bump(c.lookAdded, Date.now()) }) }

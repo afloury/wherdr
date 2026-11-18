@@ -102,7 +102,31 @@ export interface TaskType {
   guards?: Guards // may only make the project's guards stricter
   prefs?: Prefs
   childType?: string // the type of the tasks this one proposes (a split)
+  context?: ContextSpec // read-only context folders for its tasks (context.ts); a task's own setting wins
   steps: (Step | string)[] // a string reuses a shared step by its id
+}
+
+// Read-only context folders (shared/pm/context.ts): which other members of the
+// task's workspace its agents may read at their base branch. 'all': every other
+// member; a list of member keys; [] none.
+export type ContextSpec = 'all' | string[]
+const MEMBER_KEY = /^[A-Z][A-Z0-9]{1,9}$/
+export const isContextError = (c: unknown): c is { error: string } => !!c && typeof c === 'object' && !Array.isArray(c)
+// A --context value: all, none, or member keys separated by commas.
+export function parseContext(text: string): ContextSpec | { error: string } {
+  const t = text.trim()
+  if (t === 'all') return 'all'
+  if (t === 'none') return []
+  const keys = t.split(',').map(k => k.trim())
+  if (!t || !keys.every(k => MEMBER_KEY.test(k))) return { error: 'context is all, none, or a list of member projects: PAY,WEB' }
+  return [...new Set(keys)]
+}
+// A context as a file or a request holds it: the text of parseContext, or a list of keys.
+export function readContext(v: unknown): ContextSpec | undefined | { error: string } {
+  if (v === undefined || v === null || v === '') return undefined
+  if (typeof v === 'string') return parseContext(v)
+  if (Array.isArray(v) && v.every(k => typeof k === 'string' && MEMBER_KEY.test(k))) return [...new Set(v as string[])]
+  return { error: 'context is "all", or a list of member project keys' }
 }
 
 // Worktree setup (pmDeps.ts), before a task's first worker: copy, ignored
@@ -279,7 +303,8 @@ export function validateTemplate(t: unknown): WorkflowError[] {
   for (const [name, tt] of Object.entries(t.taskTypes)) {
     const path = `taskTypes.${name}`
     if (!isObj(tt)) { errs.push({ path, message: 'must be an object' }); continue }
-    checkKeys(tt, ['instructions', 'weight', 'guards', 'prefs', 'childType', 'steps'], path, errs)
+    checkKeys(tt, ['instructions', 'weight', 'guards', 'prefs', 'childType', 'context', 'steps'], path, errs)
+    if (tt.context !== undefined) { const c = readContext(tt.context); if (!c || isContextError(c)) errs.push({ path: `${path}.context`, message: c ? c.error : 'must be "all" or a list of member project keys' }) }
     if (tt.weight !== undefined && !isWeight(tt.weight)) errs.push({ path: `${path}.weight`, message: `must be one of ${WEIGHTS.join(', ')}` })
     if (tt.instructions !== undefined && typeof tt.instructions !== 'string') errs.push({ path: `${path}.instructions`, message: 'must be text' })
     checkGuards(tt.guards, `${path}.guards`, errs)
