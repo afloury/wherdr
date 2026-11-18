@@ -1521,8 +1521,8 @@ task's title, PR and report. A task that would close a cycle (WHR-12 already
 waits for this one, directly or not) is refused: this task is not parked, its
 worker is told, and the coordinator gets one wake with a decision: pull the
 shared contract (proto, API, schema) into its own task both wait for, or merge
-the two tasks into one. If it cannot decide, it leaves the wake unanswered
-and the choice reaches you in **Tasks to review**.
+the two tasks into one. If it cannot decide, it tells you both options and leaves the wake unanswered:
+you also get the *coordinator is not answering* notification.
 
 ### A task paused for room
 
