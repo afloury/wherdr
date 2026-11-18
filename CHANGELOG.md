@@ -6,8 +6,13 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **A feature's plan file is ticked as its sub-tasks finish.** A feature split can name a spec's `tasks.md` (`"plan"`) and, on each sub-task, the lines it covers (`"refs": ["T010", "T011"]`, or `task add --feature … --refs`). When a sub-task is done, wherdr ticks those lines itself on the workspace's machine (`- [x] T010 … (done: PA-1, 1a2b3c4, 2026-11-17)`) and, in a git root, commits that file only, with your commit message template; it writes nothing over local changes or on another branch than the root member's base, says why in the task's log and tells the coordinator once. `feature split --from <path>` reads the plan from a file under the root (a path or link out of it is refused), and `feature close` lists the lines still unticked and refuses until `--anyway` ([Workspaces](docs/workspaces.md#plan-lines)).
+
 ### Fixed
 
+- **`feature split < plan.json` reaches the server from a coordinator's folder.** The folder's `wherdr` script did not send its input for `feature split`, so the plan never arrived; it does now (not with `--from`).
 - **A new Devin shows its conversation.** Devin 3000.12 runs a launcher as the terminal's program and its engine (`devin acp`) as a child, and the session lock names the engine, so a Devin started without `-r` (a fresh session) showed "No conversation for this agent yet". The lock of a Devin process under the launcher now counts.
 - **An idle Devin keeps its conversation.** Devin's input field was recognized only when its footer showed the token quota, which real footers rarely do (model only, `· smart`, an edits hint, a footer cut short on a phone), so an idle Devin opened the interactive terminal over the conversation. The field is now recognized by its frame, whatever the footer says. A Devin screen caught mid-redraw also no longer opens the interactive terminal for a single read: it opens once two reads in a row agree (other agents are unchanged).
 

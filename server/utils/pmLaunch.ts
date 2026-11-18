@@ -303,7 +303,8 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const leakCheck = isPublic(p) ? (await readLeakCheck(deps, on, paths).catch(() => ({ check: undefined }))).check : undefined
   const ws = await workspaceFiles(deps, task, p, true)
   task = ws.task
-  const text = showIds([p], instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(machine, deps.origin), token: shotToken } : undefined, leakCheck, ws.lines)
+  const planFile = task.refs?.length && task.feature ? (await store.task(task.feature))?.plan?.file : undefined
+  const text = showIds([p], instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(machine, deps.origin), token: shotToken } : undefined, leakCheck, ws.lines, planFile)
     + ['', ...filesSection(runFiles(paths.instructions).files, task.files), ...(depsLine ? [depsLine, ''] : []), ...(contLine ? [contLine, ''] : []), ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n'))
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 

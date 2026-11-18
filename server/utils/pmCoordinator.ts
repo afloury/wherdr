@@ -67,6 +67,8 @@ import { addAction } from './uiActions'
 import { runMap } from './pmMap'
 import { adoptRepo } from './pmAdopt'
 import { splitFeature } from './pmFeature'
+import { readPlanFile } from './pmPlan'
+import { openLines, planCloseRefusal } from '../../shared/pm/planRefs'
 import { afterRefusal, closeRefusal, featureState } from '../../shared/pm/feature'
 import { pmDir } from './pmHome'
 
@@ -154,7 +156,7 @@ const workingBranch = (p?: Project) => p?.base || 'not set: tasks start from the
 const planOf = (t: Template, task: Task, p?: Project) => taskPlan(t, task, p)
 const summary = (t: Template | null, task: Task, p?: Project) => {
   const step = t ? currentStep(planOf(t, task, p), task.step ?? initialState()) : undefined
-  return { id: p ? shownTaskId([p], task.id) : task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.stopped ? 'stopped' : task.state, ...(task.stopped ? { stopped: task.stopped } : {}), step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}), ...(task.parked ? { parked: { on: task.parked.on, need: task.parked.need } } : {}), ...(task.mergeAfter ? { mergeAfter: task.mergeAfter } : {}), ...(task.files ? { files: task.files } : {}), ...(task.sameFiles ? { sameFiles: task.sameFiles } : {}) }
+  return { id: p ? shownTaskId([p], task.id) : task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.stopped ? 'stopped' : task.state, ...(task.stopped ? { stopped: task.stopped } : {}), step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}), ...(task.parked ? { parked: { on: task.parked.on, need: task.parked.need } } : {}), ...(task.mergeAfter ? { mergeAfter: task.mergeAfter } : {}), ...(task.files ? { files: task.files } : {}), ...(task.sameFiles ? { sameFiles: task.sameFiles } : {}), ...(task.plan?.file ? { planFile: task.plan.file } : {}), ...(task.refs ? { refs: task.refs } : {}), ...(task.planTick ? { planTick: task.planTick } : {}) }
 }
 
 // The machine a task runs on, by its name; before its first start, none yet.
@@ -266,7 +268,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       const why = addRefusal(pilot, turn !== 'user')
       if (why) throw new HerdrError('refused', why)
       const wake = turn !== 'user'
-      const split = await splitFeature(deps, p, await taskOf(cmd.task), body.input, { by, origin: wake ? 'coordinator' : 'user' }, async (t) => {
+      const split = await splitFeature(deps, p, await taskOf(cmd.task), body.input, { by, origin: wake ? 'coordinator' : 'user', ...(cmd.from ? { from: cmd.from } : {}) }, async (t) => {
         const refused = wake ? coordinatorStartRefusal(pilot, t, await mineOf(), await store.runs(), Date.now(), true, { holds: await slotsOf(store, held) }) : undefined
         if (refused) throw new Error(refused)
         await store.logTask(await startTask(deps, t.id, { by }), by, 'started the task')
@@ -275,10 +277,15 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       return split
     }
     case 'feature close': {
-      const all = await store.tasks(), feature = await taskOf(cmd.task)
-      const why = feature.kind === 'feature' ? closeRefusal(feature, all) : `${feature.id} is not a feature`
+      const all = await store.tasks(), feature = await taskOf(cmd.task), file = feature.plan?.file
+      let why = feature.kind === 'feature' ? closeRefusal(feature, all) : `${feature.id} is not a feature`
+      // Lines of its plan file still unticked: the user decides (--anyway).
+      if (!why && file && !cmd.anyway && p) {
+        const read = await readPlanFile(deps, p, file)
+        why = 'text' in read ? planCloseRefusal(file, openLines(read.text)) : undefined
+      }
       if (why) throw new HerdrError('refused', why)
-      return { task: await store.updateTask(feature.id, x => ({ ...x, closed: { at: Date.now(), by, ...(cmd.reason ? { reason: cmd.reason } : {}) } }), { by, text: `closed the feature${cmd.reason ? `: ${cmd.reason}` : ''}` }) }
+      return { task: await store.updateTask(feature.id, x => ({ ...x, closed: { at: Date.now(), by, ...(cmd.reason ? { reason: cmd.reason } : {}) } }), { by, text: `closed the feature${cmd.reason ? `: ${cmd.reason}` : ''}${cmd.anyway && file ? ` (--anyway: plan lines of ${file} may be unticked)` : ''}` }) }
     }
     case 'ui targets': return uiTargetsList()
     case 'ui action': return addAction(store, { scope, turn, by: main ? ALFRED : `${shownKey(p ?? { key: scope })} coordinator`, kind: cmd.action, task: await taskOf(cmd.task) })
@@ -582,7 +589,8 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
       // Added in the user's turn: their request, never held by the pace.
-      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.mergeAfter ? { mergeAfter: cmd.mergeAfter } : {}), files: cmd.files ?? [], ...(cmd.feature ? { feature: cmd.feature } : {}), ...(cmd.weight ? { weight: cmd.weight } : {}), ...(cmd.fromBranch ? { fromBranch: cmd.fromBranch } : {}), origin: turn === 'user' ? 'user' : 'coordinator', addedBy: scope })
+      if (cmd.refs?.length && !(await store.task(storedTaskId(projects, cmd.feature!) ?? cmd.feature!))?.plan?.file) throw new HerdrError('bad_input', `--refs: ${cmd.feature} has no plan file: name it when the feature is split ("plan": "<the path of its tasks.md>")`)
+      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.mergeAfter ? { mergeAfter: cmd.mergeAfter } : {}), files: cmd.files ?? [], ...(cmd.feature ? { feature: cmd.feature } : {}), ...(cmd.refs?.length ? { refs: cmd.refs } : {}), ...(cmd.weight ? { weight: cmd.weight } : {}), ...(cmd.fromBranch ? { fromBranch: cmd.fromBranch } : {}), origin: turn === 'user' ? 'user' : 'coordinator', addedBy: scope })
       const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
       if (look) await store.saveCoordinator({ ...rec!, lookAdded: bump(rec!.lookAdded, Date.now()) })
       if (look && cross) { const c = (await store.coordinator(cross.project))!; await store.saveCoordinator({ ...c, lookAdded: bump(c.lookAdded, Date.now()) }) }
