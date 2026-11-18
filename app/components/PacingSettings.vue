@@ -134,7 +134,7 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
             <input
               v-model="names[r.account.key]" class="pace-name" maxlength="40" :placeholder="defaultAccountName(r.account.key)"
               :aria-label="tl('Account name', 'Nom du compte')" data-testid="pace-name"
-              @blur="rename(r)" @keydown.enter="($event.target as HTMLInputElement).blur()"
+              @blur="rename(r)" @keydown.enter="!imeComposing($event) && ($event.target as HTMLInputElement).blur()"
             >
             <USelect
               :model-value="r.policy.mode" :items="modeItems" size="lg" class="pace-mode" :disabled="busy !== ''" :aria-label="tl('Mode', 'Mode')"
