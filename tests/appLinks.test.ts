@@ -26,7 +26,7 @@ it('#/review and the former #/decisions open Tasks to review over the page shown
   const { reviewRoute } = await import('../app/utils/reviewLink')
   expect(appLinkList()[0]).toContain('Tasks to review (what waits for the user\'s choice): `#/review`')
   for (const to of ['/review', '/decisions']) {
-    expect(reviewRoute(to, '/board')).toBe('stay')
+    expect(reviewRoute(to, '/board?project=CO')).toBe('/board?project=CO')
     expect(reviewRoute(to, null)).toBe('/')
   }
   expect(reviewRoute('/board', null)).toBeNull()

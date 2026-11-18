@@ -3,8 +3,8 @@ import { reviewRoute } from '~/utils/reviewLink'
 
 export default defineNuxtRouteMiddleware((to, from) => {
   if (import.meta.server) return
-  const r = reviewRoute(to.path, from.matched.length ? from.path : null)
-  if (!r) return
-  reviewOpen.value = true
-  return r === 'stay' ? abortNavigation() : navigateTo(r, { replace: true })
+  const stay = reviewRoute(to.path, from.matched.length ? from.fullPath : null)
+  if (!stay) return
+  showReview()
+  return navigateTo(stay, { replace: true })
 })
