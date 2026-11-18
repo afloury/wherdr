@@ -20,7 +20,7 @@ export function onSettingsChange(fn: Listener) {
 // Only a missing file starts from empty. Any other failure (EMFILE, EIO,
 // EACCES, a damaged file) throws: a patch written over it would drop every
 // other key and reset chatFilesLevel to its widest default.
-async function loadSettings(file: string): Promise<SettingsMap> {
+export async function loadSettings(file = SETTINGS_FILE): Promise<SettingsMap> {
   let text: string
   try { text = await fs.readFile(file, 'utf8') }
   catch (error) {
@@ -35,7 +35,8 @@ async function loadSettings(file: string): Promise<SettingsMap> {
   }
 }
 
-// For display: an unreadable file shows the defaults (logged above).
+// For display only: an unreadable file shows the defaults (logged above).
+// Never decide on it (a security setting, a value sent back): use loadSettings.
 export async function readSettings(file = SETTINGS_FILE): Promise<SettingsMap> {
   return loadSettings(file).catch(() => ({}))
 }

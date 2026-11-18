@@ -34,3 +34,16 @@ export function writeFileAtomicSync(file: string, data: string | Buffer, { mode 
 // As JSON, two-space indented, ending with a newline.
 export const writeJsonAtomic = (file: string, data: unknown, opts?: AtomicOptions) => writeFileAtomic(file, JSON.stringify(data, null, 2) + '\n', opts)
 export const writeJsonAtomicSync = (file: string, data: unknown, opts?: AtomicOptions) => writeFileAtomicSync(file, JSON.stringify(data, null, 2) + '\n', opts)
+
+// A JSON file about to be changed and written back: undefined only when it does
+// not exist. Any other failure (EMFILE, EIO, EACCES, invalid JSON) throws, so a
+// read-modify-write never starts from empty and drops what the file held.
+export async function readJsonOrMissing(file: string): Promise<unknown> {
+  let text: string
+  try { text = await fs.promises.readFile(file, 'utf8') }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined
+    throw error
+  }
+  return JSON.parse(text)
+}

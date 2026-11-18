@@ -10,6 +10,10 @@ All notable changes to this project are documented here. The format follows
 
 - **Hermes Agent conversations.** A `hermes` terminal shows its name and icon, and its conversation opens on the session the pane shows, read-only from its profile's `state.db`, locally or on another machine. Built from Hermes' source and not yet tested with a real Hermes: feedback welcome on [#48](https://github.com/afloury/wherdr/issues/48) ([herdr-core › Conversations](docs/core.md#conversations)).
 
+### Fixed
+
+- **omp notifications.** A push notification from an omp terminal names it *OMP*, as the rest of the interface does, instead of *Omp*.
+
 ## [3.2.0] — 2026-11-18
 
 wherdr 3.2.0 brings plugins with a Community plugins switch and install from GitHub, omp as a task agent and coordinator, Antigravity CLI conversations, and workspace context folders, skills and plan files; it also ships everything prepared for 3.1.1, which was never released: workspace member settings, a workspace from New › Project, a command run when a task changes state, a commit message template, questions cards, and fixes to photo messages, message states, keep awake on a remote Mac and Devin conversations. Release notes: [docs/release-notes-3.2.0.md](docs/release-notes-3.2.0.md).

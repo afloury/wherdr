@@ -119,6 +119,9 @@ Per xterm.js:
   blurs itself.
 - Never during IME composition, including Safari's composition-ending key (`keyCode` 229). Never
   when another handler has already marked the key handled.
+- The same check (`imeComposing` in `shortcuts.ts`) guards every field that sends or submits on
+  Enter: the composer, card answers, searches, filters and settings fields. The Enter that confirms
+  an IME candidate never sends.
 - With focus in a field that contains text, only Mod/Ctrl chords fire. Esc and Alt+↑/↓ fire only
   if the field is empty. `?` never fires in a field.
 - Actions that create or close something are disabled exactly when their buttons are: offline view,

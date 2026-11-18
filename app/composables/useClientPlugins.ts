@@ -3,7 +3,7 @@ import { effectScope, watch } from 'vue'
 import { readPrefs } from '#shared/clientPlugins'
 import type { ClientPluginInfo, PluginPrefs, PluginSource } from '#shared/clientPlugins'
 import { createPluginHost, type PluginRow } from '~/utils/pluginHost'
-import { syncedRef } from './useSyncedSettings'
+import { settingsSync, syncedRef } from './useSyncedSettings'
 
 const PREFS_KEY = 'wherdr:plugins'
 export const clientPlugins = ref<PluginRow[]>([])
@@ -35,7 +35,8 @@ export function startClientPlugins() {
     prefs: loadPrefs,
     savePrefs,
     changed: () => { clientPlugins.value = host!.rows() },
-    onCommunity: (on) => { communityPlugins.value = on },
+    // The server's answer updates the copy as a server value: never sent back.
+    onCommunity: (on) => { settingsSync.receive({ communityPlugins: on ? '1' : '0' }) },
   })
   const h = host
   // Detached: the first caller can be a component, and this outlives it.
@@ -52,9 +53,14 @@ export const previewPlugin = (spec: string) => api<{ preview: PluginPreview }>('
 export const checkPluginUpdate = (id: string) => api<{ update: PluginPreview | null }>('/api/client-plugins/check', { id }).then(r => r.update)
 // Installing comes after the full-access warning, so it also turns Community plugins on.
 export async function installPlugin(source: PluginSource) {
+  await updatePlugin(source)
+  communityPlugins.value = true
+}
+// Update writes the new commit and leaves Community plugins as it is: only the
+// Install sheet and the switch, each after the full-access warning, turn it on.
+export async function updatePlugin(source: PluginSource) {
   await api('/api/client-plugins/install', { source })
   await startClientPlugins().refresh()
-  communityPlugins.value = true
 }
 export async function removePlugin(id: string) {
   await api('/api/client-plugins/remove', { id })

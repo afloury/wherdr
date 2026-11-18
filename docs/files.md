@@ -24,7 +24,7 @@
   `/var/folders`) or **Home only**. With no choice saved: everything while wherdr answers only
   this computer and your tailnet; home and temporary folders once it is reachable from the
   Internet (Tailscale Funnel, `WHERDR_TRUSTED_NETWORKS=any`), where choosing everything shows a
-  warning. wherdr reads as your user, so Unix permissions still apply; a symlink is followed on
+  warning. While `settings.json` cannot be read, only the home folder opens. wherdr reads as your user, so Unix permissions still apply; a symlink is followed on
   the machine and must land in an allowed folder; the size limits are the same.
 - **How a written path is found**: an absolute or `~/…` path is that file. A relative path
   (`plans/x.md`, `app/components/X.vue`) is looked for, in order, in the agent's folder (its home

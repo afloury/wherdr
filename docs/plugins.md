@@ -25,7 +25,8 @@ Full access means there is no sandbox and no permission: a plugin runs as wherdr
 and can call wherdr's API as you do, so it can read every conversation, type into and send to your
 agents, and run `!` commands, on every connected machine. While the switch is off, each plugin keeps
 its own switch, greyed; turning Community plugins off stops the running plugins at once on every open
-device.
+device. While `settings.json` cannot be read (damaged, or a read error), plugins stay off and the
+saved choice is left as it is.
 
 An install from before the switch that already had plugins in its folder keeps loading them: the
 first time the server reads the switch and finds it unset, it stores *on* when the plugins folder
@@ -51,7 +52,8 @@ Settings shows it as a link to the repository at that commit, with:
 
 - **Check for update**: looks up the ref again (the latest release when none was given) and shows the
   new commit and version. Nothing is installed until you press *Update*; wherdr never updates on its
-  own.
+  own. *Update* leaves [Community plugins](#community-plugins-switch) as it is: while it is off, the
+  new commit is written but nothing loads.
 - **Remove** (also for a plugin copied by hand): deletes the plugin's folder after a confirmation.
 
 ### Publish a plugin on GitHub

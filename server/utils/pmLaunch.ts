@@ -185,7 +185,7 @@ intact() {
   [ -f "$dir.ok" ] && [ -e "$dir/.git" ] || return 1
   [ "$(git -C "$dir" rev-parse HEAD 2>/dev/null)" = "$sha" ] || { changed=' changed'; return 1; }
   st=$(git -C "$dir" status --porcelain --untracked-files=all 2>/dev/null) && [ -z "$st" ] || { changed=' changed'; return 1; }
-  [ -z "$(find "$dir" -path "$dir/.git" -prune -o -perm -u+w -print 2>/dev/null | head -n 1)" ] || { changed=' changed'; return 1; }
+  [ -z "$(find "$dir" -path "$dir/.git" -prune -o ! -type l -perm -u+w -print 2>/dev/null | head -n 1)" ] || { changed=' changed'; return 1; }
 }
 if intact; then used; exit 0; fi
 n=0

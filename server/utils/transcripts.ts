@@ -106,10 +106,12 @@ const stripImageTags = (t: unknown) => String(t || '').replace(/\[Image #\d+(?:,
 // real user message: we keep the text, without the tags; the long blocks
 // pasted next to typed words are also listed (`pasted`) to be shown as cards.
 // A message from another terminal (`hc send` from an agent) comes wrapped in
-// <hc from="t7">…</hc>: left out too, so a photo path right after the opening
-// tag is a line of its own again, shown as a photo.
-const PASTED = /<pasted_content(?:\s[^>]*)?>\n?|\n?<\/pasted_content(?:\s[^>]*)?>|<hc from="[^"]*">|<\/hc>/g
-export const unwrapPasted = (t: string) => (/<pasted_content|<hc from="/.test(t) ? t.replace(PASTED, '').trim() : t)
+// <hc from="t7" reach="…">…</hc> (any attributes, in any order, as long as
+// one is `from`): left out too, so a photo path right after the opening tag is
+// a line of its own again, shown as a photo.
+const HC_OPEN = /<hc\s(?=(?:[^>]*\s)?from=")[^>]*>/
+const PASTED = new RegExp(`<pasted_content(?:\\s[^>]*)?>\\n?|\\n?<\\/pasted_content(?:\\s[^>]*)?>|${HC_OPEN.source}|<\\/hc>`, 'g')
+export const unwrapPasted = (t: string) => (/<pasted_content/.test(t) || HC_OPEN.test(t) ? t.replace(PASTED, '').trim() : t)
 // Prompt of a scheduled task (CronCreate, /loop…) wrapped by Claude Code.
 const SCHEDULED = /^\s*<scheduled-task(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/scheduled-task>\s*$/
 // A background task's notification (Claude Code), as a string or a text part.

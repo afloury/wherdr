@@ -1555,6 +1555,7 @@ watch(searchOpen, (open) => {
 })
 onUnmounted(clearMarks)
 function onSearchKey(e: KeyboardEvent) {
+  if (imeComposing(e)) return
   if (e.key === 'Enter') {
     e.preventDefault()
     stepSearch(e.shiftKey ? 1 : -1)

@@ -29,7 +29,7 @@ const check = (id: string) => act(id, async () => {
 const update = (id: string) => act(id, async () => {
   const u = updates.value[id]
   if (!u) return
-  await installPlugin(u.source)
+  await updatePlugin(u.source)
   updates.value = { ...updates.value, [id]: undefined }
   toast(`${t('Plugin updated')}: ${u.name}`)
 })
