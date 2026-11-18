@@ -167,14 +167,19 @@ const archiveItems = ARCHIVE_DAYS.map(d => ({ label: d ? tl(`${d} day${d > 1 ? '
 
 // The working branch: a remote branch of the repo, or a name typed in.
 const branches = ref<string[] | null>(null)
-const head = ref({ current: '', local: [] as string[] }) // its current branch and local ones
+const head = ref<{ current: string, local: string[] } | null>(null) // its current branch and local ones, once read
 const loadBranches = async () => {
   if (branches.value) return
-  try { ({ branches: branches.value, ...head.value } = await api<{ branches: string[], current: string, local: string[] }>(`/api/pm/branches?key=${encodeURIComponent(p.value.key)}`)) }
+  try {
+    const r = await api<{ branches: string[], current: string, local: string[] }>(`/api/pm/branches?key=${encodeURIComponent(p.value.key)}`)
+    branches.value = r.branches
+    head.value = { current: r.current, local: r.local }
+  }
   catch (e) { branches.value = []; error.value = (e as Error).message }
 }
 // A member following its workspace's working branch, which its repository lacks: tasks start from its current one (pmLaunch).
-const baseMissing = computed(() => (follows('base') && form.base && branches.value?.length && !branches.value.includes(form.base) && !head.value.local.includes(form.base) ? missingBaseNote(form.base, head.value.current) : ''))
+// Only once read (a failed read says nothing); a repository without origin has no remote branch.
+const baseMissing = computed(() => (follows('base') && form.base && head.value && !branches.value?.includes(form.base) && !head.value.local.includes(form.base) ? missingBaseNote(form.base, head.value.current) : ''))
 watch(() => loaded.value && follows('base') && !!form.base, (v) => { if (v) loadBranches() }, { immediate: true })
 const branchItems = computed(() => [
   { label: tl('Current branch of the repo', 'Branche actuelle du dépôt'), value: NONE },

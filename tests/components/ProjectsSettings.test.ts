@@ -41,7 +41,7 @@ registerEndpoint('/api/pm/project', (event) => {
   const inherited = state.projects.find(p => p.key === getQuery(event).key)?.workspace // a member runs its workspace's
   return { project: state.projects[0], workflow: { id: 'web', steps: [], taskTypes: {}, guards, prefs: { agent: 'claude', model: 'sonnet' }, worktree: { share: [] } }, log: [], ...(inherited ? { inherited } : {}) }
 })
-registerEndpoint('/api/pm/branches', () => ({ branches: ['main'], current: 'main', local: ['main'] }))
+registerEndpoint('/api/pm/branches', () => ({ branches: [], current: 'main', local: ['main'] })) // no origin
 // A member's overrides (shared/pm/workspace.ts): a field sent becomes its own; follow gives back the workspace's value.
 const SHARED = ['base', 'branchName', 'commitMessage', 'onStateChange', 'archiveAfter', 'deleteBranch', 'instructionsFiles', 'prefs', 'worktree'] as const
 const own = (b: Record<string, unknown>) => {
