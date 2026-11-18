@@ -96,6 +96,24 @@ describe('pm store', () => {
   })
 })
 
+describe('removing a project (WHR-513)', () => {
+  it('is refused while a workspace has members or a project has open tasks', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [
+      { key: 'WS', name: 'Work', machine: '', path: '/src/work', kind: 'workspace', git: false, addedAt: 1 },
+      { key: 'API', name: 'Api', machine: '', path: '/src/work/api', workspace: 'WS', addedAt: 1 },
+    ] }))
+    await expect(store.removeProject('WS')).rejects.toMatchObject({ code: 'refused', message: 'Workspace WS still has projects API: remove them first' })
+    const t = await store.addTask({ project: 'API', title: 'Running', type: 'simple' })
+    await expect(store.removeProject('API')).rejects.toMatchObject({ code: 'refused', message: `API has open tasks (${t.id}): finish, abandon or close them first` })
+    await store.saveTask({ ...t, step: { ...initialState(), started: true, done: true, abandoned: true } })
+    await store.removeProject('API')
+    await store.removeProject('WS')
+    expect(await store.projects()).toEqual([])
+  })
+})
+
 describe('runs', () => {
   it('reads a run file again only when it changed', async () => {
     const store = createPmStore(dir)

@@ -39,7 +39,7 @@ import { EXAMPLES } from '../../shared/pm/examples'
 import { afterRefusal, subTasks } from '../../shared/pm/feature'
 import { parseRefs } from '../../shared/pm/planRefs'
 import { eventOf, stateChanges, type TaskStateName } from '../../shared/pm/onState'
-import { SHARED_FIELDS, backToWorkspace, effectiveProject, followShared, isSharedField, cleanWorkspaceFields, effectiveProjects, liftShared, needsSink, sinkShared, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
+import { SHARED_FIELDS, backToWorkspace, effectiveProject, followShared, isSharedField, cleanWorkspaceFields, effectiveProjects, liftShared, needsSink, sinkShared, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError, removeRefusal } from '../../shared/pm/workspace'
 import type { MapFile } from '../../shared/pm/workspaceMap'
 import { DATA_DIR } from './env'
 import { writeFileAtomic, writeJsonAtomic } from './atomicWrite'
@@ -690,8 +690,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       return list[i]!
     }),
 
+    // Refused while it has members or open tasks (removeRefusal).
     removeProject: (key: unknown) => write(async () => {
       const { list, i } = await findProject(key)
+      const why = removeRefusal(list[i]!.key, list, await tasks())
+      if (why) throw new HerdrError('refused', why)
       list.splice(i, 1)
       await saveProjects(list)
     }),

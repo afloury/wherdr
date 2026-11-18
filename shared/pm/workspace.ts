@@ -7,6 +7,7 @@
 import type { WorkflowError } from './workflow'
 import { checkPrefs, checkSetup, defaultWorkflow, type Prefs, type Template, type WorktreeSetup } from './workflow'
 import type { Strategy } from './placement'
+import type { Task } from './run'
 import type { OnStateChange } from './onState'
 import { KEY_RE, cleanProjectUpdate, type Project, type ProjectUpdate } from './project'
 import { ROOT_REPO, underRoot } from './workspaceAdopt'
@@ -291,4 +292,17 @@ export function cleanWorkspaceFields(raw: unknown): { fields: Pick<Project, 'kin
   if (o.group !== undefined && !(typeof o.group === 'string' && o.group.length <= 64)) errors.push({ path: 'group', message: 'a tab group id' })
   const { shared, errors: bad } = o.shared === undefined ? { shared: undefined, errors: [] } : cleanShared(o.shared)
   return { fields: defined({ kind: 'workspace' as const, group: o.group as string | undefined, shared }), errors: [...errors, ...bad] }
+}
+
+// Why a project may not be removed, or undefined. A workspace with members:
+// they would lose its shared settings and coordinator, and a workspace added
+// later under its key would take them back. A project with open tasks (not
+// done, abandoned or closed): their agents would never be stopped, the tasks
+// chained after them would wait forever, and a project added later under its
+// key would take them over.
+export function removeRefusal(key: string, list: Project[], tasks: Pick<Task, 'id' | 'project' | 'step' | 'closed'>[]): string | undefined {
+  const members = membersOf(key, list)
+  if (members.length) return `Workspace ${key} still has projects ${members.map(m => m.key).join(', ')}: remove them first`
+  const open = tasks.filter(t => t.project === key && !t.closed && !t.step?.done && !t.step?.abandoned).map(t => t.id)
+  if (open.length) return `${key} has open tasks (${open.slice(0, 5).join(', ')}${open.length > 5 ? `, and ${open.length - 5} more` : ''}): finish, abandon or close them first`
 }
