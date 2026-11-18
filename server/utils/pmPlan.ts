@@ -48,16 +48,18 @@ base64 < "$f" | tr -d '\\n'`
 
 export const COMMIT_SECONDS = 45
 
-// $3: the branch the root must be on ('': any), $4: the byte length of the file as it was read,
+// $3: the branch the root must be on ('': origin's default branch, else any), $4: the byte length of the file as it was read,
 // $5: the commit message. stdin: the file as it was read, then the new one. Nothing is written
 // (the file stays as it was) and the exit says why:
 //   5 the file changed since it was read, 12 a rebase, merge, cherry-pick, revert or bisect is
 //   under way (printing which), 13 git's index is locked: these pass, so they are tried again;
 //   6 the root is on another branch than $3 (printing it), 11 on no branch (a detached HEAD),
 //   7 the plan file has local changes (staged or not), 8 it is not tracked, 9 the commit failed
-//   (printing git's last words), 10 it took over ${COMMIT_SECONDS} seconds: final.
+//   (printing git's last words), 10 it took over ${COMMIT_SECONDS} seconds, 14 the file is in another
+//   git repository than the root's own (a member's clone, or a root inside a larger repository): final.
 // A git root commits that file only (commit --only: other staged or unstaged work stays as it
-// is, no prompt: GIT_TERMINAL_PROMPT=0); a commit that fails puts the old text back, but only
+// is, no prompt: GIT_TERMINAL_PROMPT=0; no hook either, so no formatter or lint-staged touches
+// other files); a commit that fails puts the old text back, but only
 // while the file still holds the new one. The file is written beside itself and moved into
 // place, so no reader sees half of it. A root with no git just gets the file.
 export const PLAN_WRITE_SCRIPT = `${RESOLVE}
@@ -87,7 +89,9 @@ limited() {
     return "$x"
   fi
 }
-if [ "$(git -C "$r" rev-parse --show-toplevel 2>/dev/null)" = "$r" ]; then
+top=$(git -C "$(dirname "$f")" rev-parse --show-toplevel 2>/dev/null)
+if [ -n "$top" ] && [ "$top" != "$r" ]; then exit 14; fi
+if [ -n "$top" ]; then
   for x in rebase-merge rebase-apply MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD BISECT_LOG index.lock; do
     p=$(git -C "$r" rev-parse --git-path "$x") || exit 1
     case $p in /*) ;; *) p=$r/$p;; esac
@@ -97,11 +101,13 @@ if [ "$(git -C "$r" rev-parse --show-toplevel 2>/dev/null)" = "$r" ]; then
   done
   git -C "$r" symbolic-ref -q HEAD >/dev/null || exit 11
   cur=$(git -C "$r" symbolic-ref -q --short HEAD)
-  if [ -n "$3" ] && [ "$cur" != "$3" ]; then echo "$cur"; exit 6; fi
+  want=$3
+  [ -n "$want" ] || want=$(git -C "$r" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+  if [ -n "$want" ] && [ "$cur" != "$want" ]; then echo "$cur"; echo "$want"; exit 6; fi
   git -C "$r" ls-files --error-unmatch -- "$f" >/dev/null 2>&1 || exit 8
   git -C "$r" diff --quiet -- "$f" && git -C "$r" diff --cached --quiet -- "$f" || exit 7
   put "$t/new" || exit 1
-  out=$(limited ${COMMIT_SECONDS} git -C "$r" commit --only -m "$5" -- "$f" 2>&1); c=$?
+  out=$(limited ${COMMIT_SECONDS} git -C "$r" -c core.hooksPath=/dev/null commit --only -m "$5" -- "$f" 2>&1); c=$?
   if [ "$c" -ne 0 ]; then
     if cmp -s "$t/new" "$f"; then put "$t/old"; fi
     printf '%s\\n' "$out" | tail -n 3
@@ -150,8 +156,8 @@ export function planWriteResult(code: number | null, out: string, file: string, 
   if (again[code]) return { again: again[code]! }
   const why: Record<number, string> = {
     3: `${file} is outside the workspace's root`, 4: `${file} was not found`, 7: `${file} has local changes`, 8: `${file} is not tracked by git`, 11: 'the root is on no branch (a detached HEAD)',
-    6: `the root is on branch ${out || '?'}${base ? ` (not ${base})` : ''}`, 9: `git could not commit it: ${out.split('\n').pop() ?? ''}`.trim(),
-    10: `git took more than ${COMMIT_SECONDS} seconds to commit it`,
+    6: `the root is on branch ${out.split('\n')[0] || '?'}${(out.split('\n')[1] || base) ? ` (not ${out.split('\n')[1] || base})` : ''}`, 9: `git could not commit it: ${out.split('\n').pop() ?? ''}`.trim(),
+    10: `git took more than ${COMMIT_SECONDS} seconds to commit it`, 14: `${file} is in another git repository than the root's (a member's clone): its own tasks change it`,
   }
   const skipped = why[code]
   if (!skipped) throw new HerdrError('core', `Could not write ${file} on the workspace's machine (exit ${code})`)
@@ -229,9 +235,10 @@ async function tick(deps: PmLaunchDeps, id: string, notify: PlanNotify, now: num
     const left = skippedText(ticked.skipped)
     if (!ticked.ticked.length) return await told(left.replace(/plan: /g, ''), left, { at: now, ticked: [] })
     const message = planCommitMessage(effective ? effective.commitMessage : ws.shared?.commitMessage, shownTaskId(projects, feature!.id), { ...task, id: shown }, ticked.ticked)
-    const call = planWriteCall(ws, file, effective?.base ?? '', read.text, ticked.text, message)
+    const base = effective?.base ?? ws.shared?.base ?? ''
+    const call = planWriteCall(ws, file, base, read.text, ticked.text, message)
     const w = await exec(deps, machineOn(deps, ws.machine).on, PLAN_WRITE_SCRIPT, call.args, call.input, COMMIT_SECONDS + 45)
-    const result = planWriteResult(w.code, w.out, file, effective?.base ?? '')
+    const result = planWriteResult(w.code, w.out, file, base)
     if ('again' in result) return await again(result.again)
     if ('skipped' in result) return await skip(result.skipped)
     await store.updateTask(id, x => ({ ...x, planTick: { at: now, ticked: ticked.ticked }, planTries: undefined }), { by: 'engine', text: [`plan: ticked ${ticked.ticked.join(', ')} in ${file} (${result.done})`, left].filter(Boolean).join('; ') })

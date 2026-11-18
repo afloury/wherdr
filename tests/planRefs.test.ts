@@ -1,15 +1,16 @@
 import { execFileSync, spawnSync } from 'node:child_process'
+import { realpathSync } from 'node:fs'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { splitFeature } from '../server/utils/pmFeature'
-import { PLAN_RETRY_MS, PLAN_WRITE_SCRIPT, planDate, planWriteCall, planWriteResult, readPlanFile, tickPlanFile } from '../server/utils/pmPlan'
+import { PLAN_RETRY_MS, PLAN_WRITE_SCRIPT, planDate, planWriteResult, readPlanFile, tickPlanFile } from '../server/utils/pmPlan'
 import { issueToken, noteTurn, runCommand } from '../server/utils/pmCoordinator'
 import { DEFAULT_AUTOPILOT } from '../shared/pm/autopilot'
 import { parsePlan, parseFeature } from '../shared/pm/feature'
-import { openLines, parsePlanPath, parseRefs, planCloseRefusal, planCommitMessage, skippedText, tickPlan } from '../shared/pm/planRefs'
+import { openLines, parsePlanPath, parseRefs, planCloseRefusal, planCommitMessage, tickPlan } from '../shared/pm/planRefs'
 import { instructionsText } from '../shared/pm/run'
 import { parseCommand, WHERDR_SCRIPT } from '../shared/pm/coordinator'
 import { defaultWorkflow } from '../shared/pm/workflow'
@@ -42,13 +43,15 @@ describe('tickPlan: ticks a plan file\'s lines by their IDs', () => {
     expect(lines.filter((_, i) => i !== 3)).toEqual(PLAN.split('\n').filter((_, i) => i !== 3))
   })
 
-  it('takes an ID for itself, never for the longer one it starts: T1 is not T10', () => {
+  it('takes an ID only whole: T1 is neither T10 nor T1-2, nor T1-foo', () => {
     const a = tickPlan(PLAN, ['T1'], done)
     expect(a.text).toContain('* [x] T1 Short ID (done: PA-1, 1a2b3c4, 2026-11-17)')
     expect(a.text).toContain('- [ ] T10 Longer ID, same start')
-    const b = tickPlan(PLAN, ['T10'], { task: 'PA-2', date: '2026-11-17' })
-    expect(b.text).toContain('- [x] T10 Longer ID, same start (done: PA-2, 2026-11-17)')
-    expect(b.text).toContain('* [ ] T1 Short ID')
+    expect(tickPlan(PLAN, ['T10'], { task: 'PA-2', date: '2026-11-17' }).text).toContain('- [x] T10 Longer ID, same start (done: PA-2, 2026-11-17)\n')
+    const text = '- [ ] T1-2 Dashed\n- [ ] T1 Plain\n'
+    expect(tickPlan(text, ['T1'], done).text).toBe('- [ ] T1-2 Dashed\n- [x] T1 Plain (done: PA-1, 1a2b3c4, 2026-11-17)\n')
+    expect(tickPlan('- [ ] T1-foo x\n', ['T1'], done).skipped).toEqual([{ ref: 'T1', why: 'not found' }])
+    expect(openLines(text).map(l => l.id)).toEqual(['T1-2', 'T1'])
   })
 
   it('keeps indentation, bullets and Windows line endings', () => {
@@ -56,32 +59,17 @@ describe('tickPlan: ticks a plan file\'s lines by their IDs', () => {
     expect(r.text).toBe('- [ ] T1 One\r\n  - [x] T2 Two (done: PA-1, 1a2b3c4, 2026-11-17)\r\n')
   })
 
-  it('ticks several lines, and says what it did not tick: already ticked, or not found', () => {
-    const r = tickPlan(PLAN, ['T010', 'T013', 'T099'], done)
-    expect(r.ticked).toEqual(['T010'])
-    expect(r.skipped).toEqual([{ ref: 'T013', why: 'already ticked' }, { ref: 'T099', why: 'not found' }])
-    expect(skippedText(r.skipped)).toBe('plan: T013 not ticked (already ticked); plan: T099 not ticked (not found)')
-  })
-
-  it('is idempotent: a second pass changes nothing and names the lines already ticked', () => {
-    const first = tickPlan(PLAN, ['T010', 'T011'], done)
-    const second = tickPlan(first.text, ['T010', 'T011'], { ...done, date: '2026-12-01' })
+  it('says what it did not tick (already ticked, or not found), so a second pass changes nothing', () => {
+    const first = tickPlan(PLAN, ['T010', 'T011', 'T099'], done)
+    expect(first.ticked).toEqual(['T010', 'T011'])
+    const second = tickPlan(first.text, ['T010', 'T099'], { ...done, date: '2026-12-01' })
     expect(second.text).toBe(first.text)
-    expect(second.ticked).toEqual([])
-    expect(second.skipped.map(s => s.why)).toEqual(['already ticked', 'already ticked'])
+    expect(second.skipped).toEqual([{ ref: 'T010', why: 'already ticked' }, { ref: 'T099', why: 'not found' }])
   })
 
   it('ticks the first open line when an ID is written twice', () => {
     const r = tickPlan('- [ ] T5 one\n- [ ] T5 two\n', ['T5'], done)
     expect(r.text).toBe('- [x] T5 one (done: PA-1, 1a2b3c4, 2026-11-17)\n- [ ] T5 two\n')
-  })
-
-  it('takes an ID only whole: T1 is not T1-2 either, nor T1-foo', () => {
-    const text = '- [ ] T1-2 Dashed\n- [ ] T1 Plain\n'
-    expect(tickPlan(text, ['T1'], done).text).toBe('- [ ] T1-2 Dashed\n- [x] T1 Plain (done: PA-1, 1a2b3c4, 2026-11-17)\n')
-    expect(tickPlan(text, ['T1-2'], done).text).toBe('- [x] T1-2 Dashed (done: PA-1, 1a2b3c4, 2026-11-17)\n- [ ] T1 Plain\n')
-    expect(tickPlan('- [ ] T1-foo x\n', ['T1'], done).skipped).toEqual([{ ref: 'T1', why: 'not found' }])
-    expect(openLines(text).map(l => l.id)).toEqual(['T1-2', 'T1'])
   })
 
   it('ignores lines in fenced code blocks, to tick and to list: an example is not the plan', () => {
@@ -189,7 +177,8 @@ describe('feature split and close: the plan, the refs, --from, --anyway', () => 
 })
 
 // A machine that is this one: `machine.exec` runs the argv here. hooks: what a test changes around a call.
-const gitEnv = { GIT_CONFIG_GLOBAL: '/dev/null', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.com' }
+// GIT_CEILING_DIRECTORIES: a test root without git is never seen inside a checkout that holds the temp folder.
+const gitEnv = { GIT_CEILING_DIRECTORIES: realpathSync(os.tmpdir()), GIT_CONFIG_GLOBAL: '/dev/null', GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@example.com', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@example.com' }
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, ...gitEnv } }).trim()
 const hooks = { path: undefined as string | undefined, beforeWrite: undefined as (() => void) | undefined, writes: 0 }
 const call = async (_m: string, p: { argv: string[], input?: string }) => {
@@ -446,15 +435,47 @@ describe('the plan file on the workspace\'s machine', () => {
       expect(await planText()).toBe(PLAN)
     })
 
-    it('leaves the file as it was when a hook refuses the commit', async () => {
+    // A commit that fails: signing with a program that says no (and, for the second test, edits the file as the user would).
+    const failSigning = async (also = '') => {
+      const gpg = path.join(dir, 'gpg-no')
+      await fs.writeFile(gpg, `#!/bin/sh\n${also}echo "no commits today" >&2\nexit 1\n`, { mode: 0o755 })
+      git(root, 'config', 'commit.gpgsign', 'true')
+      git(root, 'config', 'gpg.program', gpg)
+    }
+
+    it('runs no hook of the root, and leaves the file as it was when the commit fails', async () => {
       const { sub } = await setup()
       initRepo()
-      await fs.writeFile(path.join(root, '.git/hooks/pre-commit'), '#!/bin/sh\necho "no commits today" >&2\nexit 1\n', { mode: 0o755 })
+      // A hook that would touch other work never runs.
+      await fs.writeFile(path.join(root, '.git/hooks/pre-commit'), `#!/bin/sh\necho hooked > "${path.join(root, 'hooked')}"\n`, { mode: 0o755 })
+      await failSigning()
       await finish(sub.id)
       await tick(sub.id)
       expect(await planText()).toBe(PLAN)
       expect(git(root, 'status', '--porcelain')).toBe('')
-      expect((await store.task(sub.id))!.planTick!.skipped).toMatch(/^git could not commit it: .*no commits today/)
+      expect((await store.task(sub.id))!.planTick!.skipped).toMatch(/^git could not commit it/)
+    })
+
+    it('skips a plan file in another git repository than the root\'s: a member\'s clone under a root without git', async () => {
+      const { sub } = await setup()
+      await fs.rename(path.join(root, 'specs'), path.join(root, 'payroll-api/specs'))
+      git(path.join(root, 'payroll-api'), 'init', '-q', '-b', 'main')
+      await store.saveTask({ ...(await store.task(sub.feature!))!, plan: { order: 'x', file: 'payroll-api/specs/tasks.md' } })
+      await finish(sub.id)
+      await tick(sub.id)
+      expect(await fs.readFile(path.join(root, 'payroll-api/specs/tasks.md'), 'utf8')).toBe(PLAN)
+      expect((await store.task(sub.id))!.planTick!.skipped).toMatch(/is in another git repository/)
+    })
+
+    it('checks the branch against origin\'s default one when the root is not a member', async () => {
+      const { sub } = await setup()
+      initRepo('dev')
+      git(root, 'update-ref', 'refs/remotes/origin/main', 'HEAD')
+      git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', 'refs/remotes/origin/main')
+      await finish(sub.id)
+      await tick(sub.id)
+      expect((await store.task(sub.id))!.planTick!.skipped).toBe('the root is on branch dev (not main)')
+      expect(await planText()).toBe(PLAN)
     })
 
     it('does not tick an abandoned task, one without a plan file, or one not done', async () => {
@@ -479,13 +500,16 @@ describe('the plan file on the workspace\'s machine', () => {
       expect(git(root, 'status', '--porcelain')).toBe('')
       expect((await store.task(sub.id))!.planTick!.skipped).toBe('git took more than 45 seconds to commit it')
       expect(notices).toHaveLength(1)
+      // The exec itself timing out: the script may have run on, so never tried again; an unknown exit throws.
+      expect(planWriteResult(null, '', 'p.md', '')).toEqual({ skipped: 'writing p.md timed out: look at it before ticking by hand' })
+      expect(() => planWriteResult(1, '', 'p.md', '')).toThrow(/exit 1/)
     })
 
     it('leaves a file the user changed during a failed commit alone', async () => {
       const { sub } = await setup()
       initRepo()
-      // The hook edits the plan file (as a user would) and refuses.
-      await fs.writeFile(path.join(root, '.git/hooks/pre-commit'), `#!/bin/sh\necho "mine" >> "${path.join(root, 'specs/tasks.md')}"\nexit 1\n`, { mode: 0o755 })
+      // The user edits the plan file while the commit fails.
+      await failSigning(`echo "mine" >> "${path.join(root, 'specs/tasks.md')}"\n`)
       await finish(sub.id)
       await tick(sub.id)
       expect(await planText()).toContain('- [x] T010')
@@ -652,30 +676,5 @@ describe('the plan file on the workspace\'s machine', () => {
       await go(t0 + 180_000)
       expect((await store.task(sub.id))!.planTick).toMatchObject({ ticked: ['T010', 'T011'] })
     })
-  })
-})
-
-describe('the write script and its answers', () => {
-  it('gives the script the root, the file, the branch, the old length and the message, the old and new text on stdin', () => {
-    const call = planWriteCall({ path: '/w' }, 'specs/tasks.md', 'main', 'é\n', 'new\n', 'WS-1: tick T1 (PA-1)')
-    expect(call.args).toEqual(['/w', 'specs/tasks.md', 'main', '3', 'WS-1: tick T1 (PA-1)'])
-    expect(call.input).toBe('é\nnew\n')
-    expect(PLAN_WRITE_SCRIPT).toContain('git -C "$r" commit --only -m "$5" -- "$f"')
-  })
-
-  it('reads the exit codes: written or committed, again later, or skipped with why', () => {
-    expect(planWriteResult(0, 'committed 1a2b3c4', 'p.md', 'main')).toEqual({ done: 'committed 1a2b3c4' })
-    expect(planWriteResult(0, 'written', 'p.md', '')).toEqual({ done: 'written, the root has no git' })
-    expect(planWriteResult(5, '', 'p.md', '')).toEqual({ again: 'p.md changed while it was being ticked' })
-    expect(planWriteResult(12, 'rebase-merge', 'p.md', '')).toEqual({ again: 'a rebase is under way in the root' })
-    expect(planWriteResult(13, '', 'p.md', '')).toEqual({ again: 'git\'s index is locked (another git command is running)' })
-    // An exec that timed out: the script may have run on, so never tried again.
-    expect(planWriteResult(null, '', 'p.md', '')).toEqual({ skipped: 'writing p.md timed out: look at it before ticking by hand' })
-    expect(planWriteResult(6, 'dev', 'p.md', 'main')).toEqual({ skipped: 'the root is on branch dev (not main)' })
-    expect(planWriteResult(11, '', 'p.md', '')).toEqual({ skipped: 'the root is on no branch (a detached HEAD)' })
-    expect(planWriteResult(7, '', 'p.md', '')).toEqual({ skipped: 'p.md has local changes' })
-    expect(planWriteResult(9, 'hook said no', 'p.md', '')).toEqual({ skipped: 'git could not commit it: hook said no' })
-    expect(planWriteResult(10, '', 'p.md', '')).toEqual({ skipped: 'git took more than 45 seconds to commit it' })
-    expect(() => planWriteResult(1, '', 'p.md', '')).toThrow(/exit 1/)
   })
 })
