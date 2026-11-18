@@ -44,9 +44,6 @@ const sectionLabels: Record<SettingsSection, string> = {
 }
 const sections = computed(() => SETTINGS_SECTIONS
   .filter(id => id !== 'shortcuts' || (desk.value && !coarse.value))
-  // Plugins are on hold: the section shows only once a plugin is installed
-  // (DATA_DIR/plugins). Drop this line to always show it again.
-  .filter(id => id !== 'plugins' || clientPlugins.value.length > 0)
   .map(id => ({ id, label: t(sectionLabels[id]), icon: sectionIcons[id] })))
 const activeSection = computed<SettingsSection | null>(() => {
   if (section.value && sections.value.some(s => s.id === section.value)) return section.value
