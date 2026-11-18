@@ -236,6 +236,7 @@ const toReview = computed(() => { const pick = reviewPick(reviewKnown); return (
 .board-top { flex: none; display: flex; align-items: center; gap: 8px; min-height: calc(44px + var(--safe-top, 0px)); padding: var(--safe-top, 0px) 8px 0; border-bottom: 1px solid var(--line); }
 .board-top h1 { flex: 1; margin: 0; font-size: 20px; }
 .board-review-n { margin-left: 6px; color: inherit; }
+.board-top [data-testid="board-review"] { flex: none; white-space: nowrap; }
 /* Phone: Add is an icon, and the heading is for screen readers only, so the project picker keeps its room. */
 @media (max-width: 899px) {
   .board-add { width: 44px; justify-content: center; }
