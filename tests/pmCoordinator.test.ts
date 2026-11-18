@@ -189,6 +189,24 @@ describe('workspaces (WHR-314)', () => {
     expect(await wakeCoordinators({ store }, pa, 'stuck: no output for 30 min', 1000)).toEqual(['the workspace\'s coordinator'])
     expect((await store.wakes()).map(w => [w.coordinator, w.reasons[0]])).toEqual([['WS', `${pa.id}: stuck: no output for 30 min`]])
   })
+
+  it('task add and task edit --context: a member task reads other members; refused for a non-member, its own project, a project outside the workspace', async () => {
+    const added = await cli(['task', 'add', 'Spec', '--type', 'task', '--project', 'PA', '--context', 'QA']) as { task: Task }
+    expect(added.task).toMatchObject({ id: 'PA-1', context: ['QA'] })
+    await refused(cli(['task', 'add', 'X', '--type', 'task', '--project', 'PA', '--context', 'ST']), 'Context: ST: not a member of WS')
+    await refused(cli(['task', 'add', 'X', '--type', 'task', '--project', 'PA', '--context', 'PA']), 'the task\'s own project')
+    const edited = await cli(['task', 'edit', 'PA-1', '--context', 'all', '--reason', 'The app too']) as { task: Task }
+    expect(edited.task).toMatchObject({ context: 'all' })
+    expect(edited.task.log!.at(-1)!.text).toBe('context folders: all other members, from its next start (The app too)')
+    expect((await cli(['task', 'edit', 'PA-1', '--context', '', '--reason', 'Back']) as { task: Task }).task.context).toBeUndefined()
+    await refused(cli(['task', 'edit', 'PA-1', '--context', 'ST', '--reason', 'No']), 'not a member of WS')
+    // Only for work not done, and in a wake only with the autopilot on.
+    await noteTurn(store, 'WS', 'wake')
+    await refused(cli(['task', 'edit', 'PA-1', '--context', 'QA', '--reason', 'Why']), 'only with the autopilot on')
+    await noteTurn(store, 'WS', 'user', 'go')
+    await store.saveTask({ ...(await store.task('PA-1'))!, step: state(2, { done: true }) })
+    await refused(cli(['task', 'edit', 'PA-1', '--context', 'QA', '--reason', 'Late']), 'PA-1 is done')
+  })
 })
 
 describe('the Autopilot tab\'s timeline', () => {

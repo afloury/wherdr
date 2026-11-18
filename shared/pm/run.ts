@@ -1,7 +1,8 @@
 // Tasks and the agent runs that work on them. A run's terminal carries
 // wherdr.* labels on herdr-core, so the engine finds it again after a restart.
 import type { Project } from './project'
-import { MODEL_RE, PROGRAMS, reviewerCheck, type Prefs, type Step, type Template, type Weight } from './workflow'
+import { MODEL_RE, PROGRAMS, reviewerCheck, type ContextSpec, type Prefs, type Step, type Template, type Weight } from './workflow'
+import type { ContextFolder } from './context'
 import { fillBase, planSteps, type StepState } from './steps'
 import { needsShots, shotMode } from './shots'
 import type { Stopped } from './stop'
@@ -77,6 +78,7 @@ export interface Task {
   sentinel?: Sentinel // the liveness sentinel's tries at its current step (sentinel.ts)
   reviewWait?: string // the reviewer account its review waits on, in that account's queue (reviewQueue.ts)
   files?: string[] // the files or folders it plans to change (files.ts)
+  context?: ContextSpec // read-only context folders of the workspace's other members for its agents (context.ts); wins over its task type's
   changed?: string[] // what it changed since its branch started, as the engine last read it
   sameFiles?: string // the started task its start waits behind: same files (files.ts)
   cleanup?: { done?: true, skipped?: string } // its worktree removed, or why it stays (cleanup.ts)
@@ -139,6 +141,7 @@ export interface Run {
   endedAt?: number // when the engine released it (release.ts)
   peakMb?: number // the most its worktree's processes took, sampled each tick (peaks.ts)
   session?: string // Claude's conversation id, pinned at launch: a resume takes it up again
+  context?: ContextFolder[] // the read-only context folders it was given (context.ts): cleanup keeps them while its task is not done
 }
 
 export const LABEL = { install: 'wherdr.install', task: 'wherdr.task', run: 'wherdr.run', role: 'wherdr.role', report: 'wherdr.report' } as const
@@ -206,10 +209,20 @@ const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 // session (Claude only): the conversation's id, new (--session-id), or taken
 // up again (--resume) with `resume` as its first message.
 // then: said after the instructions, in the same first message.
-export function agentLine(program: string, model: string, instructions: string, session?: { id: string, resume?: string }, then?: string) {
+// dirs: read-only context folders (context.ts) the agent may read (see dirArgs).
+export function agentLine(program: string, model: string, instructions: string, session?: { id: string, resume?: string }, then?: string, dirs: string[] = []) {
   const own = program === 'claude' && session ? (session.resume ? ['--resume', session.id] : ['--session-id', session.id]) : []
   const first = own[0] === '--resume' ? session!.resume! : `Read ${instructions} and follow it.${then ? ` ${then}` : ''}`
-  return ['exec', program, ...(program === 'codex' ? CODEX_NO_UPDATE : []), '--model', model, ...own, first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
+  return ['exec', program, ...(program === 'codex' ? CODEX_NO_UPDATE : []), ...dirArgs(program, dirs), '--model', model, ...own, first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
+}
+
+// How a program gets access to folders beside its worktree: the one place that
+// knows each program. Claude: one --add-dir per folder, each followed by an
+// option (the flag takes a list: a word after it would be read as a folder, the
+// first message included); omp the same (--add-dir, repeatable). Codex: its sandbox
+// already reads everywhere, and --add-dir would make the folder writable.
+export function dirArgs(program: string, dirs: string[]): string[] {
+  return program === 'claude' || program === 'omp' ? dirs.flatMap(d => ['--add-dir', d]) : []
 }
 
 // A task's working branch: the one it started with, else its project's now.
@@ -340,7 +353,7 @@ export function parseWsFiles(out: string, cap: number, first = false): WsFiles {
 export const wsFilesSection = (files: WsFiles['files']) => files.flatMap(f => [`## Workspace instructions (${f.path})`, '', f.text || '(empty)', ''])
 
 // The instructions file: the task, then every level's instructions, broadest
-// first, then the workspace's instructions files (ws), then how to upload screenshots when a worker step asks for them, then
+// first, then the workspace's instructions files and the context folders (ws), then how to upload screenshots when a worker step asks for them, then
 // a public repository's rule (leakCheck: its own check, see ownLeakCheck).
 export function instructionsText(p: Project, t: Template, task: Task, run: Pick<Run, 'worktree' | 'branch'>, shots?: { base: string, token: string }, leakCheck?: string, ws: string[] = []) {
   const step = typeSteps(t, task.type).find(s => s.holder === 'worker')

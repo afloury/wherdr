@@ -5,6 +5,7 @@
 // ended (pmAdvance.ts), on Archive, and in
 // a sweep at start and every few hours for leftovers.
 import { exec, runOn, type PmLaunchDeps } from './pmLaunch'
+import { contextBase, staleSnapshots } from '../../shared/pm/context'
 import { homeOf } from './coreCreate'
 import { taskPaths } from '../../shared/pm/run'
 import { cloneOn } from '../../shared/pm/project'
@@ -38,6 +39,35 @@ git -C "$repo" worktree prune 2>&1
 [ "$4" = 1 ] || exit 0
 git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null || exit 0
 git -C "$repo" branch -D "$branch" 2>&1`
+
+// The context snapshots (shared/pm/context.ts) under $1, one folder per member and
+// commit (with its .ok marker and a .lock while one is made), not touched for an
+// hour: every use of a snapshot touches it, and one just made may not be on its
+// run's record yet.
+export const CONTEXT_LIST_SCRIPT = `find "$1" -mindepth 2 -maxdepth 2 \\( -type d -o -name '*.ok' \\) -mmin +60 2>/dev/null; exit 0`
+
+// One entry ($1, two levels under the context folder $2) removed: a snapshot
+// through the clone it belongs to (its .git file names it), writable again first;
+// when that clone or its record is gone, or the folder was never complete, the
+// folder itself (never anything outside $2). A leftover lock goes; a marker only
+// when its folder is gone.
+export const CONTEXT_REMOVE_SCRIPT = `dir=$1 base=$2
+case $dir in *..*) exit 3;; esac
+case $dir in "$base"/?*/?*) ;; *) exit 3;; esac
+case $dir in
+  *.lock) rmdir "$dir" 2>/dev/null;;
+  *.ok) [ -d "\${dir%.ok}" ] || rm -f "$dir";;
+  *)
+    chmod -R u+w "$dir" 2>/dev/null
+    g=$(sed -n 's/^gitdir: //p' "$dir/.git" 2>/dev/null)
+    common=\${g%/worktrees/*}
+    [ -n "$g" ] && [ -d "$common" ] && git --git-dir="$common" worktree remove --force "$dir" >/dev/null 2>&1
+    if [ -e "$dir" ]; then rm -rf "$dir" || exit 1; fi
+    rm -f "$dir.ok"
+    [ -n "$g" ] && [ -d "$common" ] && git --git-dir="$common" worktree prune >/dev/null 2>&1;;
+esac
+rmdir "$(dirname "$dir")" 2>/dev/null
+exit 0`
 
 type Deps = Omit<PmLaunchDeps, 'origin'>
 const busy = new Set<string>()
@@ -92,9 +122,30 @@ async function clean(deps: Deps, id: string) {
   return finish(branch ? `${what} and its local branch ${run.branch}` : `${what}; its branch ${run.branch} stays`)
 }
 
-// Leftovers: every done or archived task whose worktree was not removed yet.
+// Context snapshots no unfinished task's latest worker or reviewer reads any more,
+// on each machine a run got some on (an unreachable one waits for the next sweep).
+async function sweepContext(deps: Deps) {
+  const [tasks, runs] = [await deps.store.tasks(), await deps.store.runs()]
+  for (const machine of new Set(runs.filter(r => r.context?.length).map(r => r.machine))) {
+    try {
+      const on = runOn(deps, { machine }), home = await homeOf(deps, on)
+      if (!home) continue
+      const base = contextBase(home, pmDir())
+      const listed = await exec(deps, on, CONTEXT_LIST_SCRIPT, [base])
+      if (listed.code !== 0) continue
+      for (const dir of staleSnapshots(listed.out.split('\n').filter(Boolean), base, machine, tasks, runs)) {
+        const r = await exec(deps, on, CONTEXT_REMOVE_SCRIPT, [dir, base])
+        if (r.code !== 0) console.warn(`[pm] context snapshot ${dir} stays: ${r.out.split('\n').pop()?.slice(0, 200) || 'timeout'}`)
+      }
+    } catch { /* the next sweep tries again */ }
+  }
+}
+
+// Leftovers: every done or archived task whose worktree was not removed yet,
+// then the context snapshots nothing needs.
 export async function sweepWorktrees(deps: Deps) {
   if (!(await deps.store.enabled())) return
   for (const t of await deps.store.tasks())
     if (cleanupOf(t) && !t.cleanup?.done) await cleanTask(deps, t.id).catch(() => {})
+  await sweepContext(deps)
 }

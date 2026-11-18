@@ -21,13 +21,15 @@ import { prepareWorktree } from './pmDeps'
 import { ensureReady } from './pmReady'
 import { fileConflict, filesSection, pastAgents } from '../../shared/pm/files'
 import { branchFor } from '../../shared/pm/branchName'
-import { showIds, shownTaskId } from '../../shared/pm/projectKey'
+import { showIds, shownKey, shownTaskId } from '../../shared/pm/projectKey'
 import { LABEL, TMP_DIR, WS_FILES_SCRIPT, parseWsFiles, wsFilesSection, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, startBase, taskPlan, workflowBaseNote, missingBaseNote, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type Run, type Task } from '../../shared/pm/run'
 import { isOpen, type Incident, type Recovery } from '../../shared/pm/incident'
 import { recordGone, type CoreList } from './pmIncidents'
 import { interruptTask } from './pmRecovery'
 import { pmDir } from './pmHome'
-import { INSTRUCTIONS_CAP, workspaceInstructions, workspaceSkills } from '../../shared/pm/workspace'
+import { INSTRUCTIONS_CAP, repoPath, workspaceInstructions, workspaceOf, workspaceSkills } from '../../shared/pm/workspace'
+import { contextArgs, contextLine, contextMembers, contextRoot, contextSection, taskContext, type ContextFolder } from '../../shared/pm/context'
+import type { Template } from '../../shared/pm/workflow'
 import type { Project } from '../../shared/pm/project'
 
 // Reuses the worktree of an earlier attempt; else a new branch from the base,
@@ -123,6 +125,78 @@ export async function linkSkills(deps: Pick<CoreAdminDeps, 'call'>, store: PmSto
 export const FETCH_BRANCH_SCRIPT = `git -C "$1" ls-remote -q --exit-code origin "refs/heads/$2" >/dev/null 2>&1; c=$?
 [ $c = 2 ] && exit 2; [ $c = 0 ] || { echo "origin unreachable (git ls-remote exit $c)"; exit 1; }
 git -C "$1" fetch -q origin "+refs/heads/$2:refs/remotes/origin/$2" 2>&1 || exit 1`
+// A read-only snapshot of a member's base branch for context folders ($1 its
+// clone, $2 the folder of its snapshots, $3 the base branch; '' the repository's
+// default, $4 a commit it pinned at an earlier start, or ''). A pinned commit the
+// clone has is used as is (`pinned`): a task stays at its first start's commits.
+// Else origin's branch is fetched when the clone has an origin; a failed
+// fetch is not hidden (the branch the clone has is used, said `not-fetched`), nor
+// is a clone without origin (`local`). The commit becomes a detached worktree at
+// $2/<sha>, read-only, complete only once $2/<sha>.ok exists: it is built under a
+// lock ($2/<sha>.lock, one creator at a time, a stale one broken after 5 minutes),
+// and a folder without the marker (a creator that died) is removed and built again.
+// Every use touches the folder and the marker: the sweep removes a snapshot not
+// used for an hour. Prints `<commit> fetched|not-fetched|local|pinned`; exits 4 when the
+// branch is nowhere or is no branch name.
+export const CONTEXT_SCRIPT = `clone=$1 root=$2 base=$3 sha=
+git -C "$clone" rev-parse --git-dir >/dev/null 2>&1 || { echo "no git repository at $clone"; exit 3; }
+[ -n "$root" ] || exit 1
+case $4 in *[!0-9a-f]*) ;; ?*) git -C "$clone" cat-file -e "$4^{commit}" 2>/dev/null && sha=$4 how=pinned;; esac
+if [ -z "$sha" ]; then
+if [ -n "$base" ]; then
+  case $base in -*|@*) echo "no branch $base"; exit 4;; esac
+  git check-ref-format --branch "$base" >/dev/null 2>&1 || { echo "no branch $base"; exit 4; }
+fi
+how=local
+if git -C "$clone" remote get-url origin >/dev/null 2>&1; then
+  # Tried 3 times: starts fetching into one clone together lose the race for its refs.
+  how=not-fetched
+  for t in 1 2 3; do
+    if [ -n "$base" ]; then git -C "$clone" fetch -q origin -- "$base" 2>/dev/null; else git -C "$clone" fetch -q origin 2>/dev/null; fi && { how=fetched; break; }
+    [ $t = 3 ] || sleep 1
+  done
+fi
+if [ -n "$base" ]; then
+  ref=
+  for c in "refs/remotes/origin/$base" "refs/heads/$base"; do
+    git -C "$clone" rev-parse -q --verify "$c^{commit}" >/dev/null && { ref=$c; break; }
+  done
+  [ -n "$ref" ] || { echo "no branch $base"; exit 4; }
+else
+  ref=refs/remotes/origin/HEAD
+  git -C "$clone" rev-parse -q --verify "$ref^{commit}" >/dev/null 2>&1 || ref=HEAD
+fi
+sha=$(git -C "$clone" rev-parse "$ref^{commit}") || exit 1
+fi
+case $sha in ''|*[!0-9a-f]*) exit 1;; esac
+dir=$root/$sha lock=$root/$sha.lock
+mkdir -p "$root" || exit 1
+used() { touch "$dir" "$dir.ok" 2>/dev/null; echo "$sha $how"; }
+if [ -f "$dir.ok" ] && [ -e "$dir/.git" ]; then used; exit 0; fi
+n=0
+until mkdir "$lock" 2>/dev/null; do
+  [ -n "$(find "$lock" -maxdepth 0 -mmin +5 2>/dev/null)" ] && { rmdir "$lock" 2>/dev/null; continue; }
+  n=$((n + 1))
+  [ $n -le 60 ] || { echo "the snapshot of $sha stays locked by another start"; exit 1; }
+  sleep 1
+done
+state=
+trap 'if [ "$state" = building ]; then chmod -R u+w "$dir" 2>/dev/null; git -C "$clone" worktree remove --force "$dir" >/dev/null 2>&1; rm -rf "$dir" "$dir.ok"; git -C "$clone" worktree prune >/dev/null 2>&1; fi; rmdir "$lock" 2>/dev/null' EXIT
+trap 'exit 1' HUP INT TERM
+if [ -f "$dir.ok" ] && [ -e "$dir/.git" ]; then used; exit 0; fi
+state=building
+if [ -e "$dir" ] || [ -e "$dir.ok" ]; then
+  chmod -R u+w "$dir" 2>/dev/null
+  git -C "$clone" worktree remove --force "$dir" >/dev/null 2>&1
+  rm -rf "$dir" "$dir.ok"
+fi
+git -C "$clone" worktree prune >/dev/null 2>&1
+git -C "$clone" worktree add -q --detach "$dir" "$sha" 2>&1 || exit 1
+chmod -R a-w "$dir" || exit 1
+: > "$dir.ok" || exit 1
+state=
+used`
+
 // The task's worker terminal exists (a launch that timed out is not confirmed until
 // reconciliation finds it).
 export const launched = async (store: PmStore, t: Task) => t.state === 'working' && !!t.run && !!(await store.runs()).find(r => r.id === t.run)?.terminal
@@ -173,6 +247,39 @@ export async function workspaceFiles(deps: PmLaunchDeps, task: Task, p: Project,
   if (hash === (was?.hash ?? '')) return { lines, task: await deps.store.saveTask(next), changed }
   const said = [names.length ? `Workspace instructions: ${names.join(', ')}` : 'Workspace instructions: none', ...r.log].join('; ')
   return { lines, task: await deps.store.logTask(next, 'engine', said), changed }
+}
+
+// The read-only context folders of a run (context.ts) on its machine: for each
+// member the task's setting names, a snapshot of its base branch. A member that
+// cannot give one (no clone on that machine, no such branch…) is skipped, never
+// a reason not to start. Says what it got in the task's log, once per start.
+// pinned: the folders of the task's previous run, whose commits it keeps.
+export async function contextFolders(deps: PmLaunchDeps, task: Task, p: Project, t: Template | null, machine: string, pinned: ContextFolder[] = []) {
+  const spec = taskContext(t, task)
+  if (!spec || (Array.isArray(spec) && !spec.length)) return { task, folders: [] as ContextFolder[], lines: [] as string[] }
+  const list = await deps.store.projects()
+  const { members, skipped } = contextMembers(spec, p, list)
+  const folders: ContextFolder[] = []
+  try {
+    const { on, m: { label } } = machineOn(deps, machine)
+    const home = await homeOf(deps, on)
+    const ws = workspaceOf(p, list)
+    await Promise.all(members.map(async (m, i) => {
+      const clone = home && cloneOn(m, machine, home)
+      if (!clone) return void skipped.push({ key: shownKey(m), why: `no clone on ${label}` })
+      const root = contextRoot(home, pmDir(), m.key)
+      const pin = pinned.find(f => f.member === shownKey(m))
+      const r = await exec(deps, on, CONTEXT_SCRIPT, contextArgs(clone, root, m.base ?? '', pin?.sha), undefined, 120).catch((e: Error) => ({ code: 1, out: e.message, err: '' }))
+      const [sha = '', said] = r.code === 0 ? r.out.split('\n').pop()!.split(' ') : []
+      const how = said === 'pinned' ? pin?.how : said
+      if (!/^[0-9a-f]{40}$/.test(sha)) return void skipped.push({ key: shownKey(m), why: r.out.split('\n').pop()?.slice(0, 200) || 'timeout' })
+      folders[i] = { member: shownKey(m), repo: ws ? repoPath(m, ws) : m.path, sha, dir: `${root}/${sha}`, ...(how === 'not-fetched' || how === 'local' ? { how } : {}) }
+    }))
+  } catch (e) {
+    skipped.push(...members.map(m => ({ key: shownKey(m), why: (e as Error).message })))
+  }
+  const got = folders.filter(Boolean)
+  return { task: await deps.store.logTask(task, 'engine', contextLine(got, skipped)), folders: got, lines: contextSection(got) }
 }
 
 // origin: the address the user reached wherdr at (the start request's).
@@ -363,7 +470,10 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const leakCheck = isPublic(p) ? (await readLeakCheck(deps, on, paths).catch(() => ({ check: undefined }))).check : undefined
   const ws = await workspaceFiles(deps, task, p, true)
   task = ws.task
-  const text = showIds([p], instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(machine, deps.origin), token: shotToken } : undefined, leakCheck, ws.lines)
+  // A later start keeps the commits of the first one.
+  const ctx = await contextFolders(deps, task, p, t, machine, (await store.runs()).find(r => r.id === task.run)?.context)
+  task = ctx.task
+  const text = showIds([p], instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(machine, deps.origin), token: shotToken } : undefined, leakCheck, [...ws.lines, ...ctx.lines])
     + ['', ...filesSection(runFiles(paths.instructions).files, task.files), ...(depsLine ? [depsLine, ''] : []), ...(contLine ? [contLine, ''] : []), ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n'))
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 
@@ -376,7 +486,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   // Claude's conversation id, pinned: a later resume takes it up again.
   const taken = plan.program === 'claude' ? resume : undefined
   const session = () => (plan.program === 'claude' ? { session: randomUUID() } : {})
-  let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now(), ...(taken ? { session: taken.session } : session()) }
+  let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now(), ...(taken ? { session: taken.session } : session()), ...(ctx.folders.length ? { context: ctx.folders } : {}) }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
     await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, sameFiles: undefined, machineWait: undefined, run: run.id, step, base, branch: paths.branch, branchStart: task.branchStart ?? paths.branch, ...(shotToken ? { shotToken } : {}) })
@@ -385,7 +495,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
       address = (await deps.call<{ address: string }>('terminal.run', {
         cwd: paths.worktree, ...(on ? { on } : {}), no_parent: true, wait: false,
         env: agentEnv(paths.worktree), labels: runLabels(install, run),
-        line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, paths.instructions, run.session ? { id: run.session, ...(taken && run.attempt === 1 ? { resume: taken.text } : {}) } : undefined)}`,
+        line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, paths.instructions, run.session ? { id: run.session, ...(taken && run.attempt === 1 ? { resume: taken.text } : {}) } : undefined, undefined, ctx.folders.map(f => f.dir))}`,
       }, 30000)).address
     } catch (e) {
       // Unconfirmed: it may run anyway. The next reconciliation finds it by its labels.

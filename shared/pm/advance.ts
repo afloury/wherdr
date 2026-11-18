@@ -46,7 +46,7 @@ export const doneSection = (note: string) => [
 ]
 
 // The reviewer's instructions file: the task, what to review, the workspace's
-// instructions files (ws, wsFilesSection), how to answer.
+// instructions files and the context folders (ws: wsFilesSection, contextSection), how to answer.
 export function reviewFile(task: Pick<Task, 'id' | 'title' | 'description' | 'specNotes'>, run: Pick<Run, 'worktree' | 'branch'>, text: string, verdict: string, publicRepo = false, ws: string[] = []) {
   return [
     `# Review of ${task.id}: ${task.title}`, '', specText(task), '',
