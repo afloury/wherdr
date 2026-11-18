@@ -129,6 +129,7 @@
 ## Extending and fixing
 
 - [Plugins](docs/plugins.md#wherdr-plugins): optional page plugins and how to install them; they load only once the [Community plugins switch](docs/plugins.md#community-plugins-switch) (server-wide, off by default, full-access warning; existing installs with plugins stay on) is on.
+- [Install a plugin from GitHub](docs/plugins.md#install-from-github): `owner/repo[@ref]`, shown with its exact commit and the full-access warning before Install; Check for update (installs only on Update) and Remove in Settings › Plugins. [Publish one](docs/plugins.md#publish-a-plugin-on-github): prebuilt files committed, `manifest.json` at the root.
 - [The plugin module](docs/plugins.md#the-module): what a plugin file exports.
 - [Markers](docs/plugins.md#markers-data-wherdr): `data-wherdr` markers a plugin can find.
 - [Troubleshooting](docs/troubleshooting.md#troubleshooting): hc connection, conversations, machines and network problems.

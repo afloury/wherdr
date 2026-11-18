@@ -1,7 +1,7 @@
 // wherdr plugins: the page-side host (utils/pluginHost.ts) wired to the app.
 import { effectScope, watch } from 'vue'
 import { readPrefs } from '#shared/clientPlugins'
-import type { ClientPluginInfo, PluginPrefs } from '#shared/clientPlugins'
+import type { ClientPluginInfo, PluginPrefs, PluginSource } from '#shared/clientPlugins'
 import { createPluginHost, type PluginRow } from '~/utils/pluginHost'
 import { syncedRef } from './useSyncedSettings'
 
@@ -21,7 +21,7 @@ export function startClientPlugins() {
   const router = useRouter()
   host = createPluginHost({
     list: () => api<{ plugins: ClientPluginInfo[], enabled: boolean }>('/api/client-plugins'),
-    load: info => import(/* @vite-ignore */ `${location.origin}/api/client-plugins/${encodeURIComponent(info.id)}/${encodeURIComponent(info.main)}`),
+    load: info => import(/* @vite-ignore */ `${location.origin}/api/client-plugins/${encodeURIComponent(info.id)}/${encodeURIComponent(info.main)}?v=${info.source?.commit || ''}`),
     insertDraft: (text) => {
       if (!curPane.value) return
       const d = useDraft(curPane.value)
@@ -44,3 +44,19 @@ export function startClientPlugins() {
   return h
 }
 export const setClientPluginEnabled = (id: string, on: boolean) => startClientPlugins().setEnabled(id, on)
+
+// Install from GitHub (server/utils/pluginInstall.ts). What would be installed,
+// with the exact commit; nothing is written until installPlugin.
+export interface PluginPreview extends ClientPluginInfo { source: PluginSource, resolved: string, update: boolean }
+export const previewPlugin = (spec: string) => api<{ preview: PluginPreview }>('/api/client-plugins/preview', { spec }).then(r => r.preview)
+export const checkPluginUpdate = (id: string) => api<{ update: PluginPreview | null }>('/api/client-plugins/check', { id }).then(r => r.update)
+// Installing comes after the full-access warning, so it also turns Community plugins on.
+export async function installPlugin(source: PluginSource) {
+  await api('/api/client-plugins/install', { source })
+  await startClientPlugins().refresh()
+  communityPlugins.value = true
+}
+export async function removePlugin(id: string) {
+  await api('/api/client-plugins/remove', { id })
+  await startClientPlugins().refresh()
+}

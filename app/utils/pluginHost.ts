@@ -129,6 +129,20 @@ export function createPluginHost(deps: HostDeps) {
     else deps.changed()
   }
 
+  // The plugins folder changed (installed, updated or removed from Settings):
+  // a plugin gone or at another commit is stopped, then the wanted ones start.
+  async function refresh() {
+    const res = await deps.list()
+    const before = new Map(infos.map(i => [i.id, i.source?.commit]))
+    infos.splice(0, infos.length, ...res.plugins)
+    for (const [id, commit] of before) {
+      const now = infos.find(i => i.id === id)
+      if (!now || now.source?.commit !== commit) { cancel(id); stop(id); status.delete(id) }
+    }
+    if (community) await startAll()
+    else deps.changed()
+  }
+
   // Community plugins turned on or off (here or on another device).
   async function setCommunity(on: boolean) {
     if (on === community) return
@@ -158,7 +172,7 @@ export function createPluginHost(deps: HostDeps) {
     const p = deps.prefs()
     return infos.map(i => ({ ...i, status: status.get(i.id) || 'off', error: p.failed[i.id] || '', wanted: !p.off.includes(i.id) }))
   }
-  return { init, setEnabled, setCommunity, rows, listError: () => listError }
+  return { init, refresh, setEnabled, setCommunity, rows, listError: () => listError }
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, why: string): Promise<T> {
