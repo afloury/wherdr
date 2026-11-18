@@ -19,6 +19,7 @@ wherdr 3.1.1 rounds off workspaces (each member setting says whether it follows 
 - **A task paused for room.** A coordinator can pause a started task until its machine has room: it stays out of your lists, and the engine resumes it in the same conversation, with *Resume now* and *Stop* on its sheet ([A task paused for room](docs/project-management.md#a-task-paused-for-room)).
 - **A workspace from New › Project.** A *Project | Workspace* switch creates either one, with a *Browse* button beside each machine's root folder; a workspace root may itself be a git repository, adopted as a member with `repo adopt .`.
 - **Themes from Alfred and as JSON.** Ask Alfred for a theme and it proposes one as a card with a preview and a contrast check (*Apply*, *Edit in editor*, *Cancel*); the theme editor previews a small version of the whole app and gets a *JSON* tab.
+- **Antigravity CLI (`agy`) terminals** are recognized: their label, icon and live state. Thanks to [@followcat](https://github.com/followcat) (#830).
 - **`wherdr pm docs`** lets coordinators read the running wherdr's docs from any machine.
 
 ### Improved
@@ -40,7 +41,7 @@ wherdr 3.1.1 rounds off workspaces (each member setting says whether it follows 
 
 ### Fixed
 
-- **A new Devin shows its conversation.** Devin 3000.12 runs a launcher as the terminal's program and its engine (`devin acp`) as a child, and the session lock names the engine, so a Devin started without `-r` (a fresh session) showed "No conversation for this agent yet". The lock of a Devin process under the launcher now counts. Thanks to [@followcat](https://github.com/followcat) for the fix (#878).
+- **A new Devin shows its conversation.** Devin 3000.12 runs a launcher as the terminal's program and its engine (`devin acp`) as a child, and the session lock names the engine, so a Devin started without `-r` (a fresh session) showed "No conversation for this agent yet". The lock of the launcher's direct Devin child now counts; a Devin started further down, from the engine's shell, keeps its own session. Thanks to [@followcat](https://github.com/followcat) for the fix (#878, #895).
 - **An idle Devin keeps its conversation.** Devin's input field was recognized only when its footer showed the token quota, which real footers rarely do (model only, `· smart`, an edits hint, a footer cut short on a phone), so an idle Devin opened the interactive terminal over the conversation. The field is now recognized by its frame, whatever the footer says. A Devin screen caught mid-redraw also no longer opens the interactive terminal for a single read: it opens once two reads in a row agree (other agents are unchanged). Thanks to [@followcat](https://github.com/followcat) for the fix (#862).
 - **Photo messages to Claude.** A photo reaches Claude as an image; a photo Claude keeps as its path is pasted once more, then sent, and never left stuck in its field; a multi-line message with a photo (which Claude collapses to *[Pasted text]*) is submitted within about 20 s, and its bubble keeps your text.
 - **Message states.** A message reads *Sending…* with a loader until it is in the transcript, never *Read by the agent* before; *Not sent* shows only once the server gave up.
@@ -48,14 +49,6 @@ wherdr 3.1.1 rounds off workspaces (each member setting says whether it follows 
 - **Keep awake** works again on a remote Mac, and a failed read says *Could not reach <machine>* with the reason and *Try again*, instead of *Not available*.
 - **Tasks.** A review round adds its section to the task's report instead of replacing the first one; a step's busy state in Tasks to review belongs to its own task; a coordinator's first messages survive a restart; a failed migration never stops the board; writes of wherdr's files are atomic.
 - **Sheets.** Notes open beside a conversation no longer turn into a sheet when you leave for the board; a menu sheet opens above the sheet it comes from; the project sheet's hints no longer overlap its tab bar; a long custom theme name ends with an ellipsis.
-### New
-
-- **Antigravity CLI (`agy`) terminals** are recognized: their label, icon and live state.
-
-### Fixed
-
-- **A new Devin shows its conversation.** Devin 3000.12 runs a launcher as the terminal's program and its engine (`devin acp`) as a child, and the session lock names the engine, so a Devin started without `-r` (a fresh session) showed "No conversation for this agent yet". The lock of the launcher's direct Devin child now counts; a Devin started further down, from the engine's shell, keeps its own session.
-- **An idle Devin keeps its conversation.** Devin's input field was recognized only when its footer showed the token quota, which real footers rarely do (model only, `· smart`, an edits hint, a footer cut short on a phone), so an idle Devin opened the interactive terminal over the conversation. The field is now recognized by its frame, whatever the footer says. A Devin screen caught mid-redraw also no longer opens the interactive terminal for a single read: it opens once two reads in a row agree (other agents are unchanged).
 
 ## [3.1.0] — 2026-11-16
 

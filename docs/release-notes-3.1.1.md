@@ -12,6 +12,8 @@ wherdr 3.1.1 rounds off **workspaces**: each member setting says whether it foll
 
 **A workspace from New › Project.** A *Project | Workspace* switch creates either one, with a *Browse* button beside each machine's root folder. A workspace root may itself be a git repository, adopted as a member with `repo adopt .`. [Workspaces](https://github.com/afloury/wherdr/blob/v3.1.1/docs/workspaces.md)
 
+**Antigravity terminals.** An Antigravity CLI (`agy`) terminal shows its name, icon and live state. Thanks to [@followcat](https://github.com/followcat).
+
 **Themes from Alfred.** Ask Alfred for a theme and it proposes one as a card with a preview and a contrast check. The theme editor previews a small version of the whole app and gets a *JSON* tab.
 
 ## Improved
