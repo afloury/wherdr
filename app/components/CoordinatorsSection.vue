@@ -92,24 +92,19 @@ function toggleMembers(c: CoordinatorView) {
   if (dnd.swallowClick()) return
   membersOpen.value = membersOpen.value === c.project ? '' : c.project
 }
-const boardPath = (key: string) => `/board?project=${encodeURIComponent(key)}`
 
 // Restart with…: the offered agents that can run this project's coordinator.
 const rowMenu = useRowMenu()
 const restarting = ref<CoordinatorView | null>(null)
 const pick = ref('')
 const choices = computed(() => (restarting.value ? offerCoordinators(undefined, restarting.value.project) : []))
-const settingsPath = (c: CoordinatorView, tab: string) => `/settings?section=projects&project=${encodeURIComponent(c.project)}&tab=${tab}`
 const menu = (c: CoordinatorView) => (): MenuItem[] => {
   const p = coordinatorPane(c)
-  const pilot = !!c.autopilot?.on
   return [
     // Its first message never reached its session (coordinatorFirst.ts): typed again once it is
     // ready; its session ended: a new conversation that gets it.
     ...(c.undelivered ? [{ label: tl('Send again'), icon: 'i-lucide-send', run: () => run(c, async () => { await api('/api/pm/coordinator-start', { project: c.project, resend: true }); await loadCoordinators() }) }, { kind: 'separator' as const }] : []),
-    { label: t('Open the board'), icon: 'i-lucide-kanban', run: () => navigateTo(boardPath(c.project)) },
-    { label: c.workspace ? t('Workspace settings') : t('Project settings'), icon: 'i-lucide-settings-2', run: () => navigateTo(settingsPath(c, 'general')) },
-    { label: t('Autopilot'), icon: pilot ? 'i-lucide-check' : 'i-lucide-plane', desc: pilot ? t('On') : t('Off'), run: () => navigateTo(settingsPath(c, 'autopilot')) },
+    ...coordinatorPlaceItems(c),
     { kind: 'separator' },
     { label: t('Rename…'), icon: 'i-lucide-pencil', run: () => startRename(c) },
     // The conversation header's mute: a coordinator's exception, kept across its restarts.
@@ -219,7 +214,7 @@ onUnmounted(() => clearInterval(timer))
               </button>
               <ul v-if="membersOpen === c.project" class="ws-member-list" data-testid="workspace-member-list">
                 <li v-for="m in c.workspace.members" :key="m.key">
-                  <NuxtLink :to="boardPath(m.key)" class="ws-member"><ProjectBadge :text="m.label ?? m.key" :color="m.color" /><span>{{ m.name }}</span></NuxtLink>
+                  <NuxtLink :to="coordinatorBoardPath(m.key)" class="ws-member"><ProjectBadge :text="m.label ?? m.key" :color="m.color" /><span>{{ m.name }}</span></NuxtLink>
                 </li>
               </ul>
             </template>
