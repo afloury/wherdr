@@ -80,6 +80,22 @@ describe('workspaces', () => {
     expect(effectiveWorkflow('PAY', null, { ...member, workspace: undefined }, ws, shared)).toEqual(defaultWorkflow('PAY'))
   })
 
+  it('a member without its own worktree setup runs the workspace\'s, wherever the workspace keeps it', () => {
+    const bare: Project = { ...ws, shared: {} }, file: Template = { id: 'ws', version: 1, taskTypes: {}, worktree: { copy: ['.env'] } }
+    // In the workspace's workflow file (where its sheet saves it), its shared settings first.
+    expect(effectiveWorkflow('PAY', null, member, bare, file).worktree).toEqual({ copy: ['.env'] })
+    expect(effectiveWorkflow('PAY', null, member, ws, file).worktree).toEqual(ws.shared!.worktree)
+    // The member's own file without an override: still the workspace's.
+    expect(effectiveWorkflow('PAY', { id: 'pay', version: 1, taskTypes: {} }, member, bare, file).worktree).toEqual({ copy: ['.env'] })
+    // A member override wins; the same setup as the workspace's file is none.
+    const own = { ...member, overrides: ['worktree' as const], worktree: { setup: 'npm ci' } }
+    expect(effectiveWorkflow('PAY', null, own, bare, file).worktree).toEqual({ setup: 'npm ci' })
+    expect(workflowOverrides(member, bare, { worktree: { copy: ['.env'] } }, file)).toEqual({})
+    // The machines set on the workspace's sheet (on itself) reach its members too.
+    const machines: Project = { ...bare, machines: ['home', 'big'], clones: { big: '/srv/work' } }
+    expect(effectiveProject(member, machines)).toMatchObject({ machines: ['home', 'big'], clones: { big: '/srv/work/payroll-api' } })
+  })
+
   it('a workspace refuses a normal task, a project takes it', () => {
     expect(workspaceTaskError(ws, 'task')).toMatch(/features only/)
     expect(workspaceTaskError(ws, 'feature')).toBe('')
