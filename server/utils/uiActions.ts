@@ -7,7 +7,7 @@ import type { Turn } from '../../shared/pm/coordinator'
 import { shownTaskId } from '../../shared/pm/projectKey'
 import { taskPlan, type Task } from '../../shared/pm/run'
 import { actionBlock, actionLabel, actionRefusal, actionStamp, cardNow, cardOutcome, changeStamp, defaultChoice, keepCards, outcomeText, settingStamp, type CardChoice, type ProjectChange, type SettingChange, type ThemeProposal, type UiAction, type UiCard } from '../../shared/uiActions'
-import { MAIN } from '../../shared/pm/coordinator'
+import { MAIN, cardTurn } from '../../shared/pm/coordinator'
 import { tellCardOutcome } from './cardOutcome'
 import { HerdrError } from './herdr'
 import { userStep } from './pmBoard'
@@ -26,7 +26,7 @@ async function stampOf(store: PmStore, kind: UiAction, task: Task | null) {
 
 // `ui action <kind> <task>`: scope, the coordinator's key (its record keeps the card).
 export async function addAction(store: PmStore, o: { scope: string, turn: Turn, by: string, kind: UiAction, task: Task }) {
-  if (o.turn !== 'user') throw new HerdrError('refused', 'ui action is only for a turn that comes from the user, never in a wake')
+  if (!cardTurn(o.turn)) throw new HerdrError('refused', 'ui action is only for a turn that comes from the user, never in a wake')
   const shown = shownTaskId(await store.projects(), o.task.id)
   const { stamp, plan } = await stampOf(store, o.kind, o.task)
   const why = actionRefusal(o.kind, stamp, shown)
@@ -45,7 +45,7 @@ export async function addAction(store: PmStore, o: { scope: string, turn: Turn, 
 // `wherdr alfred setting set <key> <value> --propose`: a card in Alfred's
 // reply; only the user's Apply changes the setting.
 export async function addSettingCard(store: PmStore, o: { turn: Turn, by: string, change: SettingChange, label: string }) {
-  if (o.turn !== 'user') throw new HerdrError('refused', 'setting set --propose is only for a turn that comes from the user, never in a wake')
+  if (!cardTurn(o.turn)) throw new HerdrError('refused', 'setting set --propose is only for a turn that comes from the user, never in a wake')
   const rec = await store.coordinator(MAIN)
   if (!rec) throw new HerdrError('not_found', 'No Alfred record')
   const now = Date.now()
@@ -57,7 +57,7 @@ export async function addSettingCard(store: PmStore, o: { turn: Turn, by: string
 // `wherdr alfred <change> --propose` (project add, template, guards…): a card
 // in Alfred's reply; only the user's Apply makes the change.
 export async function addChangeCard(store: PmStore, o: { turn: Turn, by: string, change: ProjectChange, label: string }) {
-  if (o.turn !== 'user') throw new HerdrError('refused', '--propose is only for a turn that comes from the user, never in a wake')
+  if (!cardTurn(o.turn)) throw new HerdrError('refused', '--propose is only for a turn that comes from the user, never in a wake')
   const rec = await store.coordinator(MAIN)
   if (!rec) throw new HerdrError('not_found', 'No Alfred record')
   const now = Date.now()
@@ -69,7 +69,7 @@ export async function addChangeCard(store: PmStore, o: { turn: Turn, by: string,
 // `wherdr alfred theme propose < theme.json`: a card in Alfred's reply; only
 // the user's Apply saves the theme and picks it.
 export async function addThemeCard(store: PmStore, o: { turn: Turn, by: string, theme: ThemeProposal }) {
-  if (o.turn !== 'user') throw new HerdrError('refused', 'theme propose is only for a turn that comes from the user, never in a wake')
+  if (!cardTurn(o.turn)) throw new HerdrError('refused', 'theme propose is only for a turn that comes from the user, never in a wake')
   const rec = await store.coordinator(MAIN)
   if (!rec) throw new HerdrError('not_found', 'No Alfred record')
   const now = Date.now()

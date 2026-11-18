@@ -113,7 +113,11 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
   // gives --only and --start again, so the card's argv leaves them out.
   const change = async (plan: AlfredPlan & { picks?: (string | null)[], on?: string[], start?: boolean, pm?: true }, make: () => Promise<unknown>) => {
     if (card) return plan.change.join('\n') === card.join('\n') ? { applied: true, change: plan.change, result: await make() } : { stale: true }
-    if ('apply' in cmd && cmd.apply) return { applied: true, change: plan.change, result: await make() }
+    // Only in a turn of the user's own message: never a wake, a card's click, or text read meanwhile.
+    if ('apply' in cmd && cmd.apply) {
+      if ((await alfredTurn())?.kind !== 'user') throw new HerdrError('refused', '--apply is only for a turn that comes from the user, never a wake: show the change and wait for their yes')
+      return { applied: true, change: plan.change, result: await make() }
+    }
     if (!('propose' in cmd && cmd.propose)) return dryRun(argv as string[], plan)
     const key = 'input' in cmd ? cmd.input.key : 'key' in cmd ? cmd.key : '', place = CHANGE_PLACES[cmd.name]!, turn = await alfredTurn()
     const target = cmd.name === 'project add' || cmd.name === 'workspace add' ? undefined : place.target
@@ -301,13 +305,14 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       const p = projectOf(cmd.key)
       const pane = await coordinatorPane(p.key)
       const started = !pane
-      // The coordinator's turn is the user's when Alfred relays the user's message; a wake's otherwise.
+      // Alfred relaying the user's message: a relay turn, never the user's own (the
+      // user's yes to Alfred is no yes to the coordinator); a wake's otherwise.
       const turn = await alfredTurn()
       const said = tellText(cmd.text)
       const text = `From ${ALFRED}${turn?.kind === 'user' ? ', for the user' : ''}: ${said}`
       // Not running: started with the message, typed once it is ready (coordinatorFirst.ts).
       const terminal = pane?.coreAddress ?? (await startCoordinator(deps, p.key, await projectAgent(p.key), deps.urls, [text])).terminal
-      await noteTurn(store, p.key, turn?.kind === 'user' ? 'user' : 'wake', turn?.said)
+      await noteTurn(store, p.key, turn?.kind === 'user' ? 'relay' : 'wake', turn?.said)
       if (!started) await deps.call('terminal.send', { terminal, text }, 30000)
       await store.logProject(p.key, { by: ALFRED, text: `told the coordinator: ${said.slice(0, 300)}`, ...(turn?.said ? { said: turn.said } : {}) })
       return { told: p.key, ...(started ? { started: `its coordinator was not running: started on ${machineName(p.machine)}, the message goes once it is ready` } : {}), next: `Read its answer later with wherdr alfred last ${p.key}` }

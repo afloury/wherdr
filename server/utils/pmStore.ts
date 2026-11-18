@@ -29,7 +29,7 @@ import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { withMark } from '../../shared/pm/times'
 import { HerdrError } from './herdr'
 import type { FolderOptions } from '../../shared/pm/newProject'
-import { MAIN, type CoordinatorAgent, type Proposal, type ProposalAnswer } from '../../shared/pm/coordinator'
+import { MAIN, type CoordinatorAgent, type NotedTurn, type Proposal, type ProposalAnswer } from '../../shared/pm/coordinator'
 import type { Incident } from '../../shared/pm/incident'
 import { NEW_AUTOPILOT, type Autopilot, type DayCount, type LastWake, type TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, sinceYesterday, type Wake, type WakeSkip } from '../../shared/pm/wakes'
@@ -50,7 +50,7 @@ import { writeFileAtomic, writeJsonAtomic } from './atomicWrite'
 // change waiting for the user.
 export interface CoordinatorRecord {
   // cliHash: Alfred's `wherdr alfred` token (the main coordinator's record only).
-  project: string, tokenHash: string, cliHash?: string, terminal?: string, turn?: { kind: 'user' | 'wake', at: number, said?: string, look?: true }
+  project: string, tokenHash: string, cliHash?: string, terminal?: string, turn?: { kind: NotedTurn, at: number, said?: string, look?: true }
   // answers: the last answers to its proposals, oldest first (answered: the one
   // kept before there were several).
   agent?: CoordinatorAgent, ran?: CoordinatorAgent, proposal?: Proposal, answers?: ProposalAnswer[], answered?: ProposalAnswer
