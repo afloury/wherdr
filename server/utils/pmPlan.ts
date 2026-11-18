@@ -48,7 +48,7 @@ base64 < "$f" | tr -d '\\n'`
 
 export const COMMIT_SECONDS = 45
 
-// $3: the branch the root must be on ('': origin's default branch, else any), $4: the byte length of the file as it was read,
+// $3: the branch the root must be on ('': origin's default branch), $4: the byte length of the file as it was read,
 // $5: the commit message. stdin: the file as it was read, then the new one. Nothing is written
 // (the file stays as it was) and the exit says why:
 //   5 the file changed since it was read, 12 a rebase, merge, cherry-pick, revert or bisect is
@@ -56,7 +56,8 @@ export const COMMIT_SECONDS = 45
 //   6 the root is on another branch than $3 (printing it), 11 on no branch (a detached HEAD),
 //   7 the plan file has local changes (staged or not), 8 it is not tracked, 9 the commit failed
 //   (printing git's last words), 10 it took over ${COMMIT_SECONDS} seconds, 14 the file is in another
-//   git repository than the root's own (a member's clone, or a root inside a larger repository): final.
+//   git repository than the root's own (a member's clone, or a root inside a larger repository),
+//   15 no branch to check the root against (no base, no origin's default branch): final.
 // A git root commits that file only (commit --only: other staged or unstaged work stays as it
 // is, no prompt: GIT_TERMINAL_PROMPT=0; no hook either, so no formatter or lint-staged touches
 // other files); a commit that fails puts the old text back, but only
@@ -103,9 +104,15 @@ if [ -n "$top" ]; then
   cur=$(git -C "$r" symbolic-ref -q --short HEAD)
   want=$3
   [ -n "$want" ] || want=$(git -C "$r" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
-  if [ -n "$want" ] && [ "$cur" != "$want" ]; then echo "$cur"; echo "$want"; exit 6; fi
   git -C "$r" ls-files --error-unmatch -- "$f" >/dev/null 2>&1 || exit 8
   git -C "$r" diff --quiet -- "$f" && git -C "$r" diff --cached --quiet -- "$f" || exit 7
+  # An index flag that hides edits (assume-unchanged, skip-worktree), or a file whose
+  # content is not HEAD's whatever git's flags say: local changes all the same.
+  case $(git -C "$r" ls-files -v -- "$f") in "H "*) ;; *) exit 7;; esac
+  rel=$(git -C "$r" ls-files --full-name -- "$f")
+  [ "$(git -C "$r" hash-object -- "$f")" = "$(git -C "$r" rev-parse -q --verify "HEAD:$rel")" ] || exit 7
+  [ -n "$want" ] || exit 15
+  if [ "$cur" != "$want" ]; then echo "$cur"; echo "$want"; exit 6; fi
   put "$t/new" || exit 1
   out=$(limited ${COMMIT_SECONDS} git -C "$r" -c core.hooksPath=/dev/null commit --only -m "$5" -- "$f" 2>&1); c=$?
   if [ "$c" -ne 0 ]; then
@@ -158,6 +165,7 @@ export function planWriteResult(code: number | null, out: string, file: string, 
     3: `${file} is outside the workspace's root`, 4: `${file} was not found`, 7: `${file} has local changes`, 8: `${file} is not tracked by git`, 11: 'the root is on no branch (a detached HEAD)',
     6: `the root is on branch ${out.split('\n')[0] || '?'}${(out.split('\n')[1] || base) ? ` (not ${out.split('\n')[1] || base})` : ''}`, 9: `git could not commit it: ${out.split('\n').pop() ?? ''}`.trim(),
     10: `git took more than ${COMMIT_SECONDS} seconds to commit it`, 14: `${file} is in another git repository than the root's (a member's clone): its own tasks change it`,
+    15: 'no branch to check the root against: set the workspace\'s base branch (or the root member\'s)',
   }
   const skipped = why[code]
   if (!skipped) throw new HerdrError('core', `Could not write ${file} on the workspace's machine (exit ${code})`)

@@ -298,6 +298,9 @@ describe('the plan file on the workspace\'s machine', () => {
       git(root, 'init', '-q', '-b', branch)
       git(root, 'add', '-A')
       git(root, 'commit', '-q', '-m', 'init')
+      // origin's default branch: the one to commit on when no base is set.
+      git(root, 'update-ref', `refs/remotes/origin/${branch}`, 'HEAD')
+      git(root, 'symbolic-ref', 'refs/remotes/origin/HEAD', `refs/remotes/origin/${branch}`)
     }
 
     it('refuses to close with lines of the plan file unticked, lists them, and closes with --anyway', async () => {
@@ -418,6 +421,21 @@ describe('the plan file on the workspace\'s machine', () => {
       expect((await store.task(staged.sub.id))!.planTick!.skipped).toBe('specs/tasks.md has local changes')
       await fs.rm(pmDir(), { recursive: true, force: true })
 
+      // An edit hidden by an index flag is a local change too.
+      for (const flag of ['--assume-unchanged', '--skip-worktree']) {
+        await fs.rm(path.join(root, '.git'), { recursive: true })
+        const hidden = await setup()
+        initRepo()
+        git(root, 'update-index', flag, 'specs/tasks.md')
+        await fs.appendFile(path.join(root, 'specs/tasks.md'), 'mine\n')
+        await finish(hidden.sub.id)
+        await tick(hidden.sub.id)
+        expect((await store.task(hidden.sub.id))!.planTick!.skipped).toBe('specs/tasks.md has local changes')
+        expect(git(root, 'show', 'HEAD:specs/tasks.md')).toBe(PLAN.trimEnd())
+        await fs.writeFile(path.join(root, 'specs/tasks.md'), PLAN)
+        await fs.rm(pmDir(), { recursive: true, force: true })
+      }
+
       await fs.rm(path.join(root, '.git'), { recursive: true })
       const untracked = await setup()
       git(root, 'init', '-q', '-b', 'main')
@@ -475,6 +493,17 @@ describe('the plan file on the workspace\'s machine', () => {
       await finish(sub.id)
       await tick(sub.id)
       expect((await store.task(sub.id))!.planTick!.skipped).toBe('the root is on branch dev (not main)')
+      expect(await planText()).toBe(PLAN)
+    })
+
+    it('skips when no branch is known: no base and no origin\'s default branch', async () => {
+      const { sub } = await setup()
+      initRepo('feature-work')
+      git(root, 'symbolic-ref', '--delete', 'refs/remotes/origin/HEAD')
+      await finish(sub.id)
+      await tick(sub.id)
+      expect((await store.task(sub.id))!.planTick!.skipped).toMatch(/^no branch to check the root against/)
+      expect(git(root, 'log', '--format=%s')).toBe('init')
       expect(await planText()).toBe(PLAN)
     })
 

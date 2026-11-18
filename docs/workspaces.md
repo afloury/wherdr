@@ -402,9 +402,10 @@ nothing), the engine, on the workspace's machine and in the root folder:
   touches other files), and only when the root is on a branch (no detached
   HEAD), with no merge, rebase, cherry-pick, revert or bisect under way, with
   git's index not locked, the plan file tracked and with no uncommitted change
-  (staged or not), and the root's base branch checked out: the root member's
-  base, else the workspace's, else origin's default branch (with none of
-  them, any branch). The file is written beside itself and moved into
+  (staged or not, or hidden by `assume-unchanged` or `skip-worktree`: the file
+  must hold HEAD's text), and the root's base branch checked out: the root
+  member's base, else the workspace's, else origin's default branch. With
+  none of them known, nothing is committed: set the workspace's base branch. The file is written beside itself and moved into
   place. The message is the workspace's commit message template when it
   has one (`{tag}` and `{id}` of the sub-task, `{title}` as *tick T010 (the
   sub-task's title)*), else `WS-1: tick T010, T011 (PA-1)`. A commit that
@@ -421,7 +422,7 @@ minutes, 12 times or for an hour: git's index is locked, a merge or rebase is
 under way, the file changed while it was read. An offline machine is said
 once in the task's log and waited for. Past the bound, and for the others
 (local changes to the plan file, the file not tracked or in another
-repository, another branch, no branch, a commit that failed or timed out, a plan file moved out of the root or
+repository, another branch, no branch, no base branch known, a commit that failed or timed out, a plan file moved out of the root or
 deleted), **nothing is written and the engine does not try that task again**.
 The same goes for a pass where no ref could be ticked (each line missing or
 already ticked). Each of these is said in four places: the task's log (*plan
