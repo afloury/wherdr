@@ -58,7 +58,9 @@ change in a member goes through tasks (`feature split` of a feature,
 its settings deny edits inside each member's folder (rewritten at each start,
 so a newly adopted member is covered from the coordinator's next start); it may
 still write elsewhere under the root, such as specs and notes. On Codex, the
-root is read-only: it reads every repository and writes only in its own folder.
+root is read-only: it reads every repository and writes only in its own folder. On omp, the
+coordinator starts with a tool list that has no edit tool (its shell can still write, as
+with Claude), and the root is added with `--add-dir`.
 
 The root's own `AGENTS.md` and `CLAUDE.md`, when present, are copied into its
 instructions at each start (a `CLAUDE.md` that only imports `AGENTS.md` adds
@@ -155,6 +157,23 @@ tab names the files its agents got.
 A member **inherits** them (*Workspace WS's*), turns them off (*None*) or
 replaces them with its own paths under the root (*These files*), in its own
 General tab.
+
+## Workspace skills
+
+Skills kept in the root's `.claude/skills` (spec-kit's `speckit-plan`, say)
+reach the worker and the reviewer of every member's task, Claude and omp alike:
+before each worker or reviewer start, wherdr links each skill folder (one with
+a `SKILL.md`) into the task's worktree at `.claude/skills/<name>`. The links are
+ignored through the repository's git exclude, so nothing reaches the member's
+commits or its `.gitignore`, and an edit at the root is read by the next agent
+start. A skill of the same name that the member's repository has is its own and
+wins; a link whose skill left the root goes. The task's log names the skills
+linked at the worker's start.
+
+The setting is in the General tab of the workspace's sheet, under *Workspace
+skills*: *Default* (the root's `.claude/skills`, when there) or *None*, which
+removes the links at the next agent start in each worktree (the member's own skills stay). The
+root's own repository is left as it is: its worktrees hold the root's skills.
 
 ## Adopting a repository
 

@@ -58,7 +58,7 @@ export type AlfredCommand =
   // Lines added to the end of the project coordinator's memory.md (the text comes as
   // the call's input, so no card: the parser refuses --propose).
   | { name: 'project memory', apply: boolean, propose?: true, key: string }
-  | { name: 'coordinator start', apply: boolean, propose?: true, key: string, program?: 'claude' | 'codex', resume?: true }
+  | { name: 'coordinator start', apply: boolean, propose?: true, key: string, program?: 'claude' | 'codex' | 'omp', resume?: true }
   // Every v2 project not made yet, in one change: only: the keys to add (none: all); start: their coordinators too.
   | { name: 'v2 import', apply: boolean, propose?: true, only?: string[], start: boolean }
   // No change given: the project's guards are shown.
@@ -96,7 +96,7 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'project guards <KEY> [--protect <branch,branch|none>] [--merge-protected user|engine] [--merge-others user|engine] [--contributor-prs off|others|all]', does: 'the project\'s guards: protected branches, who merges into them and into the others (user: the user, engine: wherdr), and whether its coordinator may merge an outside contributor\'s PR after the user\'s yes (others: not into a branch reserved for the user; all: into any); without an option, shown only. A project coordinator never changes them' },
   { usage: 'project machine add <KEY> <machine> --clone <folder>', does: 'let the project\'s tasks run on another machine (its key or label), in its clone of the repo there; once applied, the machine\'s readiness check runs and its result is in the answer' },
   { usage: 'project machine remove <KEY> <machine>', does: 'the project\'s tasks no longer start on that machine (tasks already there stay)' },
-  { usage: 'coordinator start <KEY> [--program claude|codex] [--resume]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one); --resume takes up its last conversation again, with the agent that ran it' },
+  { usage: 'coordinator start <KEY> [--program claude|codex|omp] [--resume]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one); --resume takes up its last conversation again, with the agent that ran it' },
   { usage: '<change> --propose', does: 'instead of --apply, any change above (project add, workspace add, template, guards, machine, coordinator start, v2 import): a card in your reply (the change, Show me, Cancel, Apply) the user applies with one click. Only in a turn that comes from the user' },
   { usage: 'setting set <key> <value> [--propose]', does: 'propose a setting change, to one of the values `settings` lists for it: without --propose it only shows the change; with it, a card in your reply (before → after, Show me, Cancel, Apply) the user applies. Only in a turn that comes from the user; you never apply it yourself' },
   { usage: 'theme propose < theme.json', does: 'propose a custom theme the user described: the theme file on stdin, the format of an imported one ({ "wherdr": "theme", "version": 1, "name", "dark": { bg, bg2, surface, line, text, muted, dim, accent, green, coral, ochre, rose, blue, teal, "ansi": [16 colors] }, "light": { the same colors, no ansi } }, every color #rrggbb, 8 KB at most). A refused file says why: fix it and run again. Accepted: a card in your reply (name, preview, contrast check, Apply, Edit in editor, Cancel); the answer lists the colors below WCAG AA in each mode, to fix first when you can. Only in a turn that comes from the user; you never save or apply a theme yourself' },
@@ -222,9 +222,9 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
     // --program: a program only, run with its harness's default model; none: the project's default agent and model.
     const { program } = flags
     if (!key(w2) || w3) return usage(verb)
-    if (program !== undefined && program !== 'claude' && program !== 'codex') return { error: '--program is claude or codex' }
+    if (program !== undefined && program !== 'claude' && program !== 'codex' && program !== 'omp') return { error: '--program is claude, codex or omp' }
     if (program && resume) return { error: '--resume takes up the conversation with the agent that ran it: no --program' }
-    return { name: verb, apply, key: key(w2), ...(program ? { program: program as 'claude' | 'codex' } : {}), ...(resume ? { resume: true as const } : {}) }
+    return { name: verb, apply, key: key(w2), ...(program ? { program: program as 'claude' | 'codex' | 'omp' } : {}), ...(resume ? { resume: true as const } : {}) }
   }
   if (verb === 'v2 import') {
     const { only, start } = flags

@@ -41,7 +41,7 @@ const WHY = { dialog: 'a dialog waits for an answer', installing: 'it is install
 const statusOf = (t: { status?: string | { state?: string } | null }) => (typeof t.status === 'string' ? t.status : t.status?.state)
 
 // up: called once with the first outcome (the session is up, or gone).
-// inArgv: the messages went on its command line (a fresh Claude or Codex): only watched
+// inArgv: the messages went on its command line (a fresh Claude, Codex or omp): only watched
 // until its session is up (idle or working), so that a start that never comes up says so.
 // A terminal.get that fails (a timeout, the machine briefly unreachable) is retried.
 export async function deliverFirst(deps: FirstDeps, key: string, address: string, texts: string[], up: () => void = () => {}, inArgv = false): Promise<'sent' | 'failed'> {

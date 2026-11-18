@@ -649,6 +649,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       if (allowed.errors.length) throw badInput(allowed.errors)
       const overrides = memberOverrides(list[i]!, update)
       list[i] = { ...kept, ...overrides, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...ownName, ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...ownMessage, ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(allowed.paused ? { paused: allowed.paused } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}), ...(update.archiveAfter !== undefined ? { archiveAfter: update.archiveAfter } : {}), ...(keepBranch ? { deleteBranch: false as const } : {}), ...(reach.length ? { reach } : {}), ...instr, ...sharedMessage }
+      // A workspace's root skills: only None is kept (rootSkills: false).
+      if (isWorkspace(rest) && update.rootSkills !== undefined) {
+        const { rootSkills: _rs, ...others } = list[i]!.shared ?? {}
+        list[i] = { ...list[i]!, shared: { ...others, ...(update.rootSkills ? {} : { rootSkills: false as const }) } }
+      }
       list[i] = sinkShared(list[i]!)
       await saveProjects(list)
       return list[i]!

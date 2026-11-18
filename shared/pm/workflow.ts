@@ -80,7 +80,7 @@ export interface Prefs { agent?: string, model?: string, reviewAgent?: string, r
 export const PREF_KEYS = ['agent', 'model', 'reviewAgent', 'reviewModel', 'reviewFallbackAgent', 'reviewFallbackModel'] as const
 
 // Agents the engine knows how to start with a pinned model and a first message.
-export const PROGRAMS = ['claude', 'codex'] as const
+export const PROGRAMS = ['claude', 'codex', 'omp'] as const
 // reviewModel: the worker's own model, in a new session.
 export const SAME_MODEL = 'same'
 export const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/
@@ -89,7 +89,7 @@ export const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/
 // worker's, or "same" with the worker's agent. Returns the reason it cannot run.
 export function reviewerCheck(worker: { program: string, model: string }, program: string, asked: string, field: 'reviewModel' | 'reviewFallbackModel'): { program: string, model: string } | { reason: string } {
   const same = asked === SAME_MODEL, model = same ? worker.model : asked
-  if (!(PROGRAMS as readonly string[]).includes(program)) return { reason: `The engine cannot start "${program}": claude or codex` }
+  if (!(PROGRAMS as readonly string[]).includes(program)) return { reason: `The engine cannot start "${program}": claude, codex or omp` }
   if (same && program !== worker.program) return { reason: `${field} "${SAME_MODEL}" needs the worker's agent (${worker.program})` }
   if (!MODEL_RE.test(model)) return { reason: model ? `Invalid review model "${model}"` : `No review model set: add prefs.${field} to the template` }
   if (!same && model === worker.model) return { reason: `The reviewer must use another model than the worker (${model}), or set ${field} to "${SAME_MODEL}"` }

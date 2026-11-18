@@ -685,12 +685,12 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
   return { accepted: true }
 }
 
-// A program, and its model when one is given (Claude and Codex take one).
+// A program, and its model when one is given (Claude, Codex and omp take one).
 const agentOf = (v: { program?: unknown, model?: unknown }): CoordinatorAgent | null => (isCoordinatorProgram(v.program)
-  ? { program: v.program, ...(typeof v.model === 'string' && MODEL_RE.test(v.model) && (v.program === 'claude' || v.program === 'codex') ? { model: v.model } : {}) }
+  ? { program: v.program, ...(typeof v.model === 'string' && MODEL_RE.test(v.model) && (v.program === 'claude' || v.program === 'codex' || v.program === 'omp') ? { model: v.model } : {}) }
   : null)
 const BAD_AGENT = 'program: an agent that can coordinate (claude, codex, omp…)'
-const BAD_PROJECT_AGENT = 'program: claude or codex (a project coordinator needs one wherdr can keep out of the repository)'
+const BAD_PROJECT_AGENT = 'program: claude, codex or omp (a project coordinator needs one that is kept out of the repository: by wherdr for Claude and Codex, by its tool list for omp)'
 // No agent chosen yet: Claude, as before (the client sends the user's first agent).
 const FALLBACK: CoordinatorAgent = { program: 'claude' }
 
@@ -928,7 +928,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   if (!a) throw new HerdrError('bad_input', BAD_AGENT)
   if (!canRunCoordinator(a.program, key)) throw new HerdrError('bad_input', BAD_PROJECT_AGENT)
   const { program } = a
-  if (resume && !canResume(program)) throw new HerdrError('bad_input', 'Only a Claude or Codex conversation can be resumed: start a new one')
+  if (resume && !canResume(program, key)) throw new HerdrError('bad_input', 'Only a Claude, Codex or omp conversation can be resumed: start a new one')
   const c = await prepareCoordinator(deps, key, program, urls, resume, a.model)
   // What the user applied on its cards while it did not run, said once (a resume too).
   const notes = cardNotesMessage(before)
@@ -943,7 +943,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const pending = c.prompt.length ? [] : (before?.undelivered?.texts ?? []).filter(x => !c.prompt.includes(x) && !first.includes(x) && !proposes.includes(x))
   const prompt = [...c.prompt, ...first, ...proposes, ...pending, ...notes]
   // A resumed Codex reads a word after `resume --last` as a session: its messages are typed.
-  const asArg = promptAsArg(program) && !resume
+  const asArg = promptAsArg(program, key) && !resume
   // Codex takes one [PROMPT] argument: its messages go as one.
   const argv = [...c.argv, ...(asArg && prompt.length ? [prompt.join('\n\n')] : [])]
   const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
@@ -971,7 +971,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   // Typed one after another once the program is ready (in the background: it may wait
   // on a dialog), each outcome logged; saved first, so that a failure stays on its record.
   // The start queue (startTurn) moves on once its session is up.
-  // A fresh Claude or Codex has them on its command line: watched until its session is up.
+  // A fresh Claude, Codex or omp has them on its command line: watched until its session is up.
   void deliverFirst(deps, key, address, prompt, up, asArg).catch(() => up())
   // This conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})

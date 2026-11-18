@@ -86,11 +86,13 @@ const setupBody = () => ({ copy: paths(setup.copy), share: setup.noShare ? [] : 
 // Workspace instructions files (workspace.ts), on a workspace or a member:
 // inherit (the workspace's, or on a workspace the default), off ([]), or these files.
 const wsKind = computed(() => (p.value.kind === 'workspace' ? 'workspace' : p.value.workspace ? 'member' : ''))
-const instr = reactive({ instrMode: 'inherit', instrFiles: '' })
+// rootSkills: the root's .claude/skills in its members' worktrees (a workspace's only).
+const instr = reactive({ instrMode: 'inherit', instrFiles: '', rootSkills: 'default' })
 const fillInstr = (x: Project) => {
   const list = x.workspace ? ((x.overrides ?? []).includes('instructionsFiles') ? x.instructionsFiles ?? [] : undefined) : x.shared?.instructionsFiles
-  Object.assign(instr, { instrMode: !list ? 'inherit' : list.length ? 'files' : 'off', instrFiles: (list ?? []).join('\n') })
+  Object.assign(instr, { instrMode: !list ? 'inherit' : list.length ? 'files' : 'off', instrFiles: (list ?? []).join('\n'), rootSkills: x.shared?.rootSkills === false ? 'off' : 'default' })
 }
+const skillItems = computed(() => [{ label: tl('Default: the root\'s .claude/skills'), value: 'default' }, { label: tl('None'), value: 'off' }])
 const instrBody = () => (instr.instrMode === 'off' ? [] : instr.instrMode === 'files' && paths(instr.instrFiles).length ? paths(instr.instrFiles) : null)
 const instrItems = computed(() => [
   { label: wsKind.value === 'workspace' ? tl('Default: AGENTS.md, else CLAUDE.md') : tl(`${wsName.value}'s`), value: 'inherit' },
@@ -125,7 +127,7 @@ const followed = (x: Project) => {
 // and an unchanged agent never writes a workflow.
 const fields = () => {
   const { name, coordinatorName, key: _k, color: _c, base, branchName, commitMessage, onStateCommand: _oc, onStateEvents: _oe, archiveAfter, deleteBranch, reach, ...prefs } = form
-  return { name, coordinatorName, base, branchName, commitMessage, onStateChange: onStateBody(), archiveAfter: Number(archiveAfter), deleteBranch, reach: Object.entries(reach).map(([project, level]) => ({ project, level })), ...(workflow.value ? { prefs, worktree: setupBody() } : {}), ...(wsKind.value ? { instructionsFiles: instrBody() } : {}) } as Record<string, unknown>
+  return { name, coordinatorName, base, branchName, commitMessage, onStateChange: onStateBody(), archiveAfter: Number(archiveAfter), deleteBranch, reach: Object.entries(reach).map(([project, level]) => ({ project, level })), ...(workflow.value ? { prefs, worktree: setupBody() } : {}), ...(wsKind.value ? { instructionsFiles: instrBody() } : {}), ...(wsKind.value === 'workspace' ? { rootSkills: instr.rootSkills !== 'off' } : {}) } as Record<string, unknown>
 }
 const snap = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, JSON.stringify(v)]))
 let sentWas: Record<string, string> = {}
@@ -362,6 +364,13 @@ async function remove() {
               <small v-if="auto.errors.instrFiles" class="form-error pm-field-error" role="alert">{{ t(auto.errors.instrFiles) }}</small>
               <small class="muted">{{ wsKind === 'workspace' ? tl('Files at the workspace\'s root that the worker and the reviewer of every member\'s task get after the workflow\'s instructions, read again at each step.') : tl('Files at the workspace\'s root that this project\'s workers and reviewers get after the workflow\'s instructions.') }}</small>
             </span>
+            <template v-if="wsKind === 'workspace'">
+              <span class="field-label">{{ tl('Workspace skills') }}<SavedMark :s="auto.state.rootSkills" /></span>
+              <span class="pm-field">
+                <USelect v-model="instr.rootSkills" :items="skillItems" size="lg" class="pm-base-pick" :aria-label="tl('Workspace skills')" data-testid="pm-ws-skills" />
+                <small class="muted">{{ tl('Skills of the root that the worker and the reviewer of every member\'s task find, linked in its worktree and never committed; a member\'s own skill of the same name wins.') }}</small>
+              </span>
+            </template>
           </template>
 
           <span class="field-label">{{ tl('Delete the task\'s branch after its merge') }}<SavedMark :s="auto.state.deleteBranch" /></span>
