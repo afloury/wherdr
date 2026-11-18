@@ -105,6 +105,21 @@ commit message template or On state change command gives the workspace's back.
 Everything that reads a project's settings, the engine and the coordinator's commands included, reads
 them with the overrides applied.
 
+A workspace keeps these settings in its `shared` settings, whether you set them
+in its sheet or Alfred or `wherdr pm` does: a change of the workspace's working
+branch reaches every member at once (`plan --project <member>` and `autopilot
+show` give the member's working branch). A workspace stored before kept some of
+them (base branch, branch name, placement, archive delay, delete-branch) on
+itself; wherdr moves them into `shared` once at start and says so in its log.
+
+A member's General tab saves only the fields you change: changing its base
+branch overrides that field alone, and its agents or worktree setup changed
+there override those (kept on the member), never giving it a copy of the
+workspace's workflow. When a member takes the workspace's working branch and
+its repository has no such branch (on origin, else locally), the task starts
+from the repository's current branch, and its log says so (*develop not found
+in this repository: using main*); a member's own base branch is used as is.
+
 ## Workspace instructions files
 
 A member's task runs in a worktree outside the workspace's root, so its agents
@@ -196,6 +211,11 @@ instead (a repository with a different review, for instance): the first
 workflow accepted for the member becomes its own, and its tasks move to it.
 The member's Workflow and Guards tabs show the workspace's workflow it runs,
 with a line that says so; a change saved there gives the member its own.
+A member with its own workflow can follow the workspace's again: *Follow
+workspace WS's workflow* in its Workflow tab (after a confirmation), or Alfred's
+`wherdr alfred project template <member> none`. Its own workflow is removed
+(its agents and worktree setup are the workspace's again), its tasks move to
+the workspace's, and its log says so.
 
 The workspace's [guards](project-management.md#guards) apply to every member,
 its own workflow included: they sit between your settings and the project's,

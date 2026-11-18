@@ -37,7 +37,7 @@ import type { Automation, AutomationProposal, Mark } from '../../shared/pm/autom
 import { EXAMPLES } from '../../shared/pm/examples'
 import { afterRefusal, subTasks } from '../../shared/pm/feature'
 import { eventOf, stateChanges, type TaskStateName } from '../../shared/pm/onState'
-import { cleanWorkspaceFields, effectiveProjects, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
+import { SHARED_FIELDS, backToWorkspace, cleanWorkspaceFields, effectiveProjects, liftShared, needsSink, sinkShared, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
 import type { MapFile } from '../../shared/pm/workspaceMap'
 import { DATA_DIR } from './env'
 import { writeFileAtomic, writeJsonAtomic } from './atomicWrite'
@@ -206,12 +206,21 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     for (const p of list) out.push(p.color ? p : { ...p, color: defaultColor([...out, ...list.filter(x => x.color)]) })
     await saveProjects(out)
   }
+  // A workspace that kept its working branch (branch name, placement, archive
+  // delay, branch kept) on itself: they go into `shared`, where its members read them. Idempotent.
+  async function migrateShared() {
+    const list = await readProjects()
+    const moved = list.filter(needsSink)
+    if (!moved.length) return
+    await saveProjects(list.map(p => (needsSink(p) ? sinkShared(p) : p)))
+    console.warn(`[pm] workspace settings moved into shared, for their members: ${moved.map(p => p.key).join(', ')}`)
+  }
   let migrated: Promise<void> | null = null
   // A migration that fails (a workspace error in saveProjects, say) is logged and
   // skipped: the board keeps serving the projects as stored, and tries it again at the next start.
   const tryMigrate = (name: string, run: () => Promise<void>) => run().catch((e) => { console.warn(`[pm] ${name} migration skipped: ${e instanceof Error ? e.message : e}`) })
   // As stored: what writes change. Readers get effective ones (shown below).
-  const projects = async () => { await (migrated ??= tryMigrate('workflow', migrate).then(() => tryMigrate('color', migrateColors))); return readProjects() }
+  const projects = async () => { await (migrated ??= tryMigrate('workflow', migrate).then(() => tryMigrate('color', migrateColors)).then(() => tryMigrate('workspace', migrateShared))); return readProjects() }
   async function templates(): Promise<TemplateInfo[]> {
     const names = await fs.readdir(files.templates).catch(() => [] as string[])
     const out: TemplateInfo[] = []
@@ -555,8 +564,33 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const { from: _old, ...rest } = list[i]!
       // No workflow yet: nothing to keep, the template's guards come with it.
       if (source && keepGuards) source = startOverFrom(source, await readJson<Template>(workflowFile(rest.key)))
+      const ws = workspaceOf(rest, list), old = !source && ws ? await readJson<Template>(workflowFile(rest.key)) : null
       if (source) list[i] = { ...rest, from: (await copyTemplate(rest.key, source, by)).from }
-      else { await fs.rm(workflowFile(rest.key), { force: true }); list[i] = rest }
+      else { await fs.rm(workflowFile(rest.key), { force: true }); list[i] = ws ? backToWorkspace(rest) : rest }
+      await saveProjects(list)
+      // A member without its own: it follows its workspace's again, said in its log.
+      if (old && ws) {
+        await replanTasks(rest.key, old, effectiveWorkflow(rest.key, null, list[i], ws, await readJson<Template>(workflowFile(ws.key))))
+        await writeJson(path.join(files.projectLog, `${rest.key}.json`), { v: 1, entries: [...await projectLog(rest.key), { at: Date.now(), by, text: `its own workflow removed: it follows workspace ${ws.key}'s again` }].slice(-500) })
+      }
+      return list[i]!
+    }),
+
+    // A member's own agents (prefs) or worktree setup, from its General tab,
+    // without a workflow of its own: kept on the member, never a workflow copy.
+    // The same as its workspace's (or none): back to the workspace's.
+    setMemberSetup: (key: unknown, setup: Pick<Project, 'prefs' | 'worktree'>) => write(async () => {
+      const { list, i } = await findProject(key)
+      const p = list[i]!, ws = workspaceOf(p, list)
+      const own = new Set(p.overrides ?? []), next = { ...p } as Project
+      for (const f of ['prefs', 'worktree'] as const) {
+        if (!(f in setup)) continue
+        const v = setup[f], same = v === undefined || !Object.keys(v).length || JSON.stringify(v) === JSON.stringify(ws?.shared?.[f])
+        if (same) { own.delete(f); delete next[f] }
+        else { own.add(f); Object.assign(next, { [f]: v }) }
+      }
+      delete next.overrides
+      list[i] = { ...next, ...(own.size ? { overrides: SHARED_FIELDS.filter(x => own.has(x)) } : {}) }
       await saveProjects(list)
       return list[i]!
     }),
@@ -565,6 +599,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     // A new key: a key no other project has (any case, former keys too); the old one stays an alias.
     updateProject: (key: unknown, update: ProjectUpdate) => write(async () => {
       const { list, i } = await findProject(key)
+      // A workspace's shared fields are worked on as its own, then go back into `shared` (sinkShared).
+      list[i] = liftShared(list[i]!)
       const { base: _base, label: _label, aliases: _aliases, branchName: _bn, commitMessage: _cm, onStateChange: _os, deleteBranch: _db, coordinatorName: _cn, reach: _r, ...rest } = list[i]!
       const keepBranch = (update.deleteBranch ?? list[i]!.deleteBranch) === false
       const base = update.base ?? list[i]!.base
@@ -600,6 +636,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       if (allowed.errors.length) throw badInput(allowed.errors)
       const overrides = memberOverrides(list[i]!, update)
       list[i] = { ...kept, ...overrides, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...ownName, ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...ownMessage, ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(allowed.paused ? { paused: allowed.paused } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}), ...(update.archiveAfter !== undefined ? { archiveAfter: update.archiveAfter } : {}), ...(keepBranch ? { deleteBranch: false as const } : {}), ...(reach.length ? { reach } : {}), ...instr, ...sharedMessage }
+      list[i] = sinkShared(list[i]!)
       await saveProjects(list)
       return list[i]!
     }),
@@ -619,8 +656,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const b = typeof base === 'string' ? base.trim() : ''
       if (b && !isBranch(b)) throw badInput([{ path: 'base', message: 'invalid branch name' }])
       const { list, i } = await findProject(key)
-      const { base: _old, overrides: _o, ...rest } = list[i]!
-      list[i] = { ...rest, ...(b ? { base: b } : {}), ...memberOverrides(list[i]!, { base: b }) }
+      const { base: _old, overrides: _o, ...rest } = liftShared(list[i]!)
+      list[i] = sinkShared({ ...rest, ...(b ? { base: b } : {}), ...memberOverrides(list[i]!, { base: b }) })
       await saveProjects(list)
       return list[i]!
     }),

@@ -10,7 +10,9 @@ import type { LogEntry } from '#shared/pm/templateText'
 import type { Template } from '#shared/pm/workflow'
 import type { Project } from '#shared/pm/project'
 
-const props = defineProps<{ project: Project, workflow: Template | null, log: LogEntry[] }>()
+// inherited: the workspace whose workflow a member runs ('' : its own, or not a member).
+const props = defineProps<{ project: Project, workflow: Template | null, log: LogEntry[], inherited?: string }>()
+const emit = defineEmits<{ changed: [] }>()
 
 const type = ref('')
 const busy = ref('')
@@ -27,6 +29,15 @@ const json = computed(() => (props.workflow ? JSON.stringify(props.workflow, nul
 // Changing it: the project's coordinator, with a first message to complete.
 const coordinator = computed(() => projectCoordinators.value.find(c => c.project === props.project.key))
 const ask = () => run('ask', () => openCoordinator(coordinator.value!, props.workflow ? tl(`I would like to change the workflow of ${props.project.key}${type.value ? ` (task type ${type.value})` : ''}: `) : tl(`Please propose a workflow for ${props.project.key}: `)))
+
+// A member with its own workflow follows its workspace's again (its own is removed).
+const own = computed(() => !!props.project.workspace && !!props.workflow && !props.inherited)
+const reset = async () => {
+  const ws = props.project.workspace
+  if (!(await askConfirm(tl(`Follow workspace ${ws}'s workflow again? This project's own workflow is removed: its later changes reach it again.`), tl('Follow the workspace\'s')))) return
+  await run('reset', () => api('/api/pm/project-workflow', { key: props.project.key, reset: true }))
+  if (!error.value) emit('changed')
+}
 
 async function run(what: string, fn: () => Promise<unknown>) {
   if (busy.value) return
@@ -59,6 +70,10 @@ defineExpose({ menu })
     <div class="settings-card wf-ask">
       <p>{{ tl('To create or change a workflow, ask the project’s coordinator (or Alfred). You accept or refuse its proposal here.') }}</p>
       <UButton size="lg" color="primary" icon="i-lucide-message-square" :loading="busy === 'ask'" :disabled="!coordinator || busy !== ''" data-testid="wf-ask" @click="ask">{{ tl('Ask the coordinator') }}</UButton>
+    </div>
+    <div v-if="own" class="settings-card wf-ask" data-testid="wf-own">
+      <p>{{ tl(`This project runs its own workflow, not workspace ${project.workspace}'s: the workspace's changes no longer reach it.`) }}</p>
+      <UButton size="lg" color="neutral" variant="outline" icon="i-lucide-undo-2" :loading="busy === 'reset'" :disabled="busy !== ''" data-testid="wf-reset" @click="reset">{{ tl(`Follow workspace ${project.workspace}'s workflow`) }}</UButton>
     </div>
     <p v-if="error && !dialog" class="form-error" role="alert">{{ t(error) }}</p>
 

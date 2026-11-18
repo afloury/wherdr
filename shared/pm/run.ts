@@ -214,7 +214,9 @@ export function agentLine(program: string, model: string, instructions: string, 
 
 // A task's working branch: the one it started with, else its project's now.
 export const taskBase = (task: Pick<Task, 'base'>, p?: Pick<Project, 'base'>) =>
-  (task.base !== undefined ? task.base : p?.base) || undefined
+  realBase(task.base !== undefined ? task.base : p?.base)
+// A branch name, never a placeholder ({base} unresolved: none, the repository's current branch).
+const realBase = (b?: string) => (b && !b.includes('{') ? b : undefined)
 
 // The branch a task type's workflow opens its PR to or merges into (github.pr
 // base, git.land or git.verify-merged target), when a step names one.
@@ -222,7 +224,7 @@ export function workflowBase(t: Template | null | undefined, type: string): stri
   for (const s of t ? typeSteps(t, type) : []) {
     const a = s.action
     const b = a?.kind === 'github.pr' ? a.base : a?.kind === 'git.land' || a?.kind === 'git.verify-merged' ? a.target : undefined
-    if (b) return b
+    if (realBase(b)) return b
   }
 }
 
@@ -238,6 +240,8 @@ export function startBase(t: Template | null | undefined, task: Pick<Task, 'base
 
 // The project log line when a base comes from the workflow (once per project and branch).
 export const workflowBaseNote = (base: string) => `no working branch set: using ${base} from the workflow`
+// The task log line when the workspace's working branch is not in a member's repository.
+export const missingBaseNote = (base: string, current: string) => `${base} not found in this repository: using ${current || 'its current branch'}`
 
 // A task's planned steps, with its working branch.
 export const taskPlan = (t: Template, task: Pick<Task, 'type' | 'prefs' | 'base'>, p?: Pick<Project, 'base'>) =>

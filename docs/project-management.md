@@ -192,6 +192,10 @@ its message under the field and keeps what you typed.
   `git.verify-merged` target), which the tab names (*No working branch set: using
   v3 from the workflow*, also written once in the project's log); with none, the
   repository's default branch. A running task keeps the branch it started with.
+  A `{base}` left in the workflow (a PR base, a merge target) is never taken as
+  a branch: with no working branch set, tasks start from the repository's
+  current branch. A [workspace](workspaces.md#shared-settings)'s member takes
+  its workspace's unless it sets its own.
 - **Branch name**: the template each new task's branch is named from, for
   repositories that require names such as `feature/PROJ-12-fix-login`. Fields:
   `{id}` (the task id), `{tag}` (the card's ticket key, such as `PROJ-12`, else

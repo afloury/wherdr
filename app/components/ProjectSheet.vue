@@ -18,6 +18,7 @@
 import type { Project } from '#shared/pm/project'
 import { PROJECT_COLORS, shownKey } from '#shared/pm/projectKey'
 import { ARCHIVE_DAYS, archiveDays } from '#shared/pm/archive'
+import { liftShared } from '#shared/pm/workspace'
 import type { LogEntry } from '#shared/pm/templateText'
 import { SETUP_TIMEOUT, checkSetup, isRelPath, type Prefs, type Template, type WorkflowError, type WorktreeSetup } from '#shared/pm/workflow'
 import { workflowBase } from '#shared/pm/run'
@@ -62,19 +63,18 @@ async function load() {
   await read()
   filling = true
   fill(p.value, workflow.value?.prefs ?? {})
-  onStateWas = JSON.stringify(onStateBody())
   fillSetup(workflow.value?.worktree)
   fillInstr(p.value)
+  sentWas = snap(fields())
   filling = false
   keyInput.value = form.key
   loaded.value = true
 }
-const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', commitMessage: (x.kind === 'workspace' ? x.shared?.commitMessage : x.commitMessage) ?? '', ...onStateForm(x.kind === 'workspace' ? x.shared?.onStateChange : x.onStateChange), archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
+// A workspace's base, branch name, archive delay and delete-branch are in its shared settings (liftShared).
+const fill = (raw: Project, prefs: Prefs, x = liftShared(raw)) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', commitMessage: (x.kind === 'workspace' ? x.shared?.commitMessage : x.commitMessage) ?? '', ...onStateForm(x.kind === 'workspace' ? x.shared?.onStateChange : x.onStateChange), archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
 // The On state change command and its events (none set: done ticked, for a first command).
 const onStateForm = (o?: OnStateChange) => ({ onStateCommand: o?.command ?? '', onStateEvents: o ? [...o.events] : ['done'] })
-// Sent only once the user changes it: a member's other saves keep the workspace's.
 const onStateBody = () => ({ command: form.onStateCommand, events: form.onStateEvents })
-let onStateWas = ''
 const STATE_LABEL: Record<StateEvent, string> = { started: 'Starts', waits: 'Waits for you', done: 'Done', failed: 'Fails or is stopped' }
 const toggleEvent = (e: StateEvent, on: boolean) => { form.onStateEvents = STATE_EVENTS.filter(x => (x === e ? on : form.onStateEvents.includes(x))) }
 // The worktree setup: paths one per line (or comma separated). Folders to
@@ -109,12 +109,21 @@ const invalid = (): Record<string, string> => {
 
 // Every field saves by itself (useAutosave): the whole form in one call, each
 // field's Saved mark on its group (agent and model together, key and color).
+// Only the fields the user changed are sent: a member's other fields keep
+// following its workspace (its working branch, agents, worktree setup...),
+// and an unchanged agent never writes a workflow.
+const fields = () => {
+  const { name, coordinatorName, key: _k, color: _c, base, branchName, commitMessage, onStateCommand: _oc, onStateEvents: _oe, archiveAfter, deleteBranch, reach, ...prefs } = form
+  return { name, coordinatorName, base, branchName, commitMessage, onStateChange: onStateBody(), archiveAfter: Number(archiveAfter), deleteBranch, reach: Object.entries(reach).map(([project, level]) => ({ project, level })), ...(workflow.value ? { prefs, worktree: setupBody() } : {}), ...(wsKind.value ? { instructionsFiles: instrBody() } : {}) } as Record<string, unknown>
+}
+const snap = (o: Record<string, unknown>) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, JSON.stringify(v)]))
+let sentWas: Record<string, string> = {}
 const send = async () => {
-  const { name, coordinatorName, key, color, base, branchName, commitMessage, onStateCommand: _oc, onStateEvents: _oe, archiveAfter, deleteBranch, reach, ...prefs } = form
+  const { key, color } = form
   const was = last.value
-  const onState = JSON.stringify(onStateBody()) !== onStateWas ? { onStateChange: onStateBody() } : {}
-  const r = await api<{ project: Project }>('/api/pm/project-update', { key: was.key, name, coordinatorName, base, branchName, commitMessage, ...onState, archiveAfter: Number(archiveAfter), deleteBranch, reach: Object.entries(reach).map(([project, level]) => ({ project, level })), ...(color && color !== was.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(was) ? { newKey: key } : {}), ...(workflow.value ? { prefs, worktree: setupBody() } : {}), ...(wsKind.value ? { instructionsFiles: instrBody() } : {}) })
-  if (onState.onStateChange) onStateWas = JSON.stringify(onState.onStateChange)
+  const changed = Object.fromEntries(Object.entries(fields()).filter(([k, v]) => JSON.stringify(v) !== sentWas[k]))
+  const r = await api<{ project: Project }>('/api/pm/project-update', { key: was.key, ...changed, ...(color && color !== was.color ? { color } : {}), ...(key.toUpperCase() !== shownKey(was) ? { newKey: key } : {}) })
+  sentWas = { ...sentWas, ...snap(changed) }
   // The form keeps what was typed; the shared lists that show its key, color and agents are read again.
   last.value = r.project
   emit('changed')
@@ -437,7 +446,7 @@ async function remove() {
           <p v-if="answerError" class="form-error" role="alert">{{ t(answerError) }}</p>
         </div>
         <p v-if="(tab === 'workflow' || tab === 'guards') && loaded && inherited" class="muted settings-hint" data-testid="pm-inherited">{{ tl(`Runs the workflow of workspace ${inherited}, whose guards apply too. A change saved here gives this project its own.`) }}</p>
-        <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" data-ui-target="project.workflow" :project="p" :workflow="workflow" :log="log" @changed="workflowChanged" />
+        <ProjectWorkflow v-if="tab === 'workflow' && loaded" ref="workflowTab" data-ui-target="project.workflow" :project="p" :workflow="workflow" :log="log" :inherited="inherited" @changed="workflowChanged" />
         <template v-else-if="tab === 'guards' && loaded">
           <ProjectGuards v-if="workflow" data-ui-target="project.guards" :project="p" :workflow="workflow" @changed="workflowChanged" />
           <p v-else class="muted settings-hint">{{ tl('No workflow chosen yet: tasks follow a minimal one (to do, work, done). Ask the project’s coordinator to propose one.') }}</p>

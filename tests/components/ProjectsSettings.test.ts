@@ -126,7 +126,7 @@ it('the projects.setup target with projects off points at the switch, then opens
   expect(w.get('[data-testid="pm-add"]').attributes('data-ui-target')).toBe('projects.setup')
 })
 
-it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves the name, base, worktree setup, other projects its coordinator may act on, and the visibility', async () => {
+it('opens the project sheet on the URL\'s tab; Guards saves a branch added; General saves only what changed: the name, worktree setup, other projects its coordinator may act on, and the visibility', async () => {
   state = { ...state, enabled: true, projects: [web(), { ...web(), key: 'DOC', name: 'Docs', visibility: undefined }] }
   const w = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=WEB&tab=guards' })
   mounted = w
@@ -150,7 +150,8 @@ it('opens the project sheet on the URL\'s tab; Guards saves a branch added; Gene
   copy.dispatchEvent(new Event('input'))
   await pick(w, 'pm-reach-DOC', 'act') // a pick saves at once, with what was typed
   await vi.waitFor(() => expect(calls[0]).toEqual({ url: '/api/pm/project-update', body: {
-    key: 'WEB', name: 'Website', coordinatorName: '', base: '', branchName: '', commitMessage: '', archiveAfter: 7, deleteBranch: true, reach: [{ project: 'DOC', level: 'act' }], prefs: { agent: 'claude', model: 'sonnet', reviewAgent: '', reviewModel: '', reviewFallbackAgent: '', reviewFallbackModel: '' },
+    // Only what changed: the agents left alone are not sent (a member's never become its own).
+    key: 'WEB', name: 'Website', reach: [{ project: 'DOC', level: 'act' }],
     worktree: { copy: ['.env', 'config/local.json'], share: [], lockfile: '', command: '', timeout: '' }, // share none kept
   } }))
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Project } from '../shared/pm/project'
-import { WORKSPACE_FIRST, workspaceInput, workspaceInstructions, cleanWorkspaceFields, effectiveProject, effectiveWorkflow, memberOverrides, workflowOverrides, workspaceErrors, workspaceTaskError } from '../shared/pm/workspace'
+import { WORKSPACE_FIRST, workspaceInput, workspaceInstructions, cleanWorkspaceFields, effectiveProject, effectiveWorkflow, liftShared, memberOverrides, workflowOverrides, workspaceErrors, workspaceTaskError } from '../shared/pm/workspace'
 import { defaultWorkflow, type Template } from '../shared/pm/workflow'
 import { taskGuards } from '../shared/pm/actions'
 import { cleanProjectUpdate } from '../shared/pm/project'
@@ -36,6 +36,8 @@ describe('workspaces', () => {
     expect(effectiveWorkflow('PAY', null, member, ws)).toMatchObject({ prefs: ws.shared!.prefs, worktree: ws.shared!.worktree })
     // Not a member: as is.
     expect(effectiveProject({ ...member, workspace: undefined }, ws)).toEqual({ ...member, workspace: undefined })
+    // The workspace's sheet shows them from its shared settings.
+    expect(liftShared(ws)).toMatchObject({ placement: 'balance', base: 'develop', branchName: 'ws/{id}', archiveAfter: 30, deleteBranch: false })
   })
 
   it('an override wins, and clearing it falls back to the shared value', () => {

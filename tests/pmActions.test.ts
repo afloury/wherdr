@@ -293,11 +293,27 @@ describe('on a real repo', () => {
       .toEqual({ ok: true, commit: head })
   })
 
+  it('a workspace\'s branch the clone never fetched is fetched; one origin lacks gives the current branch, said', async () => {
+    const origin = path.join(tmp, 'ws-origin.git'), src = path.join(tmp, 'ws-src'), one = path.join(tmp, 'ws-one'), wt = path.join(tmp, 'ws-wt')
+    git(tmp, 'init', '-q', '--bare', '-b', 'main', origin)
+    git(tmp, 'clone', '-q', origin, src); git(src, 'commit', '-q', '--allow-empty', '-m', 'init'); git(src, 'push', '-q', 'origin', 'main')
+    git(tmp, 'clone', '-q', '--single-branch', '-b', 'main', origin, one)
+    git(src, 'checkout', '-q', '-b', 'develop'); fs.writeFileSync(path.join(src, 'd.txt'), 'd\n'); git(src, 'add', '.'); git(src, 'commit', '-qm', 'd'); git(src, 'push', '-q', 'origin', 'develop')
+    const got = await localSh(WORKTREE_SCRIPT, [one, `${wt}1`, 'task/A-1', 'develop', '', '1'])
+    expect(got.code).toBe(0)
+    expect(got.out).not.toContain('wherdr-base-missing')
+    expect(fs.existsSync(path.join(`${wt}1`, 'd.txt'))).toBe(true)
+    expect((await localSh(WORKTREE_SCRIPT, [one, `${wt}2`, 'task/A-2', 'nope', '', '1'])).out).toContain('wherdr-base-missing main')
+  })
+
   it('lands vibe\'s step locally on a fresh git init folder, with no remote', async () => {
     const repo = path.join(tmp, 'fresh'), wt = path.join(tmp, 'fresh-wt')
     git(tmp, 'init', '-q', '-b', 'main', repo); git(repo, 'commit', '-q', '--allow-empty', '-m', 'init')
     const land = vibe.taskTypes.simple!.steps.find((s): s is Step => typeof s !== 'string' && s.id === 'land')!.action!
     expect((await localSh(WORKTREE_SCRIPT, [repo, wt, 'task/A-1', ''])).code).toBe(0)
+    // A workspace's working branch the repository lacks: its current branch instead, said.
+    const fell = await localSh(WORKTREE_SCRIPT, [repo, `${wt}2`, 'task/A-2', 'develop', '', '1'])
+    expect(fell).toMatchObject({ code: 0, out: expect.stringContaining('wherdr-base-missing main') })
     const deps: ActionDeps = { store: { receipt: async () => null, saveReceipt: async () => {} }, sh: localSh }
     const at = (n: number) => job({ worktree: wt, attempt: n, action: land })
 

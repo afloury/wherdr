@@ -22,7 +22,7 @@ import { ensureReady } from './pmReady'
 import { fileConflict, filesSection, pastAgents } from '../../shared/pm/files'
 import { branchFor } from '../../shared/pm/branchName'
 import { showIds, shownTaskId } from '../../shared/pm/projectKey'
-import { LABEL, TMP_DIR, WS_FILES_SCRIPT, parseWsFiles, wsFilesSection, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, startBase, taskPlan, workflowBaseNote, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, TMP_DIR, WS_FILES_SCRIPT, parseWsFiles, wsFilesSection, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, startBase, taskPlan, workflowBaseNote, missingBaseNote, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type Run, type Task } from '../../shared/pm/run'
 import { isOpen, type Incident, type Recovery } from '../../shared/pm/incident'
 import { recordGone, type CoreList } from './pmIncidents'
 import { interruptTask } from './pmRecovery'
@@ -41,8 +41,20 @@ import type { Project } from '../../shared/pm/project'
 // is moved up to it (a stale local copy would not push), one with commits of its
 // own is kept. A branch taken over (moved up or kept) starts at its fork from the base, and its tip
 // then is recorded (branch.<b>.wherdrtaken): the commits it had ahead are the task's.
+// $6 set: the base is the workspace's. Not fetched yet, it is fetched (a
+// single-branch clone, a new branch); missing on origin (asked, or no origin)
+// and locally, the repository's current branch instead, said on a line
+// `wherdr-base-missing <it>`. Origin unreachable: kept, the worktree fails and the task waits.
 export const WORKTREE_SCRIPT = `repo=$1 dir=$2 branch=$3 base=$4
 [ -e "$dir/.git" ] && exit 0
+has() { git -C "$repo" rev-parse -q --verify "$1" >/dev/null; }
+if [ -n "$6" ] && [ -n "$base" ] && ! has "refs/remotes/origin/$base"; then
+  git -C "$repo" fetch -q origin "+refs/heads/$base:refs/remotes/origin/$base" 2>/dev/null
+  if ! has "refs/remotes/origin/$base" && ! has "refs/heads/$base"; then
+    if git -C "$repo" remote get-url origin >/dev/null 2>&1; then git -C "$repo" ls-remote --exit-code origin "refs/heads/$base" >/dev/null 2>&1; gone=$?; else gone=2; fi
+    if [ "$gone" = 2 ]; then base=$(git -C "$repo" symbolic-ref -q --short HEAD); echo "wherdr-base-missing $base"; fi
+  fi
+fi
 mkdir -p "$(dirname "$dir")" || exit 1
 from=$base
 if [ -n "$base" ] && git -C "$repo" rev-parse -q --verify "refs/remotes/origin/$base" >/dev/null; then
@@ -286,9 +298,17 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   // Recorded at the first start: changing the project's branch later leaves this task alone.
   const started = startBase(t, task, p)
   if (started.fromWorkflow) await noteWorkflowBase(store, p.key, started.base!)
-  const base = started.base ?? ''
-  const wt = await exec(deps, on, WORKTREE_SCRIPT, [repo, paths.worktree, paths.branch, base, cont ? `origin/${task.fromBranch}` : ''])
+  let base = started.base ?? ''
+  // The workspace's working branch (not the member's own, nor the task's): a repository without it starts from its current branch.
+  const shared = !!base && !started.fromWorkflow && task.base === undefined && !!p.workspace && !(p.overrides ?? []).includes('base')
+  const wt = await exec(deps, on, WORKTREE_SCRIPT, [repo, paths.worktree, paths.branch, base, cont ? `origin/${task.fromBranch}` : '', ...(shared ? ['1'] : [])])
   if (wt.code !== 0) return wait(store, task, `git worktree failed: ${wt.out.split('\n').slice(-3).join(' ') || 'timeout'}`)
+  const missing = /^wherdr-base-missing ?(.*)$/m.exec(wt.out)
+  if (missing) {
+    task = await store.logTask(task, 'engine', missingBaseNote(base, missing[1]!.trim()))
+    base = missing[1]!.trim()
+    task = { ...task, base } // its instructions name that branch too
+  }
   // Its worktree is there now: the task stays on this machine.
   if (task.machine !== machine) task = await store.saveTask({ ...task, machine })
   const tmpWhy = await prepareTmp(deps, on, paths.worktree)
