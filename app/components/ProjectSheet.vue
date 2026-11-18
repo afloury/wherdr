@@ -18,6 +18,7 @@
 import type { Project } from '#shared/pm/project'
 import { PROJECT_COLORS, shownKey } from '#shared/pm/projectKey'
 import { ARCHIVE_DAYS, archiveDays } from '#shared/pm/archive'
+import { liftShared } from '#shared/pm/workspace'
 import type { LogEntry } from '#shared/pm/templateText'
 import { SETUP_TIMEOUT, checkSetup, isRelPath, type Prefs, type Template, type WorkflowError, type WorktreeSetup } from '#shared/pm/workflow'
 import { workflowBase } from '#shared/pm/run'
@@ -69,7 +70,8 @@ async function load() {
   keyInput.value = form.key
   loaded.value = true
 }
-const fill = (x: Project, prefs: Prefs) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', commitMessage: (x.kind === 'workspace' ? x.shared?.commitMessage : x.commitMessage) ?? '', ...onStateForm(x.kind === 'workspace' ? x.shared?.onStateChange : x.onStateChange), archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
+// A workspace's base, branch name, archive delay and delete-branch are in its shared settings (liftShared).
+const fill = (raw: Project, prefs: Prefs, x = liftShared(raw)) => Object.assign(form, { name: x.name, coordinatorName: x.coordinatorName ?? '', key: shownKey(x), color: x.color ?? '', base: x.base ?? '', branchName: x.branchName ?? '', commitMessage: (x.kind === 'workspace' ? x.shared?.commitMessage : x.commitMessage) ?? '', ...onStateForm(x.kind === 'workspace' ? x.shared?.onStateChange : x.onStateChange), archiveAfter: String(archiveDays(x)), deleteBranch: x.deleteBranch !== false, agent: prefs.agent ?? '', model: prefs.model ?? '', reviewAgent: prefs.reviewAgent ?? '', reviewModel: prefs.reviewModel ?? '', reviewFallbackAgent: prefs.reviewFallbackAgent ?? '', reviewFallbackModel: prefs.reviewFallbackModel ?? '', reach: Object.fromEntries((x.reach ?? []).map(r => [r.project, r.level])) })
 // The On state change command and its events (none set: done ticked, for a first command).
 const onStateForm = (o?: OnStateChange) => ({ onStateCommand: o?.command ?? '', onStateEvents: o ? [...o.events] : ['done'] })
 const onStateBody = () => ({ command: form.onStateCommand, events: form.onStateEvents })
