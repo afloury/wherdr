@@ -429,7 +429,7 @@ export const sameGuards = (a: Template | null, b: Template | null) => guardsOf(a
 // change only through the user's own gesture in the interface. key: the project's.
 export function templateEditRefusal(old: Template | null, next: Template, turn: Turn, key?: string): string | undefined {
   if (turn !== 'user') return 'template edit is only for a turn that comes from the user: propose the change and wait for their yes'
-  if (!old) return `The project has no workflow: ask the user, or Alfred, to start it`
+  if (!old) return `The project has no workflow: ask the user, or Alfred, to start one in ${projectPlace(key, 'workflow', true)}`
   if (next?.id !== old.id) return `The coordinator edits its project's workflow only (${old.id})`
   // The first workflow brings its guards: the user's yes to it sets them.
   if (!isDefaultWorkflow(old) && !sameGuards(old, next)) return `Guards (protected branches, who merges) are changed by the user in ${projectPlace(key ?? old.id, 'guards', true)}, or by Alfred, never with a project coordinator's token`
