@@ -157,6 +157,25 @@ describe('workflows migration', () => {
   })
 })
 
+describe('workspace settings migration', () => {
+  it('moves a workspace\'s working branch and the like kept on itself into shared, once', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [
+      { key: 'WS', name: 'Work', machine: '', path: '/w', addedAt: 1, color: 'red', kind: 'workspace', git: false, base: 'develop', placement: 'balance', shared: { commitMessage: '{title}' } },
+      { key: 'PAY', name: 'Pay', machine: '', path: '/w/pay', addedAt: 1, color: 'red', workspace: 'WS' },
+    ] }))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(await store.project('PAY')).toMatchObject({ base: 'develop', placement: 'balance' })
+      const raw = JSON.parse(await fs.readFile(store.files.projects, 'utf8')).projects[0]
+      expect(raw).not.toHaveProperty('base')
+      expect(raw.shared).toEqual({ commitMessage: '{title}', base: 'develop', placement: 'balance' })
+      expect(warn.mock.calls.map(c => String(c[0]))).toEqual(['[pm] workspace settings moved into shared, for their members: WS'])
+    } finally { warn.mockRestore() }
+  })
+})
+
 describe('workspace members', () => {
   it('stores a member\'s own fields only, serves it with its workspace\'s settings, and refuses what breaks a workspace', async () => {
     const store = createPmStore(dir)
