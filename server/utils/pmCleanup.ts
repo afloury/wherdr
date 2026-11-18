@@ -9,13 +9,15 @@ import { contextBase, staleSnapshots } from '../../shared/pm/context'
 import { homeOf } from './coreCreate'
 import { taskPaths, taskPlan } from '../../shared/pm/run'
 import { cloneOn } from '../../shared/pm/project'
-import { cleanupOf, cleanupRefusal, factsRefusal, mergedByStep, parseFacts } from '../../shared/pm/cleanup'
+import { cleanupOf, cleanupRefusal, factsRefusal, mergedCommit, parseFacts } from '../../shared/pm/cleanup'
 import { KILL_UNDER } from '../../shared/pm/procs'
 import { countKilled } from './pmProcs'
 import { pmDir } from './pmHome'
 
-// Prints `exists listed dirty unique` (see Facts).
-export const WORKTREE_PROBE_SCRIPT = `repo=$1 dir=$2 branch=$3
+// Prints `exists listed dirty unique` (see Facts). $4: the commit its merge step
+// proved merged, whose history counts as merged (ignored when unknown here).
+export const WORKTREE_PROBE_SCRIPT = `repo=$1 dir=$2 branch=$3 merged=
+[ -n "$4" ] && git -C "$repo" cat-file -e "$4^{commit}" 2>/dev/null && merged=$4
 e=0 l=0 d=0 refs=
 if [ -d "$dir" ]; then e=1
   git -C "$repo" worktree list --porcelain | grep -qxF "worktree $dir" && l=1
@@ -27,7 +29,7 @@ if [ -d "$dir" ]; then e=1
 fi
 git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null && refs="$refs refs/heads/$branch"
 u=0
-if [ -n "$refs" ]; then u=$(git -C "$repo" rev-list --count $refs --not --exclude="$branch" --branches --remotes) || exit 1; fi
+if [ -n "$refs" ]; then u=$(git -C "$repo" rev-list --count $refs --not $merged --exclude="$branch" --branches --remotes) || exit 1; fi
 echo "$e $l $d $u"`
 
 // $4 = 1: the local branch goes too. The processes working in it go first
@@ -107,12 +109,13 @@ async function clean(deps: Deps, id: string) {
   const root = taskPaths(home, task.id, undefined, pmDir()).worktree.replace(/\/[^/]+$/, '')
   const refused = cleanupRefusal(task, runs, run.worktree, root)
   if (refused) return keep(refused)
-  const probe = await exec(deps, on, WORKTREE_PROBE_SCRIPT, [repo, run.worktree, run.branch])
+  // Squash-merged, its commits are on no other branch: the commit its merge step proved merged covers them.
+  const t = await store.workflow(p.key)
+  const merged = (t && mergedCommit(taskPlan(t, task, p), task.step)) || ''
+  const probe = await exec(deps, on, WORKTREE_PROBE_SCRIPT, [repo, run.worktree, run.branch, merged])
   const facts = probe.code === 0 ? parseFacts(probe.out) : undefined
   if (!facts) return
-  // Squash-merged, its commits are on no other branch: its merge step's proof says it is merged.
-  const t = await store.workflow(p.key)
-  const why = factsRefusal(facts, !!t && mergedByStep(taskPlan(t, task, p), task.step))
+  const why = factsRefusal(facts)
   if (why) return keep(why)
   // Its local branch follows Delete the task's branch after its merge.
   const branch = kind === 'worktree+branch' && p.deleteBranch !== false

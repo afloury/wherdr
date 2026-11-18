@@ -1661,9 +1661,9 @@ after killing what still works in it, and writes in the task's log what it
 did and the size freed (*removed its worktree (612 MB freed)*). Its local
 branch goes with it when *Delete the task's branch after its merge* is on; an
 archived task keeps its branch. A squash merge leaves the branch's commits on
-no other branch once its remote branch is deleted: a merge step that recorded
-the merge (*I merged it*, *Check on GitHub*, the engine's merge) is what says
-they are merged. The worktree stays, with the reason in the task's log, while
+no other branch once its remote branch is deleted: the commit a merge step
+recorded as merged (*I merged it*, *Check on GitHub*, the engine's merge) and
+its history count as merged; a commit added after it still keeps the worktree. The worktree stays, with the reason in the task's log, while
 the task is not done (stopped, failed, waiting for you, its PR not merged),
 while an agent runs on it, with uncommitted changes, with commits neither
 pushed nor merged, or outside `~/.wherdr/pm/worktrees`. At start and every few

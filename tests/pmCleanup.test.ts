@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { cleanupOf, cleanupRefusal, factsRefusal, mergedByStep, parseFacts, underRoot } from '../shared/pm/cleanup'
+import { cleanupOf, cleanupRefusal, factsRefusal, mergedByStep, mergedCommit, parseFacts, underRoot } from '../shared/pm/cleanup'
 import type { PlannedStep } from '../shared/pm/steps'
 import { TMP_DIR, agentEnv, tmpRefusal, type Run, type Task } from '../shared/pm/run'
 import { TMP_SCRIPT } from '../server/utils/pmLaunch'
@@ -50,13 +50,14 @@ describe('which worktree may go', () => {
     expect(factsRefusal({ ...clean, exists: false, unique: 3 })).toMatch(/3 commits/)
   })
 
-  it('a merge step\'s proof makes squash-merged commits no reason to keep it; changes still are', () => {
+  it('a merge step\'s proof: merged, and the commit it merged', () => {
     const plan = [{ id: 'pr', action: { kind: 'github.pr' } }, { id: 'merge', action: { kind: 'github.merge' } }] as PlannedStep[]
+    const sha = 'a'.repeat(40)
     expect(mergedByStep(plan, task({ done: true, proofs: { merge: { link: 'https://example.com/pull/1' } } }).step)).toBe(true)
     expect(mergedByStep(plan, task({ done: true, proofs: { pr: { link: 'https://example.com/pull/1' } } }).step)).toBe(false)
-    expect(mergedByStep(plan, task({ proofs: { merge: { link: 'x' } } }).step)).toBe(false)
-    expect(factsRefusal({ ...clean, unique: 3 }, true)).toBeUndefined()
-    expect(factsRefusal({ ...clean, unique: 3, dirty: 1 }, true)).toBe('1 uncommitted change')
+    expect(mergedCommit(plan, task({ done: true, proofs: { pr: { commit: 'b'.repeat(40) }, merge: { commit: sha } } }).step)).toBe(sha)
+    expect(mergedCommit(plan, task({ proofs: { merge: { commit: sha } } }).step)).toBeUndefined()
+    expect(mergedCommit(plan, task({ done: true, proofs: { merge: { commit: '-x' } } }).step)).toBeUndefined()
   })
 
   it('reads the probe line; anything else is no answer', () => {
@@ -66,7 +67,7 @@ describe('which worktree may go', () => {
 })
 
 describe('removing a squash-merged worktree, in a temporary folder', () => {
-  it('removes the merged one with its size, keeps one with uncommitted changes', () => {
+  it('removes the merged one with its size; keeps one with uncommitted changes or a commit after the merged one', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-sweep-'))
     const sh = (script: string, ...args: string[]) => execFileSync('sh', ['-c', script, 'sh', ...args], { encoding: 'utf8' })
     const git = 'git -c user.name=t -c user.email=t@example.com'
@@ -78,14 +79,20 @@ describe('removing a squash-merged worktree, in a temporary folder', () => {
         sh(`git -C "$1" worktree add -q -b task/$2 "$3/$2" && echo $2 > "$3/$2/$2.txt" && ${git} -C "$3/$2" add . && ${git} -C "$3/$2" commit -q -m $2 && git -C "$3/$2" push -q origin task/$2
           git -C "$1" checkout -q main && git -C "$1" pull -q && ${git} -C "$1" merge -q --squash task/$2 && ${git} -C "$1" commit -q -m "$2 (#1)" && git -C "$1" push -q origin main --delete task/$2 2>/dev/null; git -C "$1" fetch -q --prune`, repo, id, wts)
       }
+      const head = (id: string) => sh('git -C "$1" rev-parse HEAD', `${wts}/${id}`).trim()
+      const merged1 = head('WH-1'), merged2 = head('WH-2')
       fs.writeFileSync(path.join(wts, 'WH-2', 'notes.txt'), 'wip')
-      const one = parseFacts(sh(WORKTREE_PROBE_SCRIPT, repo, `${wts}/WH-1`, 'task/WH-1'))!
-      expect(one.unique).toBeGreaterThan(0)
-      expect(factsRefusal(one, true)).toBeUndefined()
+      const probe = (id: string, merged: string) => parseFacts(sh(WORKTREE_PROBE_SCRIPT, repo, `${wts}/${id}`, `task/${id}`, merged))!
+      expect(probe('WH-1', '').unique).toBeGreaterThan(0)
+      // A commit added after the merged one is not merged: kept.
+      sh(`${git} -C "$1" commit -q --allow-empty -m later`, `${wts}/WH-1`)
+      expect(factsRefusal(probe('WH-1', merged1))).toBe('1 commit neither pushed nor merged')
+      sh('git -C "$1" reset -q --hard HEAD~1', `${wts}/WH-1`)
+      expect(factsRefusal(probe('WH-1', merged1))).toBeUndefined()
       expect(sh(WORKTREE_REMOVE_SCRIPT, repo, `${wts}/WH-1`, 'task/WH-1', '1')).toMatch(/^freed \d+$/m)
       expect(fs.existsSync(`${wts}/WH-1`)).toBe(false)
       expect(sh('git -C "$1" branch --list task/WH-1', repo)).toBe('')
-      expect(factsRefusal(parseFacts(sh(WORKTREE_PROBE_SCRIPT, repo, `${wts}/WH-2`, 'task/WH-2'))!, true)).toBe('1 uncommitted change')
+      expect(factsRefusal(probe('WH-2', merged2))).toBe('1 uncommitted change')
       expect(fs.existsSync(`${wts}/WH-2/notes.txt`)).toBe(true)
     } finally { fs.rmSync(dir, { recursive: true, force: true }) }
   })
