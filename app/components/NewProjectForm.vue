@@ -18,7 +18,7 @@ const emit = defineEmits<{ browse: [], machine: [m: MachineConfig] }>()
 
 const current = computed(() => projectCoordinators.value.find(c => c.project === project.value))
 const choices = computed(() => (current.value ? offerCoordinators(undefined, current.value.project) : draft.value ? offerCoordinators(undefined, 'NEW') : []))
-const fallback = computed(() => (current.value ? coordinatorAgent(current.value)?.program ?? '' : choices.value[0] ?? ''))
+const fallback = computed(() => (current.value ? coordinatorAgent(current.value)?.program ?? '' : defaultProjectChoice(choices.value)))
 // The projects to start again: their coordinator does not run.
 const stopped = computed(() => projectCoordinators.value.filter(c => !coordinatorPane(c)))
 // Collapsed by default; open when the sheet comes with one of them picked.

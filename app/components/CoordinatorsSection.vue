@@ -154,7 +154,7 @@ async function stop(c: CoordinatorView, p: Pane) {
 function choose(c: CoordinatorView) {
   restarting.value = c
   const now = (c.ran ?? coordinatorAgent(c))?.program
-  pick.value = now && choices.value.includes(now) ? now : choices.value[0] ?? ''
+  pick.value = now && choices.value.includes(now) ? now : defaultProjectChoice(choices.value)
 }
 async function restart() {
   const c = restarting.value

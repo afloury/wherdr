@@ -30,7 +30,7 @@ another project's workflow, ask Alfred: it reads that one and proposes it.
    repository is public; correct it if the check is wrong (until it is
    checked, it says *not checked* and nothing more). Then name its coordinator
    (prefilled with the project's name), pick its
-   coordinator's agent and, for Claude or Codex, its model (empty: the agent's
+   coordinator's agent and, for Claude, Codex or omp, its model (empty: the agent's
    default; you can also change it later in its conversation). Both are kept as
    the project's coordinator default, so a restart uses them again. With several projects, pick the one to set up,
    or add another.
@@ -477,6 +477,20 @@ time and *Go to message* (back to it in the conversation), *Accept*, *Refuse*
 and *See all changes* (the review). Once answered, the card shows the outcome, by whom and
 when; each proposal keeps its own card, one the coordinator replaced before you
 answered says *Replaced*.
+
+#### Worker and reviewer agents
+
+`agent` and `reviewAgent` (and `reviewFallbackAgent`) are `claude`, `codex` or
+`omp`: the programs the engine starts with a pinned model and a first message
+(`exec omp --model <model> '<message>'`; an omp model may be a fuzzy name or
+`provider/model`). An omp task's conversation is not taken up again after a
+restart (it starts a new agent with a handover note, as
+[below](#the-engine-resumes-the-work)), and it cannot be paused for room. omp has
+no quota reading, so its account is never *out* and the [pace](quotas.md#pace)
+never holds it: only the autopilot's task-count limits apply, and a reviewer
+fallback is never started because of an omp reviewer's quota. An omp agent on a
+login prompt opens no login incident (wherdr knows no credentials file for omp):
+its task waits for you like for any prompt.
 
 #### Reviewer fallback
 
@@ -1570,7 +1584,7 @@ Once the cause is gone, the engine resumes it by itself, every minute:
   its card meanwhile *Waiting for login*;
 - **how**: its worker starts again in its worktree. A Claude worker takes its
   conversation up again (`--resume`, its session id kept from its start) with
-  *You were interrupted (…): check git status and continue*; Codex, or a
+  *You were interrupted (…): check git status and continue*; Codex, omp, or a
   conversation that cannot be resumed, gets a new agent that reads its
   instructions with a handover note saying the same. A task stopped at the
   review gets its reviewer again. After a login incident, the restarted agent
