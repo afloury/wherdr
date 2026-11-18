@@ -30,7 +30,12 @@ async function run(deps: CoreAdminDeps, on: string | undefined, script: string, 
 }
 
 export async function coreAwakeStatus(deps: CoreAdminDeps, key: unknown) {
-  return parseAwakeStatus(await run(deps, machineOn(deps, key).on, STATUS_SCRIPT, [], READ_S))
+  const { m, on } = machineOn(deps, key)
+  try { return parseAwakeStatus(await run(deps, on, STATUS_SCRIPT, [], READ_S)) }
+  catch (e) {
+    console.warn(`[awake] ${m.label}: status read failed: ${(e as Error).message}`)
+    throw e
+  }
 }
 
 // Two execs: the change (its own platform and tool check), then a new read, so the

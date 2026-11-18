@@ -5,8 +5,8 @@ import { awakeRefusal, awakeWarning } from '#shared/awake'
 
 export const awakeByMachine = ref<Record<string, AwakeState>>({})
 // A tap under way per machine key (its read, or a menu choice being applied): the
-// sun button spins and a second tap does nothing.
-export const awakeBusy = ref<Record<string, boolean>>({})
+// sun button spins, Home shows AwakePending, and a second tap does nothing.
+export const awakeBusy = ref<Record<string, { label: string, what: 'read' | 'set' }>>({})
 
 // A failed read is { error }: the machine did not answer, which is not "no tool".
 export async function refreshAwake(key: string): Promise<AwakeRead> {
@@ -17,9 +17,9 @@ export async function refreshAwake(key: string): Promise<AwakeRead> {
   }
 }
 
-async function busy(key: string, fn: () => Promise<void>) {
+async function busy(key: string, label: string, what: 'read' | 'set', fn: () => Promise<void>) {
   if (awakeBusy.value[key]) return
-  awakeBusy.value[key] = true
+  awakeBusy.value[key] = { label, what }
   try { await fn() }
   finally { delete awakeBusy.value[key] }
 }
@@ -30,8 +30,8 @@ export function awakeLabel(s: AwakeState | undefined) {
   return s.until ? tl(`Awake until ${fmtTime(s.until)}`) : t('Awake until turned off')
 }
 
-function choose(key: string, mode: AwakeMode | 'off') {
-  return busy(key, async () => {
+function choose(key: string, label: string, mode: AwakeMode | 'off') {
+  return busy(key, label, 'set', async () => {
     try { awakeByMachine.value[key] = await api<AwakeState>('/api/machine/awake', { key, mode }) }
     catch (err) { toast(t((err as Error).message)) }
   })
@@ -39,7 +39,7 @@ function choose(key: string, mode: AwakeMode | 'off') {
 
 export function openAwake(m: { key: string, label: string }) {
   haptic()
-  return busy(m.key, async () => {
+  return busy(m.key, m.label, 'read', async () => {
     const read = await refreshAwake(m.key)
     const refusal = t(awakeRefusal(m.label, read))
     if (refusal) {
@@ -51,7 +51,7 @@ export function openAwake(m: { key: string, label: string }) {
 }
 
 function showMenu(m: { key: string, label: string }, s: AwakeState) {
-  const pick = (mode: AwakeMode | 'off') => () => choose(m.key, mode)
+  const pick = (mode: AwakeMode | 'off') => () => choose(m.key, m.label, mode)
   const notes = [
     awakeLabel(s) || t('Normal sleep'),
     s.battery && tl(`Battery ${s.battery.percent}%${s.battery.source === 'ac' ? ' · power adapter' : ''}`),
