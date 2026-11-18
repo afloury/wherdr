@@ -191,10 +191,14 @@ nor the next major version. `WHERDR_UPDATE_CHECK=off` turns the check off. The b
 **What's new** shows the release notes, rendered from GitHub, and **Update with Alfred** asks
 Alfred to update, following [Update with an agent](update-with-an-agent.md): it shows you the
 plan, backs up `DATA_DIR`, runs `update.sh` (or the commands below), checks the new version and
-rolls back on failure. To update by hand, in the checkout:
+rolls back on failure. To update by hand, installed with `install-v3-beside-v2.sh`, run its
+`update.sh` with the version the banner offers (`~/wherdr-v3/update.sh 3.1.0`): it checks out the
+tag `v3.1.0` (without a version, the tip of `v3`), builds aside and restarts. Its checkout is
+detached, so `git pull` does not work there. In a checkout of your own (`git clone -b v3`):
 
 ```sh
-git pull
+git fetch --tags
+git checkout v3.1.0
 npm ci
 npm run build
 ```

@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
-import { deliverFirst, resendFirst, startTurn, type FirstDeps } from '../server/utils/coordinatorFirst'
+import { deliverFirst, queuedFirst, resendFirst, resumeFirst, startTurn, type FirstDeps } from '../server/utils/coordinatorFirst'
 import type { CoordinatorRecord } from '../server/utils/pmStore'
 
 // Terminals that become idle at a given time (ms after the start), or end; `flaky`: the
-// first terminal.get of each fails (a timeout).
-function fake(readyAt: Record<string, number>, ended: string[] = [], flaky = false) {
+// first terminal.get of each (or of those named) fails (a timeout).
+function fake(readyAt: Record<string, number>, ended: string[] = [], flaky: boolean | string[] = false) {
   const t0 = Date.now(), sent: [string, string][] = [], log: [string, string][] = [], asked = new Set<string>()
   const recs = new Map<string, CoordinatorRecord>()
   const deps = {
     pollMs: 1, readyWatchMs: 20, queueWatchMs: 2000,
     call: (async (m: string, p: { terminal: string, text?: string }) => {
-      if (m === 'terminal.get' && flaky && !asked.has(p.terminal)) { asked.add(p.terminal); throw new Error('timeout') }
+      if (m === 'terminal.get' && (flaky === true || (Array.isArray(flaky) && flaky.includes(p.terminal))) && !asked.has(p.terminal)) { asked.add(p.terminal); throw new Error('timeout') }
       if (m === 'terminal.get') return ended.includes(p.terminal) ? { state: 'finished' } : { state: 'live', status: Date.now() - t0 >= readyAt[p.terminal]! ? 'idle' : 'working' }
       if (m === 'terminal.read') return { text: 'ready' }
       if (m === 'terminal.send') sent.push([p.terminal, p.text!])
@@ -19,6 +19,7 @@ function fake(readyAt: Record<string, number>, ended: string[] = [], flaky = fal
     store: {
       coordinator: async (k: string) => recs.get(k) ?? null,
       saveCoordinator: async (c: CoordinatorRecord) => { recs.set(c.project, c) },
+      coordinators: async () => [...recs.values()],
       logProject: async (k: string, e: { text: string }) => { log.push([k, e.text]) },
     },
   } as unknown as FirstDeps
@@ -65,6 +66,25 @@ describe('first messages of coordinators', () => {
     expect(f.log).toEqual([['E', 'first message queued (its machine does not answer): given at its start, watched until its session is up'], ['E', 'first message given at its start, its session is up']])
     expect(await deliverFirst(f.deps, 'F', 'F', ['propose'], () => {}, true)).toBe('failed')
     expect(f.recs.get('F')!.undelivered).toMatchObject({ texts: ['propose'], why: 'its session ended before it was ready' })
+  })
+
+  it('queued messages stay on the record until typed; after a restart the rest is typed, or given up', async () => {
+    // Its record says what is left once the first one is typed, then nothing.
+    const f = fake({ C: 0 }), saved: unknown[] = []
+    const save = f.deps.store.saveCoordinator
+    f.deps.store.saveCoordinator = async (c) => { saved.push(c.undelivered?.texts); return save(c) }
+    f.recs.get('C')!.undelivered = queuedFirst(['one', 'two'])
+    expect(await deliverFirst(f.deps, 'C', 'C', ['one', 'two'])).toBe('sent')
+    expect(saved).toEqual([['two'], undefined])
+    // A restart: G still runs and gets what is left (its first lookup times out); H's session ended, given up and logged.
+    const g = fake({ G: 0 }, ['H'], ['G'])
+    g.recs.get('G')!.undelivered = queuedFirst(['two'])
+    g.recs.get('H')!.undelivered = queuedFirst(['hi'])
+    await resumeFirst(g.deps as never)
+    await expect.poll(() => g.sent).toEqual([['G', 'two']])
+    await expect.poll(() => g.recs.get('G')!.undelivered).toBeUndefined()
+    expect(g.log).toContainEqual(['H', 'first message given up: its session ended while wherdr restarted'])
+    expect(g.recs.get('H')!.undelivered).toEqual({ texts: ['hi'], why: 'its session ended while wherdr restarted', at: expect.any(Number) })
   })
 
   it('starts go one after another: each once the one before is up, at most startGapMs', async () => {
