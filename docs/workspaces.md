@@ -66,8 +66,12 @@ nothing), so the rules shared by every repository apply to it too.
 
 A member has **no coordinator**: none is started for it, and none shows in the
 sidebar: the workspace's **row** does, under its tab group, with its
-coordinator's state, its members' tasks working and waiting for you, and its
-members' key badges ([Coordinators](home.md#coordinators)). Every wake about a member's task goes to the workspace's coordinator,
+coordinator's state, the tasks working and waiting for you (its members' and
+its own features'), and its members' key badges, a small orange square on one
+with a task waiting ([Coordinators](home.md#coordinators)). A tap on the badges
+lists the members, each with its own counts. **n waiting for you** is a link:
+one task opens its sheet; several open the workspace's board, or on a member's
+line *Tasks to review* filtered to that member. Every wake about a member's task goes to the workspace's coordinator,
 its first line naming the task (`PAY-3: stuck: …`), and *Ask the coordinator*
 on a member's task asks it too. Its scheduled wakes' health summaries cover all the members' tasks.
 
