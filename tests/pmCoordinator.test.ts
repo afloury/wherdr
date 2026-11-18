@@ -804,7 +804,7 @@ describe('role files', () => {
     expect(agents).toContain('`wherdr pm task link <task> <url> --label <label>`')
     expect(agents).toContain('- deploy (Deploy): holder coordinator, ends report, recheck 5m, timeout 90m')
     expect(agents).toContain('- Base branch is develop.')
-    expect(agents).toContain('copied from template company v1 (the template library never changes it)')
+    expect(agents).toContain('copied from template company v1 (the original never changes it)')
     expect(agents).not.toContain('## Your first conversation')
     // No accepted workflow yet: the first conversation sets one up.
     const first = roleFiles({ key: 'CO', name: 'Company', machine: '', path: '/src/co', addedAt: 1 }, defaultWorkflow('CO'), EXAMPLES)['AGENTS.md']!

@@ -15,7 +15,7 @@ import { patchSettings, readSettings } from '../server/utils/settings'
 import { CUSTOM_THEMES_MAX, readCustomThemes, themeFile, writeCustomThemes } from '../app/utils/customThemes'
 import { THEMES } from '../app/utils/themes'
 import { cliTokenCall } from '../server/utils/network'
-import { common } from '../shared/pm/examples'
+import { common, company } from '../shared/pm/examples'
 import type { CoreAdminDeps } from '../server/utils/coreCreate'
 
 // A coordinator's start is not run here: APP's fails, the others start.
@@ -44,8 +44,8 @@ describe('parseAlfredCommand', () => {
   })
 
   it('reads the changes, a dry run unless --apply', () => {
-    expect(parseAlfredCommand(['project', 'add', 'web', '--machine', '', '--path', '/src/web', '--template', 'common'])).toEqual({
-      name: 'project add', apply: false, input: { key: 'WEB', machine: '', path: '/src/web', template: 'common' },
+    expect(parseAlfredCommand(['project', 'add', 'web', '--machine', '', '--path', '/src/web', '--template', 'example:common'])).toEqual({
+      name: 'project add', apply: false, input: { key: 'WEB', machine: '', path: '/src/web', template: 'example:common' },
     })
     expect(parseAlfredCommand(['project', 'template', 'WEB', 'none', '--apply'])).toEqual({ name: 'project template', apply: true, key: 'WEB', template: '' })
     expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'codex'])).toEqual({ name: 'coordinator start', apply: false, key: 'WEB', program: 'codex' })
@@ -55,8 +55,10 @@ describe('parseAlfredCommand', () => {
     // Alfred never applies a setting itself.
     expect(parseAlfredCommand(['setting', 'set', 'theme', 'vesper', '--apply'])).toEqual({ error: expect.stringContaining('--propose puts a card the user applies') })
     expect(parseAlfredCommand(['projects', '--propose'])).toEqual({ error: expect.stringContaining('--propose is for setting set and the changes') })
-    expect(parseAlfredCommand(['project', 'template', 'WEB', 'common', '--propose'])).toEqual({ name: 'project template', apply: false, propose: true, key: 'WEB', template: 'common' })
-    expect(parseAlfredCommand(['project', 'template', 'WEB', 'common', '--propose', '--apply'])).toEqual({ error: '--propose or --apply, not both' })
+    expect(parseAlfredCommand(['project', 'template', 'WEB', 'example:common', '--propose'])).toEqual({ name: 'project template', apply: false, propose: true, key: 'WEB', template: 'example:common' })
+    // Saved templates are no longer offered: only the built-in examples.
+    expect(parseAlfredCommand(['project', 'template', 'WEB', 'common'])).toEqual({ error: 'The template is example:<id> or none (see wherdr alfred examples)' })
+    expect(parseAlfredCommand(['project', 'template', 'WEB', 'example:common', '--propose', '--apply'])).toEqual({ error: '--propose or --apply, not both' })
     expect(parseAlfredCommand(['project', 'machine', 'add', 'web', 'Mac', '--clone', '~/project'])).toEqual({ name: 'project machine', apply: false, key: 'WEB', action: 'add', machine: 'Mac', clone: '~/project' })
     expect(parseAlfredCommand(['project', 'machine', 'remove', 'WEB', 'mac', '--apply'])).toEqual({ name: 'project machine', apply: true, key: 'WEB', action: 'remove', machine: 'mac' })
     expect(parseAlfredCommand(['project', 'machine', 'add', 'WEB', 'mac'])).toEqual({ error: 'usage: wherdr alfred project machine add <KEY> <machine> --clone <folder> [--apply]' })
@@ -64,7 +66,7 @@ describe('parseAlfredCommand', () => {
   })
 
   it('says what is wrong', () => {
-    expect(parseAlfredCommand(['project', 'add', 'WEB', '--path', '/x'])).toEqual({ error: 'usage: wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>] [--apply]' })
+    expect(parseAlfredCommand(['project', 'add', 'WEB', '--path', '/x'])).toEqual({ error: 'usage: wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template example:<id>] [--apply]' })
     expect(parseAlfredCommand(['project', 'add', 'WEB', '--machine', '', '--path', '/x', '--force', 'y'])).toEqual({ error: 'unknown option --force' })
     expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'omp'])).toEqual({ error: '--program is claude or codex' })
     expect(parseAlfredCommand(['setting', 'set', 'password', 'x'])).toMatchObject({ error: /^password is not a setting Alfred changes/ })
@@ -114,7 +116,6 @@ describe('runAlfredCommand', () => {
     dir = await fs.mkdtemp(path.join(os.tmpdir(), 'alfred-cli-'))
     store = createPmStore(path.join(dir, 'pm'))
     await store.setEnabled(true)
-    await store.saveTemplate(common)
     await issueAlfredToken(store, dir)
     token = (await fs.readFile(path.join(dir, ALFRED_TOKEN_FILE), 'utf8')).trim()
     checked.length = 0
@@ -138,11 +139,10 @@ describe('runAlfredCommand', () => {
     expect(await store.projects()).toEqual([])
     expect(await run('project', 'add', 'WEB', '--machine', 'mac', '--path', '/src/web', '--apply')).toMatchObject({ applied: true, result: { key: 'WEB', machine: 'mac' } })
     expect(checked).toEqual(['mac:/src/web'])
-    expect(await run('project', 'template', 'WEB', 'common')).toMatchObject({ dryRun: true, change: ['project WEB template: none → common'] })
-    await run('project', 'template', 'WEB', 'common', '--apply')
+    expect(await run('project', 'template', 'WEB', 'example:common')).toMatchObject({ dryRun: true, change: ['project WEB template: none → example:common'] })
+    await run('project', 'template', 'WEB', 'example:common', '--apply')
     expect(await run('projects')).toMatchObject({ enabled: true, projects: [{ key: 'WEB', from: { template: 'common' }, machineName: 'Mac' }] })
-    await expect(run('project', 'template', 'WEB', 'nope')).rejects.toThrow('No template nope')
-    // A built-in example works as a template too.
+    await expect(run('project', 'template', 'WEB', 'example:nope')).rejects.toThrow('No example example:nope')
     expect(await run('project', 'template', 'WEB', 'example:vibe', '--apply')).toMatchObject({ applied: true, change: ['project WEB template: common → example:vibe'] })
   })
 
@@ -262,7 +262,7 @@ describe('runAlfredCommand', () => {
 
   it('shows the project\'s guards and changes them after its dry run', async () => {
     expect(parseAlfredCommand(['project', 'guards', 'WEB', '--merge-others', 'me'])).toEqual({ error: '--merge-protected and --merge-others are user or engine' })
-    await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--template', 'common', '--apply')
+    await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--template', 'example:common', '--apply')
     expect(await run('project', 'guards', 'WEB')).toEqual({ project: 'WEB', guards: common.guards ?? {} })
     expect(await run('project', 'guards', 'WEB', '--protect', 'main,v3', '--merge-others', 'user')).toMatchObject({ dryRun: true })
     await run('project', 'guards', 'WEB', '--protect', 'main,v3', '--merge-others', 'user', '--apply')
@@ -364,9 +364,9 @@ describe('runAlfredCommand', () => {
     expect(await act(add.id)).toMatchObject({ state: 'done', outcome: { text: 'Applied by you' } })
     expect(await store.projects()).toMatchObject([{ key: 'WEB' }])
     // Proposed over no template; the template changed before the click: nothing runs.
-    await run('project', 'template', 'WEB', 'common', '--propose')
+    await run('project', 'template', 'WEB', 'example:common', '--propose')
     const tpl = (await store.coordinator(MAIN))!.cards![0]!
-    expect(tpl).toMatchObject({ label: 'Project WEB › Workflow', change: { lines: ['project WEB template: none → common'], target: 'project.workflow' } })
+    expect(tpl).toMatchObject({ label: 'Project WEB › Workflow', change: { lines: ['project WEB template: none → example:common'], target: 'project.workflow' } })
     await run('project', 'template', 'WEB', 'example:vibe', '--apply')
     expect(await act(tpl.id)).toMatchObject({ state: 'stale' })
     expect((await store.project('WEB'))!.from).toMatchObject({ template: 'vibe' })
@@ -435,6 +435,11 @@ describe('Alfred and a project\'s workflow and coordinator', () => {
 
   it('proposes a workflow change only in the user\'s turn; the user accepts it in the same review', async () => {
     await expect(run(['project', 'workflow', 'edit', 'WEB'], '{}')).rejects.toThrow('only for a turn that comes from the user')
+    // WHR-473: another project's workflow, copied onto one with only the minimal default (guards included).
+    await turn('user', 'copy the company workflow')
+    expect(await run(['project', 'workflow', 'edit', 'WEB'], JSON.stringify(company))).toMatchObject({ proposed: true })
+    expect(await answerProposal(deps(), 'WEB', true)).toEqual({ accepted: true })
+    expect((await store.workflow('WEB'))!).toMatchObject({ taskTypes: company.taskTypes, guards: company.guards })
     await turn('user', 'add a docs step')
     await run(['project', 'template', 'WEB', 'example:company', '--apply'])
     const wf = (await store.workflow('WEB'))!

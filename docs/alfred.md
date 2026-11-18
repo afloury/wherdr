@@ -12,7 +12,7 @@ Reading:
 | --- | --- |
 | `wherdr alfred projects` | whether projects are on, and each project (key, name, machine, folder, template) |
 | `wherdr alfred project <KEY>` | one project, its coordinator and its tasks by state |
-| `wherdr alfred templates` | the saved templates, and the examples (`example:<id>`) a project's template can start from |
+| `wherdr alfred examples` | the built-in example workflows (`example:<id>`) a project can start from |
 | `wherdr alfred machines` | the machines herdr-core knows (key, label, status); `""` is this machine |
 | `wherdr alfred coordinators` | each coordinator, its agent and whether it runs (`stopped`: its terminal ended, see `--resume`) |
 | `wherdr alfred coordinator open <KEY>` | the link that opens a running project coordinator |
@@ -27,9 +27,9 @@ Changing (show, then do):
 
 | Command | Does |
 | --- | --- |
-| `wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>]` | adds a project: a git folder inside the home folder of a machine, not already a project (on this machine, checked before the yes too) |
+| `wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template example:<id>]` | adds a project: a git folder inside the home folder of a machine, not already a project (on this machine, checked before the yes too) |
 | `wherdr alfred workspace add <KEY> --root <folder,folder> [--machine <key,key>] [--name <name>] [--group <tab group>]` | adds a [workspace](workspaces.md#creating-a-workspace): `--machine` and `--root` pair up, the first machine its home (none: this machine), its root checked when applied; `--group` is a tab group's id or name; once applied, its coordinator starts and offers to build the map |
-| `wherdr alfred project template <KEY> <id\|none>` | gives the project a template (a saved one or `example:<id>`), or none |
+| `wherdr alfred project template <KEY> <example:id\|none>` | gives the project a copy of a built-in example workflow, or none |
 | `wherdr alfred v2 import [--only <KEY,KEY>] [--start no]` | brings every v2 project not made yet over in one change: each added on this machine with its v2 folder, then its coordinator started (no workflow needed); with `--propose`, one card with a checkbox per project, one for *Start their coordinators* and, with project management off, *Turn on project management*; the outcome lists each project ([set up your v2 projects](migrate-from-v2.md#set-up-your-v2-projects-with-alfred)) |
 | `wherdr alfred project memory <KEY> < note.md` | adds the lines it is given (at most 30) to the end of the project coordinator's `memory.md`, created when missing: a v2 handover note and goal, for instance ([set up your v2 projects](migrate-from-v2.md#set-up-your-v2-projects-with-alfred)) |
 | `wherdr alfred project guards <KEY> [--protect <branch,branch\|none>] [--merge-protected user\|engine] [--merge-others user\|engine] [--contributor-prs off\|others\|all]` | the project's [guards](project-management.md#guards): protected branches, who merges into them and into the others (`user`: you, `engine`: wherdr), and whether its coordinator may merge an outside contributor's PR after your yes; without an option, only shown |
@@ -48,14 +48,14 @@ with the change's lines, *Show me*, *Cancel* and *Apply*. Your click is [told to
 machine, its coordinator), Alfred makes the change only when you asked for it. A
 coordinator needs no workflow to start: a project without one has the minimal default, and its
 coordinator's first conversation proposes one. No `wherdr alfred`
-command deletes anything but its own [notes](#notes) (removing a project's machine leaves its clone and tasks there): removing a project, a template or a setting stays yours, in Settings.
+command deletes anything but its own [notes](#notes) (removing a project's machine leaves its clone and tasks there): removing a project or a setting stays yours, in Settings.
 The one removal a coordinator has is `wherdr pm task remove`, for a task never started.
 
 Proposing and delegating (no `--apply`):
 
 | Command | Does |
 | --- | --- |
-| `wherdr alfred project workflow edit <KEY> < workflow.json` | proposes a new workflow for the project (the whole JSON, guards unchanged). Nothing changes yet: you accept or refuse it in the project's [Workflow tab](project-management.md#workflow), in the same review as a coordinator's proposal. Only on your request in Alfred's chat, never in a wake |
+| `wherdr alfred project workflow edit <KEY> < workflow.json` | proposes a new workflow for the project (the whole JSON, guards unchanged, except on a project with only the minimal default, which takes the new workflow's guards). To reuse another project's workflow, Alfred reads it (`wherdr pm template show --project <KEY>`) and proposes it here. Nothing changes yet: you accept or refuse it in the project's [Workflow tab](project-management.md#workflow), in the same review as a coordinator's proposal. Only on your request in Alfred's chat, never in a wake |
 | `wherdr alfred tell <KEY> "<text>"` | sends a message to the project's coordinator, starting it when it does not run, and writes it to the project's log as from Alfred. When Alfred relays your message, it reaches the coordinator as *From Alfred, for the user: …* and its turn counts as yours; otherwise *From Alfred: …*, as a wake |
 
 So you can ask Alfred "propose a workflow for WEB": it tells WEB's coordinator, reads its reply
@@ -72,9 +72,9 @@ task it created as a task card. For a long back-and-forth (a design to discuss, 
 questions), it suggests opening the coordinator's conversation instead.
 
 ```text
-$ wherdr alfred project template WEB company
-{ "dryRun": true, "change": ["project WEB template: none → company"],
-  "next": "Show this to the user; only after their yes, run: wherdr alfred project template WEB company --apply" }
+$ wherdr alfred project template WEB example:company
+{ "dryRun": true, "change": ["project WEB template: none → example:company"],
+  "next": "Show this to the user; only after their yes, run: wherdr alfred project template WEB example:company --apply" }
 ```
 
 ## Briefs

@@ -83,7 +83,7 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
   const remoteOf = (key: string) => (key && !machines.find(m => m.key === key)?.local ? machineName(key) : undefined)
   const needPm = async () => { if (!(await store.enabled())) throw new HerdrError('pm_off', `Projects are off: the user switches them on in ${projectPlace(undefined, 'general', true)}`) }
   const knownTemplate = async (id: string) => {
-    if (id && !EXAMPLES.some(e => `example:${e.id}` === id) && !(await store.overview()).templates.some(t => t.id === id)) throw new HerdrError('not_found', `No template ${id} (see wherdr alfred templates)`)
+    if (id && !EXAMPLES.some(e => `example:${e.id}` === id)) throw new HerdrError('not_found', `No example ${id} (see wherdr alfred examples)`)
   }
   // A project coordinator's agent: its default while the user offers it, else
   // their first offered agent that can run it (Settings › Agents), else Claude.
@@ -129,7 +129,7 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       for (const t of await store.tasks()) if (t.project === p.key) tasks[t.state] = (tasks[t.state] ?? 0) + 1
       return { project: { ...p, machineName: machineName(p.machine) }, coordinator: c && { agent: (await projectAgent(p.key)).program, ...runState(c.terminal), ...(c.proposal ? { proposalWaits: { by: c.proposal.by === 'main' ? ALFRED : 'the coordinator', at: c.proposal.at } } : {}) }, tasks }
     }
-    case 'templates': return { templates: (await store.overview()).templates, examples: EXAMPLES.map(e => ({ id: `example:${e.id}`, instructions: e.instructions, taskTypes: Object.keys(e.taskTypes), guards: e.guards })) }
+    case 'examples': return { examples: EXAMPLES.map(e => ({ id: `example:${e.id}`, instructions: e.instructions, taskTypes: Object.keys(e.taskTypes), guards: e.guards })) }
     case 'v2': {
       const candidates = await v2Projects(store, deps.herdrProjects)
       if (!candidates.length) return { fromV2: false }
