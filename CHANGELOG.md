@@ -6,16 +6,52 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.1.1] — 2026-11-18
+
+wherdr 3.1.1 rounds off workspaces (each member setting says whether it follows the workspace, a workspace from New › Project, a worker can wait on another task), adds a command run when a task changes state and a commit message template, and fixes photo messages to Claude, message states in the chat, keep awake on a remote Mac and two Devin conversation problems. Release notes: [docs/release-notes-3.1.1.md](docs/release-notes-3.1.1.md).
+
 ### New
 
 - **Antigravity CLI (`agy`) terminals** are recognized: their label, icon and live state.
 - **Antigravity CLI (`agy`) conversations** open on their saved transcript, locally or on another machine (Node 22.13 or later).
 - **Antigravity commands in the + menu.** An `agy` conversation's + menu offers `/compact`, `/clear`, `/context`, `/usage`, `/model` and `/diff`, as for Claude Code, Codex and omp. A command that opens a panel or the model picker shows the interactive terminal over the conversation; Esc there brings the message field back.
+- **A command when a task changes state.** *On state change* in a project's General tab runs a shell command on the project's home machine when a task starts, waits for you, is done or fails, for example to sync a tracker; the task's facts come as `WHERDR_TASK_*` environment variables, and a workspace shares it with its members ([Project management](docs/project-management.md#general)).
+- **Commit message template.** *Commit message* (`{tag}: {title}`…) sets the title of squash merges and of `git.land`'s merge commit, shared by a workspace like the branch name.
+- **Several questions in one card.** An agent's `questions` card asks up to 8 questions at once, and one *Send* answers them all in one message, in the chat and in Tasks to review ([Conversation](docs/conversation.md)).
+- **A worker can wait on another task.** A worker that reports *blocked on* a task or a repository parks without stalling and continues in the same conversation once that is done; a cycle goes to you as a decision ([Workspaces](docs/workspaces.md)).
+- **A task paused for room.** A coordinator can pause a started task until its machine has room: it stays out of your lists, and the engine resumes it in the same conversation, with *Resume now* and *Stop* on its sheet ([A task paused for room](docs/project-management.md#a-task-paused-for-room)).
+- **A workspace from New › Project.** A *Project | Workspace* switch creates either one, with a *Browse* button beside each machine's root folder; a workspace root may itself be a git repository, adopted as a member with `repo adopt .`.
+- **Themes from Alfred and as JSON.** Ask Alfred for a theme and it proposes one as a card with a preview and a contrast check (*Apply*, *Edit in editor*, *Cancel*); the theme editor previews a small version of the whole app and gets a *JSON* tab.
+- **Antigravity CLI (`agy`) terminals** are recognized: their label, icon and live state. Thanks to [@followcat](https://github.com/followcat) (#830).
+- **`wherdr pm docs`** lets coordinators read the running wherdr's docs from any machine.
+
+### Improved
+
+- **Member settings name their source.** Each shared setting of a workspace member says *From <workspace>* or *Own value · Use <workspace>'s*, and is overridden or reset one field at a time; the Workflow tab says whether the member follows the workspace's workflow.
+- **Workspace settings reach members.** The workspace's working branch, branch name, placement, archive delay and delete-branch reach its members; a General-tab save never copies the workflow, and a member with its own workflow can follow the workspace's again.
+- **Sidebar workspace row.** Each member shows its own counts, and *n waiting for you* opens the waiting task.
+- **Settings › Projects.** *Add project*, *Add workspace* and *Open the board* above the list; a tab filter like the sidebar's and a search; Workspaces and Projects sections with members folded under their workspace, in compact rows. *Set up a project* is gone: *Add project* opens New › Project, where *Existing projects* becomes *Restart a coordinator*, folded.
+- **No template library in the interface.** Coordinators and Alfred write workflows; *Manage templates*, *Save as template* and *Start from a template* are gone (saved templates stay on disk).
+- **Coordinator header menu.** A coordinator's conversation header offers *Open the board*, *Project* (or *Workspace*) *settings* and *Autopilot*, like its sidebar row.
+- **Loaders on every send.** Every send button of Tasks to review loads from the click until the server answers, and keep awake spins from the tap.
+- **A refused action offers the right button**: *Try again*, with the reason, for herdr-core or network failures; *Ask the agent to fix it* only for code problems.
+- **File paths in a chat.** A relative path resolves against the agent's folder, its repository or worktree and the notes, and shows the absolute path; a path found nowhere is no dead link.
+- **Quotas.** A stale *Limit reached* shows as unknown (*may have reset*), is refreshed through Codex's read-only limits read, and no longer blocks pacing by itself.
+- **Protected files.** The file browser also protects agents' credentials, `~/.config/gh`, a v2 data folder next to v3 and herdr-core's state (but its uploads) ([Security](docs/security.md)).
+- **Notes** render `---` separators, and blank lines, separators and headings no longer count toward the 12 lines.
+- **Windows host (experimental).** `npm start` runs on every OS, the inherited PATH is kept (reported in [#870](https://github.com/afloury/wherdr/issues/870)), and remote conversations are found from a Windows host ([On Windows](docs/installation.md#on-windows-experimental)).
+- **Updates** install the release tag: `update.sh <version>`, never `git pull` in the installer's checkout.
 
 ### Fixed
 
-- **A new Devin shows its conversation.** Devin 3000.12 runs a launcher as the terminal's program and its engine (`devin acp`) as a child, and the session lock names the engine, so a Devin started without `-r` (a fresh session) showed "No conversation for this agent yet". The lock of the launcher's direct Devin child now counts; a Devin started further down, from the engine's shell, keeps its own session.
-- **An idle Devin keeps its conversation.** Devin's input field was recognized only when its footer showed the token quota, which real footers rarely do (model only, `· smart`, an edits hint, a footer cut short on a phone), so an idle Devin opened the interactive terminal over the conversation. The field is now recognized by its frame, whatever the footer says. A Devin screen caught mid-redraw also no longer opens the interactive terminal for a single read: it opens once two reads in a row agree (other agents are unchanged).
+- **A new Devin shows its conversation.** Devin 3000.12 runs a launcher as the terminal's program and its engine (`devin acp`) as a child, and the session lock names the engine, so a Devin started without `-r` (a fresh session) showed "No conversation for this agent yet". The lock of the launcher's direct Devin child now counts; a Devin started further down, from the engine's shell, keeps its own session. Thanks to [@followcat](https://github.com/followcat) for the fix (#878, #895).
+- **An idle Devin keeps its conversation.** Devin's input field was recognized only when its footer showed the token quota, which real footers rarely do (model only, `· smart`, an edits hint, a footer cut short on a phone), so an idle Devin opened the interactive terminal over the conversation. The field is now recognized by its frame, whatever the footer says. A Devin screen caught mid-redraw also no longer opens the interactive terminal for a single read: it opens once two reads in a row agree (other agents are unchanged). Thanks to [@followcat](https://github.com/followcat) for the fix (#862).
+- **Photo messages to Claude.** A photo reaches Claude as an image; a photo Claude keeps as its path is pasted once more, then sent, and never left stuck in its field; a multi-line message with a photo (which Claude collapses to *[Pasted text]*) is submitted within about 20 s, and its bubble keeps your text.
+- **Message states.** A message reads *Sending…* with a loader until it is in the transcript, never *Read by the agent* before; *Not sent* shows only once the server gave up.
+- **Chat order.** A message you send at the same moment as a wake shows as its own bubble instead of hiding in the folded wake row, and a running '!' command keeps its place in time.
+- **Keep awake** works again on a remote Mac, and a failed read says *Could not reach <machine>* with the reason and *Try again*, instead of *Not available*.
+- **Tasks.** A review round adds its section to the task's report instead of replacing the first one; a step's busy state in Tasks to review belongs to its own task; a coordinator's first messages survive a restart; a failed migration never stops the board; writes of wherdr's files are atomic.
+- **Sheets.** Notes open beside a conversation no longer turn into a sheet when you leave for the board; a menu sheet opens above the sheet it comes from; the project sheet's hints no longer overlap its tab bar; a long custom theme name ends with an ellipsis.
 
 ## [3.1.0] — 2026-11-16
 
