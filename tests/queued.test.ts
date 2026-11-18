@@ -21,6 +21,7 @@ describe('pasted message', () => {
     expect(unwrapPasted('<hc from="t7" reach="all">/srv/a.png\nlook\n</hc>')).toBe('/srv/a.png\nlook')
     expect(unwrapPasted('<hc reach="all" from="t7">hi</hc>')).toBe('hi')
     expect(unwrapPasted('use <hc> or <hc reach="x"> here')).toBe('use <hc> or <hc reach="x"> here')
+    expect(unwrapPasted('use <hc data-from="x">literal</hc> here')).toBe('use <hc data-from="x">literal</hc> here')
   })
 
   it('shows the message as a user message, reply in its place', () => {

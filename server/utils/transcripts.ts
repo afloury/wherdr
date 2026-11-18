@@ -109,7 +109,7 @@ const stripImageTags = (t: unknown) => String(t || '').replace(/\[Image #\d+(?:,
 // <hc from="t7" reach="…">…</hc> (any attributes, in any order, as long as
 // one is `from`): left out too, so a photo path right after the opening tag is
 // a line of its own again, shown as a photo.
-const HC_OPEN = /<hc\s(?=[^>]*\bfrom=")[^>]*>/
+const HC_OPEN = /<hc\s(?=(?:[^>]*\s)?from=")[^>]*>/
 const PASTED = new RegExp(`<pasted_content(?:\\s[^>]*)?>\\n?|\\n?<\\/pasted_content(?:\\s[^>]*)?>|${HC_OPEN.source}|<\\/hc>`, 'g')
 export const unwrapPasted = (t: string) => (/<pasted_content/.test(t) || HC_OPEN.test(t) ? t.replace(PASTED, '').trim() : t)
 // Prompt of a scheduled task (CronCreate, /loop…) wrapped by Claude Code.
