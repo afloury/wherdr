@@ -6,13 +6,16 @@
 // read-only in place; otherwise the main file alone is the whole database and
 // opens `immutable=1`, which creates nothing. Locally through node:sqlite,
 // remotely by Hermes' own Python (sqlite3, same rules) over the machine's shell.
+import { execFile } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import type { ChatItem, ChatResponse, ModelInfo } from '../../shared/types'
 import { excerpt, matchAt } from '../../shared/searchText'
 import { type MachineFs, localFs } from './fsx'
 import { HerdrError } from './herdr'
 import { HERMES_POLICY_PREFIX, type HermesMessage, type HermesSession, hermesLineage, hermesVisible, parseHermes } from './hermesParse'
+import { HERMES_ENVIRON_SH, type HermesEnv, hermesHome, hermesNodeEnviron, hermesToolbarSession, hermesTuiSession, parseEnviron } from './hermesSessions'
 import { ompModelLabel } from './models'
 import { type DatabaseSyncCtor, SQLITE_UNSUPPORTED, databaseSyncCtor, isSqliteUnsupported } from './sqliteDb'
 import { type PageOptions, type PageStep, hash12, pageSteps } from './stepPages'
@@ -232,4 +235,40 @@ export function createHermesTranscripts({ fs = localFs, sqlite }: {
   }
 
   return { chat, search, model }
+}
+
+// The pane's Hermes process: its interpreter, its own environment and the
+// environments of its Node children (the TUI), one shell call on its machine.
+const PROBE_SH = `printf 'exe %s\\n' "$(readlink "/proc/$1/exe" 2>/dev/null)"
+printf 'env %s\\n' "$(head -c 262144 "/proc/$1/environ" 2>/dev/null | base64 | tr -d '\\n')"
+${HERMES_ENVIRON_SH}`
+
+function probeLocal(pid: number): Promise<string> {
+  return new Promise(resolve => execFile('sh', ['-c', PROBE_SH, 'sh', String(pid)], { timeout: 5000, maxBuffer: 4 << 20 }, (_e, out) => resolve(String(out || ''))))
+}
+
+/**
+ * Which conversation a Hermes pane shows (see hermesSessions.ts): the TUI's
+ * active-session file, else the classic CLI's bottom bar on `screen()`; the
+ * database of the profile the process serves. Anything unsure gives null.
+ */
+export async function locateHermes(fs: MachineFs, home: string, proc: { pid?: number, argv?: string[] }, screen: () => Promise<string>): Promise<HermesLoc | null> {
+  const pid = proc.pid
+  if (!Number.isSafeInteger(pid) || pid! <= 0) return null
+  const out = fs === localFs ? await probeLocal(pid!) : fs.run ? (await fs.run(PROBE_SH, [String(pid)], { timeoutMs: 8000 })).toString('utf8') : ''
+  const line = (tag: string) => out.split('\n').find(l => l.startsWith(`${tag} `))?.slice(tag.length + 1).trim() || ''
+  const exe = line('exe')
+  const node = hermesNodeEnviron(out)
+  // Pure helpers take sync readers: ask once for the file they want, read it, ask again.
+  const twice = async <T>(ask: (read: (file: string) => string | null) => T): Promise<T> => {
+    let want: string | null = null
+    const first = ask((file) => { want = file; return null })
+    if (!want) return first
+    const text = await fs.readFile(want).catch(() => null)
+    return ask(file => (file === want ? text : null))
+  }
+  const dbOf = (env: HermesEnv, argv: string[]) => twice(read => hermesHome(env, home, argv, root => read(path.join(root, 'active_profile'))))
+  const session = node ? await twice(read => hermesTuiSession(node, read)) : hermesToolbarSession(await screen().catch(() => ''))
+  const db = node ? await dbOf(node, []) : await dbOf(parseEnviron(Buffer.from(line('env'), 'base64').toString('utf8')), proc.argv || [])
+  return session && db ? { db, session, ...(path.isAbsolute(exe) ? { python: exe } : {}) } : null
 }

@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import { DatabaseSync } from 'node:sqlite'
 import { afterAll, expect, it } from 'vitest'
 import { createShellFs } from '../server/utils/fsx'
-import { createHermesTranscripts } from '../server/utils/hermesTranscripts'
+import { createHermesTranscripts, locateHermes } from '../server/utils/hermesTranscripts'
 // @ts-expect-error untyped test helper
 import { writeHermesFixture } from './helpers/hermes-fixture.mjs'
 
@@ -77,4 +77,23 @@ it.skipIf(spawnSync('python3', ['-c', 'import sqlite3']).status !== 0)('reads a 
   expect(texts(await remote.chat(loc))).toEqual(WHOLE)
   expect(fs.readdirSync(fx.dir)).toEqual(['state.db'])
   expect(await remote.chat({ ...loc, db: `${fx.dir}/missing.db` })).toEqual({ available: false, reason: 'not_found' })
+})
+
+it('locates the session a Hermes pane shows: the TUI file, else the CLI bar', async () => {
+  const b64 = (env: Record<string, string>) => Buffer.from(Object.entries(env).map(([k, v]) => `${k}=${v}\0`).join('')).toString('base64')
+  const id = '20260101_120000_abc123'
+  const files: Record<string, string> = { '/tmp/hermes-tui-active-session-1.json': JSON.stringify({ session_id: id }), '/home/u/.hermes/active_profile': 'coder\n' }
+  const machine = (probe: string) => ({
+    readFile: async (f: string) => { if (f in files) return files[f]!; throw Object.assign(new Error('missing'), { code: 'ENOENT' }) },
+    run: async () => Buffer.from(probe),
+  }) as never
+  const tui = `exe /opt/hermes/bin/python3\nenv ${b64({})}\n42 ${b64({ HERMES_TUI_ACTIVE_SESSION_FILE: '/tmp/hermes-tui-active-session-1.json', HERMES_HOME: '/home/u/.hermes/profiles/work' })}\n`
+  expect(await locateHermes(machine(tui), '/home/u', { pid: 7 }, async () => ''))
+    .toEqual({ db: '/home/u/.hermes/profiles/work/state.db', session: id, python: '/opt/hermes/bin/python3' })
+  // Classic CLI: no Node child; the sticky profile and the bottom bar.
+  const cli = `exe /usr/bin/python3\nenv ${b64({ HOME: '/home/u' })}\n`
+  expect(await locateHermes(machine(cli), '/home/u', { pid: 7, argv: ['python3', '/opt/hermes/bin/hermes'] }, async () => `> \n ☤ test-model │ ${id} \n`))
+    .toEqual({ db: '/home/u/.hermes/profiles/coder/state.db', session: id, python: '/usr/bin/python3' })
+  // A bar cut off by a narrow pane: nothing.
+  expect(await locateHermes(machine(cli), '/home/u', { pid: 7 }, async () => ' ☤ test-model │ 20260101_1200')).toBeNull()
 })

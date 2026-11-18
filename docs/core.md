@@ -163,6 +163,21 @@ later and is loaded only when an Antigravity conversation is read: on an older
 Node the pane stays in Terminal mode (Conversation unavailable), and no other
 agent loads or warns about it.
 
+Hermes Agent (`hermes`, NousResearch/hermes-agent) is read from its profile's
+`state.db` (SQLite, WAL), built from Hermes' source (v0.23.2, schema 33) and
+**not yet tested with a real Hermes**: feedback welcome on
+[issue #48](https://github.com/afloury/wherdr/issues/48). The session is the
+one the pane shows, never a guess: the TUI's active-session file (named in its
+Node process's environment, Linux only), else the session id on the classic
+CLI's bottom bar (a bar cut off by a narrow pane gives none). The profile comes
+from `-p`/`--profile`, `HERMES_HOME` or `active_profile`, as Hermes resolves
+it. Messages are read across compression and `/reset` segments, with rewound
+turns and model-only summaries hidden. The database is never written and never
+gets sidecars: it opens read-only in place only while Hermes' gateway holds
+`-wal` and `-shm`, otherwise with `immutable=1`. Locally through `node:sqlite`
+(Node 22.13 or later); on another machine the same read runs there through
+Hermes' own Python, without copying the database.
+
 Text left unsent in Claude Code's own input box (a draft or paste never submitted, or the
 prompt Claude puts back after an interrupt) shows at the end of the conversation as
 **Not sent** once it has stayed unchanged for two seconds and the colored screen (the first
