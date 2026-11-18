@@ -232,7 +232,7 @@ log (terminal and Enter count; when it failed, the sizes of what the box held an
 was expected: characters, images, lines, never the text). A send in progress is noted in
 `data/submitting.json` until it ends: if wherdr restarts meanwhile (an update), it resumes
 it at startup, the same way and only on a box that holds that message alone.
-A message another terminal sent with `hc send` (wrapped in `<hc from="…">`) is shown
+A message another terminal sent with `hc send` (wrapped in `<hc from="…">`, whatever its other attributes) is shown
 without that wrapper, its photos as photos.
 A message only tells what wherdr knows: from the tap until it is in the agent's transcript,
 its bubble reads **Sending…** with a small turning loader, whatever the send answered or the
