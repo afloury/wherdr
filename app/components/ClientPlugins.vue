@@ -74,7 +74,7 @@ const stateText = (s: string) => ({
           <span v-if="p.source && updates[p.id]" class="client-plugin-update">{{ t('New') }}: <code>{{ short(updates[p.id]!.source.commit) }}</code><template v-if="updates[p.id]!.version"> ({{ updates[p.id]!.version }})</template></span>
           <span class="client-plugin-actions">
             <template v-if="p.source">
-              <UButton v-if="updates[p.id]" size="sm" color="primary" variant="solid" :loading="busy === p.id" @click="update(p.id)">{{ t('Update') }}</UButton>
+              <UButton v-if="updates[p.id]" size="sm" color="primary" variant="outline" class="mono-btn" :loading="busy === p.id" @click="update(p.id)">{{ t('Update') }}</UButton>
               <UButton v-else size="sm" color="neutral" variant="outline" class="mono-btn" :loading="busy === p.id" @click="check(p.id)">{{ t('Check for update') }}</UButton>
             </template>
             <UButton size="sm" color="neutral" variant="ghost" class="mono-btn" :disabled="busy === p.id" @click="remove(p)">{{ t('Remove') }}</UButton>
