@@ -244,7 +244,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   if (found.git === false) return wait(store, task, 'The project folder is not a git repository: a task needs git for its own worktree')
   const p = await ensureVisibility(deps, found)
   const t = p ? await store.workflow(p.key) : null
-  if (!t) return wait(store, task, `The project has no workflow: start it from a template in ${projectPlace(task.project, 'workflow')}`)
+  if (!t) return wait(store, task, `The project has no workflow: ask its coordinator to propose one in ${projectPlace(task.project, 'workflow')}`)
   const plan = workerPlan(t, task)
   if ('reason' in plan) return wait(store, task, plan.reason)
   // Stopped at a step the worker does not hold (the review): no new worker. That

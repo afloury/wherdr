@@ -33,7 +33,7 @@ describe('alfredFiles', () => {
     expect(alfredFiles({ ...ctx, address: { local: 'http://127.0.0.1:7684', remote: 'https://wherdr.example.ts.net' } }, [])['AGENTS.md']).toContain('and at https://wherdr.example.ts.net from the user\'s other devices')
     expect(a).toContain('never in a shell block (its *Run* button would run it here)')
     expect(a).toContain('only after the user\'s yes')
-    expect(a).toContain('`wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template <id>] [--apply|--propose]`')
+    expect(a).toContain('`wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template example:<id>] [--apply|--propose]`')
     expect(a).toContain('with `--apply` only after their yes in this chat')
     expect(a).toContain('No `wherdr alfred` command deletes anything')
     expect(a).toContain('The one removal you have is `wherdr pm task remove`')

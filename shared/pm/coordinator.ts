@@ -429,7 +429,7 @@ export const sameGuards = (a: Template | null, b: Template | null) => guardsOf(a
 // change only through the user's own gesture in the interface. key: the project's.
 export function templateEditRefusal(old: Template | null, next: Template, turn: Turn, key?: string): string | undefined {
   if (turn !== 'user') return 'template edit is only for a turn that comes from the user: propose the change and wait for their yes'
-  if (!old) return `The project has no workflow: the user starts it from a template in ${projectPlace(key, 'workflow', true)}`
+  if (!old) return `The project has no workflow: ask the user, or Alfred, to start it`
   if (next?.id !== old.id) return `The coordinator edits its project's workflow only (${old.id})`
   // The first workflow brings its guards: the user's yes to it sets them.
   if (!isDefaultWorkflow(old) && !sameGuards(old, next)) return `Guards (protected branches, who merges) are changed by the user in ${projectPlace(key ?? old.id, 'guards', true)}, or by Alfred, never with a project coordinator's token`
@@ -656,7 +656,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     `This project has no accepted workflow yet: its tasks follow a minimal default (one type \`task\`: todo → work → done). Your first reply proposes one:`,
     '1. Before it, look at the repository: README, docs, stack, tests, CI files, branches, recent commits, and where its PRs go (GitHub, Bitbucket, none: `git remote -v` shows no origin).',
     `2. Introduce yourself as the coordinator of project ${p.key} and say in a few lines what you understood of the project. An empty or nearly empty repository: say so, and ask what the user wants to build after your proposal.`,
-    '3. In that same first reply, propose a workflow with `template edit` (its diff is against the default), with the guards that fit; start from the example of the template library below closest to what you saw, and adapt it. Say in a few lines why: what you saw that led to each choice (the checks before a merge, the reviews, who merges). A repository with no origin remote: propose the local-merge flow (branches merged on this machine, no PR), never a PR flow it cannot run.',
+    '3. In that same first reply, propose a workflow with `template edit` (its diff is against the default), with the guards that fit; start from the example below closest to what you saw, and adapt it. Say in a few lines why: what you saw that led to each choice (the checks before a merge, the reviews, who merges). A repository with no origin remote: propose the local-merge flow (branches merged on this machine, no PR), never a PR flow it cannot run.',
     '4. The user accepts or refuses its diff in wherdr. Then ask, as `choices`, what they would change (stricter: PRs, reviews, CI checks, the user merges; or lighter: fewer checks, wherdr merges), and propose again.',
     'Note their answers in memory.md. This section goes away once the user accepts a workflow.', ''] : []
   const own = t ? [t.instructions, ...Object.entries(t.taskTypes).map(([k, tt]) => tt.instructions && `${k}: ${tt.instructions}`)].filter(Boolean).map(s => `- ${s}`) : []
@@ -704,7 +704,7 @@ export function roleFiles(p: Project, t: Template | null, examples: Template[], 
     '## Machines', '',
     'The engine places each start on one of the machines the project allows (the user allows them in its settings), by the project\'s placement strategy, which the user sets (by default heavy work on the strongest that has room, light and standard work on the project\'s own machine when it has room). `autopilot show` gives the strategy, each machine and what it takes now. Leave placement to the engine; `task start <task> --on <machine>` picks one by its name when the user asks or a task needs that machine. A started task always stays on its machine (`show` gives it).',
     'A task\'s weight says what it needs of a machine: light (docs, a study), standard (tests and typecheck), heavy (a build, e2e, screenshots). It comes from its task type and steps; set `task add --weight` only when the task differs from its type (a docs-only change in a type that takes screenshots: light).', '',
-    '## Plans of this project\'s task types', '', `Workflow: ${isDefaultWorkflow(t) ? 'the minimal default, none accepted yet' : t ? `v${t.version ?? 1}${p.from ? `, copied from template ${p.from.template} v${p.from.version} (the template library never changes it)` : ''}` : 'none'}`, `Working branch: ${p.base || 'none set'}`, '', ...plans]),
+    '## Plans of this project\'s task types', '', `Workflow: ${isDefaultWorkflow(t) ? 'the minimal default, none accepted yet' : t ? `v${t.version ?? 1}${p.from ? `, copied from template ${p.from.template} v${p.from.version} (the original never changes it)` : ''}` : 'none'}`, `Working branch: ${p.base || 'none set'}`, '', ...plans]),
     ...rules,
     '## Turning a workflow request into steps', '',
     'You are the one who writes this project\'s workflow: wherdr only shows it to the user, who asks you for every change and accepts or refuses your proposal.',
