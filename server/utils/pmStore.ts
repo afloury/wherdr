@@ -17,7 +17,8 @@ import type { UiCard } from '../../shared/uiActions'
 import { cleanProjectInput, isBranch, isGitBranch, machinesOf, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
 import { defaultColor, keyClash, projectOf, renamed, showIds, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
-import { WEIGHTS, defaultWorkflow, isWeight, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
+import { WEIGHTS, defaultWorkflow, isContextError, isWeight, readContext, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
+import { checkTaskContext } from '../../shared/pm/context'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
 import { publicTask, taskPlan, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
 import { replan } from '../../shared/pm/steps'
@@ -272,8 +273,13 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     if (fromBranch && !isGitBranch(fromBranch)) throw badInput([{ path: 'fromBranch', message: 'a branch name' }])
     if (o.weight !== undefined && o.weight !== '' && !isWeight(o.weight)) throw badInput([{ path: 'weight', message: `one of ${WEIGHTS.join(', ')}` }])
     const weight = isWeight(o.weight) ? o.weight : undefined
+    // Context folders: only a member's task, naming other members of its workspace.
+    const asked = readContext(o.context)
+    if (isContextError(asked)) throw badInput([{ path: 'context', message: asked.error }])
+    const checked = asked && checkTaskContext(asked, p, list)
+    if (checked && 'error' in checked) throw badInput([{ path: 'context', message: checked.error }])
     const origin = (['coordinator', 'automation', 'mission'] as const).find(x => x === o.origin) ?? 'user'
-    return { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(isWorkspace(p) ? { kind: 'feature' as const } : {}), ...(feature ? { feature } : {}), ...(after ? { after } : {}), ...(mergeAfter ? { mergeAfter } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}), ...(fromBranch ? { fromBranch } : {}) }
+    return { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(isWorkspace(p) ? { kind: 'feature' as const } : {}), ...(feature ? { feature } : {}), ...(after ? { after } : {}), ...(mergeAfter ? { mergeAfter } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}), ...(fromBranch ? { fromBranch } : {}), ...(checked ? { context: checked.context } : {}) }
   }
 
   async function replanTasks(key: string, before: Template, after: Template) {

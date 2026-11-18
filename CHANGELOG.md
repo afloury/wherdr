@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **Read-only context folders for a task.** In a workspace, a task's worker and reviewer can read the other members' code at their base branch: set `context` (`all` or member keys) on a task type in the workflow JSON, or per task with `wherdr pm task add --context PAY,WEB` and `task edit --context`. At each start wherdr fetches the member's base branch, makes a read-only snapshot of that commit (shared by the machine's tasks), lists it in the instructions (*Context (read only)*: member, repository path, commit, folder) and logs it in one line. Claude gets the folder with `--add-dir`; Codex already reads everywhere. A member without a clone on the machine is skipped, never a reason not to start, and snapshots no unfinished task reads are removed by the worktree sweep ([Context folders](docs/workspaces.md#context-folders)).
+
 ### Fixed
 
 - **A new Devin shows its conversation.** Devin 3000.12 runs a launcher as the terminal's program and its engine (`devin acp`) as a child, and the session lock names the engine, so a Devin started without `-r` (a fresh session) showed "No conversation for this agent yet". The lock of a Devin process under the launcher now counts.

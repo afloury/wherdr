@@ -206,6 +206,67 @@ member keeps no copy), or the member's own. It never changes a member's own
 workflow: `template edit --project <member>` is refused, and the refusal points
 to the workspace's workflow, which every member without its own runs.
 
+## Context folders
+
+A member task's worktree holds its own repository only. A spec task in the
+[root's own repository](#the-roots-own-repository), or a reviewer checking a
+contract between two repositories, cannot read the other members' code there.
+**Context folders** give a task's worker and reviewer read-only snapshots of
+other members, each at its base branch: pinned to one commit (not whatever
+branch or uncommitted change a clone holds) and with no permission prompt for
+the folder.
+
+Where you set them:
+
+- On a task type, in the workflow JSON, next to `steps` and `prefs`:
+  `"context": "all"` or `"context": ["PAY", "WEB"]`. Every task of the type
+  gets them.
+- On one task: `wherdr pm task add "Spec the export" --type spec --context PAY,WEB`,
+  and `task edit <task> --context …` (taking effect from the task's next start;
+  `--context ""` puts back the task type's). `--context all` is every other
+  member of the task's workspace, `none` turns the task type's folders off for
+  this task, and a list names members by key.
+
+A task's own setting wins over its task type's. wherdr refuses `--context` for a
+project outside a workspace, for a project that is not another member of the
+task's workspace, and for the task's own project. A task type's `context` is
+checked for its shape only (`all` or member keys); a member it names that does
+not exist, or a project with no workspace, is skipped when a task starts, and
+the task's log says so.
+
+What happens when a worker or a reviewer starts:
+
+1. For each member, wherdr finds its clone on the task's machine, runs
+   `git fetch origin <base>` when the clone has an `origin` (without one, or
+   when the fetch fails, it uses the branch the clone has), and takes the
+   member's base branch (its effective setting, the workspace's shared one
+   included; none set: the repository's default branch).
+2. It makes a detached worktree of that commit at
+   `<home>/.wherdr/pm/context/<member>/<commit>` and removes write permission
+   from every file in it. A snapshot already there is reused: **snapshots are
+   shared by the tasks of a machine**.
+3. The instructions file (the review file for a reviewer) gets a *Context (read
+   only)* section: each member's key, its repository path under the root, the
+   commit and the snapshot's folder, with the rule *read only; cite `path:line`
+   from these folders*. The task's log gets one line:
+   `context: PAY @ 1a2b3c4, WEB @ 5d6e7f8 (skipped API: no clone on laptop)`.
+4. A Claude agent is started with `--add-dir <folder>` for each snapshot. A
+   Codex agent gets no such flag: its sandbox already reads everywhere, and
+   `--add-dir` would make the folder writable.
+
+A member that cannot give a snapshot (no clone on that machine, no such branch,
+a folder that is not a git repository) is skipped, with its reason in the log
+line; it never stops the task. A reviewer that is already running keeps the
+folders it was started with for its next rounds; a worker started again takes
+the base branches as they are then.
+
+A snapshot nothing needs any more is removed: once no unfinished task's latest
+worker or reviewer reads it, and it is more than an hour old, the sweep that
+removes done tasks' worktrees (at start and every few hours) runs
+`git worktree remove --force` on it, then prunes the clone's worktree list. The
+snapshots are worktrees of the member's own clone, so `git worktree list` there
+shows them until then.
+
 ## Features
 
 A workspace's tasks are **features**, never ordinary tasks: wherdr refuses any

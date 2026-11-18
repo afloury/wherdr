@@ -417,6 +417,9 @@ and the task's log says why (*kept the remote branch task/WHR-12: commit
 archived task, keeps its branch.
 In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
 *Add task* under [Board](#board)).
+In a workspace's member project, a task type may also set `context` (`"all"` or
+a list of member keys): the task's agents get read-only snapshots of those other
+members ([Context folders](workspaces.md#context-folders)).
 
 **Bitbucket Cloud.** A worker step can open the PR with the agent's own
 Bitbucket tool (`evidence: ["link"]`). Then either a step that ends with you and
@@ -930,6 +933,10 @@ task type's `weight` when the workflow sets one, else heavy when a worker step
 asks for screenshots, light when the type lands no code (no commit, link or git
 action), standard otherwise. The coordinator does the same with `task add
 --weight`, and `show <task>` gives it.
+In a workspace's member project, the coordinator can also give a task read-only
+context folders: `task add … --context PAY,WEB` (or `all`, or `none`), changed
+with `task edit <task> --context … --reason …` ([Context
+folders](workspaces.md#context-folders)).
 
 ### Archived tasks
 

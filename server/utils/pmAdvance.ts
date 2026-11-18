@@ -17,7 +17,8 @@ import { reviewAccount, reviewCap, reviewTurn, reviewerOut, runningReviews } fro
 import { policyIn, readPolicies } from './pacingPolicies'
 import { showIds } from '../../shared/pm/projectKey'
 import { PATH_SETUP, launchFailure } from './coreCreate'
-import { WRITE_SCRIPT, exec, oneStart, prepareTmp, runOn, workspaceFiles, type PmLaunchDeps } from './pmLaunch'
+import { WRITE_SCRIPT, contextFolders, exec, oneStart, prepareTmp, runOn, workspaceFiles, type PmLaunchDeps } from './pmLaunch'
+import { contextSection } from '../../shared/pm/context'
 import { HerdrError } from './herdr'
 import { startAction } from './pmBoard'
 import { cleanTask } from './pmCleanup'
@@ -304,8 +305,11 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
   task = { ...task, held: undefined, reviewWait: undefined }
   const ws = await workspaceFiles(deps, task, p)
   task = ws.task
+  // A new reviewer gets fresh snapshots of the base branches; a running one keeps its own (its folders were allowed at its start).
+  const ctx = live ? { task, folders: live.context ?? [], lines: contextSection(live.context ?? []) } : await contextFolders(deps, task, p, t, worker.machine)
+  task = ctx.task
   const files = runFiles(worker.instructions)
-  if ((await exec(deps, on, `rm -f "$2" && ${WRITE_SCRIPT}`, [files.review, files.verdict], showIds([p], reviewFile(task, worker, text, files.verdict, isPublic(p), ws.lines)))).code !== 0)
+  if ((await exec(deps, on, `rm -f "$2" && ${WRITE_SCRIPT}`, [files.review, files.verdict], showIds([p], reviewFile(task, worker, text, files.verdict, isPublic(p), [...ws.lines, ...ctx.lines])))).code !== 0)
     return void await waitFor(deps, task.id, 'Could not write the review file')
   const told = { ...task.step!, told: task.step!.since }
   if (live) {
@@ -316,7 +320,7 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
   const tmpWhy = await prepareTmp(deps, on, worker.worktree)
   if (tmpWhy) return void await waitFor(deps, task.id, `The reviewer was not started: ${tmpWhy}`)
   const { switched, ...who } = plan
-  let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'reviewer', ...who, machine: worker.machine, worktree: worker.worktree, branch: worker.branch, instructions: files.review, attempt: 1, state: 'starting', startedAt: Date.now() }
+  let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'reviewer', ...who, machine: worker.machine, worktree: worker.worktree, branch: worker.branch, instructions: files.review, attempt: 1, state: 'starting', startedAt: Date.now(), ...(ctx.folders.length ? { context: ctx.folders } : {}) }
   // The receipt first: an unconfirmed start is found again by its labels, never started twice.
   await store.saveRun(run)
   const again = wasReleased(latest(await store.runs(), task.id, 'reviewer')) ? ' again in its worktree' : ''
@@ -326,7 +330,7 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
     (switched ? `review: ${switched}, reviewed by ${plan.program} ${plan.model}` : `review: started the reviewer${again} (${plan.program} ${plan.model})`) + (said ? `; told it: ${said}` : ''))
   const { address } = await deps.call<{ address: string }>('terminal.run', {
     cwd: worker.worktree, ...(on ? { on } : {}), no_parent: true, wait: false, env: agentEnv(worker.worktree),
-    labels: runLabels(await store.install(), run), line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, files.review, undefined, said)}`,
+    labels: runLabels(await store.install(), run), line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, files.review, undefined, said, ctx.folders.map(f => f.dir))}`,
   }, 30000)
   run = { ...run, terminal: address, state: 'running', startedAt: Date.now() }
   await store.saveRun(run)

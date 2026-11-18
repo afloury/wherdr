@@ -5,6 +5,7 @@
 // ended (pmAdvance.ts), on Archive, and in
 // a sweep at start and every few hours for leftovers.
 import { exec, runOn, type PmLaunchDeps } from './pmLaunch'
+import { contextBase, staleSnapshots } from '../../shared/pm/context'
 import { homeOf } from './coreCreate'
 import { taskPaths } from '../../shared/pm/run'
 import { cloneOn } from '../../shared/pm/project'
@@ -38,6 +39,22 @@ git -C "$repo" worktree prune 2>&1
 [ "$4" = 1 ] || exit 0
 git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null || exit 0
 git -C "$repo" branch -D "$branch" 2>&1`
+
+// The context snapshots (shared/pm/context.ts) under $1, one folder per member and
+// commit, made over an hour ago: a snapshot just made may not be on its run's record yet.
+export const CONTEXT_LIST_SCRIPT = `find "$1" -mindepth 2 -maxdepth 2 -type d -mmin +60 2>/dev/null; exit 0`
+
+// One snapshot ($1) removed through the clone it belongs to (its .git file names
+// it): writable again first, then git removes the worktree.
+export const CONTEXT_REMOVE_SCRIPT = `dir=$1
+[ -f "$dir/.git" ] || exit 3
+chmod -R u+w "$dir" || exit 1
+g=$(sed -n 's/^gitdir: //p' "$dir/.git")
+common=\${g%/worktrees/*}
+git --git-dir="$common" worktree remove --force "$dir" 2>&1 || exit 1
+git --git-dir="$common" worktree prune 2>&1
+rmdir "$(dirname "$dir")" 2>/dev/null
+exit 0`
 
 type Deps = Omit<PmLaunchDeps, 'origin'>
 const busy = new Set<string>()
@@ -92,9 +109,30 @@ async function clean(deps: Deps, id: string) {
   return finish(branch ? `${what} and its local branch ${run.branch}` : `${what}; its branch ${run.branch} stays`)
 }
 
-// Leftovers: every done or archived task whose worktree was not removed yet.
+// Context snapshots no unfinished task's latest worker or reviewer reads any more,
+// on each machine a run got some on (an unreachable one waits for the next sweep).
+async function sweepContext(deps: Deps) {
+  const [tasks, runs] = [await deps.store.tasks(), await deps.store.runs()]
+  for (const machine of new Set(runs.filter(r => r.context?.length).map(r => r.machine))) {
+    try {
+      const on = runOn(deps, { machine }), home = await homeOf(deps, on)
+      if (!home) continue
+      const base = contextBase(home, pmDir())
+      const listed = await exec(deps, on, CONTEXT_LIST_SCRIPT, [base])
+      if (listed.code !== 0) continue
+      for (const dir of staleSnapshots(listed.out.split('\n').filter(Boolean), base, machine, tasks, runs)) {
+        const r = await exec(deps, on, CONTEXT_REMOVE_SCRIPT, [dir])
+        if (r.code !== 0) console.warn(`[pm] context snapshot ${dir} stays: ${r.out.split('\n').pop()?.slice(0, 200) || 'timeout'}`)
+      }
+    } catch { /* the next sweep tries again */ }
+  }
+}
+
+// Leftovers: every done or archived task whose worktree was not removed yet,
+// then the context snapshots nothing needs.
 export async function sweepWorktrees(deps: Deps) {
   if (!(await deps.store.enabled())) return
   for (const t of await deps.store.tasks())
     if (cleanupOf(t) && !t.cleanup?.done) await cleanTask(deps, t.id).catch(() => {})
+  await sweepContext(deps)
 }
