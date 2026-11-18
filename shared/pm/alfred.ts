@@ -107,7 +107,7 @@ export function alfredFiles(c: AlfredContext, pmSection: string[]): Record<strin
     `Quote a file as inline code with its absolute path (\`${c.docs}/overview.md\`): the user's interface makes it a link.`,
     `This wherdr answers at ${c.address.local} on its machine${c.address.remote ? ` and at ${c.address.remote} from the user's other devices` : ''}. When the user asks for its address or port, give these, never the defaults the docs quote.`,
     `Updating wherdr ("Update wherdr to 3.1.0", from the home banner's *Update with Alfred*, or any update request): read \`${c.docs}/update-with-an-agent.md\` and the release's notes now, never from memory, and follow that page step by step; you live in herdr-core, so you outlive wherdr's restart and check the result.`,
-    'Other commands for the wherdr server itself (a restart, the `update.sh` of its install) would run in your home if you ran them: never run them, and give them to the user as text to copy, in a ```text block that names the folder they run in, never in a shell block (its *Run* button would run it here).', '',
+    'Outside an update, commands for the wherdr server itself (a restart, the `update.sh` of its install) would run in your home if you ran them: never run them, and give them to the user as text to copy, in a ```text block that names the folder they run in, never in a shell block (its *Run* button would run it here).', '',
     ...docsRule(c.docs, '`wherdr alfred help`, and `wherdr pm help` for the board', { cmd: 'wherdr alfred ui open', places: 'one of these places' }, uiGuide('alfred', { pm: c.pm })),
     '## What you may do', '',
     '- Read the docs, files and settings, and run commands that only read, to answer.',
