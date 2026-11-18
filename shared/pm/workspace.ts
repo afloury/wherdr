@@ -103,8 +103,11 @@ export const handledBy = (key: string, list: Project[]) => list.filter(p => p.ke
 const defined = <T extends object>(o: T) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined)) as Partial<T>
 const trim = (p: string) => p.replace(/\/+$/, '')
 
-// The workspace's clone root on a machine: its own path at home, else shared.clones.
-const rootOn = (ws: Project, machine: string) => (machine === ws.machine ? ws.path : ws.shared?.clones?.[machine])
+// The workspace's machines, clone roots and paused machines: its shared
+// settings first, else its own fields (where its sheet's Machines saves them).
+const wsMachines = (ws: Project) => ({ machines: ws.shared?.machines ?? ws.machines ?? [], clones: ws.shared?.clones ?? ws.clones, paused: ws.shared?.paused ?? ws.paused ?? [] })
+// The workspace's clone root on a machine: its own path at home, else its clones'.
+const rootOn = (ws: Project, machine: string) => (machine === ws.machine ? ws.path : wsMachines(ws).clones?.[machine])
 
 // The member's repository path under the workspace's root (payroll-api for
 // ~/work/payroll-api; ROOT_REPO for the root's own repository), else its folder's name.
@@ -121,9 +124,9 @@ export const isRootMember = (member: Pick<Project, 'machine' | 'path'>, ws: Proj
 // with a clone root, its clone under that root.
 function sharedMachines(member: Project, ws: Project): Pick<Project, 'machines' | 'clones' | 'paused'> {
   const repo = repoPath(member, ws)
-  const others = [ws.machine, ...(ws.shared?.machines ?? [])].filter((m, i, all) => m !== member.machine && all.indexOf(m) === i && rootOn(ws, m))
+  const others = [ws.machine, ...wsMachines(ws).machines].filter((m, i, all) => m !== member.machine && all.indexOf(m) === i && rootOn(ws, m))
   // A machine the workspace paused stays paused for the member, its home included.
-  const paused = (ws.shared?.paused ?? []).filter(m => m === member.machine || others.includes(m))
+  const paused = wsMachines(ws).paused.filter(m => m === member.machine || others.includes(m))
   return { ...(others.length ? { machines: [member.machine, ...others], clones: Object.fromEntries(others.map(m => [m, underRoot(rootOn(ws, m)!, repo)])) } : {}), ...(paused.length ? { paused } : {}) }
 }
 
@@ -164,6 +167,11 @@ export const needsSink = (p: Project) => isWorkspace(p) && MOVED_FIELDS.some(f =
 
 export const effectiveProjects = (list: Project[]) => list.map(p => effectiveProject(p, workspaceOf(p, list)))
 
+// The agents and worktree setup a workspace gives its members: its shared
+// settings first, else its own workflow file (`shared`), where its sheet saves its worktree setup.
+export const sharedSetup = (ws: Project | undefined, shared: Template | null = null): Pick<Template, 'prefs' | 'worktree'> =>
+  defined({ prefs: ws?.shared?.prefs ?? shared?.prefs, worktree: ws?.shared?.worktree ?? shared?.worktree })
+
 // The workflow a member runs: its own file (`saved`) when it has one, else
 // its workspace's (`shared`, workflows/<WS>.json), else the default; with the
 // workspace's agents and worktree setup unless it overrides them, and the
@@ -177,7 +185,8 @@ export function effectiveWorkflow(key: string, saved: Template | null, member: P
   return {
     ...rest,
     // Its own ones: from its file, else the ones set in its General tab (member.prefs, member.worktree).
-    ...defined({ prefs: own.has('prefs') ? (saved ? prefs : member.prefs ?? prefs) : ws.shared?.prefs ?? prefs, worktree: own.has('worktree') ? (saved ? worktree : member.worktree) : ws.shared?.worktree }),
+    // Else the workspace's, wherever it keeps them (sharedSetup).
+    ...defined({ prefs: own.has('prefs') ? (saved ? prefs : member.prefs ?? prefs) : sharedSetup(ws, shared).prefs ?? prefs, worktree: own.has('worktree') ? (saved ? worktree : member.worktree) : sharedSetup(ws, shared).worktree }),
     ...(shared?.guards ? { workspaceGuards: shared.guards } : {}),
   }
 }
@@ -222,11 +231,11 @@ export function backToWorkspace(member: Project): Project {
 // A member's overrides once its workflow is saved: its agents or worktree
 // setup become its own when they differ from the workspace's, and go back to
 // the workspace's when they are the same or left out.
-export function workflowOverrides(member: Project, ws: Project | undefined, t: Pick<Template, 'prefs' | 'worktree'>): Pick<Project, 'overrides'> {
+export function workflowOverrides(member: Project, ws: Project | undefined, t: Pick<Template, 'prefs' | 'worktree'>, shared: Template | null = null): Pick<Project, 'overrides'> {
   if (!member.workspace) return {}
-  const own = new Set(member.overrides ?? [])
+  const own = new Set(member.overrides ?? []), theirs = sharedSetup(ws, shared)
   for (const f of ['prefs', 'worktree'] as const) {
-    const differs = t[f] !== undefined && JSON.stringify(t[f]) !== JSON.stringify(ws?.shared?.[f])
+    const differs = t[f] !== undefined && JSON.stringify(t[f]) !== JSON.stringify(theirs[f])
     if (differs) own.add(f)
     else own.delete(f)
   }
