@@ -180,7 +180,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
       </div>
 
       <div id="task-panel" class="task-panel" role="tabpanel" :aria-labelledby="`task-tab-${tab}`" data-testid="task-panel">
-        <TaskTodo v-if="tab === 'todo' && todo" :card="card" :kind="todo" :pane="pane" :busy="busy" :pressing="pressing" :refused="refused" :waits-for="waitsFor"
+        <TaskTodo v-if="tab === 'todo' && todo" :card="card" :kind="todo" :pane="pane" :busy="busy" :pressing="pressing" :refused="refused" :failed="!!error || !!refused" :waits-for="waitsFor"
           @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" @review="restartReview" @worker="startWorker" @ask="askCoordinator" @fix="askFix" @comments="picked = 'comments'" />
         <template v-else-if="tab === 'description'">
           <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
