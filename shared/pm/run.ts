@@ -66,7 +66,10 @@ export interface Task {
   mergeAfter?: string // tasks of the same project or workspace, comma-separated: its PR merges once they are done (mergeQueue.ts)
   kind?: 'feature' // a workspace's task: it runs no agent (feature.ts)
   feature?: string // the feature this sub-task of a member belongs to (its <WS-n>)
-  plan?: { order: string } // a feature's split: the coordinator's one-line reason for its order
+  plan?: { order: string, file?: string } // a feature's split: the coordinator's one-line reason for its order; file: its plan file (a spec's tasks.md) under the workspace's root, whose lines its sub-tasks' refs name (planRefs.ts)
+  refs?: string[] // a sub-task's plan lines (IDs such as T010 in its feature's plan file): ticked once it is done
+  planTick?: { at: number, ticked?: string[], skipped?: string } // its refs written to the plan file (pmPlan.ts): when, which lines, or why not (kept: never tried twice)
+  planTries?: { n: number, first: number, at: number, why?: string, offline?: true } // the write-back waiting on something that passes (a lock, a merge or rebase under way, a file changed meanwhile): its tries so far, bounded; offline: its machine is unreachable, said once
   closed?: { at: number, by: string, reason?: string } // a feature its coordinator closed: done
   stopped?: Stopped // who stopped it and why (stop.ts): it waits for the user
   autopilot?: true // started or added by the coordinator in a wake: its autopilot's own
@@ -354,13 +357,15 @@ export const wsFilesSection = (files: WsFiles['files']) => files.flatMap(f => [`
 
 // The instructions file: the task, then every level's instructions, broadest
 // first, then the workspace's instructions files and the context folders (ws), then how to upload screenshots when a worker step asks for them, then
-// a public repository's rule (leakCheck: its own check, see ownLeakCheck).
-export function instructionsText(p: Project, t: Template, task: Task, run: Pick<Run, 'worktree' | 'branch'>, shots?: { base: string, token: string }, leakCheck?: string, ws: string[] = []) {
+// a public repository's rule (leakCheck: its own check, see ownLeakCheck). plan: the path of its
+// feature's plan file, when the task names lines of it (refs).
+export function instructionsText(p: Project, t: Template, task: Task, run: Pick<Run, 'worktree' | 'branch'>, shots?: { base: string, token: string }, leakCheck?: string, ws: string[] = [], plan?: string) {
   const step = typeSteps(t, task.type).find(s => s.holder === 'worker')
   const parts = [t.instructions, t.taskTypes[task.type]?.instructions, step?.instructions].map(s => s?.trim()).filter(Boolean).map(s => fillBase(s!, taskBase(task, p)))
   const visual = shotStep(t, task.type)
   return [
     `# ${task.id}: ${task.title}`, '', specText(task), '',
+    ...(plan && task.refs?.length ? [`Plan lines: ${task.refs.join(', ')} in ${plan}`, `These lines of the workspace's plan file are the part of the plan this task covers. wherdr ticks them itself once the task is done: never edit that file.`, ''] : []),
     '## Instructions', '', ...(parts.length ? parts : ['(none)']), '',
     ...ws,
     ...(visual && shots ? shotsSection(visual, task, shots) : []),

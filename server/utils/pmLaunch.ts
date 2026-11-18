@@ -486,9 +486,10 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const ws = await workspaceFiles(deps, task, p, true)
   task = ws.task
   // A later start keeps the commits of the first one.
+  const planFile = task.refs?.length && task.feature ? (await store.task(task.feature))?.plan?.file : undefined
   const ctx = await contextFolders(deps, task, p, t, machine, (await store.runs()).find(r => r.id === task.run)?.context)
   task = ctx.task
-  const text = showIds([p], instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(machine, deps.origin), token: shotToken } : undefined, leakCheck, [...ws.lines, ...ctx.lines])
+  const text = showIds([p], instructionsText(p, t, task, paths, shotToken ? { base: wherdrBase(machine, deps.origin), token: shotToken } : undefined, leakCheck, [...ws.lines, ...ctx.lines], planFile)
     + ['', ...filesSection(runFiles(paths.instructions).files, task.files), ...(depsLine ? [depsLine, ''] : []), ...(contLine ? [contLine, ''] : []), ...(handover ? [handover] : []), ...doneSection(runFiles(paths.instructions).note)].join('\n'))
   if ((await exec(deps, on, WRITE_SCRIPT, [paths.instructions], text)).code !== 0) return wait(store, task, 'Could not write the instructions file')
 

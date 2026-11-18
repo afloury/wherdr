@@ -37,6 +37,7 @@ import type { HealthSent } from '../../shared/pm/health'
 import type { Automation, AutomationProposal, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { afterRefusal, subTasks } from '../../shared/pm/feature'
+import { parseRefs } from '../../shared/pm/planRefs'
 import { eventOf, stateChanges, type TaskStateName } from '../../shared/pm/onState'
 import { SHARED_FIELDS, backToWorkspace, effectiveProject, followShared, isSharedField, cleanWorkspaceFields, effectiveProjects, liftShared, needsSink, sinkShared, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
 import type { MapFile } from '../../shared/pm/workspaceMap'
@@ -291,7 +292,10 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     const checked = asked && checkTaskContext(asked, p, list)
     if (checked && 'error' in checked) throw badInput([{ path: 'context', message: checked.error }])
     const origin = (['coordinator', 'automation', 'mission'] as const).find(x => x === o.origin) ?? 'user'
-    return { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(isWorkspace(p) ? { kind: 'feature' as const } : {}), ...(feature ? { feature } : {}), ...(after ? { after } : {}), ...(mergeAfter ? { mergeAfter } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}), ...(fromBranch ? { fromBranch } : {}), ...(checked ? { context: checked.context } : {}) }
+    const refs = parseRefs(o.refs)
+    if ('error' in refs) throw badInput([{ path: 'refs', message: refs.error }])
+    if (refs.length && !feature) throw badInput([{ path: 'refs', message: 'plan lines of a feature: the task needs a feature' }])
+    return { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(isWorkspace(p) ? { kind: 'feature' as const } : {}), ...(feature ? { feature } : {}), ...(refs.length ? { refs } : {}), ...(after ? { after } : {}), ...(mergeAfter ? { mergeAfter } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}), ...(fromBranch ? { fromBranch } : {}), ...(checked ? { context: checked.context } : {}) }
   }
 
   async function replanTasks(key: string, before: Template, after: Template) {
@@ -510,7 +514,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     // A feature's sub-tasks (feature.ts), all added or none: each raw is
     // addTask's, afterIndex naming earlier ones of the same split,
     // mergeAfterIndex any other one; the feature keeps the plan's order.
-    splitFeature: (id: string, raws: (Record<string, unknown> & { afterIndex: number[], mergeAfterIndex?: number[] })[], order: string, by: string) => write(async () => {
+    splitFeature: (id: string, raws: (Record<string, unknown> & { afterIndex: number[], mergeAfterIndex?: number[] })[], order: string, by: string, file?: string) => write(async () => {
       const all = await tasks(), feature = all.find(t => t.id === id)
       if (feature?.kind !== 'feature' || feature.closed) throw new HerdrError('refused', `${id} is not an open feature`)
       if (subTasks(feature, all).length) throw new HerdrError('refused', `${id} is already split: add a sub-task with task add --feature ${id}`)
@@ -525,7 +529,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
         if (mergeAfter) added[i] = { ...t, mergeAfter, log: [...t.log!, { at, by, text: `merges after ${mergeAfter}` }] }
       }
       for (const t of added) await writeJson(path.join(files.tasks, `${t.id}.json`), t)
-      const split = { ...feature, plan: { order }, log: [...(feature.log ?? []), { at, by, text: `split into ${added.map(t => t.id).join(', ')}: ${order}` }].slice(-200) }
+      const split = { ...feature, plan: { order, ...(file ? { file } : {}) }, log: [...(feature.log ?? []), { at, by, text: `split into ${added.map(t => t.id).join(', ')}: ${order}${file ? ` (plan file ${file})` : ''}` }].slice(-200) }
       await writeJson(path.join(files.tasks, `${id}.json`), split)
       return { feature: split, tasks: added }
     }),
