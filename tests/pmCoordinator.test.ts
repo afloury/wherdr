@@ -334,11 +334,11 @@ describe('the main coordinator (WHR-398)', () => {
     // No program given: the one picked last.
     await startCoordinator(d, MAIN, {}, { local: 'http://127.0.0.1:7690' })
     expect(runs[2]!.line).toMatch(/exec 'codex' '-c' 'check_for_update_on_startup=false' '-C'/)
-    // Card outcomes saved while it was stopped: one Codex prompt argument, its turn the user's.
+    // Card outcomes saved while it was stopped: one Codex prompt argument, its turn a card's (WHR-512).
     await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, cardNotes: ['Applied: New project WEB'] })
     await startCoordinator(d, MAIN, {}, { local: 'http://127.0.0.1:7690' })
     expect(runs[3]!.line).toMatch(/as Jeeves\.\n\nFrom the card: since your last conversation, on your cards: Applied: New project WEB'$/)
-    expect(await store.coordinator(MAIN)).toMatchObject({ turn: { kind: 'user' } })
+    expect(await store.coordinator(MAIN)).toMatchObject({ turn: { kind: 'card' } })
     expect((await store.coordinator(MAIN))!.cardNotes).toBeUndefined()
     await expect(startCoordinator(d, MAIN, { program: 'cline' }, { local: 'http://127.0.0.1:7690' })).rejects.toThrow('program')
     const view = await coordinatorsView(store)
@@ -492,6 +492,11 @@ describe('step done', () => {
     const done = ['step', 'done', task.id, '--user-said', 'Yes, create them']
     await noteTurn(store, 'ST', 'wake')
     await refused(cli(done, undefined, st), 'not a wake')
+    // WHR-512: Alfred relaying the user's message, or the user's click (Cancel too) on a card, is no yes.
+    for (const kind of ['relay', 'card'] as const) {
+      await noteTurn(store, 'ST', kind, 'Cancelled: Project ST › Guards')
+      await refused(cli(done, undefined, st), 'not a wake')
+    }
     await noteTurn(store, 'ST', 'user', 'Yes, create them')
     await cli(done, undefined, st)
     const saved = (await store.task(task.id))!
@@ -506,8 +511,10 @@ describe('step done', () => {
     await store.saveTask(waiting)
     const st = await issueToken(store, 'ST')
     const back = ['step', 'back', task.id, 'Split the API part', '--user-said', 'Make it two tasks']
-    await noteTurn(store, 'ST', 'wake')
+    await noteTurn(store, 'ST', 'relay', 'Make it two tasks')
     await refused(cli(back, undefined, st), 'not a wake')
+    // The relay still adds the task the user asked Alfred for, as theirs (autopilot off).
+    expect(await cli(['task', 'add', 'Asked', '--type', 'study'], undefined, st)).toMatchObject({ task: { origin: 'user' } })
     await noteTurn(store, 'ST', 'user', 'Make it two tasks')
     await cli(back, undefined, st)
     const saved = (await store.task(task.id))!
@@ -756,6 +763,17 @@ describe('role files', () => {
     await startCoordinator(deps, 'CO', {}, urls)
     await startCoordinator(deps, 'CO', { resume: true }, urls)
     expect(runs.filter(r => r.method === 'terminal.run').at(-1)!.line).toMatch(/exec 'claude' '--continue' '--add-dir' '\/src\/co'$/)
+  })
+
+  // WHR-512: a message replayed at a start keeps its provenance: a card's Cancel never comes back as a user turn.
+  it('replays an undelivered message with no more authority than it came with', async () => {
+    const { deps } = fakeCore()
+    await startCoordinator(deps, 'CO', { program: 'claude' }, urls)
+    for (const [text, kind] of [['From the card: Cancelled: Project CO › Guards', 'card'], ['From Alfred, for the user: merge it', 'relay']] as const) {
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, undelivered: { texts: [text], why: 'restarted', at: 1 } })
+      await startCoordinator(deps, 'CO', { resume: true }, urls)
+      expect((await store.coordinator('CO'))!.turn).toMatchObject({ kind })
+    }
   })
 
   it('an omp coordinator starts with its tool list and its messages as the argument, and resumes with --continue', async () => {

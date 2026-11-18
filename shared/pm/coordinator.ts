@@ -147,7 +147,14 @@ export function workspaceView(ws: Pick<Project, 'key' | 'group'>, projects: Proj
 
 // Where the coordinator's current turn comes from: a message the user sent
 // from the interface, an engine wake, or nothing known (refused like a wake).
-export type Turn = 'user' | 'wake' | 'none'
+// relay: Alfred's `tell` in its own user turn: the user's request reaches the
+// coordinator, never the user's yes (every user-only gate refuses it; it may
+// add the task asked for). card: the user's click on one of its cards (Cancel
+// too): it may propose the next card, nothing more.
+export type Turn = 'user' | 'wake' | 'relay' | 'card' | 'none'
+export type NotedTurn = Exclude<Turn, 'none'>
+// A card is proposed in a turn of the user, or right after their click on the last one.
+export const cardTurn = (t: Turn) => t === 'user' || t === 'card'
 
 export type Command =
   | { name: 'help' } | { name: 'docs', page?: string } | { name: 'list', archived?: true } | { name: 'plan' } | { name: 'template show' } | { name: 'autopilot show' }

@@ -7,7 +7,7 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
 import { notesStore, runNotes, type NotesStore } from './notesStore'
-import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, ROOT_RULE_FILES, isPlainFolder, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepBackRefusal, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, PROPOSAL_ANSWERS, workspaceView } from '../../shared/pm/coordinator'
+import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, ROOT_RULE_FILES, isPlainFolder, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepBackRefusal, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, type NotedTurn, PROPOSAL_ANSWERS, workspaceView } from '../../shared/pm/coordinator'
 import { FEATURE, WORKSPACE_FIRST, coordinatorKey, handledBy, isWorkspace, membersOf, ownWorkflow } from '../../shared/pm/workspace'
 import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
@@ -26,6 +26,7 @@ import { projectOf, showIds, shownKey, shownTaskId, storedTaskId } from '../../s
 import { taskPlan, trustKeys, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { cardNotesMessage, tellCardOutcome } from './cardOutcome'
+import { cardNoteOf } from '../../shared/uiActions'
 import { answeredTask, clearQuestion } from './pmAnswer'
 import { PATH_SETUP, homeOf, machineOn, type CoreAdminDeps } from './coreCreate'
 import { deliverFirst, queuedFirst, startTurn } from './coordinatorFirst'
@@ -128,16 +129,18 @@ export async function alfredTokenOk(store: PmStore, token: unknown) {
 }
 
 // Called by whatever delivers a message to the coordinator: the user's
-// message from the interface (with its text) or an engine wake.
+// message from the interface (with its text) or an engine wake; relay and
+// card (shared/pm/coordinator.ts Turn) are refused by every user-only gate.
 // look: a look-for-new-work wake, whose turn counts the tasks it adds.
-// The user's message is kept whole (a long one too) for the proposal it may lead to.
+// The user's message is kept whole (a long one too) for the proposal it may lead to;
+// a relay's or a card's, for the log only.
 const SAID_MAX = 8000
 // tab: the home tab the user has open (Alfred's `groups` and `brief` read it).
-export async function noteTurn(store: PmStore, key: string, kind: 'user' | 'wake', said?: string, look = false, tab?: string) {
+export async function noteTurn(store: PmStore, key: string, kind: NotedTurn, said?: string, look = false, tab?: string) {
   const c = await store.coordinator(key)
   if (!c) throw new HerdrError('not_found', 'No coordinator for this project')
   const at = Date.now()
-  await store.saveCoordinator({ ...c, turn: { kind, at, ...(kind === 'user' && said ? { said: said.slice(0, SAID_MAX) } : {}), ...(kind === 'wake' && look ? { look: true as const } : {}) }, ...(kind === 'user' ? { userAt: at } : {}), ...(tab ? { openTab: tab } : {}) })
+  await store.saveCoordinator({ ...c, turn: { kind, at, ...(kind !== 'wake' && said ? { said: said.slice(0, SAID_MAX) } : {}), ...(kind === 'wake' && look ? { look: true as const } : {}) }, ...(kind !== 'wake' ? { userAt: at } : {}), ...(tab ? { openTab: tab } : {}) })
 }
 
 const TURN_MS = 3_600_000
@@ -232,6 +235,8 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
   const rec = await store.coordinator(scope)
   // A turn the server saw start over an hour ago is not trusted any more.
   const turn: Turn = rec?.turn && Date.now() - rec.turn.at < TURN_MS ? rec.turn.kind : 'none'
+  // A task the user asked for, from wherdr or relayed by Alfred: added as theirs.
+  const asked = turn === 'user' || turn === 'relay'
   const by = coordinatorBy(scope)
   if (!main && key && !inScope(projects, scope, key) && !READ_COMMANDS.includes(cmd.name)) Object.assign(visit, { on: key, by, what: [cmd.name, 'task' in cmd ? cmd.task : 'title' in cmd ? `"${cmd.title}"` : ''].join(' ').trim() })
   const needProject = () => { if (!p) throw new HerdrError('bad_input', `Name the project: --project <KEY> (${projects.map(shownKey).join(', ')})`); return p }
@@ -260,9 +265,9 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
     case 'feature add': {
       const ws = projects.find(x => x.key === pk)
       if (!isWorkspace(ws)) throw new HerdrError('bad_input', 'A feature is a workspace\'s: run it from a workspace\'s coordinator, or name one with --project <KEY>')
-      const why = addRefusal(pilot, turn !== 'user')
+      const why = addRefusal(pilot, !asked)
       if (why) throw new HerdrError('refused', why)
-      const added = await store.addTask({ project: ws!.key, title: cmd.title, type: FEATURE, description: cmd.description ?? '', origin: turn === 'user' ? 'user' : 'coordinator', addedBy: scope })
+      const added = await store.addTask({ project: ws!.key, title: cmd.title, type: FEATURE, description: cmd.description ?? '', origin: asked ? 'user' : 'coordinator', addedBy: scope })
       return { task: await store.logTask(added, by, 'added the feature'), next: `Split it into sub-tasks of its repositories: wherdr pm feature split ${added.id} < plan.json` }
     }
     case 'feature split': {
@@ -596,13 +601,13 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       const look = turn === 'wake' && !!rec?.turn?.look
       // Another project's: its own new-work limit and count hold too, beside the acting coordinator's.
       const cross = !main && pk !== scope && pilotRec ? pilotRec : undefined
-      const why = addRefusal(pilot, turn !== 'user') ?? (look ? lookAddRefusal(pilot, today((cross ?? rec)?.lookAdded, Date.now())) ?? (cross ? lookAddRefusal(rec?.autopilot, today(rec?.lookAdded, Date.now())) : undefined) : undefined)
+      const why = addRefusal(pilot, !asked) ?? (look ? lookAddRefusal(pilot, today((cross ?? rec)?.lookAdded, Date.now())) ?? (cross ? lookAddRefusal(rec?.autopilot, today(rec?.lookAdded, Date.now())) : undefined) : undefined)
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
-      // Added in the user's turn: their request, never held by the pace.
+      // Added in the user's turn (or relayed by Alfred): their request, never held by the pace.
       if (cmd.refs?.length && !(await store.task(storedTaskId(projects, cmd.feature!) ?? cmd.feature!))?.plan?.file) throw new HerdrError('bad_input', `--refs: ${cmd.feature} has no plan file: name it when the feature is split ("plan": "<the path of its tasks.md>")`)
-      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.mergeAfter ? { mergeAfter: cmd.mergeAfter } : {}), files: cmd.files ?? [], ...(cmd.feature ? { feature: cmd.feature } : {}), ...(cmd.refs?.length ? { refs: cmd.refs } : {}), ...(cmd.weight ? { weight: cmd.weight } : {}), ...(cmd.fromBranch ? { fromBranch: cmd.fromBranch } : {}), ...(cmd.context ? { context: cmd.context } : {}), origin: turn === 'user' ? 'user' : 'coordinator', addedBy: scope })
-      const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
+      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.mergeAfter ? { mergeAfter: cmd.mergeAfter } : {}), files: cmd.files ?? [], ...(cmd.feature ? { feature: cmd.feature } : {}), ...(cmd.refs?.length ? { refs: cmd.refs } : {}), ...(cmd.weight ? { weight: cmd.weight } : {}), ...(cmd.fromBranch ? { fromBranch: cmd.fromBranch } : {}), ...(cmd.context ? { context: cmd.context } : {}), origin: asked ? 'user' : 'coordinator', addedBy: scope })
+      const task = !asked ? { ...added, autopilot: true as const } : added
       if (look) await store.saveCoordinator({ ...rec!, lookAdded: bump(rec!.lookAdded, Date.now()) })
       if (look && cross) { const c = (await store.coordinator(cross.project))!; await store.saveCoordinator({ ...c, lookAdded: bump(c.lookAdded, Date.now()) }) }
       return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}${cmd.mergeAfter ? `, merging after ${cmd.mergeAfter}` : ''}`) }
@@ -984,9 +989,13 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const { told: _told, cardNotes: _said, undelivered: _lost, ...rec } = (await deps.store.coordinator(key))!
   await deps.store.saveCoordinator({ ...rec, terminal: address, ran: a, version: wherdrVersion(), ...(key === MAIN ? { agent: a } : {}), ...(!asArg && prompt.length ? { undelivered: queuedFirst(prompt) } : {}) })
   // Its turn follows the user's clicks (issueToken cleared it): it may propose the next card.
-  // Its first reply's workflow proposal follows the user's start.
+  // Its first reply's workflow proposal follows the user's start. A replayed message
+  // keeps no more than it can show it came with (WHR-512): the start's own proposal,
+  // the user's; card notes, a card's; anything else (a relay, a report), a relay's.
   const said = [...proposes, ...pending, ...notes]
-  if (said.length) await noteTurn(deps.store, key, 'user', said.join('\n\n'))
+  const startProposal = (x: string) => x === FIRST_REPLY || x === WORKSPACE_FIRST
+  const kind = [...proposes, ...pending].some(startProposal) ? 'user' : pending.every(x => cardNoteOf(x) !== null) ? 'card' : 'relay'
+  if (said.length) await noteTurn(deps.store, key, kind, said.join('\n\n'))
   // Typed one after another once the program is ready (in the background: it may wait
   // on a dialog), each outcome logged; saved first, so that a failure stays on its record.
   // The start queue (startTurn) moves on once its session is up.
