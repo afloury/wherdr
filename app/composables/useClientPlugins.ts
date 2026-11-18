@@ -1,4 +1,5 @@
 // wherdr plugins: the page-side host (utils/pluginHost.ts) wired to the app.
+import { effectScope, watch } from 'vue'
 import { readPrefs } from '#shared/clientPlugins'
 import type { ClientPluginInfo, PluginPrefs } from '#shared/clientPlugins'
 import { createPluginHost, type PluginRow } from '~/utils/pluginHost'
@@ -37,7 +38,8 @@ export function startClientPlugins() {
     onCommunity: (on) => { communityPlugins.value = on },
   })
   const h = host
-  watch(communityPlugins, on => h.setCommunity(on))
+  // Detached: the first caller can be a component, and this outlives it.
+  effectScope(true).run(() => watch(communityPlugins, on => h.setCommunity(on)))
   h.init()
   return h
 }
