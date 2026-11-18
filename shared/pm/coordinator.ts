@@ -113,18 +113,23 @@ export interface CoordinatorView {
   // A workspace's coordinator (workspace.ts): its tab group, its members and their tasks at work or waiting for the user.
   workspace?: WorkspaceView
 }
-export interface WorkspaceView { group?: string, members: { key: string, name: string, label?: string, color?: ProjectColor }[], working: number, waiting: number }
+// Tasks at work (stalled ones too), and the ids of those waiting for the user.
+export interface WorkCounts { working: number, waiting: string[] }
+export interface WorkspaceView extends WorkCounts { group?: string, members: ({ key: string, name: string, label?: string, color?: ProjectColor } & WorkCounts)[] }
 
-// The sidebar's workspace row: its members (in the order they were added), and
-// how many of their tasks work (stalled ones too) or wait for the user.
+const workCounts = (tasks: Task[]): WorkCounts => {
+  const by = tasks.map(t => ({ id: t.id, s: taskStatus(t) }))
+  return { working: by.filter(x => x.s === 'working' || x.s === 'stalled').length, waiting: by.filter(x => x.s === 'waiting' || x.s === 'ready').map(x => x.id) }
+}
+
+// The sidebar's workspace row: its members (in the order they were added), each
+// with its own counts, and the total: theirs plus the workspace's own tasks (its features).
 export function workspaceView(ws: Pick<Project, 'key' | 'group'>, projects: Project[], tasks: Task[]): WorkspaceView {
   const members = projects.filter(p => p.workspace === ws.key)
-  const states = tasks.filter(t => members.some(m => m.key === t.project)).map(taskStatus)
   return {
     ...(ws.group ? { group: ws.group } : {}),
-    members: members.map(m => ({ key: m.key, name: m.name, ...(m.label ? { label: m.label } : {}), ...(m.color ? { color: m.color } : {}) })),
-    working: states.filter(s => s === 'working' || s === 'stalled').length,
-    waiting: states.filter(s => s === 'waiting' || s === 'ready').length,
+    members: members.map(m => ({ key: m.key, name: m.name, ...(m.label ? { label: m.label } : {}), ...(m.color ? { color: m.color } : {}), ...workCounts(tasks.filter(t => t.project === m.key)) })),
+    ...workCounts(tasks.filter(t => t.project === ws.key || members.some(m => m.key === t.project))),
   }
 }
 
