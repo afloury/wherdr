@@ -93,7 +93,7 @@ const fillInstr = (x: Project) => {
 }
 const instrBody = () => (instr.instrMode === 'off' ? [] : instr.instrMode === 'files' && paths(instr.instrFiles).length ? paths(instr.instrFiles) : null)
 const instrItems = computed(() => [
-  { label: wsKind.value === 'workspace' ? tl('Default: AGENTS.md, else CLAUDE.md') : tl(`Workspace ${p.value.workspace}'s`), value: 'inherit' },
+  { label: wsKind.value === 'workspace' ? tl('Default: AGENTS.md, else CLAUDE.md') : tl(`${wsName.value}'s`), value: 'inherit' },
   { label: tl('These files'), value: 'files' },
   { label: tl('None'), value: 'off' },
 ])
@@ -368,7 +368,7 @@ async function remove() {
           </span>
 
           <template v-if="workflow">
-            <ProjectFollow :project="last" field="prefs" :workspace="wsName" :own-workflow="!inherited" @followed="followed" />
+            <ProjectFollow :project="last" field="prefs" class="pm-later" :workspace="wsName" :own-workflow="!inherited" @followed="followed" />
             <div class="pm-cols">
               <span class="pm-col pm-agent">
                 <span class="field-label">{{ tl('Worker') }}<SavedMark :s="auto.state.worker" /></span>
