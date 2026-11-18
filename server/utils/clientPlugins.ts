@@ -3,7 +3,7 @@
 import fsp from 'node:fs/promises'
 import path from 'node:path'
 import { DATA_DIR } from './env'
-import { patchSettings, readSettings } from './settings'
+import { loadSettings, patchSettings } from './settings'
 import { PLUGIN_FILE_RE, PLUGIN_ID_RE, SOURCE_FILE, communityOn, parseManifest, parseSource, type ClientPluginInfo, type PluginSource } from '../../shared/clientPlugins'
 
 export const PLUGINS_DIR = path.join(DATA_DIR, 'plugins')
@@ -37,8 +37,11 @@ export function pluginFile(id: string, file: string, dir = PLUGINS_DIR): string 
 
 // Whether Community plugins is on. The first read after the update writes the
 // answer down, so a plugin installed later starts off until the user turns it on.
+// An unreadable settings file means off, and nothing is written.
 export async function communityPluginsOn(installed: number, file?: string): Promise<boolean> {
-  const raw = (await readSettings(file)).communityPlugins
+  let raw: string | undefined
+  try { raw = (await loadSettings(file)).communityPlugins }
+  catch { return false }
   const on = communityOn(raw, installed)
   if (raw !== '1' && raw !== '0') {
     await patchSettings({ communityPlugins: on ? '1' : '0' }, { onlyMissing: true, file }).catch(() => { /* logged by settings.ts */ })

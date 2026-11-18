@@ -60,4 +60,11 @@ describe('Community plugins switch', () => {
     expect(await communityPluginsOn(2, fresh)).toBe(false)
     expect(JSON.parse(await fsp.readFile(fresh, 'utf8')).settings.communityPlugins).toBe('0')
   })
+  it('an unreadable settings file means off, and the user\'s choice is not written over', async () => {
+    dir = await fsp.mkdtemp(path.join(os.tmpdir(), 'wherdr-plugins-'))
+    const damaged = path.join(dir, 'settings.json')
+    await fsp.writeFile(damaged, '{"v":1,"settings":{"communityPlugins":"0"')
+    expect(await communityPluginsOn(3, damaged)).toBe(false)
+    expect(await fsp.readFile(damaged, 'utf8')).toBe('{"v":1,"settings":{"communityPlugins":"0"')
+  })
 })
