@@ -307,3 +307,16 @@ it("'n waiting for you' opens the one waiting task, or several: a member's Tasks
     expect([reviewFilter.value, reviewOpen.value]).toEqual(['p:WA', true])
   } finally { reviewOpen.value = false; reviewFilter.value = null; await router.replace('/') }
 })
+
+it("a workspace with no members still shows its own waiting feature, one tap from its sheet (WHR-480)", async () => {
+  herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1')] }
+  views = [view('WS', { terminal: 'host/t1', workspace: { members: [], working: 0, waiting: ['WS-1'] } })]
+  const router = useRouter()
+  try {
+    w = await mountSuspended(CoordinatorsSection)
+    await vi.waitFor(() => expect(w!.find('[data-testid="workspace-counts"]').text()).toBe('1 waiting for you'))
+    expect(w.find('[data-testid="workspace-members"]').exists()).toBe(false)
+    await w.find('[data-testid="workspace-waiting"]').trigger('click')
+    await vi.waitFor(() => expect(router.currentRoute.value.query.task).toBe('WS-1'))
+  } finally { await router.replace('/') }
+})

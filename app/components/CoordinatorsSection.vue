@@ -93,6 +93,8 @@ function openWaiting(ids: string[], project: string, member: boolean) {
   reviewFilter.value = `p:${project}`
   reviewOpen.value = true
 }
+// Under a workspace's row: its members' badges, and its counts (its own features' too, members or not).
+const hasStrip = (c: CoordinatorView) => !!c.workspace && (!!c.workspace.members.length || !!c.workspace.working || !!c.workspace.waiting.length)
 // The workspace whose members are listed (one at a time).
 const membersOpen = ref('')
 function toggleMembers(c: CoordinatorView) {
@@ -202,7 +204,7 @@ onUnmounted(() => clearInterval(timer))
               <UInput v-model="newName" autofocus size="lg" class="w-full" maxlength="80" :placeholder="c.name" :aria-label="t('Coordinator name')" @blur="rename(c)" @keydown.esc.prevent="renaming = ''" />
             </form>
             <button
-              v-else type="button" class="coord-row" :class="{ on: !!coordinatorPane(c), sel: selected(c), aside: g.key === 'hidden', joined: !!c.workspace?.members.length }" :aria-current="selected(c) ? 'page' : undefined"
+              v-else type="button" class="coord-row" :class="{ on: !!coordinatorPane(c), sel: selected(c), aside: g.key === 'hidden', joined: hasStrip(c) }" :aria-current="selected(c) ? 'page' : undefined"
               :disabled="!!busy" data-testid="coordinator-row" :title="c.main ? undefined : tl(`Coordinator of ${c.name}`)" v-on="rowMenu.on(menu(c), coordinatorName(c))" @click="open(c)"
             >
               <i class="coord-dot" aria-hidden="true" />
@@ -210,10 +212,10 @@ onUnmounted(() => clearInterval(timer))
               <UIcon :name="coordinatorPane(c) ? 'i-lucide-chevron-right' : 'i-lucide-play'" class="coord-go" />
             </button>
             </UContextMenu>
-            <template v-if="c.workspace?.members.length">
+            <template v-if="c.workspace && hasStrip(c)">
               <div class="ws-strip" :class="{ aside: g.key === 'hidden' }">
               <button
-                type="button" class="ws-members" :aria-expanded="membersOpen === c.project"
+                v-if="c.workspace.members.length" type="button" class="ws-members" :aria-expanded="membersOpen === c.project"
                 :aria-label="tl(`Members of ${coordinatorName(c)}`)" data-testid="workspace-members" @click="toggleMembers(c)"
               >
                 <span v-for="m in c.workspace.members" :key="m.key" class="ws-badge" :class="{ waits: m.waiting.length }"><ProjectBadge :text="m.label ?? m.key" :color="m.color" /></span>
