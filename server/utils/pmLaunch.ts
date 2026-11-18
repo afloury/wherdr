@@ -351,6 +351,8 @@ export async function noteWorkflowBase(store: PmStore, key: string, base: string
 const wait = (store: PmStore, task: Task, reason: string, waitKind?: Task['waitKind']) => store.saveTask({ ...task, state: 'waiting', waiting: reason, waitKind, held: undefined, sameFiles: undefined, machineWait: undefined })
 
 // Its machine out of reach: herdr-core's inventory, or an answer of herdr-core midway.
+// A terminal.run whose answer never came: the agent may have started all the same.
+export const unconfirmed = (e: unknown) => e instanceof CoreError && ['timeout', 'disconnected', 'protocol'].includes(e.kind)
 const outOfReach = (e: unknown) => (e instanceof HerdrError && (e.code === 'unreachable' || e.code === 'offline')) || (e instanceof CoreError && (e as { kind?: string }).kind === 'unreachable')
 
 // The engine's first start of a task, its machine out of reach (found offline,
@@ -514,8 +516,8 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
         line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, paths.instructions, run.session ? { id: run.session, ...(taken && run.attempt === 1 ? { resume: taken.text } : {}) } : undefined, undefined, ctx.folders.map(f => f.dir))}`,
       }, 30000)).address
     } catch (e) {
-      // Unconfirmed: it may run anyway. The next reconciliation finds it by its labels.
-      if (e instanceof CoreError && ['timeout', 'disconnected', 'protocol'].includes(e.kind)) return (await store.task(task.id))!
+      // Unconfirmed: it may run anyway. The watchdog finds it by its labels, or ends the run (staleStarts).
+      if (unconfirmed(e)) return (await store.task(task.id))!
       await store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
       if (by === 'engine' && !revive && !asRead.step?.started && outOfReach(e)) throw e // startTask holds it
       return wait(store, task, `herdr-core refused to start ${plan.program}: ${(e as Error).message}`)
@@ -531,7 +533,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
     // An agent that exits at once gets one more attempt, never a loop.
     if (run.attempt > 1 || failed.code === NOT_FOUND)
       return wait(store, task, `${plan.program} stopped right after starting (exit code ${failed.code}). Last output:\n${failed.lines || '(none)'}`, isAuthFailure(failed.lines) ? 'auth' : undefined)
-    run = { ...run, id: randomUUID().replace(/-/g, '').slice(0, 12), terminal: undefined, attempt: 2, state: 'starting', ...session() }
+    run = { ...run, id: randomUUID().replace(/-/g, '').slice(0, 12), terminal: undefined, attempt: 2, state: 'starting', startedAt: Date.now(), ...session() }
   }
 }
 
