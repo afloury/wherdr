@@ -19,6 +19,7 @@ import { AGENT_ENDED, retriesAction, waitsShort, wasReleased } from './release'
 import { recovering } from './incident'
 import { showIds } from './projectKey'
 import { questionKey } from './summary'
+import { MERGE_KINDS, mergedByStep } from './cleanup'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -297,7 +298,7 @@ export function statusText(s: CardStatus, when: (at: number) => string, dated = 
   const approval = s.approved === undefined ? '' : `Approved${dated ? ` on ${when(s.approved)}` : ''}, merges by itself`
   return [approval, s.at ? `${s.text} ${when(s.at)}` : s.text].filter(Boolean).join(' · ')
 }
-const MERGES = ['github.merge', 'bitbucket.merge', 'git.verify-merged']
+const MERGES = MERGE_KINDS
 const bad = (text: string): CardStatus => ({ text, tone: 'bad' })
 // Its checks red at its merge step, as "Checks failed (smoke)"; undefined otherwise.
 export function redAtMerge(c: Pick<Card, 'plan' | 'state' | 'prNow' | 'queueOut'>): string | undefined {
@@ -326,8 +327,7 @@ export function cardStatus(c: Pick<Card, 'plan' | 'state' | 'stopped' | 'prNow' 
   if (c.sameFiles) return { text: sameFilesText(c.sameFiles), tone: 'wait' }
   if (!s?.started || c.stopped) return
   if (s.done) {
-    const merged = c.plan.some(p => p.action && MERGES.includes(p.action.kind) && s.proofs[p.id] && Object.keys(s.proofs[p.id]!).length)
-    return merged ? { text: 'merged', tone: 'ok', ...(s.since ? { at: s.since } : {}) } : undefined
+    return mergedByStep(c.plan, s) ? { text: 'merged', tone: 'ok', ...(s.since ? { at: s.since } : {}) } : undefined
   }
   // Red checks at the merge step: the worker fixes them, or waits to (why); never "merges by itself" meanwhile.
   const red = redAtMerge(c)
