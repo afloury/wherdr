@@ -31,6 +31,9 @@ export interface MachineFs {
   // Paths a process holds open (/proc/<pid>/fd targets, `lsof -Fn` output);
   // null means the scan could not run, never "no files".
   readProcessFiles?: (pid: number) => Promise<string[] | null>
+  // Remote machines only: runs `script` (sh) there and returns its output;
+  // rejects like the other operations when it fails.
+  run?: (script: string, args: string[], opts?: { input?: Buffer, timeoutMs?: number, maxBytes?: number }) => Promise<Buffer>
 }
 
 // ---------------------------------------------------------------- disque local
@@ -263,6 +266,7 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number, readC
       if (raw.trim() === '!') return null
       return raw.split('\n').filter(l => l.startsWith('/'))
     },
+    run: (script, args, opts = {}) => run(script, args, opts.timeoutMs, opts.input, opts.maxBytes),
     async readFile(p) {
       return (await run(REQUIRE_PATH + 'cat "$1"', [p])).toString('utf8')
     },

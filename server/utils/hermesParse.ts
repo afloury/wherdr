@@ -11,13 +11,13 @@ type Json = Record<string, any>
 // Every column this module reads (tests/hermesParse.test.ts checks them against
 // Hermes' own schema).
 export const HERMES_COLUMNS = {
-  sessions: ['id', 'parent_session_id', 'end_reason', 'started_at'],
+  sessions: ['id', 'parent_session_id', 'end_reason', 'started_at', 'model'],
   messages: ['id', 'session_id', 'role', 'content', 'tool_call_id', 'tool_calls', 'tool_name', 'timestamp',
     'reasoning', 'reasoning_content', 'active', 'compacted', 'display_metadata', 'message_uid'],
   state_meta: ['key', 'value'],
 } as const
 
-export interface HermesSession { id: string, parent_session_id?: string | null, end_reason?: string | null, started_at?: number | null }
+export interface HermesSession { id: string, parent_session_id?: string | null, end_reason?: string | null, started_at?: number | null, model?: string | null }
 export interface HermesMessage {
   id: number
   session_id: string

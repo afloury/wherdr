@@ -19,6 +19,7 @@ import { codexDaemonReplyKey, type CodexHistory } from './codexDaemon'
 import { clip, isNoise } from './transcriptText'
 import { createAgyTranscripts } from './agyTranscripts'
 import { agySession } from './agySessions'
+import { type HermesLoc, createHermesTranscripts, locateHermes } from './hermesTranscripts'
 
 // Backward reading by windows until there are enough messages: Claude's
 // transcripts embed images in base64, a few screenshots
@@ -38,7 +39,8 @@ export interface TranscriptPane {
   title?: string | null
 }
 
-interface Loc { file: string, session: string, guessed?: boolean }
+interface Loc { file: string, session: string, guessed?: boolean, python?: string }
+const hermesLoc = (loc: Loc): HermesLoc => ({ db: loc.file, session: loc.session, ...(loc.python ? { python: loc.python } : {}) })
 interface CodexRollout { file: string, id: string, ts: number, mtimeMs: number }
 // Window in which a Codex's conversation is created around its appearance.
 const CODEX_BIRTH_BEFORE = 5000
@@ -1061,6 +1063,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   const path = machinePath(home)
   const devin = createDevinTranscripts({ home, fs, now })
   const agy = createAgyTranscripts({ home, fs, now })
+  const hermes = createHermesTranscripts({ fs })
   // File -> state (size, generation) and when this server first saw it, for
   // whole-second mtimes (see SETTLE_MS); `file|size|gen` -> checksum of the
   // file at first sight (null: could not be taken).
@@ -1109,13 +1112,15 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
 
   // ------------------------------------------------------------ localisation
   // Antigravity's binary and core's agent label use several names.
-  const PROCESS_NAMES: Record<string, string[]> = { agy: ['agy', 'antigravity', 'antigravity-cli'] }
+  const PROCESS_NAMES: Record<string, string[]> = { agy: ['agy', 'antigravity', 'antigravity-cli'], hermes: ['hermes'] }
   async function paneProcess(paneId: string, kind: string) {
     const r = await herdr('pane.process_info', { pane_id: paneId }, 4000)
     const procs: Json[] = (r.process_info && r.process_info.foreground_processes) || []
     const names = PROCESS_NAMES[kind] || [kind]
-    const match = procs.find(p => names.includes(p.name) || names.includes(path.basename((p.argv && p.argv[0]) || '')))
-    return match || (kind === 'devin' || kind === 'agy' ? null : procs[0]) || null
+    // Hermes is a Python script: `python …/bin/hermes`.
+    const match = procs.find(p => names.includes(p.name) || names.includes(path.basename((p.argv && p.argv[0]) || ''))
+      || (kind === 'hermes' && names.includes(path.basename((p.argv && p.argv[1]) || ''))))
+    return match || (kind === 'devin' || kind === 'agy' || kind === 'hermes' ? null : procs[0]) || null
   }
 
   const encodeCwd = (cwd: string) => cwd.replace(/[^A-Za-z0-9]/g, '-')
@@ -1326,6 +1331,12 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
         const id = guess ? guess.id : pane.agentSession
         const file = id && agy.pathOf(id)
         if (file) loc = { file, session: id! }
+      } else if (pane.agent === 'hermes') {
+        // Never the integration's session: only what the pane shows now.
+        const proc = await paneProcess(pane.id, 'hermes')
+        const screen = async () => String((await herdr('pane.screen', { pane_id: pane.id }, 4000)).text || '')
+        const h = proc ? await locateHermes(fs, home, proc, screen) : null
+        if (h) loc = { file: h.db, session: h.session, ...(h.python ? { python: h.python } : {}) }
       } else if (pane.agent === 'codex') loc = await locateCodexPane(pane)
       else if (pane.agentSession) {
         const f = await findSessionFile(pane.agent, pane.agentSession)
@@ -1596,6 +1607,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     if (!loc || Date.now() >= deadline) return { hits: [], limited: Date.now() >= deadline, kind: null }
     if (pane.agent === 'devin') return devin.search({ ...pane, agentSession: loc.session }, query, deadline)
     if (pane.agent === 'agy') return agy.search({ ...pane, agentSession: loc.session }, query, deadline)
+    if (pane.agent === 'hermes') return hermes.search(hermesLoc(loc), query, deadline)
     // The transcript path tells the real kind (closed agent mislabeled).
     const kind = transcriptKind(loc.file) || pane.agent
     return { ...await searchFile(fs, loc.file, kind, home, query, deadline), kind }
@@ -1623,6 +1635,11 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     if (pane.agent === 'agy') {
       const r = await agy.chat({ ...pane, agentSession: loc.session }, opts)
       for (const item of r.items || []) if (item.role === 'assistant' && item.ref) replyKeys.set(item, `agy:${r.session}:${item.ref}`)
+      return r
+    }
+    if (pane.agent === 'hermes') {
+      const r = await hermes.chat(hermesLoc(loc), opts)
+      for (const item of r.items || []) if (item.role === 'assistant' && item.ref) replyKeys.set(item, `hermes:${r.session}:${item.ref}`)
       return r
     }
     let st
@@ -1696,7 +1713,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   }
   async function tailReply(pane: TranscriptPane): Promise<{ key: string, text: string } | null> {
     if (pane.agent === 'devin') return null // ATIF is a single JSON document, not JSONL.
-    if (pane.agent === 'agy') return null // Antigravity conversations are a SQLite database, not JSONL.
+    if (pane.agent === 'agy' || pane.agent === 'hermes') return null // A SQLite database, not JSONL.
     if (!hasTranscript(pane.agent)) return null
     const loc = await locate(pane)
     if (!loc) return null
@@ -1739,6 +1756,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     if (!loc || path.basename(loc.file) !== fileId) return null
     if (pane.agent === 'devin') return devin.image({ ...pane, agentSession: loc.session }, fileId, ref, index)
     if (pane.agent === 'agy') return agy.image({ ...pane, agentSession: loc.session }, fileId, ref, index)
+    if (pane.agent === 'hermes') return null
     const m = /^(\d+):(\d+)$/.exec(String(ref || ''))
     if (!m) return null
     const off = Number(m[1])
@@ -1771,6 +1789,10 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     if (pane.agent === 'agy') {
       const loc = await locate(pane)
       return loc ? agy.model({ ...pane, agentSession: loc.session }) : null
+    }
+    if (pane.agent === 'hermes') {
+      const loc = await locate(pane)
+      return loc ? hermes.model(hermesLoc(loc)) : null
     }
     if (!pane.agent || !['claude', 'codex', 'omp'].includes(pane.agent)) return null
     const loc = await locate(pane)
