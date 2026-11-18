@@ -208,13 +208,13 @@ fi
 export NITRO_OUTPUT_DIR=${NEXT_OUTPUT}
 rm -rf ${NEXT_OUTPUT} .output.failed
 { $run npm ci --no-audit --no-fund --loglevel=error && $run npm run build; } > ../build.log 2>&1 && ${swapBuild()} || { tail -20 ../build.log; rm -rf ${NEXT_OUTPUT}; echo "ERROR build-failed: the running build (.output) is unchanged; see $(cd .. && pwd)/build.log"; exit 5; }
-systemctl --user restart ${name}.service
 # Answers with the given text in /api/health (the new build: its commit, as <version>+<commit>).
 answers() { for i in $(seq 1 "${'$'}{WHERDR_HEALTH_WAIT:-60}"); do curl -fsS --max-time 3 http://127.0.0.1:${port}/api/health 2>/dev/null | grep -qF "$1" && return 0; sleep 1; done; return 1; }
-if ! answers "+$(git rev-parse --short=7 HEAD)\\\""; then
+# A restart that fails is rolled back too, as a build that does not answer.
+if ! systemctl --user restart ${name}.service || ! answers "+$(git rev-parse --short=7 HEAD)\\\""; then
   [ -f .output.prev/server/index.mjs ] || { echo "ERROR not-answering: ${name} does not answer with the new build and there is no previous build to roll back to; journalctl --user -u ${name}"; exit 5; }
   mv .output .output.failed && mv .output.prev .output && git checkout -q -f --detach "$old"
-  systemctl --user restart ${name}.service
+  systemctl --user restart ${name}.service || true
   if answers '"ok":true'; then state="it answers"; else state="it does not answer either"; fi
   echo "ERROR not-answering: the new build did not answer with its version; rolled back to the previous build ($(git rev-parse --short HEAD)), $state. The failed build is in $(pwd)/.output.failed; journalctl --user -u ${name}"
   exit 5

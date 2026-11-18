@@ -322,7 +322,7 @@ describe('installer', () => {
     fs.mkdirSync(bin); fs.mkdirSync(path.join(src, '.output/server'), { recursive: true })
     fs.writeFileSync(path.join(src, '.output/server/index.mjs'), 'old')
     const fake = (name: string, body: string) => fs.writeFileSync(path.join(bin, name), `#!/bin/sh\necho "${name} $*" >> ${JSON.stringify(log)}\n${body}\n`, { mode: 0o755 })
-    fake('git', '[ "$1" = rev-parse ] && echo abc1234; exit 0'); fake('systemctl', 'exit 0')
+    fake('git', '[ "$1" = rev-parse ] && echo abc1234; exit 0'); fake('systemctl', '[ -n "$NO_START" ] && [ "$(cat .output/server/index.mjs)" = broken ] && exit 1; exit 0')
     // The server answers with its build's commit, unless it is the build that fails at startup.
     fake('curl', `[ "$(cat .output/server/index.mjs)" = broken ] && exit 7; echo '{"ok":true,"version":"3.0.1+abc1234"}'`)
     // The build writes where Nitro is told to, and fails half way when asked to.
@@ -357,6 +357,13 @@ describe('installer', () => {
     expect([read('.output'), read('.output.failed')]).toEqual(['new', 'broken'])
     expect(fs.existsSync(path.join(src, '.output.prev'))).toBe(false)
     expect(fs.readFileSync(log, 'utf8')).toContain('git checkout -q -f --detach abc1234')
+    expect(fs.readFileSync(log, 'utf8').match(/systemctl --user restart/g)).toHaveLength(2)
+    // A restart that fails takes the same way back.
+    fs.writeFileSync(log, '')
+    const noStart = update(['3.0.2'], { BUILD: 'broken', NO_START: '1', WHERDR_HEALTH_WAIT: '1' })
+    expect(noStart.status).toBe(5)
+    expect(noStart.stdout).toContain('rolled back to the previous build (abc1234), it answers')
+    expect([read('.output'), read('.output.failed')]).toEqual(['new', 'broken'])
     expect(fs.readFileSync(log, 'utf8').match(/systemctl --user restart/g)).toHaveLength(2)
   })
 
