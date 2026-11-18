@@ -57,7 +57,7 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   Settings › Projects › KEY › Guards*, *Open Task KEY-12*, *Open Board › KEY › ui*). A tap opens
   the place in the app, on a computer and a phone,
   without reloading; Back returns to the conversation. Other links open in a new tab, other
-  inline code stays plain. The addresses: `#/`, `#/decisions`, `#/board` (with `?project=KEY`,
+  inline code stays plain. The addresses: `#/`, `#/review` (Tasks to review; the former `#/decisions` opens it too), `#/board` (with `?project=KEY`,
   `?tag=TAG` or `?task=ID`), `#/settings?section=<section>`, a tab of Settings › Conversation
   `#/settings?section=conversation&tab=<tab>` (`display`, `dictation`, `read-aloud`) and a
   project's sheet `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in

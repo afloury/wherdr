@@ -6,7 +6,7 @@
 // every 30 s, the coordinators' wake queue ticks (pmWakes.ts), and every
 // minute the engine makes its mechanical moves (pmMechanic.ts), its step actions
 // started outside the tick (pmBoard.ts startAction). Every 30 s,
-// one grouped push for new Decisions (pmDecisions.ts), and the projects'
+// one grouped push for what newly waits for the user (pmDecisions.ts), and the projects'
 // automations fire (pmAutomations.ts). Every minute, one task's TL;DR is
 // written again after a significant change (pmSummary.ts). At start and every
 // 5 minutes, the processes left in the worktrees of tasks with no live agent

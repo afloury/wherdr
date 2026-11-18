@@ -597,7 +597,6 @@ describe('arbitration after N send-backs', () => {
     const r = await decide(id, 'pass', 'Finding b asks for a toggle: no toggle in settings, per the spec change.') as { tellUser: string }
     expect(r.tellUser).toContain('on the spec change of 2026-11-09')
     const saved = (await store.task(id))!
-    expect(saved.specPass).toMatchObject({ step: 'review', reason: expect.stringContaining('no toggle') })
     expect(saved.log!.at(-1)!.text).toContain('coordinator chose pass on a spec change')
   })
 

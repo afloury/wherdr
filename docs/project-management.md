@@ -85,7 +85,7 @@ picker comes after it, for a new folder as for a project to restart. On a
 computer the sheet is wider, with a taller repository list.
 
 Then ask the coordinator for tasks, and answer what shows under *Your turn* and
-*Decisions*.
+[Tasks to review](#tasks-to-review).
 
 ### The coordinator's first conversation
 
@@ -466,7 +466,7 @@ or timeout) framed and named, a legend, and one line on what changes for that
 type's tasks (*For feature tasks: review changes its model; a new step shots*).
 *List* shows the same change as a list (merge rule, guards; instructions as a
 text diff), *JSON* the raw diff. A proposal made before the workflow changed again is refused, and the
-review says so: ask the coordinator to propose again. The *Decisions* view links to this review. [Alfred](alfred.md) can propose
+review says so: ask the coordinator to propose again. The proposal's card in the coordinator's chat links to this review. [Alfred](alfred.md) can propose
 a change too, on your request in its chat: you answer it in the same review.
 
 In the coordinator's conversation, a *Workflow change* card sits under the last
@@ -875,7 +875,8 @@ projects and their level from its next start.
 
 ## Board
 
-The header has **Decisions** (with a count when some wait), **Add task**, the
+The header has **To review** (with the count of what waits for you, the same
+as [Tasks to review](#tasks-to-review); it opens that sheet), **Add task**, the
 project picker, a tag filter when tasks have tags, and,
 with one project picked, its [Autopilot](#autopilot) button. The picker offers
 *Follow machine tab* (the projects the [home tab](home.md#machines-as-tabs) picked
@@ -1005,8 +1006,7 @@ when the engine does not offer *pass*: `wherdr pm task decide <task> pass
 change or the reason cites none, and then the choice stays yours. It only ends
 the review loop: a merge only you may do still waits for you, and a critical
 finding with proof stays yours. The pass is
-written to the task's log, the coordinator tells you in its next message, and
-*Decisions* shows it for a day under *Passed on a spec change*.
+written to the task's log, the coordinator tells you in its next message.
 
 ### Tasks that touch the same files
 
@@ -1033,7 +1033,7 @@ them too.
 
 ## Task sheet
 
-A card opens the task's sheet. Tasks to review, Decisions' *Open task* and a task
+A card opens the task's sheet. Tasks to review and a task
 link in the chat (`#/board?task=ID`) open it over the page you are on (a bottom
 sheet on a phone), with `?task=ID` added to that page's address, so it survives a
 reload and can be shared; closing it leaves the page as it was. The sheet shows its id badge by the title (a tap copies it; on a phone a long title takes two lines at most, cut with an ellipsis, a tap shows it whole, and one line once the sheet is scrolled or you type) and step, a note when it waits or was
@@ -1119,7 +1119,9 @@ that agent's conversation, its question last; anything else opens the sheet on
 agent that is not on screen here opens the sheet instead.
 
 <a id="tasks-to-review"></a>**Tasks to review.** To clear a morning's work in a
-few minutes, tap Home's **Tasks to review** card: it shows what waits for you
+few minutes, tap Home's **Tasks to review** card or the board's **To review**
+(a link: `#/review`; the former `#/decisions` and the grouped notification of
+what waits for you open it too, over the page you are on): it shows what waits for you
 one at a time. A task to approve shows its key (a tap copies it, as on the task
 sheet), title and project, its
 [TL;DR](#tldr), its newest screenshots (the sheet's viewer, before and after
@@ -1519,8 +1521,8 @@ task's title, PR and report. A task that would close a cycle (WHR-12 already
 waits for this one, directly or not) is refused: this task is not parked, its
 worker is told, and the coordinator gets one wake with a decision: pull the
 shared contract (proto, API, schema) into its own task both wait for, or merge
-the two tasks into one. If it cannot decide, it leaves the wake unanswered
-and the choice reaches you in **Decisions**.
+the two tasks into one. If it cannot decide, it tells you both options and leaves the wake unanswered:
+you also get the *coordinator is not answering* notification.
 
 ### A task paused for room
 
@@ -1533,7 +1535,7 @@ another is refused: stop it instead). The task is **parked** the same way:
 - its agents end, so its machine slot is free; it is never nudged, restarted
   or counted as stalled;
 - its card says *Paused: waiting for room on <machine>*; it asks you nothing:
-  it is not in **Tasks to review**, **Your turn** or **Decisions**.
+  it is not in **Tasks to review** or **Your turn**.
 
 The engine continues it by itself (same worktree, the same conversation, told
 why it paused) once its machine has room, keeping the machine's cap, in board
