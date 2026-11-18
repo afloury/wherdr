@@ -34,12 +34,11 @@ export function startClientPlugins() {
     prefs: loadPrefs,
     savePrefs,
     changed: () => { clientPlugins.value = host!.rows() },
+    onCommunity: (on) => { communityPlugins.value = on },
   })
   const h = host
-  h.init().then(() => {
-    if (!h.listError()) communityPlugins.value = h.community()
-    watch(communityPlugins, on => h.setCommunity(on))
-  })
+  watch(communityPlugins, on => h.setCommunity(on))
+  h.init()
   return h
 }
 export const setClientPluginEnabled = (id: string, on: boolean) => startClientPlugins().setEnabled(id, on)

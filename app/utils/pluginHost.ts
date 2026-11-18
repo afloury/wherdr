@@ -25,6 +25,8 @@ export interface HostDeps {
   savePrefs: (p: PluginPrefs) => void
   // Called when anything about a plugin's state changed (the Settings list).
   changed: () => void
+  // The switch as the server gave it, before any plugin starts.
+  onCommunity?: (on: boolean) => void
   timeoutMs?: number
 }
 
@@ -114,6 +116,7 @@ export function createPluginHost(deps: HostDeps) {
       infos.splice(0, infos.length, ...res.plugins)
       community = res.enabled
     } catch (e) { listError = msg(e); deps.changed(); return }
+    deps.onCommunity?.(community)
     if (community) await startAll()
     else deps.changed()
   }
@@ -146,7 +149,7 @@ export function createPluginHost(deps: HostDeps) {
     const p = deps.prefs()
     return infos.map(i => ({ ...i, status: status.get(i.id) || 'off', error: p.failed[i.id] || '', wanted: !p.off.includes(i.id) }))
   }
-  return { init, setEnabled, setCommunity, rows, community: () => community, listError: () => listError }
+  return { init, setEnabled, setCommunity, rows, listError: () => listError }
 }
 
 function withTimeout<T>(p: Promise<T>, ms: number, why: string): Promise<T> {
