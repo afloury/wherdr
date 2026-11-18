@@ -59,7 +59,6 @@ export interface Task {
   log?: TaskLogEntry[] // who changed what, newest last
   specNotes?: SpecNote[] // spec changes added after its description (task note, tell --spec), newest last
   wsFiles?: { names: string[], hash: string, worker?: string } // the workspace instructions files its agents got last (WS_FILES_SCRIPT); worker: the hash its worker got
-  specPass?: { at: number, step: string, reason: string } // the coordinator's last pass on a spec change, shown in Decisions for a day
   marks?: Mark[] // when its step or turn changed, added by the store (times.ts)
   after?: string // tasks of the same project or workspace, comma-separated: this one starts once they are done
   parked?: Parked // its worker said it is blocked on another task or repository (park.ts): no agent, no stall, until that is done

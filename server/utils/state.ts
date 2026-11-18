@@ -277,7 +277,7 @@ const coordinatorAt = async (address: string) => {
 async function notifyCorePane(address: string, kind: CoreAlertKind) {
   const p = state.panes.find(x => x.coreAddress === address)
   if (!p || isViewed(p.id)) return
-  // A project task's agent waiting for the user goes into the grouped Decisions push.
+  // A project task's agent waiting for the user goes into the grouped push of what waits for the user (pmDecisions.ts).
   if (kind === 'needs-you' && await isTaskAgent(address)) return
   const event: NotificationEvent = kind === 'needs-you' ? 'needs-you' : 'finished'
   const coordinator = await coordinatorAt(address)

@@ -44,7 +44,7 @@ describe('a blocked report', () => {
     expect('park' in repo && repo.wake).toContain('Add a task there')
     const cycle = parkOf(task(), 'WH-2', 'the schema', [task(), { ...other, after: 'WH-1' }], projects, 9)
     expect(cycle).toMatchObject({ refused: expect.stringContaining('already waits for this task'), key: 'cycle:WH-2' })
-    expect('refused' in cycle && cycle.wake).toMatch(/Decision: .*pull the shared contract .* or merge the two tasks into one\..*Decisions/)
+    expect('refused' in cycle && cycle.wake).toMatch(/Decision: .*pull the shared contract .* or merge the two tasks into one\..*Tasks to review/)
   })
 
   it('a parked task never stalls nor needs an agent, and resumes once what it waits for is done', () => {

@@ -59,7 +59,7 @@ const fixing = ref<Record<string, string>>({})
 // Answered here from its To do (Try again, a choice): it leaves as the board says, not as handled
 // elsewhere. Only the task on screen, after an action that went through (a refusal clears it).
 let acted = ''
-const waiting = computed(() => (data.value?.cards ?? []).filter(c => c.yourTurn && !c.state?.done && !handled.value.includes(c.id) && fixing.value[c.id] !== c.yourTurn))
+const waiting = computed(() => (data.value?.cards ?? []).filter(c => reviewWaits(c) && !handled.value.includes(c.id) && fixing.value[c.id] !== c.yourTurn))
 const live = computed(() => waiting.value.filter(c => reviewShows(filter.value, c.project)))
 // The list while the sheet is open, in a stable order (the board's again once
 // closed): a task that arrives goes at the end, one that leaves drops out, but

@@ -57,7 +57,7 @@ export interface UiCard {
 export const UI_CARD_MS = 24 * 3600_000
 export const UI_CARDS_MAX = 20
 
-// What must still hold at the click, the same thing Decisions keys on: the same
+// What must still hold at the click, the same thing the grouped push keys on: the same
 // stop (resume), the same user step entered at the same time (step). null: the
 // action has nothing to act on now. open always holds.
 export function actionStamp(kind: UiAction, task: Task, plan: PlannedStep[]): string | null {

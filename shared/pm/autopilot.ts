@@ -323,7 +323,7 @@ export function autopilotEvents(ap: Autopilot, tasks: Task[], seen: Record<strin
 // Commands that are the user's only, whatever the turn: the coordinator's
 // token never merges, approves, changes settings or its own limits.
 export const USER_ONLY: Record<string, string> = {
-  approve: 'Approving is the user\'s: it waits in their Decisions',
+  approve: 'Approving is the user\'s: it waits in their Tasks to review',
   merge: 'Merging is the user\'s gesture, or the engine\'s where the branch rule allows it',
   settings: 'Settings change only in wherdr, by the user',
   'autopilot set': 'The autopilot\'s goal and limits change only in wherdr, by the user',
