@@ -3,7 +3,7 @@ import { effectScope, watch } from 'vue'
 import { readPrefs } from '#shared/clientPlugins'
 import type { ClientPluginInfo, PluginPrefs, PluginSource } from '#shared/clientPlugins'
 import { createPluginHost, type PluginRow } from '~/utils/pluginHost'
-import { syncedRef } from './useSyncedSettings'
+import { settingsSync, syncedRef } from './useSyncedSettings'
 
 const PREFS_KEY = 'wherdr:plugins'
 export const clientPlugins = ref<PluginRow[]>([])
@@ -35,7 +35,8 @@ export function startClientPlugins() {
     prefs: loadPrefs,
     savePrefs,
     changed: () => { clientPlugins.value = host!.rows() },
-    onCommunity: (on) => { communityPlugins.value = on },
+    // The server's answer updates the copy as a server value: never sent back.
+    onCommunity: (on) => { settingsSync.receive({ communityPlugins: on ? '1' : '0' }) },
   })
   const h = host
   // Detached: the first caller can be a component, and this outlives it.

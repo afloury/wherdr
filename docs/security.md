@@ -58,7 +58,8 @@ only the routes listed in `shared/coreRoutes.ts` answer.
   protects the app, not the machine.
 - **Files shown from conversations**: which folders a path written by an agent may open
   ([Files › Paths in a conversation](files.md#paths-in-a-conversation)); everything your user can
-  read by default, home and temporary folders once wherdr is reachable from the Internet.
+  read by default, home and temporary folders once wherdr is reachable from the Internet; home only
+  while the settings file cannot be read.
 - <a id="new-device"></a>**New device**: it can only get in with an existing passkey. Unlock it
   with a passkey synced by your password manager (iCloud Keychain, Google Password Manager,
   1Password…), or with the passkey of another device through the browser's "use a phone or
