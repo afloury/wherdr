@@ -193,17 +193,21 @@ Alfred to update, following [Update with an agent](update-with-an-agent.md): it 
 plan, backs up `DATA_DIR`, runs `update.sh` (or the commands below), checks the new version and
 rolls back on failure. To update by hand, installed with `install-v3-beside-v2.sh`, run its
 `update.sh` with the version the banner offers (`~/wherdr-v3/update.sh 3.1.0`): it checks out the
-tag `v3.1.0` (without a version, the tip of `v3`), builds aside and restarts. Its checkout is
-detached, so `git pull` does not work there. In a checkout of your own (`git clone -b v3`):
+tag `v3.1.0` (without a version, the tip of `v3`), builds aside and restarts; when the new build
+does not answer with its version, it puts the previous one back, restarts and says so. Its checkout
+is detached, so `git pull` does not work there. In a checkout of your own (`git clone -b v3`, and
+every macOS install):
 
 ```sh
 git fetch --tags
 git checkout v3.1.0
 npm ci
-npm run build
+npm run build:aside
 ```
 
-then restart wherdr. Data in `DATA_DIR` (passkeys, push subscriptions, settings) is kept.
+then restart wherdr. `npm run build:aside` builds into `.output.next` and swaps it in only once
+built, the previous build kept as `.output.prev`: a failed or interrupted build leaves the running
+one whole (`npm run build` empties `.output` first). Data in `DATA_DIR` (passkeys, push subscriptions, settings) is kept.
 
 ## v2 only
 
