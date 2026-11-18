@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Project } from '../shared/pm/project'
-import { WORKSPACE_FIRST, workspaceInput, workspaceInstructions, cleanWorkspaceFields, effectiveProject, effectiveWorkflow, liftShared, memberOverrides, workflowOverrides, workspaceErrors, workspaceTaskError } from '../shared/pm/workspace'
+import { WORKSPACE_FIRST, workspaceInput, workspaceInstructions, cleanWorkspaceFields, effectiveProject, effectiveWorkflow, followShared, liftShared, memberOverrides, workflowOverrides, workspaceErrors, workspaceTaskError } from '../shared/pm/workspace'
 import { defaultWorkflow, type Template } from '../shared/pm/workflow'
 import { taskGuards } from '../shared/pm/actions'
 import { cleanProjectUpdate } from '../shared/pm/project'
@@ -51,6 +51,11 @@ describe('workspaces', () => {
     expect(cleared.overrides).toEqual(['machines', 'placement', 'prefs'])
     expect(effectiveProject(cleared, ws).base).toBe('develop')
     expect(memberOverrides(member, { archiveAfter: 0 })).toEqual({ overrides: ['archiveAfter'] })
+    // "Use <workspace>'s" on one field: that one alone back on the workspace's.
+    const placed = followShared(own, 'placement')
+    expect(placed).toMatchObject({ base: 'main', machines: ['home'], overrides: ['base', 'machines', 'prefs'] })
+    expect(effectiveProject(placed, ws).placement).toBe(ws.shared?.placement)
+    expect(followShared(followShared(placed, 'machines'), 'base')).not.toHaveProperty('machines')
   })
 
   it('keeps the workspace\'s pause on a member\'s home machine, and a workflow differing from the shared one is an override', () => {

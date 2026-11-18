@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
-import { readBody, setResponseStatus } from 'h3'
+import { getQuery, readBody, setResponseStatus } from 'h3'
 import { nextTick } from 'vue'
 import ProjectsSettings from '~/components/ProjectsSettings.vue'
 import type { PmOverview, Project } from '#shared/pm/project'
@@ -37,14 +37,26 @@ registerEndpoint('/api/pm/overview', async (event) => {
   return { error: 'Overview unavailable' }
 })
 let guards: Record<string, unknown> = { protected: ['main'] } // as saved
-registerEndpoint('/api/pm/project', () => ({ project: state.projects[0], workflow: { id: 'web', steps: [], taskTypes: {}, guards, prefs: { agent: 'claude', model: 'sonnet' }, worktree: { share: [] } }, log: [] }))
+registerEndpoint('/api/pm/project', (event) => {
+  const inherited = state.projects.find(p => p.key === getQuery(event).key)?.workspace // a member runs its workspace's
+  return { project: state.projects[0], workflow: { id: 'web', steps: [], taskTypes: {}, guards, prefs: { agent: 'claude', model: 'sonnet' }, worktree: { share: [] } }, log: [], ...(inherited ? { inherited } : {}) }
+})
+registerEndpoint('/api/pm/branches', () => ({ branches: [], current: 'main', local: ['main'] })) // no origin
+// A member's overrides (shared/pm/workspace.ts): a field sent becomes its own; follow gives back the workspace's value.
+const SHARED = ['base', 'branchName', 'commitMessage', 'onStateChange', 'archiveAfter', 'deleteBranch', 'instructionsFiles', 'prefs', 'worktree'] as const
+const own = (b: Record<string, unknown>) => {
+  const p = state.projects.find(x => x.key === b.key)!, ws = state.projects.find(x => x.key === p.workspace)
+  if (!ws) return {}
+  if (b.follow) return { overrides: (p.overrides ?? []).filter(f => f !== b.follow), [b.follow as string]: ws.shared?.[b.follow as 'base'] }
+  return { overrides: [...new Set([...(p.overrides ?? []), ...SHARED.filter(f => b[f] !== undefined)])] }
+}
 post('/api/pm/enabled', (b) => { state = { ...state, enabled: b.enabled as boolean }; return state })
 // Refused while `refuse` is set, as the server does on a bad value.
 let refuse = ''
 registerEndpoint('/api/pm/project-update', { method: 'POST', handler: async (event) => {
   const b = await readBody(event)
   calls.push({ url: '/api/pm/project-update', body: b })
-  if (!refuse) return edit(b, { name: b.name as string, base: b.base as string, ...(b.newKey ? { label: b.newKey as string } : {}) })
+  if (!refuse) return edit(b, { ...own(b), ...(b.name !== undefined ? { name: b.name as string } : {}), ...(b.base !== undefined ? { base: b.base as string } : {}), ...(b.branchName !== undefined ? { branchName: b.branchName as string } : {}), ...(b.newKey ? { label: b.newKey as string } : {}) })
   setResponseStatus(event, 400)
   return { error: refuse }
 } })
@@ -297,4 +309,32 @@ it('groups members under their workspace, folds it, and shows a search hit insid
   await vi.waitFor(() => expect(w.find('[data-testid="pm-ws-members"]').exists()).toBe(false))
   expect(w.findAll('[data-testid="pm-workspace"]')).toHaveLength(1)
   localStorage.removeItem('projectsSettingsFolded')
+})
+
+// WHR-479: a member's sheet says, per setting, whether it follows its
+// workspace; an edit makes that one field its own, "Use <workspace>'s" gives it back.
+it('a member\'s settings follow its workspace one at a time', async () => {
+  const ws: Project = { ...web(), key: 'LED', name: 'Ledger', path: '~/work', kind: 'workspace', git: false, shared: { base: 'develop', branchName: 'feat/{id}' }, visibility: undefined }
+  const member: Project = { ...web(), key: 'API', name: 'Api', path: '~/work/api', workspace: 'LED', base: 'develop', branchName: 'feat/{id}' } // as the overview gives it: in force
+  state = { ...state, enabled: true, projects: [member, ws] }
+  mounted = await mountSuspended(ProjectsSettings, { props: { active: true }, route: '/settings?section=projects&project=API&tab=general' })
+  const field = () => (inSheet('pm-branch-name')!.querySelector('input') ?? inSheet('pm-branch-name')) as HTMLInputElement
+  await vi.waitFor(() => expect(inSheet('pm-branch-name') && field().value).toBe('feat/{id}'), { timeout: 5000 }) // filled
+  const mark = (f: string) => inSheet(`pm-follow-${f}`)!.textContent!.replace(/\s*·\s*/, ' · ').trim()
+  expect(inSheet('pm-follow-intro')!.textContent).toBe('Settings come from Ledger unless you change one here.')
+  expect(mark('branchName')).toBe('From Ledger')
+  expect(mark('base')).toBe('From Ledger')
+  await vi.waitFor(() => expect(inSheet('pm-base-missing')?.textContent).toBe('develop not found in this repository: using main'))
+
+  field().value = 'task/{id}'
+  field().dispatchEvent(new Event('input'))
+  field().dispatchEvent(new FocusEvent('focusout', { bubbles: true }))
+  await vi.waitFor(() => expect(mark('branchName')).toBe('Own value · Use Ledger\'s'))
+  expect(calls.at(-1)!.body).toEqual({ key: 'API', branchName: 'task/{id}' }) // that field alone
+  expect(mark('base')).toBe('From Ledger')
+
+  inSheet('pm-follow-use-branchName')!.click()
+  await vi.waitFor(() => expect(mark('branchName')).toBe('From Ledger'))
+  expect(calls.at(-1)!.body).toEqual({ key: 'API', follow: 'branchName' })
+  await vi.waitFor(() => expect(field().value).toBe('feat/{id}')) // the workspace's again
 })
