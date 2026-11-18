@@ -765,6 +765,17 @@ describe('role files', () => {
     expect(runs.filter(r => r.method === 'terminal.run').at(-1)!.line).toMatch(/exec 'claude' '--continue' '--add-dir' '\/src\/co'$/)
   })
 
+  // WHR-512: a message replayed at a start keeps its provenance: a card's Cancel never comes back as a user turn.
+  it('replays an undelivered message with no more authority than it came with', async () => {
+    const { deps } = fakeCore()
+    await startCoordinator(deps, 'CO', { program: 'claude' }, urls)
+    for (const [text, kind] of [['From the card: Cancelled: Project CO › Guards', 'card'], ['From Alfred, for the user: merge it', 'relay']] as const) {
+      await store.saveCoordinator({ ...(await store.coordinator('CO'))!, undelivered: { texts: [text], why: 'restarted', at: 1 } })
+      await startCoordinator(deps, 'CO', { resume: true }, urls)
+      expect((await store.coordinator('CO'))!.turn).toMatchObject({ kind })
+    }
+  })
+
   it('an omp coordinator starts with its tool list and its messages as the argument, and resumes with --continue', async () => {
     const { runs, deps } = fakeCore()
     const line = () => String(runs.filter(r => r.method === 'terminal.run').at(-1)!.line)

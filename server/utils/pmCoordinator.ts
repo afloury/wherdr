@@ -26,6 +26,7 @@ import { projectOf, showIds, shownKey, shownTaskId, storedTaskId } from '../../s
 import { taskPlan, trustKeys, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { cardNotesMessage, tellCardOutcome } from './cardOutcome'
+import { cardNoteOf } from '../../shared/uiActions'
 import { answeredTask, clearQuestion } from './pmAnswer'
 import { PATH_SETUP, homeOf, machineOn, type CoreAdminDeps } from './coreCreate'
 import { deliverFirst, queuedFirst, startTurn } from './coordinatorFirst'
@@ -988,9 +989,13 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const { told: _told, cardNotes: _said, undelivered: _lost, ...rec } = (await deps.store.coordinator(key))!
   await deps.store.saveCoordinator({ ...rec, terminal: address, ran: a, version: wherdrVersion(), ...(key === MAIN ? { agent: a } : {}), ...(!asArg && prompt.length ? { undelivered: queuedFirst(prompt) } : {}) })
   // Its turn follows the user's clicks (issueToken cleared it): it may propose the next card.
-  // Its first reply's workflow proposal follows the user's start.
+  // Its first reply's workflow proposal follows the user's start. A replayed message
+  // keeps no more than it can show it came with (WHR-512): the start's own proposal,
+  // the user's; card notes, a card's; anything else (a relay, a report), a relay's.
   const said = [...proposes, ...pending, ...notes]
-  if (said.length) await noteTurn(deps.store, key, proposes.length || pending.length ? 'user' : 'card', said.join('\n\n'))
+  const startProposal = (x: string) => x === FIRST_REPLY || x === WORKSPACE_FIRST
+  const kind = [...proposes, ...pending].some(startProposal) ? 'user' : pending.every(x => cardNoteOf(x) !== null) ? 'card' : 'relay'
+  if (said.length) await noteTurn(deps.store, key, kind, said.join('\n\n'))
   // Typed one after another once the program is ready (in the background: it may wait
   // on a dialog), each outcome logged; saved first, so that a failure stays on its record.
   // The start queue (startTurn) moves on once its session is up.
