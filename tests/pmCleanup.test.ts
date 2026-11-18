@@ -7,7 +7,7 @@ import { cleanupOf, cleanupRefusal, factsRefusal, mergedByStep, mergedCommit, pa
 import type { PlannedStep } from '../shared/pm/steps'
 import { TMP_DIR, agentEnv, tmpRefusal, type Run, type Task } from '../shared/pm/run'
 import { TMP_SCRIPT } from '../server/utils/pmLaunch'
-import { WORKTREE_PROBE_SCRIPT, WORKTREE_REMOVE_SCRIPT } from '../server/utils/pmCleanup'
+import { REMOVING, WORKTREE_PROBE_SCRIPT, WORKTREE_REMOVE_SCRIPT } from '../server/utils/pmCleanup'
 
 const root = '/home/user/.wherdr/pm/worktrees'
 const task = (step: Partial<NonNullable<Task['step']>> = {}): Task => ({
@@ -96,6 +96,36 @@ describe('removing a squash-merged worktree, in a temporary folder', () => {
       expect(fs.existsSync(`${wts}/WH-2/notes.txt`)).toBe(true)
     } finally { fs.rmSync(dir, { recursive: true, force: true }) }
   })
+})
+
+describe('a worktree an earlier removal left halfway, in a temporary folder', () => {
+  it('only tracked files deleted (its .git file too): finished; a file changed besides: kept', () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-half-'))
+    const sh = (script: string, ...args: string[]) => execFileSync('sh', ['-c', script, 'sh', ...args], { encoding: 'utf8' })
+    const status = (script: string, ...args: string[]) => { try { sh(script, ...args); return 0 } catch (e) { return (e as { status: number }).status } }
+    try {
+      const repo = path.join(root, 'repo')
+      sh('git init -q "$1" && for f in a b c; do echo $f > "$1/$f.txt"; done && git -C "$1" add . && git -C "$1" -c user.name=t -c user.email=t@example.com commit -q -m init', repo)
+      // As a removal killed halfway leaves them: locked, some tracked files and the .git file gone.
+      for (const id of ['WH-1', 'WH-2']) sh('git -C "$1" worktree add -q -b task/$2 "$3/$2" && git -C "$1" worktree lock --reason "$4" "$3/$2" && rm "$3/$2/a.txt" "$3/$2/.git"', repo, id, root, REMOVING)
+      // WH-1: only deletions. Its removal's prune does not forget WH-2 (locked).
+      const wt1 = path.join(root, 'WH-1')
+      expect(parseFacts(sh(WORKTREE_PROBE_SCRIPT, repo, wt1, 'task/WH-1'))).toMatchObject({ exists: true, listed: true, dirty: 0 })
+      expect(sh(WORKTREE_REMOVE_SCRIPT, repo, wt1, 'task/WH-1', '0')).toMatch(/^freed \d+$/m)
+      expect(fs.existsSync(wt1)).toBe(false)
+      // WH-2: a modified file besides the deletions: kept, the probe and the removal both say so.
+      const wt2 = path.join(root, 'WH-2')
+      fs.writeFileSync(path.join(wt2, 'b.txt'), 'edited')
+      expect(factsRefusal(parseFacts(sh(WORKTREE_PROBE_SCRIPT, repo, wt2, 'task/WH-2'))!)).toBe('1 uncommitted change')
+      expect(status(WORKTREE_REMOVE_SCRIPT, repo, wt2, 'task/WH-2', '0')).toBe(3)
+      expect(fs.readFileSync(path.join(wt2, 'b.txt'), 'utf8')).toBe('edited')
+      // A worktree locked by someone else stays.
+      const wt3 = path.join(root, 'WH-3')
+      sh('git -C "$1" worktree add -q -b task/WH-3 "$2" && git -C "$1" worktree lock --reason mine "$2"', repo, wt3)
+      expect(status(WORKTREE_REMOVE_SCRIPT, repo, wt3, 'task/WH-3', '0')).toBe(3)
+      expect(fs.existsSync(path.join(wt3, 'b.txt'))).toBe(true)
+    } finally { fs.rmSync(root, { recursive: true, force: true }) }
+   }, 30_000)
 })
 
 describe('the agents\' temp folder', () => {

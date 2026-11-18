@@ -1,6 +1,6 @@
 // Removes the worktree of a done task (and its local branch once merged), on
-// the machine its worker ran on, with git worktree remove: never a forced removal,
-// never rm, once every process working in it is killed. Each removal, and each worktree kept with why, goes to the task's
+// the machine its worker ran on, with git worktree remove: forced only past its
+// own check that nothing changed or new is in it (WORKTREE_REMOVE_SCRIPT), never rm, once every process working in it is killed. Each removal, and each worktree kept with why, goes to the task's
 // log (shared/pm/cleanup.ts decides). Runs once a done task's agents have
 // ended (pmAdvance.ts), on Archive, and in
 // a sweep at start and every few hours for leftovers.
@@ -14,6 +14,17 @@ import { KILL_UNDER } from '../../shared/pm/procs'
 import { countKilled } from './pmProcs'
 import { pmDir } from './pmHome'
 
+// $admin: the worktree's folder in the repository's git dir, found from the
+// repository (its own .git file may be gone when a removal stopped halfway).
+const ADMIN_OF = `admin=
+common=$(cd "$repo" && cd "$(git rev-parse --git-common-dir)" && pwd) || exit 1
+for f in "$common"/worktrees/*/gitdir; do [ "$(cat "$f" 2>/dev/null)" = "$dir/.git" ] && admin=\${f%/gitdir}; done
+wt() { if [ -n "$admin" ]; then git --git-dir="$admin" --work-tree="$dir" "$@"; else git -C "$dir" "$@"; fi; }`
+
+// Tracked files only deleted (` D`): what a removal stopped halfway leaves. Nothing
+// is lost removing them (their content is in the commit), so they are no change.
+const CHANGES = `grep -v '^ D ' | grep -c .`
+
 // Prints `exists listed dirty unique` (see Facts). $4: the commit its merge step
 // proved merged, whose history counts as merged (ignored when unknown here).
 export const WORKTREE_PROBE_SCRIPT = `repo=$1 dir=$2 branch=$3 merged=
@@ -22,9 +33,10 @@ e=0 l=0 d=0 refs=
 if [ -d "$dir" ]; then e=1
   git -C "$repo" worktree list --porcelain | grep -qxF "worktree $dir" && l=1
   if [ $l = 1 ]; then
-    s=$(git -C "$dir" status --porcelain) || exit 1
-    d=$(printf '%s\\n' "$s" | grep -c .)
-    refs=$(git -C "$dir" rev-parse HEAD) || exit 1
+    ${ADMIN_OF}
+    s=$(wt status --porcelain) || exit 1
+    d=$(printf '%s\\n' "$s" | ${CHANGES})
+    refs=$(wt rev-parse HEAD) || exit 1
   fi
 fi
 git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null && refs="$refs refs/heads/$branch"
@@ -32,11 +44,43 @@ u=0
 if [ -n "$refs" ]; then u=$(git -C "$repo" rev-list --count $refs --not $merged --exclude="$branch" --branches --remotes) || exit 1; fi
 echo "$e $l $d $u"`
 
+// The removal's own timeout (s): a worktree of several GB takes minutes. Its size
+// is measured first within DU_TIMEOUT, or not said.
+export const WORKTREE_REMOVE_TIMEOUT = 600
+const DU_TIMEOUT = 30
+
+// The lock a removal puts on the worktree first, so that \`git worktree prune\`
+// (here or in any start's snapshot) never forgets one a timeout stopped halfway
+// whose .git file is already gone: git removes the lock last, with the rest.
+export const REMOVING = 'wherdr: removing it'
+
 // $4 = 1: the local branch goes too. The processes working in it go first
 // (\`killed <n>\`), so none runs on in a removed folder; \`freed <KB>\` is its size.
+// Then checked here, as git would: anything changed or new keeps it (exit 3);
+// tracked files only deleted are what an earlier removal stopped halfway left,
+// finished. Locked, git removes it only with -f -f, which this check stands for
+// (ignored files go either way); one locked by someone else stays. Kept, it
+// stays locked: still usable, never pruned.
 export const WORKTREE_REMOVE_SCRIPT = `repo=$1 dir=$2 branch=$3
 ${KILL_UNDER}
-if [ -d "$dir" ]; then echo "freed $(du -sk "$dir" 2>/dev/null | cut -f1)"; git -C "$repo" worktree remove "$dir" 2>&1 || exit 1; fi
+if [ -d "$dir" ]; then
+  ${ADMIN_OF}
+  force=
+  if [ -n "$admin" ]; then
+    if [ -f "$admin/locked" ]; then
+      [ "$(cat "$admin/locked")" = "${REMOVING}" ] || { echo "locked: $(head -c 200 "$admin/locked")"; exit 3; }
+    else git -C "$repo" worktree lock --reason "${REMOVING}" "$dir" 2>&1 || exit 1
+    fi
+    force='-f -f'
+    s=$(wt status --porcelain) || exit 1
+    n=$(printf '%s\\n' "$s" | ${CHANGES})
+    [ "$n" = 0 ] || { echo "$n uncommitted change(s)"; exit 3; }
+    [ -e "$dir/.git" ] || printf 'gitdir: %s\\n' "$admin" > "$dir/.git" || exit 1
+  fi
+  t=; command -v timeout >/dev/null 2>&1 && t="timeout ${DU_TIMEOUT}"
+  echo "freed $($t du -sk "$dir" 2>/dev/null | cut -f1)"
+  git -C "$repo" worktree remove $force "$dir" 2>&1 || exit 1
+fi
 git -C "$repo" worktree prune 2>&1
 [ "$4" = 1 ] || exit 0
 git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null || exit 0
@@ -119,7 +163,7 @@ async function clean(deps: Deps, id: string) {
   if (why) return keep(why)
   // Its local branch follows Delete the task's branch after its merge.
   const branch = kind === 'worktree+branch' && p.deleteBranch !== false
-  const r = await exec(deps, on, WORKTREE_REMOVE_SCRIPT, [repo, run.worktree, run.branch, branch ? '1' : '0'])
+  const r = await exec(deps, on, WORKTREE_REMOVE_SCRIPT, [repo, run.worktree, run.branch, branch ? '1' : '0'], undefined, WORKTREE_REMOVE_TIMEOUT)
   const n = Number(/^killed (\d+)$/m.exec(r.out)?.[1] ?? 0)
   if (n) countKilled(run.machine, n)
   if (r.code === 3) return keep(r.out.split('\n').pop()!)
