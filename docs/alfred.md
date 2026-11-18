@@ -32,7 +32,7 @@ Changing (show, then do):
 | `wherdr alfred project template <KEY> <example:id\|none>` | gives the project a copy of a built-in example workflow, or none |
 | `wherdr alfred v2 import [--only <KEY,KEY>] [--start no]` | brings every v2 project not made yet over in one change: each added on this machine with its v2 folder, then its coordinator started (no workflow needed); with `--propose`, one card with a checkbox per project, one for *Start their coordinators* and, with project management off, *Turn on project management*; the outcome lists each project ([set up your v2 projects](migrate-from-v2.md#set-up-your-v2-projects-with-alfred)) |
 | `wherdr alfred project memory <KEY> < note.md` | adds the lines it is given (at most 30) to the end of the project coordinator's `memory.md`, created when missing: a v2 handover note and goal, for instance ([set up your v2 projects](migrate-from-v2.md#set-up-your-v2-projects-with-alfred)) |
-| `wherdr alfred project guards <KEY> [--protect <branch,branch\|none>] [--merge-protected user\|engine] [--merge-others user\|engine] [--contributor-prs off\|others\|all]` | the project's [guards](project-management.md#guards): protected branches, who merges into them and into the others (`user`: you, `engine`: wherdr), and whether its coordinator may merge an outside contributor's PR after your yes; without an option, only shown |
+| `wherdr alfred project guards <KEY> [--protect <branch,branch\|none>] [--merge-protected user\|engine] [--merge-others user\|engine] [--contributor-prs off\|others\|all]` | the project's [guards](project-management.md#guards): protected branches, who merges into them and into the others (`user`: you, `engine`: wherdr), and whether its coordinator may merge an outside contributor's PR after your yes; without an option, only shown. A change goes only as a card you apply (`--propose`), never with `--apply` |
 | `wherdr alfred project machine add <KEY> <machine> --clone <folder>` | lets the project's tasks run on another machine (its key or label), in its clone of the repository there; once applied, the machine's [readiness check](project-management.md#board) runs and its result is in the answer |
 | `wherdr alfred project machine remove <KEY> <machine>` | the project's tasks no longer start on that machine (tasks already there stay) |
 | `wherdr alfred coordinator start <KEY> [--program claude\|codex\|omp] [--resume]` | starts the project's coordinator; without `--program`, its default agent and model (as chosen in the setup window), else the user's first offered Claude or Codex (omp only when neither is offered; Settings › Agents) (a new conversation replaces a running one); `--resume` takes up its last conversation again, with the agent that ran it |
@@ -41,7 +41,8 @@ Changing (show, then do):
 
 A change without `--apply` (all but `setting set`, which is only proposed) changes nothing: it prints what it would do (`dryRun`, `change`) and
 the command that makes it. Alfred shows you those lines and runs that command, with `--apply`,
-only after your yes in the chat. With `--propose` instead (only in a turn that follows your
+only after your yes in the chat: `--apply` is refused in any turn that does not follow your own
+message (a wake, a card's click), and guards change only by a card. With `--propose` instead (only in a turn that follows your
 message), nothing changes yet: Alfred's reply carries a [card you apply](conversation.md#project-changes-alfred-proposes)
 with the change's lines, *Show me*, *Cancel* and *Apply*. Your click is [told to Alfred](conversation.md#what-a-card-tells-its-agent)
 (*Applied: …*), so it goes on to the next step (the next v2 project) without you typing "ok, next". When the answer names a `remote` machine (a project on another
@@ -56,7 +57,7 @@ Proposing and delegating (no `--apply`):
 | Command | Does |
 | --- | --- |
 | `wherdr alfred project workflow edit <KEY> < workflow.json` | proposes a new workflow for the project (the whole JSON, guards unchanged, except on a project with only the minimal default, which takes the new workflow's guards). To reuse another project's workflow, Alfred reads it (`wherdr pm template show --project <KEY>`) and proposes it here. Nothing changes yet: you accept or refuse it in the project's [Workflow tab](project-management.md#workflow), in the same review as a coordinator's proposal. Only on your request in Alfred's chat, never in a wake |
-| `wherdr alfred tell <KEY> "<text>"` | sends a message to the project's coordinator, starting it when it does not run, and writes it to the project's log as from Alfred. When Alfred relays your message, it reaches the coordinator as *From Alfred, for the user: …* and its turn counts as yours; otherwise *From Alfred: …*, as a wake |
+| `wherdr alfred tell <KEY> "<text>"` | sends a message to the project's coordinator, starting it when it does not run, and writes it to the project's log as from Alfred. When Alfred relays your message, it reaches the coordinator as *From Alfred, for the user: …*: it may add the task you asked for as yours, but the relay is never your yes (it cannot end a step that waits for you, step back, merge a contributor's PR, change a task's spec, the workflow or an automation, or start past the autopilot's limits); otherwise *From Alfred: …*, as a wake |
 
 So you can ask Alfred "propose a workflow for WEB": it tells WEB's coordinator, reads its reply
 with `last`, and reports back; the proposal itself waits for your answer in wherdr.
