@@ -154,6 +154,8 @@ function afterFirstMessage(r: { pane_id: string, first_message?: string | null, 
   else if (r.queued) outboxAdd(r.pane_id, r.queued)
   else if (r.first_message === 'queued') {
     toast(tl('The first message will be sent once you have answered the prompt.', 'Le premier message partira dès que tu auras répondu à la question.'))
+  } else if (r.first_message === 'uncertain') {
+    toast(t('herdr-core did not confirm the first message was typed: check the conversation before sending it again.'), true)
   } else if (r.first_message === 'skipped') {
     toast(tl('The first message was not sent: answer the prompt in the terminal, then send it again.', 'Le premier message n’est pas parti : réponds à la question dans le terminal, puis renvoie-le.'), true)
   }
