@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **Antigravity CLI (`agy`) terminals** are recognized: their label, icon and live state.
+
 ### Fixed
 
 - **A new Devin shows its conversation.** Devin 3000.12 runs a launcher as the terminal's program and its engine (`devin acp`) as a child, and the session lock names the engine, so a Devin started without `-r` (a fresh session) showed "No conversation for this agent yet". The lock of a Devin process under the launcher now counts.
