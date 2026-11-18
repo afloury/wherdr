@@ -301,21 +301,21 @@ onUnmounted(() => clearInterval(timer))
 .coord-rename { cursor: default; }
 /* A workspace's members: badges under its name, inside the row's box. */
 .coord-row.joined { border-bottom-width: 0; padding-bottom: 2px; }
-.ws-strip { display: flex; align-items: flex-start; border: 1px solid var(--line); border-top-width: 0; background: var(--surface); }
-.ws-members { display: flex; flex: 1; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; padding: 0 0 8px 30px; border: 0; background: none; cursor: pointer; }
+.ws-strip { display: flex; flex-wrap: wrap; align-items: flex-start; border: 1px solid var(--line); border-top-width: 0; background: var(--surface); }
+.ws-members { display: flex; flex: 1 1 auto; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 0; padding: 0 0 8px 30px; border: 0; background: none; cursor: pointer; }
 /* A member with a task waiting for the user: a small square on its badge, seen collapsed. */
 .ws-badge { position: relative; display: inline-flex; }
 .ws-badge.waits::after { content: ''; position: absolute; top: -2px; right: -2px; width: 5px; height: 5px; background: var(--blocked); box-shadow: 0 0 0 1px var(--surface); }
 .ws-strip.aside { opacity: .7; }
 @media (hover: hover) { .ws-strip:has(.ws-members:hover) { background: var(--surface-2); } }
 /* Beside the strip's button, which cannot hold the link. */
-.ws-counts { flex: none; padding: 0 12px 0 8px; line-height: 20px; }
+.ws-counts { flex: none; margin-left: auto; padding: 0 12px 8px 8px; line-height: 20px; }
 .ws-members:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .ws-chevron { color: var(--dim); transition: transform .15s; }
 .ws-chevron.open { transform: rotate(180deg); }
 .ws-member-list { margin: 0; padding: 0 0 4px; list-style: none; border: 1px solid var(--line); border-top-width: 0; background: var(--surface); }
 .ws-member-row { display: flex; align-items: center; }
-.ws-member-row:hover { background: var(--surface-2); }
+@media (hover: hover) { .ws-member-row:hover { background: var(--surface-2); } }
 .ws-member-counts { flex: none; padding-right: 12px; }
 .ws-member { display: flex; flex: 1; align-items: center; gap: var(--badge-gap); min-width: 0; min-height: 40px; padding: 4px 12px 4px 30px; color: var(--text-2); font-size: 13px; }
 .ws-member > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
