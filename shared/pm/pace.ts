@@ -4,7 +4,7 @@
 import type { Quota, QuotaAccount, QuotaCredits, Quotas } from '../types'
 import { limitEnds, limitState, type LimitState } from '../quotaLimit'
 import { accountFor } from '../quotaAccount'
-import { quotaOut, type Task, type TaskOrigin } from './run'
+import { programName, quotaOut, type Task, type TaskOrigin } from './run'
 import { DEFAULT_PACE, burning, current, paceVerdict, targetLine, type PacePolicy, type PaceReason, type PaceVerdict } from './pacing'
 
 // Tasks made before `origin` existed: from their other marks.
@@ -84,6 +84,8 @@ const pct = (n: number) => `${Math.round(n)} %`
 // `autopilot show`'s line: `pacing: claude:ab12 Pro · working days · week 41 % /
 // line 54 % · today +9 % · 5 h 30 % · go`.
 export function paceLine(s: PaceState, now: number): string {
+  // omp has no quota reading at all: nothing to wait for on any machine.
+  if (s.program !== 'claude' && s.program !== 'codex') return `${s.program} · no quota reading for ${programName(s.program)} · task-count limits only`
   if (!s.account || s.verdict.go && s.verdict.unknown) {
     return `${s.account?.key ?? s.program}${s.account?.name ? ` ${s.account.name}` : ''} · quota unknown (no reading${s.account ? '' : ` of ${s.program} on this project's machine`}) · task-count limits only`
   }

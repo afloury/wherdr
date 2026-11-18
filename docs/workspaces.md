@@ -58,7 +58,9 @@ change in a member goes through tasks (`feature split` of a feature,
 its settings deny edits inside each member's folder (rewritten at each start,
 so a newly adopted member is covered from the coordinator's next start); it may
 still write elsewhere under the root, such as specs and notes. On Codex, the
-root is read-only: it reads every repository and writes only in its own folder.
+root is read-only: it reads every repository and writes only in its own folder. On omp, the
+coordinator starts with a tool list that has no edit tool (its shell can still write, as
+with Claude), and the root is added with `--add-dir`.
 
 The root's own `AGENTS.md` and `CLAUDE.md`, when present, are copied into its
 instructions at each start (a `CLAUDE.md` that only imports `AGENTS.md` adds

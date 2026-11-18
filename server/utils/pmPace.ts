@@ -23,7 +23,10 @@ export async function projectPace(store: PmStore, project: string, task?: Pick<T
   const type = task?.type ?? Object.keys(t.taskTypes)[0] ?? ''
   const plan = workerPlan(t, { type, ...(task?.prefs ? { prefs: task.prefs } : {}) } as Task)
   if ('reason' in plan) return null
-  const program = plan.program as 'claude' | 'codex'
+  const { program } = plan
+  // Only Claude and Codex have a quota reading (omp has none): no account, quota
+  // unknown, only the task-count limits hold.
+  if (program !== 'claude' && program !== 'codex') return { program, account: null, quota: null, policy: DEFAULT_PACE, verdict: paceVerdict(DEFAULT_PACE, null, now, 'auto', false), today: null }
   // A failed read: quota unknown, only the task-count limits hold.
   const q: Quotas | null = await readQuotas().catch(() => null)
   const account = accountFor(q?.accounts, machine ?? p.machine, program)

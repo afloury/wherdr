@@ -79,7 +79,7 @@ export async function syncWaits(deps: PmLaunchDeps) {
     // A login prompt, not a permission: one login incident for the machine's account, the task waits for the engine.
     if (kind === 'permission' && (task.state === 'working' || task.waitKind === 'permission')) {
       const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: run!.terminal, lines: 10 }, 3000).catch(() => null))?.text || '')
-      if (isLoginPrompt(`${term.status && typeof term.status === 'object' ? term.status.msg ?? '' : ''}\n${screen}`)) { await loginExpired(deps, task, run!); continue }
+      if (isLoginPrompt(`${term.status && typeof term.status === 'object' ? term.status.msg ?? '' : ''}\n${screen}`) && await loginExpired(deps, task, run!)) continue
     }
     // What herdr-core says is asked ("approve Bash: npm test"), else the kind.
     const msg = typeof term.status === 'object' ? term.status?.msg?.trim().slice(0, 300) : undefined

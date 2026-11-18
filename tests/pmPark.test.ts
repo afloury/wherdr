@@ -8,7 +8,7 @@ import { advanceTick } from '../server/utils/pmAdvance'
 import { resumeParked } from '../server/utils/pmPark'
 import { pauseForRoom } from '../server/utils/pmStop'
 import { placeFor } from '../server/utils/pmPlace'
-import { parkOf, parseBlockedOn, resumeText } from '../shared/pm/park'
+import { parkOf, parseBlockedOn, resumeText, roomPauseRefusal } from '../shared/pm/park'
 import { cardOf, toHandle } from '../shared/pm/board'
 import { decisionsOf } from '../shared/pm/decisions'
 import { parseCommand } from '../shared/pm/coordinator'
@@ -193,5 +193,16 @@ describe('parking on the server', () => {
     expect(line).toContain('There is room again')
     expect((await store.task('WH-1'))!.parked).toBeUndefined()
     expect(await placeFor(deps, fresh)).toMatchObject({ hold: expect.not.stringContaining('paused for room') })
+  })
+})
+
+describe('pausing a task for room', () => {
+  const started = { id: 'WEB-1', project: 'WEB', title: 't', description: '', type: 'feature', state: 'working', createdAt: 0, step: { at: 1, started: true, proofs: {}, rounds: {} } } as unknown as Task
+  it('only a Claude worker with its session is taken up again later: an omp worker is refused with that text, never a crash', () => {
+    expect(roomPauseRefusal(started, 'worker', [{ role: 'worker', program: 'claude', session: 's1' }])).toBeUndefined()
+    const text = "WEB-1's worker conversation cannot be taken up again later (only a Claude worker's can): stop it instead, or let it finish"
+    expect(roomPauseRefusal(started, 'worker', [{ role: 'worker', program: 'omp', session: 's1' }])).toBe(text)
+    expect(roomPauseRefusal(started, 'worker', [{ role: 'worker', program: 'omp' }])).toBe(text)
+    expect(roomPauseRefusal(started, 'worker', [{ role: 'worker', program: 'codex' }])).toBe(text)
   })
 })

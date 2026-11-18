@@ -6,6 +6,9 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **omp as a worker, a reviewer and a project coordinator.** A task's `agent`, `reviewAgent` and `reviewFallbackAgent` may be `omp` (started as `omp --model <model> '<message>'`, not resumable, with no quota reading: only the task-count limits hold). A project's or workspace's coordinator may run on omp too, as an option that is never the default: it starts with a tool list without an edit tool, `ast_edit`, `eval`, `task`, `debug` and `lsp` (its shell can still write, as Claude's can), and its conversation can be resumed. With no explicit choice, the first offered Claude or Codex is the default, even when omp comes first in Settings › Agents; `wherdr alfred coordinator start --program omp` accepts it ([Projects](docs/project-management.md#worker-and-reviewer-agents), [Home](docs/home.md)).
 ## [3.1.1] — 2026-11-18
 
 wherdr 3.1.1 rounds off workspaces (each member setting says whether it follows the workspace, a workspace from New › Project, a worker can wait on another task), adds a command run when a task changes state and a commit message template, and fixes photo messages to Claude, message states in the chat, keep awake on a remote Mac and two Devin conversation problems. Release notes: [docs/release-notes-3.1.1.md](docs/release-notes-3.1.1.md).
