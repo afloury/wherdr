@@ -26,7 +26,7 @@ function fakeGitHub(trees: Record<string, Record<string, Node>>, refs: Record<st
         return typeof n === 'string' ? new Response(n) : missing()
       }
       const [, owner, repo, kind, ...rest] = parts
-      if (`${owner}/${repo}` !== 'me/hello') return missing()
+      if (repo !== 'hello' || owner === 'nobody') return missing()
       if (!kind) return json({ default_branch: 'main' })
       if (kind === 'releases') return opts.release ? json({ tag_name: opts.release }) : missing()
       if (kind === 'commits') return refs[rest.join('/')] ? json({ sha: refs[rest.join('/')] }) : missing()
@@ -97,6 +97,13 @@ describe('install', () => {
     await expect(previewFromGitHub('me/hello@main', gh, dir)).rejects.toThrow(/already installed from somewhere else/)
     await expect(installFromGitHub({ repo: 'me/hello', ref: 'main', commit: A }, gh, dir)).rejects.toThrow(/somewhere else/)
     expect(await fsp.readdir(path.join(dir, 'hello'))).toEqual(['manifest.json'])
+  })
+
+  it('two repositories installing the same id at once: the second one is refused', async () => {
+    const gh = fakeGitHub({ [A]: plugin() }, { main: A })
+    const res = await Promise.allSettled(['one/hello', 'two/hello'].map(repo => installFromGitHub({ repo, ref: 'main', commit: A }, gh, dir)))
+    expect(res.map(r => r.status)).toEqual(['fulfilled', 'rejected'])
+    expect((await listClientPlugins(dir))[0]!.source!.repo).toBe('one/hello')
   })
 
   it('says so for a private repository or no network', async () => {

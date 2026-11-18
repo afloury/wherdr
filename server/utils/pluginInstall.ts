@@ -124,13 +124,27 @@ export async function previewFromGitHub(spec: string, gh = GITHUB, dir = PLUGINS
   return { ...info, source: { repo: p.repo, ref: p.ref, commit }, resolved, update: Boolean(installed) }
 }
 
+// One install or removal at a time per plugin folder: the clash check and the
+// swap see the same folder (two repos with the same id cannot both pass).
+const locks = new Map<string, Promise<unknown>>()
+async function locked<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const run = (locks.get(key) ?? Promise.resolve()).catch(() => {}).then(fn)
+  const tail = run.catch(() => {})
+  locks.set(key, tail)
+  try { return await run } finally { if (locks.get(key) === tail) locks.delete(key) }
+}
+
 export async function installFromGitHub(source: PluginSource, gh = GITHUB, dir = PLUGINS_DIR): Promise<ClientPluginInfo> {
   if (!parsePluginSpec(source.repo + (source.ref ? `@${source.ref}` : '')) || !SHA_RE.test(source.commit)) throw fail('Bad source.')
   const { info, manifest, entries } = await inspect(gh, source.repo, source.commit)
+  return locked(path.join(dir, info.id), () => write(source, info, [manifest, ...entries], gh, dir))
+}
+
+async function write(source: PluginSource, info: ClientPluginInfo, todo: Entry[], gh: GitHub, dir: string): Promise<ClientPluginInfo> {
   await clash(dir, info.id, source.repo)
   let left = MAX_BYTES
   const files: [string, Buffer][] = []
-  for (const e of [manifest, ...entries]) {
+  for (const e of todo) {
     const buf = await download(gh, source.repo, source.commit, e, left)
     left -= buf.length
     files.push([e.name, buf])
@@ -166,5 +180,5 @@ export async function checkPluginSource(id: string, gh = GITHUB, dir = PLUGINS_D
 
 export async function removeClientPlugin(id: string, dir = PLUGINS_DIR) {
   if (!PLUGIN_ID_RE.test(id)) throw fail('Bad plugin id.')
-  await fsp.rm(path.join(dir, id), { recursive: true, force: true })
+  await locked(path.join(dir, id), () => fsp.rm(path.join(dir, id), { recursive: true, force: true }))
 }
