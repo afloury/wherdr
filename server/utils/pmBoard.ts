@@ -282,7 +282,7 @@ export async function resumeMerges(deps: CoreAdminDeps & { store: PmStore }) {
   }
 }
 
-// The user's choice on a review the after-N rule handed to them (Decisions):
+// The user's choice on a review the after-N rule handed to them (Tasks to review, the task's sheet):
 // any choice, like the coordinator's `task decide` but not limited to its options.
 export async function userDecide(store: PmStore, id: unknown, choice: unknown) {
   if (!CHOICES.includes(choice as Choice)) throw new HerdrError('bad_input', `choice: one of ${CHOICES.join(', ')}`)
