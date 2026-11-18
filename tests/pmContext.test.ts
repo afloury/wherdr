@@ -1,7 +1,7 @@
 // Context folders: read-only snapshots of other members of a task's workspace
 // (shared/pm/context.ts, CONTEXT_SCRIPT, the sweep). The scripts run for real,
 // in made-up repositories under a temp folder.
-import { spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -103,6 +103,13 @@ describe('what the agent is told', () => {
     expect(contextSection([])).toEqual([])
   })
 
+  it('a branch not fetched, or a clone with no origin, is said in the section and the log line', () => {
+    const odd: ContextFolder[] = [{ ...folders[0]!, how: 'not-fetched' }, { ...folders[1]!, how: 'local' }]
+    expect(contextSection(odd).join('\n')).toContain('- PAY: payroll-api @ 1a2b3c4 (not fetched), in /h/')
+    expect(contextSection(odd).join('\n')).toContain('- WEB: web @ 5d6e7f8 (local branch), in /h/')
+    expect(contextLine(odd, [])).toBe('context: PAY @ 1a2b3c4 (not fetched), WEB @ 5d6e7f8 (local branch)')
+  })
+
   it('the task log has one line: what it got, what it skipped and why', () => {
     expect(contextLine(folders, [{ key: 'API', why: 'no clone on laptop' }])).toBe('context: PAY @ 1a2b3c4, WEB @ 5d6e7f8 (skipped API: no clone on laptop)')
     expect(contextLine(folders, [])).toBe('context: PAY @ 1a2b3c4, WEB @ 5d6e7f8')
@@ -162,6 +169,8 @@ const env = { PATH: process.env.PATH!, HOME: home, GIT_CONFIG_NOSYSTEM: '1', GIT
 const git = (cwd: string, ...a: string[]) => { const r = spawnSync('git', a, { cwd, env, encoding: 'utf8' }); if (r.status !== 0) throw new Error(`git ${a.join(' ')}: ${r.stderr}`); return r.stdout.trim() }
 const sh = (script: string, ...args: string[]) => { const r = spawnSync('sh', ['-c', script, 'sh', ...args], { env, encoding: 'utf8' }); return { code: r.status, out: r.stdout.trim() } }
 const commit = (dir: string, file: string, text: string) => { fs.mkdirSync(path.dirname(path.join(dir, file)), { recursive: true }); fs.writeFileSync(path.join(dir, file), text); git(dir, 'add', '-A'); git(dir, 'commit', '-q', '-m', text); return git(dir, 'rev-parse', 'HEAD') }
+// What the sweep's list script prints, sorted.
+const listed = (base: string) => sh(CONTEXT_LIST_SCRIPT, base).out.split('\n').filter(Boolean).sort()
 const isReadOnly = (f: string) => (fs.statSync(f).mode & 0o222) === 0
 const SHA = /^[0-9a-f]{40}$/
 
@@ -187,14 +196,14 @@ describe('CONTEXT_SCRIPT', () => {
     const ahead = m.ahead()
     expect(ahead).not.toBe(m.first)
     const r = sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main'))
-    expect(r).toEqual({ code: 0, out: ahead })
+    expect(r).toEqual({ code: 0, out: `${ahead} fetched` })
     const dir = path.join(root, ahead)
     expect(fs.readFileSync(path.join(dir, 'src/b.txt'), 'utf8')).toBe('two')
     expect(isReadOnly(path.join(dir, 'src/b.txt'))).toBe(true)
     expect(isReadOnly(path.join(dir, 'src'))).toBe(true)
     expect(git(m.clone, 'worktree', 'list').split('\n')).toHaveLength(2)
     // The same commit again: the same folder, no second worktree.
-    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main'))).toEqual({ code: 0, out: ahead })
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main'))).toEqual({ code: 0, out: `${ahead} fetched` })
     expect(git(m.clone, 'worktree', 'list').split('\n')).toHaveLength(2)
     // The clone's own branch is not touched: it stays on its commit, and a snapshot is detached.
     expect(git(m.clone, 'rev-parse', 'main')).toBe(m.first)
@@ -205,10 +214,10 @@ describe('CONTEXT_SCRIPT', () => {
     const local = path.join(tmp, 'local'), root = path.join(tmp, 'ctx', 'LOC')
     fs.mkdirSync(local); git(local, 'init', '-q', '-b', 'develop')
     const sha = commit(local, 'x.txt', 'x')
-    expect(sh(CONTEXT_SCRIPT, ...contextArgs(local, root, 'develop'))).toEqual({ code: 0, out: sha })
-    expect(sh(CONTEXT_SCRIPT, ...contextArgs(local, root, ''))).toEqual({ code: 0, out: sha })
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(local, root, 'develop'))).toEqual({ code: 0, out: `${sha} local` })
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(local, root, ''))).toEqual({ code: 0, out: `${sha} local` })
     const m = member2(path.join(tmp, 'clones', 'web')), webRoot = path.join(tmp, 'ctx', 'WEB')
-    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, webRoot, ''))).toEqual({ code: 0, out: m.first })
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, webRoot, ''))).toEqual({ code: 0, out: `${m.first} fetched` })
   })
 
   it('says why it cannot: no such branch (exit 4), not a repository (exit 3)', () => {
@@ -221,23 +230,124 @@ describe('CONTEXT_SCRIPT', () => {
 
   it('the sweep scripts list snapshots older than an hour and remove one through its clone, its folder writable again', () => {
     const m = member2(path.join(tmp, 'clones', 'doc')), base = path.join(tmp, 'ctx2'), root = path.join(base, 'DOC')
-    const sha = sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main')).out
+    const sha = sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main')).out.split(' ')[0]!
     expect(sha).toMatch(SHA)
     const dir = path.join(root, sha)
     // Just made: not listed (it may not be on its run's record yet).
     expect(sh(CONTEXT_LIST_SCRIPT, base)).toEqual({ code: 0, out: '' })
     const old = new Date(Date.now() - 2 * 3600_000)
-    fs.utimesSync(dir, old, old)
-    expect(sh(CONTEXT_LIST_SCRIPT, base)).toEqual({ code: 0, out: dir })
+    fs.utimesSync(dir, old, old); fs.utimesSync(`${dir}.ok`, old, old)
+    expect(listed(base)).toEqual([dir, `${dir}.ok`])
     expect(sh(CONTEXT_LIST_SCRIPT, path.join(tmp, 'none'))).toEqual({ code: 0, out: '' })
-    expect(sh(CONTEXT_REMOVE_SCRIPT, dir)).toEqual({ code: 0, out: '' })
+    expect(sh(CONTEXT_REMOVE_SCRIPT, dir, base)).toEqual({ code: 0, out: '' })
     expect(fs.existsSync(dir)).toBe(false)
+    expect(fs.existsSync(`${dir}.ok`)).toBe(false)
     expect(fs.existsSync(root)).toBe(false)
     expect(git(m.clone, 'worktree', 'list').split('\n')).toHaveLength(1)
-    // Not a snapshot: left alone.
-    fs.mkdirSync(path.join(base, 'X', 'y'), { recursive: true })
-    expect(sh(CONTEXT_REMOVE_SCRIPT, path.join(base, 'X', 'y')).code).toBe(3)
-    expect(fs.existsSync(path.join(base, 'X', 'y'))).toBe(true)
+    // Never anything outside the context folder, nor a way out of it.
+    fs.mkdirSync(path.join(tmp, 'keep', 'y'), { recursive: true })
+    expect(sh(CONTEXT_REMOVE_SCRIPT, path.join(tmp, 'keep', 'y'), base).code).toBe(3)
+    expect(sh(CONTEXT_REMOVE_SCRIPT, `${base}/X/../../keep/y`, base).code).toBe(3)
+    expect(fs.existsSync(path.join(tmp, 'keep', 'y'))).toBe(true)
+  })
+
+  it('a folder without its marker (a creator that died) is rebuilt, never reused', () => {
+    const m = member2(path.join(tmp, 'clones', 'partial')), root = path.join(tmp, 'ctx3', 'PAR')
+    const sha = sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main')).out.split(' ')[0]!
+    const dir = path.join(root, sha)
+    // Half made: the checkout lost a file and the marker is not there; a stray file is in it.
+    spawnSync('chmod', ['-R', 'u+w', dir])
+    fs.rmSync(`${dir}.ok`); fs.rmSync(path.join(dir, 'src/a.txt')); fs.writeFileSync(path.join(dir, 'stray.txt'), 'x')
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main'))).toEqual({ code: 0, out: `${sha} fetched` })
+    expect(fs.readFileSync(path.join(dir, 'src/a.txt'), 'utf8')).toBe('one')
+    expect(fs.existsSync(path.join(dir, 'stray.txt'))).toBe(false)
+    expect(fs.existsSync(`${dir}.ok`)).toBe(true)
+    expect(isReadOnly(path.join(dir, 'src/a.txt'))).toBe(true)
+    expect(git(m.clone, 'worktree', 'list').split('\n')).toHaveLength(2)
+    // A folder git does not know at all (its clone's record gone): rebuilt as well.
+    spawnSync('chmod', ['-R', 'u+w', dir]); fs.rmSync(`${dir}.ok`)
+    fs.rmSync(path.join(m.clone, '.git/worktrees'), { recursive: true })
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main')).code).toBe(0)
+    expect(fs.existsSync(`${dir}.ok`) && fs.existsSync(path.join(dir, 'src/a.txt'))).toBe(true)
+    expect(fs.existsSync(`${dir}.lock`)).toBe(false)
+  })
+
+  it('parallel runs on the same commit end with one complete read-only snapshot and no lock', async () => {
+    const m = member2(path.join(tmp, 'clones', 'parallel')), root = path.join(tmp, 'ctx3', 'PARALLEL')
+    const run = () => new Promise<{ code: number | null, out: string }>((resolve) => {
+      const c = spawn('sh', ['-c', CONTEXT_SCRIPT, 'sh', ...contextArgs(m.clone, root, 'main')], { env })
+      let out = ''; c.stdout.on('data', d => (out += d)); c.on('close', code => resolve({ code, out: out.trim() }))
+    })
+    const results = await Promise.all([run(), run(), run(), run()])
+    expect(results).toEqual(Array(4).fill({ code: 0, out: `${m.first} fetched` }))
+    const dir = path.join(root, m.first)
+    expect(fs.readFileSync(path.join(dir, 'src/a.txt'), 'utf8')).toBe('one')
+    expect(isReadOnly(path.join(dir, 'src/a.txt'))).toBe(true)
+    expect(fs.existsSync(`${dir}.ok`)).toBe(true)
+    expect(fs.readdirSync(root).sort()).toEqual([m.first, `${m.first}.ok`])
+    expect(git(m.clone, 'worktree', 'list').split('\n')).toHaveLength(2)
+  })
+
+  it('a stale lock is broken; a creator that fails leaves nothing behind', () => {
+    const m = member2(path.join(tmp, 'clones', 'locks')), root = path.join(tmp, 'ctx3', 'LOCKS')
+    fs.mkdirSync(root, { recursive: true })
+    // A lock older than 5 minutes belongs to a creator that died.
+    const lock = path.join(root, `${m.first}.lock`)
+    fs.mkdirSync(lock); const old = new Date(Date.now() - 10 * 60_000); fs.utimesSync(lock, old, old)
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main'))).toEqual({ code: 0, out: `${m.first} fetched` })
+    expect(fs.existsSync(lock)).toBe(false)
+    // A git that fails midway, with a half checkout on disk: no folder, no marker, the lock released.
+    const fake = path.join(tmp, 'fakegit'), real = spawnSync('sh', ['-c', 'command -v git'], { env, encoding: 'utf8' }).stdout.trim()
+    fs.mkdirSync(fake, { recursive: true })
+    fs.writeFileSync(path.join(fake, 'git'), `#!/bin/sh\ncase "$*" in *"worktree add"*) for a; do d=$p; p=$a; done; mkdir -p "$d/src"; echo half > "$d/src/x"; chmod -R a-w "$d"; exit 1;; esac\nexec ${real} "$@"\n`, { mode: 0o755 })
+    const bad = path.join(tmp, 'ctx3', 'BAD')
+    const r = spawnSync('sh', ['-c', CONTEXT_SCRIPT, 'sh', ...contextArgs(m.clone, bad, 'main')], { env: { ...env, PATH: `${fake}:${env.PATH}` }, encoding: 'utf8' })
+    expect(r.status).toBe(1)
+    expect(fs.readdirSync(bad)).toEqual([])
+  })
+
+  it('every use touches the snapshot: one used within the hour is not listed as stale', () => {
+    const m = member2(path.join(tmp, 'clones', 'touch')), base = path.join(tmp, 'ctx4'), root = path.join(base, 'TOUCH')
+    const sha = sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main')).out.split(' ')[0]!
+    const dir = path.join(root, sha), old = new Date(Date.now() - 3 * 3600_000)
+    fs.utimesSync(dir, old, old); fs.utimesSync(`${dir}.ok`, old, old)
+    expect(listed(base)).toEqual([dir, `${dir}.ok`])
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main')).code).toBe(0)
+    expect(listed(base)).toEqual([])
+    expect(Date.now() - fs.statSync(dir).mtimeMs).toBeLessThan(60_000)
+    expect(Date.now() - fs.statSync(`${dir}.ok`).mtimeMs).toBeLessThan(60_000)
+  })
+
+  it('removes a snapshot whose clone is gone, an incomplete folder, a leftover lock and an orphan marker; the clone is pruned when it exists', () => {
+    const m = member2(path.join(tmp, 'clones', 'gone')), base = path.join(tmp, 'ctx5'), root = path.join(base, 'GONE')
+    const sha = sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main')).out.split(' ')[0]!
+    const dir = path.join(root, sha)
+    fs.rmSync(m.clone, { recursive: true, force: true })
+    expect(sh(CONTEXT_REMOVE_SCRIPT, dir, base)).toEqual({ code: 0, out: '' })
+    expect(fs.existsSync(dir) || fs.existsSync(`${dir}.ok`)).toBe(false)
+    // Incomplete: a folder with no .git, a lock, a marker without its folder.
+    const other = path.join(base, 'OTHER')
+    fs.mkdirSync(path.join(other, 'abc', 'src'), { recursive: true }); fs.writeFileSync(path.join(other, 'abc', 'src', 'f'), 'x'); fs.chmodSync(path.join(other, 'abc', 'src'), 0o500)
+    fs.mkdirSync(path.join(other, 'abc.lock')); fs.writeFileSync(path.join(other, 'lost.ok'), '')
+    expect(sh(CONTEXT_REMOVE_SCRIPT, path.join(other, 'abc'), base).code).toBe(0)
+    expect(sh(CONTEXT_REMOVE_SCRIPT, path.join(other, 'abc.lock'), base).code).toBe(0)
+    expect(sh(CONTEXT_REMOVE_SCRIPT, path.join(other, 'lost.ok'), base).code).toBe(0)
+    expect(fs.existsSync(other)).toBe(false)
+    // A marker whose folder is still there stays.
+    const m2 = member2(path.join(tmp, 'clones', 'gone2')), root2 = path.join(base, 'KEEP')
+    const sha2 = sh(CONTEXT_SCRIPT, ...contextArgs(m2.clone, root2, 'main')).out.split(' ')[0]!
+    expect(sh(CONTEXT_REMOVE_SCRIPT, path.join(root2, `${sha2}.ok`), base).code).toBe(0)
+    expect(fs.existsSync(path.join(root2, `${sha2}.ok`))).toBe(true)
+    expect(sh(CONTEXT_REMOVE_SCRIPT, path.join(root2, sha2), base).code).toBe(0)
+    expect(git(m2.clone, 'worktree', 'list').split('\n')).toHaveLength(1)
+  })
+
+  it('a fetch that fails is said (not-fetched) and the clone\'s own copy of the branch is used; a branch name that is an option is refused', () => {
+    const m = member2(path.join(tmp, 'clones', 'offline')), root = path.join(tmp, 'ctx6', 'OFF')
+    git(m.clone, 'remote', 'set-url', 'origin', path.join(tmp, 'no-such-origin.git'))
+    expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, 'main'))).toEqual({ code: 0, out: `${m.first} not-fetched` })
+    for (const bad of ['--upload-pack=touch pwned', '-x', '@{-1}']) expect(sh(CONTEXT_SCRIPT, ...contextArgs(m.clone, root, bad))).toEqual({ code: 4, out: `no branch ${bad}` })
+    expect(fs.existsSync('pwned')).toBe(false)
   })
 })
 

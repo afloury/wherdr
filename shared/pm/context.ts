@@ -11,7 +11,9 @@ import { cleanupOf, underRoot } from './cleanup'
 
 // A snapshot a run reads: the member, its repository path under the workspace's
 // root, the commit and the folder (shared by every task on the machine).
-export interface ContextFolder { member: string, repo: string, sha: string, dir: string }
+// how: not-fetched (origin's branch could not be fetched: the clone's copy of it) or
+// local (the clone has no origin); none: fetched just now.
+export interface ContextFolder { member: string, repo: string, sha: string, dir: string, how?: 'not-fetched' | 'local' }
 
 // A task's own setting wins over its task type's.
 export const taskContext = (t: Template | null | undefined, task: Pick<Task, 'type' | 'context'>): ContextSpec | undefined =>
@@ -59,7 +61,7 @@ export const contextRoot = (home: string, pm: string, member: string) => `${cont
 // folder of its snapshots, its base branch ('' the repository's default).
 export const contextArgs = (clone: string, root: string, base = '') => [clone, root, base]
 
-const short = (sha: string) => sha.slice(0, 7)
+const short = (f: ContextFolder) => `${f.sha.slice(0, 7)}${f.how ? ` (${f.how === 'local' ? 'local branch' : 'not fetched'})` : ''}`
 
 // The instructions' section: the folders, and the rule.
 export function contextSection(folders: ContextFolder[]): string[] {
@@ -67,13 +69,13 @@ export function contextSection(folders: ContextFolder[]): string[] {
   return [
     '## Context (read only)', '',
     'These folders hold other repositories of the workspace, each at its base branch as of the commit shown. They are read only: change nothing in them. Read only; cite path:line from these folders.', '',
-    ...folders.map(f => `- ${f.member}: ${f.repo} @ ${short(f.sha)}, in ${f.dir}`), '',
+    ...folders.map(f => `- ${f.member}: ${f.repo} @ ${short(f)}, in ${f.dir}`), '',
   ]
 }
 
 // The task log's one line for a start: what it got, and what it skipped.
 export function contextLine(folders: ContextFolder[], skipped: { key: string, why: string }[]) {
-  const got = folders.map(f => `${f.member} @ ${short(f.sha)}`).join(', ') || 'none'
+  const got = folders.map(f => `${f.member} @ ${short(f)}`).join(', ') || 'none'
   return `context: ${got}${skipped.length ? ` (skipped ${skipped.map(s => `${s.key}: ${s.why}`).join('; ')})` : ''}`
 }
 

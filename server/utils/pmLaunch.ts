@@ -77,14 +77,27 @@ export const FETCH_BRANCH_SCRIPT = `git -C "$1" ls-remote -q --exit-code origin 
 git -C "$1" fetch -q origin "+refs/heads/$2:refs/remotes/origin/$2" 2>&1 || exit 1`
 // A read-only snapshot of a member's base branch for context folders ($1 its
 // clone, $2 the folder of its snapshots, $3 the base branch; '' the repository's
-// default): origin's branch fetched when the clone has an origin (else, or when
-// the fetch fails, the one it has), then a detached worktree of that commit at
-// $2/<sha>, made read-only; one already there is reused (tasks share it). Prints
-// the commit; exits 4 when the branch is nowhere.
+// default). Origin's branch is fetched when the clone has an origin; a failed
+// fetch is not hidden (the branch the clone has is used, said `not-fetched`), nor
+// is a clone without origin (`local`). The commit becomes a detached worktree at
+// $2/<sha>, read-only, complete only once $2/<sha>.ok exists: it is built under a
+// lock ($2/<sha>.lock, one creator at a time, a stale one broken after 5 minutes),
+// and a folder without the marker (a creator that died) is removed and built again.
+// Every use touches the folder and the marker: the sweep removes a snapshot not
+// used for an hour. Prints `<commit> fetched|not-fetched|local`; exits 4 when the
+// branch is nowhere or is no branch name.
 export const CONTEXT_SCRIPT = `clone=$1 root=$2 base=$3
 git -C "$clone" rev-parse --git-dir >/dev/null 2>&1 || { echo "no git repository at $clone"; exit 3; }
+[ -n "$root" ] || exit 1
 if [ -n "$base" ]; then
-  git -C "$clone" remote get-url origin >/dev/null 2>&1 && git -C "$clone" fetch -q origin "$base" 2>/dev/null
+  case $base in -*|@*) echo "no branch $base"; exit 4;; esac
+  git check-ref-format --branch "$base" >/dev/null 2>&1 || { echo "no branch $base"; exit 4; }
+fi
+how=local
+if git -C "$clone" remote get-url origin >/dev/null 2>&1; then
+  if [ -n "$base" ]; then git -C "$clone" fetch -q origin -- "$base" 2>/dev/null; else git -C "$clone" fetch -q origin 2>/dev/null; fi && how=fetched || how=not-fetched
+fi
+if [ -n "$base" ]; then
   ref=
   for c in "refs/remotes/origin/$base" "refs/heads/$base"; do
     git -C "$clone" rev-parse -q --verify "$c^{commit}" >/dev/null && { ref=$c; break; }
@@ -95,13 +108,34 @@ else
   git -C "$clone" rev-parse -q --verify "$ref^{commit}" >/dev/null 2>&1 || ref=HEAD
 fi
 sha=$(git -C "$clone" rev-parse "$ref^{commit}") || exit 1
-dir=$root/$sha
-if [ ! -e "$dir/.git" ]; then
-  mkdir -p "$root" || exit 1
-  git -C "$clone" worktree add -q --detach "$dir" "$sha" 2>&1 || [ -e "$dir/.git" ] || exit 1
-  chmod -R a-w "$dir" || exit 1
+case $sha in ''|*[!0-9a-f]*) exit 1;; esac
+dir=$root/$sha lock=$root/$sha.lock
+mkdir -p "$root" || exit 1
+used() { touch "$dir" "$dir.ok" 2>/dev/null; echo "$sha $how"; }
+if [ -f "$dir.ok" ] && [ -e "$dir/.git" ]; then used; exit 0; fi
+n=0
+until mkdir "$lock" 2>/dev/null; do
+  [ -n "$(find "$lock" -maxdepth 0 -mmin +5 2>/dev/null)" ] && { rmdir "$lock" 2>/dev/null; continue; }
+  n=$((n + 1))
+  [ $n -le 60 ] || { echo "the snapshot of $sha stays locked by another start"; exit 1; }
+  sleep 1
+done
+state=
+trap 'if [ "$state" = building ]; then chmod -R u+w "$dir" 2>/dev/null; git -C "$clone" worktree remove --force "$dir" >/dev/null 2>&1; rm -rf "$dir" "$dir.ok"; git -C "$clone" worktree prune >/dev/null 2>&1; fi; rmdir "$lock" 2>/dev/null' EXIT
+trap 'exit 1' HUP INT TERM
+if [ -f "$dir.ok" ] && [ -e "$dir/.git" ]; then used; exit 0; fi
+state=building
+if [ -e "$dir" ] || [ -e "$dir.ok" ]; then
+  chmod -R u+w "$dir" 2>/dev/null
+  git -C "$clone" worktree remove --force "$dir" >/dev/null 2>&1
+  rm -rf "$dir" "$dir.ok"
 fi
-echo "$sha"`
+git -C "$clone" worktree prune >/dev/null 2>&1
+git -C "$clone" worktree add -q --detach "$dir" "$sha" 2>&1 || exit 1
+chmod -R a-w "$dir" || exit 1
+: > "$dir.ok" || exit 1
+state=
+used`
 
 // The task's worker terminal exists (a launch that timed out is not confirmed until
 // reconciliation finds it).
@@ -174,9 +208,9 @@ export async function contextFolders(deps: PmLaunchDeps, task: Task, p: Project,
       if (!clone) return void skipped.push({ key: shownKey(m), why: `no clone on ${label}` })
       const root = contextRoot(home, pmDir(), m.key)
       const r = await exec(deps, on, CONTEXT_SCRIPT, contextArgs(clone, root, m.base ?? ''), undefined, 120).catch((e: Error) => ({ code: 1, out: e.message, err: '' }))
-      const sha = r.code === 0 ? r.out.split('\n').pop()! : ''
+      const [sha = '', how] = r.code === 0 ? r.out.split('\n').pop()!.split(' ') : []
       if (!/^[0-9a-f]{40}$/.test(sha)) return void skipped.push({ key: shownKey(m), why: r.out.split('\n').pop()?.slice(0, 200) || 'timeout' })
-      folders[i] = { member: shownKey(m), repo: ws ? repoPath(m, ws) : m.path, sha, dir: `${root}/${sha}` }
+      folders[i] = { member: shownKey(m), repo: ws ? repoPath(m, ws) : m.path, sha, dir: `${root}/${sha}`, ...(how === 'not-fetched' || how === 'local' ? { how } : {}) }
     }))
   } catch (e) {
     skipped.push(...members.map(m => ({ key: shownKey(m), why: (e as Error).message })))

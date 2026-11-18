@@ -240,11 +240,17 @@ What happens when a worker or a reviewer starts:
    `git fetch origin <base>` when the clone has an `origin` (without one, or
    when the fetch fails, it uses the branch the clone has), and takes the
    member's base branch (its effective setting, the workspace's shared one
-   included; none set: the repository's default branch).
+   included; none set: the repository's default branch). A fetch that fails is
+   not hidden: the member shows *(not fetched)* in the instructions and the log
+   line (the clone's own copy of the branch is used), and a member whose clone
+   has no `origin` shows *(local branch)*.
 2. It makes a detached worktree of that commit at
    `<home>/.wherdr/pm/context/<member>/<commit>` and removes write permission
-   from every file in it. A snapshot already there is reused: **snapshots are
-   shared by the tasks of a machine**.
+   from every file in it. The snapshot is built under a lock and counts as
+   complete only once its marker file (`<commit>.ok`, beside it) is written, so
+   two tasks starting together share one snapshot, and a folder a start left
+   half made is removed and built again. A snapshot already there is reused:
+   **snapshots are shared by the tasks of a machine**.
 3. The instructions file (the review file for a reviewer) gets a *Context (read
    only)* section: each member's key, its repository path under the root, the
    commit and the snapshot's folder, with the rule *read only; cite `path:line`
@@ -261,11 +267,17 @@ folders it was started with for its next rounds; a worker started again takes
 the base branches as they are then.
 
 A snapshot nothing needs any more is removed: once no unfinished task's latest
-worker or reviewer reads it, and it is more than an hour old, the sweep that
-removes done tasks' worktrees (at start and every few hours) runs
-`git worktree remove --force` on it, then prunes the clone's worktree list. The
-snapshots are worktrees of the member's own clone, so `git worktree list` there
-shows them until then.
+worker or reviewer reads it, and it has not been used for an hour (every start
+that picks it counts as a use), the sweep that removes done tasks' worktrees (at
+start and every few hours) runs `git worktree remove --force` on it, then prunes
+the clone's worktree list. When the clone or its record of the snapshot is gone,
+or the folder was never complete, the sweep removes the folder itself; it also
+clears leftover locks and markers. The snapshots are worktrees of the member's
+own clone, so `git worktree list` there shows them until then.
+
+A task marked done while its agent still runs no longer holds its snapshots: they
+stay for up to an hour after the last start that used them, then go, even if
+that agent is still reading them.
 
 ## Features
 

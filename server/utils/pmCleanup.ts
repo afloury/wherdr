@@ -41,18 +41,31 @@ git -C "$repo" rev-parse -q --verify "refs/heads/$branch" >/dev/null || exit 0
 git -C "$repo" branch -D "$branch" 2>&1`
 
 // The context snapshots (shared/pm/context.ts) under $1, one folder per member and
-// commit, made over an hour ago: a snapshot just made may not be on its run's record yet.
-export const CONTEXT_LIST_SCRIPT = `find "$1" -mindepth 2 -maxdepth 2 -type d -mmin +60 2>/dev/null; exit 0`
+// commit (with its .ok marker and a .lock while one is made), not touched for an
+// hour: every use of a snapshot touches it, and one just made may not be on its
+// run's record yet.
+export const CONTEXT_LIST_SCRIPT = `find "$1" -mindepth 2 -maxdepth 2 \\( -type d -o -name '*.ok' \\) -mmin +60 2>/dev/null; exit 0`
 
-// One snapshot ($1) removed through the clone it belongs to (its .git file names
-// it): writable again first, then git removes the worktree.
-export const CONTEXT_REMOVE_SCRIPT = `dir=$1
-[ -f "$dir/.git" ] || exit 3
-chmod -R u+w "$dir" || exit 1
-g=$(sed -n 's/^gitdir: //p' "$dir/.git")
-common=\${g%/worktrees/*}
-git --git-dir="$common" worktree remove --force "$dir" 2>&1 || exit 1
-git --git-dir="$common" worktree prune 2>&1
+// One entry ($1, two levels under the context folder $2) removed: a snapshot
+// through the clone it belongs to (its .git file names it), writable again first;
+// when that clone or its record is gone, or the folder was never complete, the
+// folder itself (never anything outside $2). A leftover lock goes; a marker only
+// when its folder is gone.
+export const CONTEXT_REMOVE_SCRIPT = `dir=$1 base=$2
+case $dir in *..*) exit 3;; esac
+case $dir in "$base"/?*/?*) ;; *) exit 3;; esac
+case $dir in
+  *.lock) rmdir "$dir" 2>/dev/null;;
+  *.ok) [ -d "\${dir%.ok}" ] || rm -f "$dir";;
+  *)
+    chmod -R u+w "$dir" 2>/dev/null
+    g=$(sed -n 's/^gitdir: //p' "$dir/.git" 2>/dev/null)
+    common=\${g%/worktrees/*}
+    [ -n "$g" ] && [ -d "$common" ] && git --git-dir="$common" worktree remove --force "$dir" >/dev/null 2>&1
+    if [ -e "$dir" ]; then rm -rf "$dir" || exit 1; fi
+    rm -f "$dir.ok"
+    [ -n "$g" ] && [ -d "$common" ] && git --git-dir="$common" worktree prune >/dev/null 2>&1;;
+esac
 rmdir "$(dirname "$dir")" 2>/dev/null
 exit 0`
 
@@ -121,7 +134,7 @@ async function sweepContext(deps: Deps) {
       const listed = await exec(deps, on, CONTEXT_LIST_SCRIPT, [base])
       if (listed.code !== 0) continue
       for (const dir of staleSnapshots(listed.out.split('\n').filter(Boolean), base, machine, tasks, runs)) {
-        const r = await exec(deps, on, CONTEXT_REMOVE_SCRIPT, [dir])
+        const r = await exec(deps, on, CONTEXT_REMOVE_SCRIPT, [dir, base])
         if (r.code !== 0) console.warn(`[pm] context snapshot ${dir} stays: ${r.out.split('\n').pop()?.slice(0, 200) || 'timeout'}`)
       }
     } catch { /* the next sweep tries again */ }
