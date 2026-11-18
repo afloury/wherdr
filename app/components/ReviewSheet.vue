@@ -120,10 +120,9 @@ const notes = computed(() => (card.value && state.value ? { worker: workerNote(c
 
 const pane = computed(() => (card.value?.terminal ? herdrState.value?.panes.find(p => p.coreAddress === card.value!.terminal) : undefined))
 // Each task's own busy, error and refusal: an action still running on one never shows on the next.
-const { busy, error, pressing, refused, failed, forget, press, start, resume, decide, sendBack, restartReview, startWorker, askFix } = useTaskActions(() => card.value, (id) => { acted = !failed(id) ? id : ''; taskChanged() })
+const { busy, error, pressing, refused, failed, forget, press, start, resume, decide, sendBack, restartReview, startWorker, askCoordinator, askFix } = useTaskActions(() => card.value, (id) => { acted = !failed(id) ? id : ''; taskChanged() })
 const rejecting = ref(false)
 watch(() => card.value?.id, () => { rejecting.value = false; acted = '' })
-const DONE_MS = 400
 // Done with the current one: its confirmation, then off the list, the next one shows.
 async function leave(c: Card, how: 'approved' | 'sent' | 'answered' | 'fixing') {
   if (failed(c.id)) return
@@ -146,7 +145,7 @@ async function approve() {
 }
 async function reject(note: string, shots: string[]) {
   const c = card.value
-  if (!c || done.value) return
+  if (!c || busy.value || done.value) return
   await sendBack(note, shots)
   if (!error.value) rejecting.value = false
   await leave(c, 'sent')
@@ -225,8 +224,8 @@ function onKey(e: KeyboardEvent) {
           </p>
         </template>
         <ReviewQuestion v-else-if="asked" :card="card" :busy="answering || !!gone" :sent="answered" @send="reply" />
-        <TaskTodo v-else-if="kind" :card="card" :kind="kind" :pane="pane" :busy="busy || !!gone" :pressing="pressing" :refused="refused"
-          @press="press" @start="start" @resume="resume" @decide="decide" @back="sendBack" @review="restartReview" @worker="startWorker" @fix="fix" @comments="answer()" />
+        <TaskTodo v-else-if="kind" :card="card" :kind="kind" :pane="pane" :busy="busy || !!gone" :pressing="pressing" :refused="refused" :failed="!!error || !!refused"
+          @press="press" @start="start" @resume="resume" @decide="decide" @back="reject($event, [])" @review="restartReview" @worker="startWorker" @ask="askCoordinator" @fix="fix" @comments="answer()" />
         <ReviewReject v-if="acts && rejecting" :card="card" :busy="busy" @send="reject" @cancel="rejecting = false" />
         <p v-if="error" class="error" role="alert" data-testid="review-error">{{ error }}</p>
         <p v-if="approves && refused" class="error" role="alert" data-testid="review-refused">{{ stepRefusalText(refused) }}</p>
@@ -252,7 +251,7 @@ function onKey(e: KeyboardEvent) {
             <UButton color="error" variant="outline" size="xl" :icon="done === 'sent' ? 'i-lucide-check' : 'i-lucide-undo-2'" :class="{ confirmed: done === 'sent' }" :disabled="busy || rejecting || done === 'approved'" data-testid="review-reject-open" @click="!done && (rejecting = true)">{{ done === 'sent' ? tl('Sent back') : tl('Reject') }}</UButton>
           </template>
           <template v-else>
-            <UButton v-if="kind === 'refused' && !gone" :color="fixes ? 'neutral' : 'primary'" :variant="fixes ? 'outline' : 'solid'" size="xl" icon="i-lucide-rotate-ccw" :loading="busy" data-testid="review-retry" @click="press">{{ tl('Try again') }}</UButton>
+            <UButton v-if="kind === 'refused' && !gone" :color="fixes ? 'neutral' : 'primary'" :variant="fixes ? 'outline' : 'solid'" size="xl" icon="i-lucide-rotate-ccw" :loading="pressing" :disabled="busy" data-testid="review-retry" @click="press">{{ tl('Try again') }}</UButton>
             <UButton color="neutral" variant="outline" size="xl" icon="i-lucide-square-arrow-out-up-right" data-testid="review-answer" @click="answer()">{{ tl('Open the task') }}</UButton>
           </template>
           <AgentButton :card="card" @opened="open = false" />

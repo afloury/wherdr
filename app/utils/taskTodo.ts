@@ -13,6 +13,9 @@
 import { coordinatorWait, mayAccept, mergeWaits, type Card } from '#shared/pm/board'
 import { actionFix } from '#shared/pm/refusal'
 
+// How long a button that went through says so (Approved, Sent back) before what comes next.
+export const DONE_MS = 400
+
 export type TodoKind = 'merge' | 'decide' | 'stopped' | 'step' | 'ask' | 'refused' | 'review' | 'coordinator' | 'blocked'
 
 // The steps before the current one with screenshots, newest first.
