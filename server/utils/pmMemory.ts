@@ -55,8 +55,14 @@ export const forgetMemory = (machine: string) => read.delete(machine)
 export async function machineCapacity(deps: CoreAdminDeps, machine: string, now = Date.now()) {
   const hit = read.get(machine)
   if (hit && now - hit.at < 20_000) return hit.mem
-  let mem: MachineCapacity | null = null
-  try { mem = parseCapacity((await exec(deps, machineOn(deps, machine).on, CAPACITY_SCRIPT, [], undefined, 10)).out) } catch {}
+  let mem: MachineCapacity | null = null, why = ''
+  try {
+    const r = await exec(deps, machineOn(deps, machine).on, CAPACITY_SCRIPT, [], undefined, 10)
+    mem = parseCapacity(r.out)
+    if (!mem) why = r.code === null ? 'no answer in 10 s' : `exit ${r.code}${r.err ? `: ${r.err.split('\n').pop()}` : ''}`
+  } catch (e) { why = (e as Error).message || String(e) }
+  // "Memory unknown": why, in the server log, once per failure streak.
+  if (why && hit?.mem !== null) console.warn(`[memory] ${machine || "this machine"}: could not read its memory: ${why}`)
   read.set(machine, { at: now, mem })
   return mem
 }
