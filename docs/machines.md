@@ -63,6 +63,10 @@ and the machine's memory settings (side by side on a computer, stacked on a phon
   It runs on that machine through herdr-core (`machine.exec`): `caffeinate -i -s` on macOS,
   `systemd-inhibit --what=idle:sleep` in a `systemd-run --user` unit on Linux. Only the inhibitor
   wherdr started (same PID, command and start time) counts, and **Turn off** stops that one alone.
+  The sun button spins from the tap until the machine answers (a second tap does nothing), and again
+  while a choice is applied. *Sleep control is not available on this machine* means the machine
+  answered that it has no such tool; a machine that does not answer within 8 seconds, or whose
+  read fails, shows *Could not reach <machine>: <reason>* with **Try again**.
   A sleeping machine cannot be woken remotely. While a machine is awake and online, placement
   counts on it like any online machine.
 - **Memory**: each machine's free memory, swap (Linux) or memory pressure (macOS), cores and load (read on Linux and macOS; on macOS the
