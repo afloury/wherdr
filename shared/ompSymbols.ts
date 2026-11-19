@@ -7,3 +7,7 @@ export const OMP_CURSOR = ['❯', '\uF054', '>'] // nav.cursor
 
 // Regex alternation of a glyph list, for `new RegExp`.
 export const ompAlt = (glyphs: readonly string[]) => `(?:${glyphs.map(g => g.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|')})`
+export const OMP_ESC = ['⎋', '\u{F12B7}', 'Esc'] // key.esc ("⎋ to cancel")
+// Working spinner: braille frames (unicode, nerd), "-\|/" (ascii); character-class ranges.
+export const OMP_SPINNER = '⠁-⣿'
+export const OMP_ASCII_SPINNER = '\\-\\\\|/'

@@ -28,6 +28,23 @@ const BACKGROUND = /^\(ctrl\+b to run in background\)$/i
 // Claude's activity line while it works ("✻ Fermenting… (17s · ↓ 230 tokens)").
 const ACTIVITY = /^[*✢✳✶✻✽·] \S/
 
+// Claude's own verb on that line ("Orbiting"), not in the transcript: the activity
+// line at column 0, at most 20 lines above the input field frame (a task list or a
+// "⎿ Tip: …" in between). "✻ Worked for 2m 31s" (turn over) has no "…".
+const VERB_LINE = /^[*✢✳✶✻✽✺✹✷✸∗·]\s+(\p{L}[\p{L}'’-]*(?: \p{L}[\p{L}'’-]*){0,3})(?:…|\.\.\.)(?:\s+\(.*\))?$/u
+export function parseClaudeActivity(text: string | null | undefined): string | null {
+  if (!text) return null
+  const lines = text.split('\n').map(l => l.trimEnd())
+  const rules: number[] = []
+  for (let i = lines.length - 1; i >= 0 && rules.length < 2; i--) if (RULE_RE.test(lines[i]!)) rules.push(i)
+  const end = rules.length === 2 ? rules[1]! : lines.length
+  for (let i = end - 1; i >= Math.max(0, end - 20); i--) {
+    const m = VERB_LINE.exec(lines[i]!)
+    if (m) return m[1]!
+  }
+  return null
+}
+
 // "1m 14s" → ms.
 export function elapsedMs(s: string | null | undefined): number | null {
   const m = /^(?:(\d+)h\s*)?(?:(\d+)m\s*)?(\d+)s$/.exec(String(s || '').trim())

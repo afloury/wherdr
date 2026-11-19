@@ -2,7 +2,7 @@
 // for Claude Code (no OSC 7501) and never describes a question, so the visible
 // screen (terminal.read) fills in `prompt`, `interaction` and, when core
 // reports nothing, the status. Reads are cached, bounded and never fatal.
-import type { Choices, ClaudeScreen, OmpStatus, Pane } from '../../shared/types'
+import type { Choices, ClaudeScreen, OmpActivity, OmpStatus, Pane } from '../../shared/types'
 import { classifyScreen, confirmedInput } from '../../shared/interactiveScreen'
 import { codexError } from '../../shared/codexError'
 import { hasTranscript } from '../../shared/agentKind'
@@ -11,7 +11,8 @@ import { parseChoices, parseOmpPrompt, promptIdentity, completeClaudeAsk, type C
 import { queueSendNow, readDraft, sameText } from './coreDraft'
 import { lastSentText, sendingTo } from './submitting'
 import { fieldHolds } from '../../shared/queuedMatch'
-import { parseClaudeScreen } from './claudeScreen'
+import { parseClaudeActivity, parseClaudeScreen } from './claudeScreen'
+import { ompActivityOf, parseOmpActivity } from './ompActivity'
 
 const WORKING = /\besc(?:ape)? to interrupt\b/i
 // Antigravity's running turn offers "esc to cancel"; its pickers number their
@@ -83,7 +84,7 @@ const KEYED_MS = 2000
 
 // What one screen text says, kept while the text, the agent and core's status
 // stay the same: most polls see the screens they saw before.
-interface Parsed { agent: string | null | undefined, status: string | null | undefined, r: CoreReading, error: ReturnType<typeof codexError>, sendNow: boolean, draft?: ReturnType<typeof readDraft>, claude?: ClaudeScreen | null }
+interface Parsed { agent: string | null | undefined, status: string | null | undefined, r: CoreReading, error: ReturnType<typeof codexError>, sendNow: boolean, draft?: ReturnType<typeof readDraft>, claude?: ClaudeScreen | null, verb?: string | null }
 
 export function createCoreScreens(deps: CoreScreenDeps) {
   const now = deps.now ?? Date.now
@@ -93,8 +94,8 @@ export function createCoreScreens(deps: CoreScreenDeps) {
   const drafts = new Map<string, { text: string, since: number, real?: boolean }>()
   const keyed = new Map<string, number>()
   // omp's status line and context gauge, kept between reads (an unviewed resting omp
-  // is read at the background pace).
-  const omps = new Map<string, { at: number, status: OmpStatus | null }>()
+  // is read at the background pace), and its running step while it works.
+  const omps = new Map<string, { at: number, status: OmpStatus | null, activity?: OmpActivity | null }>()
   // Consecutive 'terminal' observations per Devin pane, keyed to the read
   // that produced them (at): Devin mid-redraw (footer or rule not yet
   // painted) classifies 'terminal' for one read, and the overlay that opens
@@ -125,8 +126,12 @@ export function createCoreScreens(deps: CoreScreenDeps) {
       // A screen without the gauge (a full-screen panel) keeps the last one, marked old.
       const status = parsed ? { ...parsed, meters: parsed.meters ?? o?.status?.meters ?? null, metersFresh: Boolean(parsed.meters) && p.status === 'working' }
         : o?.status ? { ...o.status, metersFresh: false } : null
-      omps.set(p.id, o = { at: c.at, status })
+      // The step of this turn only: a read from before it (or at rest) has none.
+      const activity = p.status === 'working' && c.working ? ompActivityOf(parseOmpActivity(c.text), o?.activity, c.at) : null
+      omps.set(p.id, o = { at: c.at, status, activity })
     }
+    if (p.status === 'working' && o?.activity) p.ompActivity = o.activity
+    else delete p.ompActivity
     if (!o?.status) return
     // Read before this turn, or not read lately: the last known value.
     p.ompStatus = p.status === 'working' && !failed.has(p.id) ? o.status : { ...o.status, metersFresh: false }
@@ -218,7 +223,11 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         if (p.agent === 'claude' && p.status === 'working' && !failed.has(p.id)) {
           const screen = parsed.claude === undefined ? parsed.claude = parseClaudeScreen(c.text, c.at) : parsed.claude
           if (screen) p.claudeScreen = screen
-        }
+          // Its own verb ("✻ Orbiting…"), for the conversation's status line.
+          const verb = parsed.verb === undefined ? parsed.verb = parseClaudeActivity(c.text) : parsed.verb
+          if (verb) p.activity = verb
+          else delete p.activity
+        } else if (p.agent === 'claude') delete p.activity
         const draft = !failed.has(p.id) && r.interaction === 'input' && p.status !== 'working' ? (parsed.draft === undefined ? parsed.draft = readDraft(c.text, p.agent) : parsed.draft) : null
         let seen = drafts.get(p.id)
         if (!draft) drafts.delete(p.id)

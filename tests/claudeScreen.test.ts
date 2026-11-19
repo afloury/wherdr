@@ -2,7 +2,7 @@
 // screen shows it running (bug t-0106: wherdr showed "En attente").
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { elapsedMs, parseClaudeScreen } from '../server/utils/claudeScreen'
+import { elapsedMs, parseClaudeActivity, parseClaudeScreen } from '../server/utils/claudeScreen'
 import { queuedPhase } from '../shared/queuedPhase'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
@@ -123,5 +123,26 @@ describe('queued message against the screen', () => {
   it('photos: the paths sent do not count, nor does "[Image #1]"', () => {
     const s = { shell: null, sent: '[Image #1] Que vois-tu sur cette capture ?', queued: [] }
     expect(queuedPhase('/home/user/.cache/herdr-web/uploads/a.png\nQue vois-tu sur cette capture ?', s)).toBe('sent')
+  })
+})
+
+describe('parseClaudeActivity', () => {
+  it('reads Claude\'s own verb above the input field, whatever the glyph', () => {
+    expect(parseClaudeActivity(fx('claude-working.txt'))).toBe('Boondoggling')
+    expect(parseClaudeActivity(fx('core-screens/claude-working-spinner.txt'))).toBe('Simmering')
+    const field = '\n' + '─'.repeat(40) + '\n❯ \n' + '─'.repeat(40)
+    for (const l of ['* Orbiting… (3s)', '✻ Orbiting...', '· Orbiting… (1h 2m 3s · ↑ 12.5k tokens · esc to interrupt)']) {
+      expect(parseClaudeActivity(l + field), l).toBe('Orbiting')
+    }
+    expect(parseClaudeActivity('✻ Kneading the dough… (5s)' + field)).toBe('Kneading the dough')
+  })
+  it('nothing once the turn is over, in the conversation, or too far up', () => {
+    const field = '\n' + '─'.repeat(40) + '\n❯ \n' + '─'.repeat(40)
+    expect(parseClaudeActivity(fx('claude-done.txt'))).toBeNull()
+    for (const l of ['✻ Worked for 2m 31s', '  ✻ Orbiting… (4s)', '⏺ Running npx vitest run…', '· A list item']) {
+      expect(parseClaudeActivity(l + field), l).toBeNull()
+    }
+    expect(parseClaudeActivity(['✻ Orbiting… (4s)', ...Array(25).fill('  line')].join('\n') + field)).toBeNull()
+    expect(parseClaudeActivity(null)).toBeNull()
   })
 })
