@@ -145,6 +145,9 @@ export async function noteTurn(store: PmStore, key: string, kind: NotedTurn, sai
 
 const TURN_MS = 3_600_000
 
+// The task as it is, unless a check made at its write refused the change.
+const noCycle = (why: string | undefined, t: Task) => { if (why) throw new HerdrError('refused', why); return t }
+
 // The user's message sent from the interface to a terminal: when that
 // terminal is a coordinator, its turn now comes from the user. Alfred's too
 // with project management off (it then helps the user switch it on).
@@ -537,7 +540,8 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
         const why = (task.step?.started || task.state === 'working') && !task.parked ? `${task.id} has started: after orders only tasks not started yet (or a parked one)` : afterRefusal(task.project, ids, await store.tasks(), projects, task.id)
         if (why) throw new HerdrError('refused', why)
         // No longer held by its chain: to do again, where the engine looks at it.
-        const saved = await store.updateTask(task.id, x => ({ ...x, after: ids.join(',') || undefined, ...(x.state === 'waiting' && x.waiting?.includes(CHAIN_WAIT) ? { state: 'todo' as const, waiting: undefined } : {}) }), { by, text: `starts after ${ids.join(', ') || 'no task'} (${cmd.reason})` })
+        // Checked again at the write: another edit may have closed a cycle meanwhile.
+        const saved = await store.updateTask(task.id, async (x, all) => ({ ...noCycle(afterRefusal(x.project, ids, await all(), projects, x.id), x), after: ids.join(',') || undefined, ...(x.state === 'waiting' && x.waiting?.includes(CHAIN_WAIT) ? { state: 'todo' as const, waiting: undefined } : {}) }), { by, text: `starts after ${ids.join(', ') || 'no task'} (${cmd.reason})` })
         if (cmd.title === undefined && cmd.description === undefined && cmd.mergeAfter === undefined && cmd.context === undefined) return { task: saved }
       }
       if (cmd.name === 'task edit' && cmd.mergeAfter !== undefined) {
@@ -545,7 +549,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
         if (turn !== 'user' && !pilot?.on) throw new HerdrError('refused', 'In a wake, merge after is changed only with the autopilot on')
         const why = task.step?.done ? `${task.id} is done` : afterRefusal(task.project, ids, await store.tasks(), projects, task.id, 'mergeAfter')
         if (why) throw new HerdrError('refused', why)
-        const saved = await store.updateTask(task.id, x => ({ ...x, mergeAfter: ids.join(',') || undefined }), { by, text: `merges after ${ids.join(', ') || 'no task'} (${cmd.reason})` })
+        const saved = await store.updateTask(task.id, async (x, all) => ({ ...noCycle(afterRefusal(x.project, ids, await all(), projects, x.id, 'mergeAfter'), x), mergeAfter: ids.join(',') || undefined }), { by, text: `merges after ${ids.join(', ') || 'no task'} (${cmd.reason})` })
         if (cmd.title === undefined && cmd.description === undefined && cmd.context === undefined) return { task: saved }
       }
       if (cmd.name === 'task edit' && cmd.context !== undefined) {
