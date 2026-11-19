@@ -24,6 +24,8 @@ import { HerdrError } from './herdr'
 import { localMachineLabel } from './machines'
 import { Holds, type Release } from './pmHold'
 import { noteTaskError } from './pmSentinel'
+import { wakeCoordinators } from './pmWakes'
+import { mergeAfterWake, mergeHold, mergeWaits } from '../../shared/pm/mergeQueue'
 import type { PmStore } from './pmStore'
 import { archiveDays, archiveDue, archivedMatch, archivedText, doneAt } from '../../shared/pm/archive'
 
@@ -204,6 +206,21 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     return mergedInto && t.prBase?.base !== mergedInto ? { ...t, prBase: { base: mergedInto } } : t
   }
   if (act?.kind === 'action') {
+    // A merge whose tasks to merge after are not done: held, checked again at the engine's next pass (mergeQueue.ts mergeHold).
+    const all = task.mergeAfter ? await store.tasks() : []
+    const hold = mergeHold(act.action.kind, task, all, state, Date.now())
+    if (hold) {
+      const wake = mergeAfterWake(task, all)
+      if (wake) {
+        await wakeCoordinators({ store }, task, wake.why, Date.now())
+        task = await store.logTask({ ...task, mech: { ...task.mech, [wake.key]: Date.now() } }, 'engine', wake.why)
+      }
+      return cur.mergeWait === hold.mergeWait ? store.saveTask({ ...task, step: hold }) : store.logTask({ ...task, step: hold }, 'engine', `${act.step}: held: ${hold.mergeWait}`)
+    }
+    // Released: the hold's watch is not the merge's own wait for its checks.
+    if (cur.mergeWait) state = { ...state, watch: undefined, mergeWait: undefined }
+    // The user merged on their host before a task it merges after was done: accepted, with a warning.
+    const early = act.action.kind === 'git.verify-merged' ? mergeWaits(task, all) : []
     await store.saveTask({ ...task, step: state }) // checking, before the action runs
     const run = await workerRun(store, task.id)
     let result: ActionResult = run
@@ -217,6 +234,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     if (lost()) return store.logTask(await fresh(), 'engine', `${act.step}: a run past its time limit ended (${result.ok ? 'done' : result.error ?? 'failed'}): its result is dropped`)
     if (userSaid && by === 'user' && !result.ok && act.action.kind === 'git.verify-merged')
       result = { ok: true, ...(result.commit ? { commit: result.commit } : {}), note: `verify-merged disagreed: ${(result.error ?? 'no answer').replace(/^verify-merged: /, '')}` }
+    if (result.ok && early.length) result = { ...result, note: [result.note, `merged before ${early.join(', ')} ${early.length > 1 ? 'were' : 'was'} done: the merge order (merge after) was not kept`].filter(Boolean).join('. ') }
     const evidence = { ...(result.link ? { link: result.link } : {}), ...(result.commit ? { commit: result.commit } : {}), ...(result.report ? { report: result.report } : {}) }
     const catchUp = result.catchUp && result.commit ? { catchUp: { base: result.catchUp, head: result.commit } } : {}
     const back = onEvent(plan, state, { kind: 'action-result', ok: result.ok, ...(result.later ? { later: true } : {}), ...(result.detail ? { detail: result.detail } : {}), ...(result.error ? { error: result.error } : {}), ...(result.review ? { review: result.review } : {}), ...(result.unapproved ? { unapproved: result.unapproved } : {}), ...catchUp, evidence }, Date.now())
