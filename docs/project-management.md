@@ -478,7 +478,11 @@ review says so: ask the coordinator to propose again. The proposal's card in the
 a change too, on your request in its chat: you answer it in the same review.
 
 In the coordinator's conversation, a *Workflow change* card sits under the last
-reply of the turn that made the proposal (never a later one): what that
+reply of the turn that made the proposal (never a later one). Its title, and the
+review's, says what the proposal does: *New task type* (or *New task types*) when
+it only adds task types, *Task type removed* (or *Task types removed*) when it only
+removes some, *First workflow* for a project with no accepted workflow yet, else
+*Workflow change*. The card shows what that
 proposal changes in one line (from the workflow it was made against, so a change
 made before it never shows; an added task type with its steps, PR target and
 who merges), the same diagram, compact, for the first changed task type (cards

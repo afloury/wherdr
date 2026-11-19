@@ -11,7 +11,7 @@ import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, command
 import { FEATURE, WORKSPACE_FIRST, coordinatorKey, handledBy, isWorkspace, membersOf, ownWorkflow } from '../../shared/pm/workspace'
 import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
-import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
+import { changeSummary, changeTitle, workflowChanges } from '../../shared/pm/workflowChanges'
 import { MODEL_RE, isDefaultWorkflow, validateTemplate } from '../../shared/pm/workflow'
 import { weightOf, weightText, weightsLine } from '../../shared/pm/weight'
 import { EXAMPLES } from '../../shared/pm/examples'
@@ -669,8 +669,10 @@ function editRefusal(t: Template | null, next: Template, turn: Turn, key?: strin
 
 // What became of a proposal; summary: its own changes (an older proposal,
 // without them, against the workflow as it is now).
-const answerOf = (p: Proposal, outcome: ProposalOutcome, by: string, t?: Template | null): ProposalAnswer =>
-  ({ outcome, at: Date.now(), by, proposedAt: p.at, summary: changeSummary(p.changes ?? workflowChanges(t ?? null, p.template)) })
+function answerOf(p: Proposal, outcome: ProposalOutcome, by: string, t?: Template | null): ProposalAnswer {
+  const c = p.changes ?? workflowChanges(t ?? null, p.template)
+  return { outcome, at: Date.now(), by, proposedAt: p.at, summary: changeSummary(c), title: changeTitle(c) }
+}
 const answersOf = (rec?: CoordinatorRecord | null) => rec?.answers ?? (rec?.answered ? [rec.answered] : [])
 // The record with one more answer, the oldest dropped past PROPOSAL_ANSWERS.
 function withAnswer<R extends CoordinatorRecord>(rec: R, a?: ProposalAnswer | false): R {
@@ -693,7 +695,7 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
   const done = async (outcome: ProposalOutcome) => {
     const a = answerOf(proposal, outcome, 'user', t)
     await store.saveCoordinator(withAnswer(rest, a))
-    const what = `Workflow change${a.summary?.length ? ` (${a.summary.join('; ')})` : ''}`
+    const what = `${a.title}${a.summary?.length ? ` (${a.summary.join('; ')})` : ''}`
     const said = outcome === 'accepted' ? 'Applied' : outcome === 'refused' ? 'Cancelled' : 'Not applied'
     await tellCardOutcome(deps, proposal.by === 'main' ? MAIN : rec.project, `${said}: ${what}${said === 'Not applied' ? `: ${outcome}` : ''}`).catch(() => {})
   }
