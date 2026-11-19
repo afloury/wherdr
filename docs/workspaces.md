@@ -74,7 +74,9 @@ A member has **no coordinator**: none is started for it, and none shows in the
 sidebar: the workspace's **row** does, under its tab group, with its
 coordinator's state, the tasks working and waiting for you (its members' and
 its own features'), and its members' key badges, a small orange square on one
-with a task waiting ([Coordinators](home.md#coordinators)). A tap on the badges
+with a task waiting. A member's key and task ids show everywhere (Home cards,
+the sidebar, the board, the task sheet, the agent header, notes) as a badge
+with a **dashed border**; a workspace's or a project's own is solid ([Coordinators](home.md#coordinators)). A tap on the badges
 lists the members, each with its own counts. **n waiting for you** is a link:
 one task opens its sheet; several open the workspace's board, or on a member's
 line *Tasks to review* filtered to that member. Every wake about a member's task goes to the workspace's coordinator,
@@ -189,7 +191,9 @@ needs it, with no question to you:
   the root's own path) adopts the root's own repository.
 
 The new member gets a key and a name proposed from its folder (as the New sheet
-does: `payroll-api` → `PA`) and the next free color, takes every shared setting
+does: `payroll-api` → `PA`) and the color its workspace's members use least
+among the 12 of the palette (ties: palette order; a project outside a
+workspace still takes the first color no project has), takes every shared setting
 and the workspace's workflow, and its repository's visibility (public or
 private) is checked at once. Its line on the [map](#the-workspace-map), when it
 has one, names it. Each adoption is written to the workspace's log and listed
