@@ -43,12 +43,16 @@ and the coordinator's conversation opens. Alfred adds one too:
 ## The workspace's coordinator
 
 The workspace's coordinator handles its members as its own projects: its
-token reads and acts on each member, with no setting to change, at the *Act*
-level of [Other projects this coordinator may act on](project-management.md#coordinators-on-other-projects)
-(list, show, read, plan, adding, starting, editing and ordering tasks, tell…;
-commands that name a project take `--project <member>`). A member's guards,
-merges, settings and workflow stay with you. Its instructions (`AGENTS.md`)
-list the members.
+token runs every coordinator command on each member, with no setting to change,
+under the same rules as on the workspace itself (a turn of the user, the
+autopilot, the guards). Beyond list, show, adding, starting and editing tasks or
+tell, it ends a step it holds on a member's task (`step done`, `step wait`,
+`step back`), decides after N send-backs (`task decide`), merges (`pr merge`),
+shows things (`ui action`, `ui show`) and proposes automations; commands that
+name a project take `--project <member>`. Unlike [Other projects this coordinator may act on](project-management.md#coordinators-on-other-projects),
+nothing stays with another coordinator: a member has none. A member's settings
+and its **own** workflow stay with you (`template edit` takes no `--project`).
+Its instructions (`AGENTS.md`) list the members.
 
 ### What the workspace's coordinator may change
 

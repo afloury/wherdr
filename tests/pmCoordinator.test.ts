@@ -142,7 +142,7 @@ describe('other projects (WHR-311)', () => {
 })
 
 describe('workspaces (WHR-314)', () => {
-  // WS is a workspace with members PA and QA; its token acts on them, at the Act level.
+  // WS is a workspace with members PA and QA; its token acts on them as on WS itself.
   beforeEach(async () => {
     const raw = JSON.parse(await fs.readFile(store.files.projects, 'utf8'))
     raw.projects.push({ key: 'WS', name: 'Work', machine: '', path: '/src/work', kind: 'workspace', git: false, addedAt: 1 },
@@ -153,7 +153,7 @@ describe('workspaces (WHR-314)', () => {
     await noteTurn(store, 'WS', 'user', 'go')
   })
 
-  it('reads and acts on its members only, no setting needed; the rest stays at Act', async () => {
+  it('reads and acts on its members only, no setting needed', async () => {
     const pa = await store.addTask({ project: 'PA', title: 'Pay', type: 'feature' })
     const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
     expect((await cli(['list', '--project', 'PA']) as { tasks: { id: string }[] }).tasks.map(t => t.id)).toEqual([pa.id])
@@ -171,6 +171,23 @@ describe('workspaces (WHR-314)', () => {
     expect([pa.template.instructions, pa.runs]).toEqual(['SHARED', 'workspace WS\'s workflow: a change to it reaches PA'])
     expect(await cli(['plan', '--project', 'QA'])).toMatchObject({ runs: expect.stringContaining('its own workflow') })
     await refused(cli(['template', 'edit', '--project', 'PA'], '{}'), 'propose a change to the workspace\'s workflow')
+  })
+
+  it('runs every coordinator command on a member\'s task: ends a step it holds, decides after N send-backs; a project outside stays refused (WHR-516)', async () => {
+    await store.saveWorkflow('WS', structuredClone(company))
+    const plan = planSteps(company, { type: 'feature' })
+    const pa = await store.addTask({ project: 'PA', title: 'Pay', type: 'feature' })
+    await store.saveTask({ ...pa, state: 'working', step: state(5) })
+    await cli(['step', 'done', pa.id, '--link', 'https://ci.example.com/run/1'])
+    expect((await store.task(pa.id))!.step).toMatchObject({ done: true })
+    const qa = await store.addTask({ project: 'QA', title: 'Quote', type: 'feature' })
+    let s = state(2)
+    for (const id of ['a', 'a', 'b']) s = onEvent(plan, { ...s, at: 2 }, { kind: 'verdict', from: 'reviewer', findings: [{ id, severity: 'major', title: id, proof: 'npm test' }] }, 1).state
+    await store.saveTask({ ...qa, state: 'working', step: s })
+    await cli(['task', 'decide', qa.id, 'round', '--reason', 'The finding is real and small.'])
+    expect((await store.task(qa.id))!.log!.at(-1)).toMatchObject({ by: 'coordinator WS', text: expect.stringContaining('coordinator chose round') })
+    const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
+    await refused(cli(['step', 'done', st.id]), 'stays with its own coordinator')
   })
 
   it('one autopilot: a member\'s start in a wake counts the other members\' tasks', async () => {
