@@ -228,7 +228,9 @@ describe('workspace members', () => {
     await store.saveWorkflow('PAY', { ...defaultWorkflow('PAY'), prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] }, workspaceGuards: { protected: ['x'] } })
     expect(await store.savedWorkflow('PAY')).not.toHaveProperty('workspaceGuards')
     await store.saveWorkflow('PAY', { ...defaultWorkflow('PAY'), prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] } })
-    expect(await store.workflow('PAY')).toMatchObject({ prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] } })
+    expect(await store.workflow('PAY')).toMatchObject({ prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] } })    // Agents set back to the workspace's workflow's: no override of its own.
+    await store.addProject({ key: 'tax', machine: '', path: '~/work/tax', workspace: 'ws' }, okFolder)
+    expect(await store.setMemberSetup('TAX', { prefs: { agent: 'claude', model: 'sonnet' } })).not.toHaveProperty('overrides')
   })
 })
 
