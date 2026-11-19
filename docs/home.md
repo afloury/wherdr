@@ -217,7 +217,7 @@ not filtered by tab; the board is, when its picker follows the machine tab.
 - Close tab and Close space first say how many terminals stop and how many agents are
   interrupted, then close each terminal as **Close this terminal** does; one that could not be
   closed is named, the others close all the same. Closing an agent's pane ends its program.
-- Split and move of tabs stay in herdr-app.
+- Splitting a pane is in its **…** menu ([Terminal](terminal.md)); move of tabs stays in herdr-app.
 - Worktrees are v2 only.
 
 ### Search

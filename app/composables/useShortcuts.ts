@@ -68,6 +68,9 @@ function run(id: Exclude<ShortcutId, 'search-all'>, overlay: boolean): boolean {
       if (!writable || !p || paneStale(p)) return false
       closePane(p)
       return true
+    case 'split-right':
+    case 'split-down':
+      return writable && Boolean(p) && !paneStale(p) && splitPane(p!, id === 'split-right' ? 'right' : 'down')
     case 'settings':
       navigateTo('/settings')
       return true

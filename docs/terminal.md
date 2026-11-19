@@ -16,7 +16,10 @@
   wheel or by touch. A program that tracks the mouse in its own full screen (Claude Code's
   fullscreen view, `vim`, `less --mouse`) gets the wheel and touch scrolling as mouse wheel
   events, as in a desktop terminal, so it scrolls its own history; this never takes control of
-  the terminal's size.
+  the terminal's size. A fast scroll is paced on the program's repaints (one burst at a time, at
+  most a page kept, nothing more while it does not repaint), and in a Claude agent it allows for
+  Claude Code's wheel acceleration, so a trackpad flick moves as far as the fingers and stops
+  when they do. Other programs get one wheel event per row.
 - **Copy and links**: on a computer, drag over the text on screen to select it: releasing the
   button copies it, as do `⌘C` / `Ctrl+Shift+C`. Links (OSC 8 hyperlinks and plain `http(s)://`
   URLs, even wrapped over several rows) open in a new tab with `⌘`+click / `Ctrl`+click, or a tap
@@ -30,6 +33,10 @@
   tab, taking the right or bottom half of the pane's cell; the tab view opens on it. The layout is
   wherdr's own (a synced setting, the same on every open device within a second); herdr-app keeps
   its own and wherdr never writes it. Closing a terminal gives its room to its neighbour.
+  On a computer, **Mod+Alt+S** splits the pane being viewed to the right and **Mod+Alt+Shift+S**
+  splits it down, from the terminal too (changeable in Settings › Shortcuts).
+- **Split with agent…** (same menu): the New agent sheet on the pane's machine and folder; the
+  agent (or a terminal) it launches takes the right half of the pane's cell.
 - **Resize** (computer): drag the line between two cells; each terminal fits its cell as it
   moves, and the new proportion is saved on release (arrows on a focused line move it by 5 %).
   Double-click a line to go back to 50/50. Each side keeps at least 15 %. Not on a phone.
