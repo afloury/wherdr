@@ -75,7 +75,7 @@ export function projectBadgeOf(key: string) {
   return undefined
 }
 // Is a badge's text (WD, WD-5) a workspace member's key or task id? Its badge has a dashed border.
-export const isMemberBadge = (text: string) => Boolean(projectBadgeOf(text.replace(/-\d+$/, ''))?.member)
+export const isMemberBadge = (text?: string) => Boolean(text && projectBadgeOf(text.replace(/-\d+$/, ''))?.member)
 // A coordinator's pane (Alfred's included, projects on or off) is titled by its name; '' for any other pane.
 export function paneCoordinatorName(p?: Pane | null) {
   if (p?.coreAddress && p.coreAddress === alfred.value?.terminal) return alfred.value.name || 'Alfred'
