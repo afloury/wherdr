@@ -140,6 +140,21 @@ describe('enrich', () => {
     expect(done.activity).toBeUndefined()
     expect(rest.ompActivity).toBeUndefined()
   })
+  it('puts a Claude whose turn ended with background jobs at rest, even when core says it works', async () => {
+    const texts: Record<string, string> = { 'm/w': fx('claude-done-background.txt') }
+    const s = setup(texts)
+    s.tick(10_000)
+    const w = pane('w', { status: 'working', since: 0 })
+    await s.screens.enrich([w])
+    expect(w).toMatchObject({ status: 'idle', background: '1 shell' })
+    expect(w.activity).toBeUndefined()
+    // The first moments of a new turn still show the last one's end: still working.
+    s.tick(1000)
+    const fresh = pane('w', { status: 'working', since: 10_500 })
+    await s.screens.enrich([fresh])
+    expect(fresh.status).toBe('working')
+    expect(fresh.background).toBeUndefined()
+  })
   it('caches reads per viewed / background pace and re-applies them', async () => {
     const { screens, reads, tick } = setup({ 'm/a': bash }, () => false)
     await screens.enrich([pane('a')])

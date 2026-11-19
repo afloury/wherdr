@@ -1413,6 +1413,8 @@ function statusNow() {
     return { typing: true, omp: true, since: a.since, text: a.step || `${kindLabel(p.agent)} ${tl('is working…', 'travaille…')}` }
   }
   if (p.status === 'working') return { typing: true, text: `${kindLabel(p.agent)} ${tl('is working…', 'travaille…')}` }
+  // Claude's turn is over, only its background jobs run ("1 shell"): a calm line, the composer at rest.
+  if (p.agent === 'claude' && p.background && !p.error) return { typing: false, calm: true, text: `${p.background} ${t('running in the background')}` }
   if (p.error) return { typing: false, error: true, text: p.error }
   if (p.status === 'blocked' && !p.menu && !waiting.value && !(p.prompt && p.prompt.options) && !knownScreen(p)) return { typing: false, text: t('Waiting for your reply — details in the Terminal tab') }
   return null

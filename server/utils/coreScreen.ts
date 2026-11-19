@@ -11,7 +11,7 @@ import { parseChoices, parseOmpPrompt, promptIdentity, completeClaudeAsk, type C
 import { queueSendNow, readDraft, sameText } from './coreDraft'
 import { lastSentText, sendingTo } from './submitting'
 import { fieldHolds } from '../../shared/queuedMatch'
-import { parseClaudeActivity, parseClaudeScreen } from './claudeScreen'
+import { parseClaudeActivity, parseClaudeBackground, parseClaudeScreen } from './claudeScreen'
 import { ompActivityOf, parseOmpActivity } from './ompActivity'
 
 const WORKING = /\besc(?:ape)? to interrupt\b/i
@@ -81,6 +81,9 @@ const STARTUP_MS = 30_000
 // After a key from the key bar, the agent is read at every poll this long, and a changed
 // draft is shown at once: the change is the key's, nobody is typing it.
 const KEYED_MS = 2000
+// A working Claude whose screen still shows the last turn's end this long after core
+// said it works has really ended its turn (only background jobs run).
+const TURN_START_MS = 3000
 
 // What one screen text says, kept while the text, the agent and core's status
 // stay the same: most polls see the screens they saw before.
@@ -88,7 +91,7 @@ interface Parsed { agent: string | null | undefined, status: string | null | und
 
 export function createCoreScreens(deps: CoreScreenDeps) {
   const now = deps.now ?? Date.now
-  const cache = new Map<string, { at: number, text: string, open?: boolean, working?: boolean, parsed?: Parsed }>()
+  const cache = new Map<string, { at: number, text: string, open?: boolean, working?: boolean, parsed?: Parsed, background?: string | null }>()
   const born = new Map<string, number>()
   const failed = new Set<string>()
   const drafts = new Map<string, { text: string, since: number, real?: boolean }>()
@@ -114,7 +117,7 @@ export function createCoreScreens(deps: CoreScreenDeps) {
       const r = await deps.call('terminal.read', { terminal: p.coreAddress, lines: 0 }, 3000)
       const text = String(r?.text ?? '')
       const old = cache.get(p.id)
-      cache.set(p.id, { at: now(), text, working: p.status === 'working', ...(old?.text === text ? { parsed: old.parsed } : {}) })
+      cache.set(p.id, { at: now(), text, working: p.status === 'working', ...(old?.text === text ? { parsed: old.parsed, background: old.background } : {}) })
       failed.delete(p.id)
     } catch { failed.add(p.id) }
   }
@@ -186,6 +189,17 @@ export function createCoreScreens(deps: CoreScreenDeps) {
       for (const p of agents) {
         const c = cache.get(p.id)
         if (!c) continue
+        // Claude's turn is over and only background jobs run ("1 shell"): at rest, even when
+        // core still reports the turn as working. A read from the first moments of a turn
+        // (no verb drawn yet, the last turn's line still up) does not count.
+        if (p.agent === 'claude' && !failed.has(p.id)) {
+          const background = c.background === undefined ? c.background = parseClaudeBackground(c.text) : c.background
+          const settled = p.status !== 'working' || (c.working && c.at - (p.since ?? 0) >= TURN_START_MS)
+          if (background && settled) {
+            p.background = background
+            if (p.status === 'working') p.status = 'idle'
+          } else delete p.background
+        }
         if (c.parsed?.agent !== p.agent || c.parsed.status !== p.status) {
           c.parsed = { agent: p.agent, status: p.status, r: readCoreScreen(c.text, p.agent, p.status),
             error: p.agent === 'codex' ? codexError(c.text) : null, sendNow: queueSendNow(c.text, p.agent) }

@@ -1437,6 +1437,7 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 .chat-status .status-dot { width: 7px; height: 7px; background: var(--working); flex: none; animation: pulse 1.3s ease-in-out infinite; }
 .chat-status.waiting { color: color-mix(in srgb, var(--rose) 55%, var(--text)); }
 .chat-status.waiting .status-dot { background: var(--rose); }
+.chat-status.calm .status-dot { background: var(--muted); animation: none; }
 /* Claude's verb ("✻ Orbiting…"): same shimmer, in Claude orange. The star
    (ClaudeSpinner) has a fixed box: the verb does not move when it changes. */
 .chat-status .claude-verb-line { display: inline-flex; align-items: baseline; min-width: 0; font-family: var(--font-mono); font-size: 13px; }
