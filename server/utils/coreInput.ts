@@ -26,6 +26,8 @@ export interface CoreInputDeps {
   settleMs?: number
   /** Longest wait for a message's photos to show, from its paste (PHOTO_WAIT_MS). */
   photoWaitMs?: number
+  /** Longest time before typing starts (its turn, the looks at the field), from the request (START_BY_MS). */
+  startByMs?: number
   /** Quiet time after a send before the next writer of the terminal (see terminalTurns.ts). */
   turnSettleMs?: number
 }
@@ -102,16 +104,30 @@ export async function coreSend(deps: CoreInputDeps, b: { pane_id?: unknown, text
   if (text.length > MAX_TEXT) throw new HerdrError('too_large', 'Message too large')
   const waited = typingInto(p.coreAddress!)
   const queuedAt = Date.now()
-  // Bounded under the app's SEND_DEADLINE_MS (app/utils/outbox.ts, 120 s): at
-  // most TURN_WAIT_MS behind another writer (nothing typed then), and no Enter
-  // after SEND_BUDGET_MS (the message stays in the field, with Send now / Clear).
-  return inTurn(p.coreAddress!, () => {
-    if (Date.now() - queuedAt > TURN_WAIT_MS) throw new HerdrError('busy', 'Another message to this terminal took too long: nothing was typed, send again.')
-    return typeIn(deps, p, text, b.pastes, waited, queuedAt + SEND_BUDGET_MS)
+  // Bounded under the app's SEND_DEADLINE_MS (app/utils/outbox.ts, 120 s).
+  // Not typed within START_BY_MS (its turn behind another writer, the looks at
+  // a busy field): refused, nothing typed, and its turn, when it comes, does
+  // nothing. Once typed, every step has its own timeout, the photo wait ends
+  // PHOTO_WAIT_MS after the paste, and no Enter starts after SEND_BUDGET_MS
+  // (the message stays in the field, with Send now / Clear).
+  const startBy = queuedAt + (deps.startByMs ?? START_BY_MS)
+  const late = () => new HerdrError('busy', 'Another message to this terminal took too long: nothing was typed, send again.')
+  let expired = false
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const turn = inTurn(p.coreAddress!, () => {
+    clearTimeout(timer)
+    if (expired || Date.now() >= startBy) throw late()
+    return typeIn(deps, p, text, b.pastes, waited, startBy, queuedAt + SEND_BUDGET_MS)
   }, deps.turnSettleMs)
+  const deadline = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => { expired = true; reject(late()) }, Math.max(0, startBy - Date.now()))
+  })
+  // The timer only refuses a request still waiting for its turn: once typing started it is cleared.
+  return Promise.race([turn, deadline])
 }
-const TURN_WAIT_MS = 25_000
-export const SEND_BUDGET_MS = 100_000
+const START_BY_MS = 25_000
+// Each Enter step (a key, the settle, a field read) takes up to about 20 s.
+export const SEND_BUDGET_MS = 90_000
 
 // Claude turns a pasted photo path into "[Image #N]" a moment after the
 // paste; core's Enter right after it may come first, and Claude then submits
@@ -125,13 +141,14 @@ export const holdEnter = (text: string) => (uploadNames(text).length ? `${text}\
 // text out of the field: a few looks before calling the field busy.
 const BUSY_LOOKS = 5
 
-async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknown, waited: boolean, until = Infinity) {
+async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknown, waited: boolean, startBy = Infinity, until = Infinity) {
   const field = p.agent === 'claude' ? deps.field : undefined
   // A failed read (Claude still taking in a paste included) is no empty field:
   // looked at again, then refused, never typed over.
   for (let i = 0; field; i++) {
     const seen = await field(p).then(t => (t ? 'text' : null), (e: unknown) => e)
     if (seen === null) break
+    if (Date.now() >= startBy) throw new HerdrError('input_busy', 'Claude’s input could not be confirmed empty in time: nothing was typed, send again.')
     if (seen === 'text' ? !waited || i >= BUSY_LOOKS : i >= BUSY_LOOKS) {
       if (seen === 'text' || (seen as HerdrError)?.code === 'pasting') throw new HerdrError('input_busy', 'Claude’s input still holds text that was not sent: send it or clear it first, then send again.')
       failure(seen)

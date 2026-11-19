@@ -70,6 +70,19 @@ describe('core input routes', () => {
     expect(t.calls).toEqual([])
   })
 
+  it('stuck behind another writer: refused at its deadline, nothing typed, even once that writer ends', async () => {
+    let release!: () => void
+    const wake = new Promise<void>(r => { release = r })
+    const t = deps(() => ({ started: true }))
+    t.d.startByMs = 20
+    const engine = takingTurns(async (m, params) => { t.calls.push([m, params, 0]); await wake; return {} as never }, 0)
+    void engine('terminal.send', { terminal: 'm/t1', text: 'Autopilot wake' }, 30000)
+    await expect(coreSend(t.d, { pane_id: 't1', text: 'hi' })).rejects.toMatchObject({ code: 'busy' })
+    release()
+    await new Promise(r => setTimeout(r, 10))
+    expect(t.calls.map(c => c[1].text)).toEqual(['Autopilot wake'])
+  })
+
   it('a message of its own ending with "\\" matches the field that holds it', () => {
     expect(fieldHolds('C:\\dir\\', 'C:\\dir\\', true)).toBe(true)
     expect(fieldHolds('C:\\dir', 'C:\\dir\\', true)).toBe(false)
