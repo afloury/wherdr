@@ -651,12 +651,13 @@ window opens on the tab you picked last (on this device; Settings the first
 time); a link to the autopilot setting (`project.autopilot`) opens Settings.
 **Activity**, under the autopilot's line and a link to the project's Workflow tab:
 
-- on the board, *Open*, and a warning when its conversation
+- on the board, a warning when its conversation
   ran with another one: *New conversation* with the default, or *Resume* the one kept (for
-  Alfred, the agent resumed becomes its default); *Open* opens or starts it; when its
-  conversation stopped (its terminal ended, for example when its machine
-  restarted), *Resume the conversation* takes it up again with the agent that
-  ran it, and *New conversation* starts a new one;
+  Alfred, the agent resumed becomes its default); no *Open* button: a running
+  conversation opens from its row in the sidebar and its header; only when no
+  row can start it (never started: *Start with* its agent; stopped while its
+  project is off the bar: *Resume the conversation* with the agent that ran it,
+  or *New conversation*) are the start buttons here;
 - today's counts and *Wake now*, which wakes the coordinator at once with its
   goal, without waiting for a timed wake (its log names it *Run now*);
 - **the day's timeline**: a 24 h bar with the autopilot's hours shaded, a mark
