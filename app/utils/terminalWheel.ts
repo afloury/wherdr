@@ -19,3 +19,20 @@ export function takeLines(acc: number, rowHeight: number): { lines: number, rest
   const lines = Math.trunc(acc / h)
   return { lines, rest: acc - lines * h }
 }
+
+// herdr-core: a program that tracks the mouse (Claude Code's fullscreen
+// renderer, vim, less --mouse) draws in the alternate screen, which has no
+// scrollback for xterm to scroll: like a real terminal, the wheel goes to the
+// program as mouse wheel reports, one per line (positive = towards the top).
+// `sgr`: the program asked for SGR coordinates (DECSET 1006); otherwise the
+// X10 encoding, whose coordinates stop at 223.
+export function wheelReports(lines: number, cell: { column: number, row: number }, sgr: boolean, max = 200): string {
+  const n = Math.min(Math.abs(Math.trunc(lines)), max)
+  if (!n) return ''
+  const button = lines > 0 ? 64 : 65
+  const x = cell.column + 1, y = cell.row + 1
+  const one = sgr
+    ? `\x1b[<${button};${x};${y}M`
+    : `\x1b[M${String.fromCharCode(32 + button, 32 + Math.min(x, 223), 32 + Math.min(y, 223))}`
+  return one.repeat(n)
+}

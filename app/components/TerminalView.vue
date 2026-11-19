@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Raw terminal of the pane: xterm.js + touch layer (scrolling with a finger or
-// the wheel -> terminal.scroll, the history lives in Herdr; never ↑/↓
+// the wheel -> ctl.scroll: xterm's history on herdr-core, or wheel reports to a
+// program tracking the mouse, like Claude Code's fullscreen view; never ↑/↓
 // sent to the agent; click = keyboard to the terminal, a tap too except on
 // iOS: see utils/terminalTapFocus.ts).
 import '@xterm/xterm/css/xterm.css'
@@ -16,10 +17,12 @@ let legacyAcc = 0
 let legacyPendingLines = 0
 let legacyRaf = 0
 let legacyMoved = false
+// Where the wheel or the finger is: a program tracking the mouse gets it there.
+let legacyPoint: { x: number, y: number } | null = null
 const legacyFlush = () => {
   legacyRaf = 0
   if (!legacyPendingLines) return
-  props.ctl.scroll(legacyPendingLines)
+  props.ctl.scroll(legacyPendingLines, legacyPoint?.x, legacyPoint?.y)
   legacyPendingLines = 0
 }
 const legacyQueue = (n: number) => {
@@ -54,6 +57,7 @@ function legacyOnTouchMove(e: TouchEvent) {
   legacyAcc = rest
   if (lines) {
     legacyMoved = true
+    legacyPoint = { x, y }
     legacyQueue(lines)
   }
 }
@@ -91,6 +95,7 @@ function legacyOnWheel(e: WheelEvent) {
   legacyAcc -= wheelPixels(e.deltaY, e.deltaMode, h, props.ctl.pageRows())
   const { lines, rest } = takeLines(legacyAcc, h)
   legacyAcc = rest
+  legacyPoint = { x: e.clientX, y: e.clientY }
   if (lines) legacyQueue(lines)
 }
 
