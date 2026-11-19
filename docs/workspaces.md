@@ -470,6 +470,16 @@ workflow: merged, and its deploy watch passed when the workflow has one. The
 task's sheet says *Merges once LED-4 is done.*, and its card shows the wait
 while it is in the merge queue.
 
+Every merge kind waits the same way, not only the GitHub merge queue: a
+`git.land` (a workspace that lands on develop without a PR), a
+`bitbucket.merge`, or a `github.merge` the guards keep out of the queue is not
+run while an upstream task is not done. Its card says *Merges once LED-4 is
+done*, the engine checks again at each pass and runs the merge by itself once
+the upstream is done. A click on such a merge step is held with that reason,
+never lost. `git.verify-merged` (*I merged it*) cannot be held: you merged on
+your Git host already, so wherdr accepts it and logs a warning on the task
+(*merged before LED-4 was done*).
+
 If an upstream task is stopped or abandoned, the waiting one keeps waiting
 (no cascade stop) and the workspace's coordinator gets one wake for it: start
 the upstream again, or drop the wait with `task edit <task> --merge-after ""`.
