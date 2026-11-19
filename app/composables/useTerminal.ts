@@ -25,6 +25,7 @@ import { uploadPhoto } from '~/utils/photoUpload'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
 import { bindTerminalMouse, terminalCell } from '~/utils/terminalMouse'
 import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
+import { trackSgrMouse, wheelReports, type SgrMouse } from '~/utils/terminalWheel'
 import { virtualNavigationBytes, virtualNavigationKeys } from '~/utils/keybarKeys'
 import { createCompositionTracker, toggleVirtualModifier, virtualChord, virtualInputKey, type VirtualModifier } from '~/utils/terminalModifiers'
 
@@ -71,6 +72,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let links: TerminalLinks | null = null
   let mouse: ReturnType<typeof bindTerminalMouse> | null = null
   let mouseSupported = false
+  // The program asked for SGR mouse coordinates (DECSET 1006): see wheelReports.
+  let mouseSgr: SgrMouse | null = null
   let coreStream = false
   // herdr-core: whether this viewer's size is the terminal's (see coreTerm.ts).
   let coreControl = true
@@ -240,6 +243,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // Wheel: xterm does nothing with it (it would send ↑/↓ to the agent, see
     // utils/terminalWheel.ts); TerminalView converts it to terminal.scroll.
     term.attachCustomWheelEventHandler(() => false)
+    mouseSgr = trackSgrMouse(term)
     // Shift+Enter as a named key; Ctrl+V (outside Apple) and F12 left to the browser.
     bindTerminalKeys(term, key => sendVirtualKey(key))
     term.onData(d => {
@@ -479,6 +483,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
             if (smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
             if (coreStream) offerFit()
           },
+          reset: () => mouseSgr?.reset(),
           written: () => {
             if (credit && tws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'credit', bytes: credit }))
             if (coreStream && !coreControl) followCursor()
@@ -559,7 +564,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
   const isConnected = () => Boolean(tws && tws.readyState <= 1)
 
-  function reset() { term?.reset() }
+  function reset() { term?.reset(); mouseSgr?.reset() }
   function focus() {
     focusQueued = !term && mounting
     term?.focus()
@@ -578,19 +583,29 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     return term?.rows && screen?.clientHeight ? screen.clientHeight / term.rows : 16
   }
   const pageRows = () => term?.rows || 24
-  // Scrolling requested from Herdr (the history lives there).
-  function scroll(lines: number, x?: number, y?: number, modifiers = 0, touch = false, preview = true): boolean {
-    if (coreStream && term) {
-      term.scrollLines(-lines)
-      if (touch && preview && smoothTouchScrolling.value) scrollAck.value += lines
-      return true
-    }
-    if (!smoothTouchScrolling.value || !touch) return sendTerm({ type: 'terminal.scroll', direction: lines > 0 ? 'up' : 'down', lines: Math.abs(lines) })
+  // The cell under a point, ignoring the touch preview's offset.
+  function pointCell(x?: number, y?: number) {
     const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
     const rect = screen?.getBoundingClientRect()
     const offset = screen?.style.transform ? new DOMMatrixReadOnly(screen.style.transform).m42 : 0
     const fixedRect = rect ? { left: rect.left, top: rect.top - offset, width: rect.width, height: rect.height } : null
-    const position = fixedRect && term && x !== undefined && y !== undefined ? terminalCell(x, y, fixedRect, term.cols, term.rows) : null
+    return fixedRect && term && x !== undefined && y !== undefined ? terminalCell(x, y, fixedRect, term.cols, term.rows) : null
+  }
+  // Scrolling requested from Herdr (the history lives there).
+  function scroll(lines: number, x?: number, y?: number, modifiers = 0, touch = false, preview = true): boolean {
+    if (coreStream && term) {
+      // A program tracking the mouse gets the wheel (its own history: Claude
+      // Code's fullscreen view); otherwise xterm scrolls the history it kept.
+      if (term.modes.mouseTrackingMode !== 'none' && opts.input?.() !== false) {
+        const cell = pointCell(x, y) ?? { column: Math.floor(term.cols / 2), row: Math.floor(term.rows / 2) }
+        // Not terminal.input: scrolling neither cancels a touch gesture nor takes control.
+        if (!sendTerm({ type: 'terminal.wheel', text: wheelReports(lines, cell, mouseSgr?.on() === true, term.rows) })) return false
+      } else term.scrollLines(-lines)
+      if (touch && preview && smoothTouchScrolling.value) scrollAck.value += lines
+      return true
+    }
+    if (!smoothTouchScrolling.value || !touch) return sendTerm({ type: 'terminal.scroll', direction: lines > 0 ? 'up' : 'down', lines: Math.abs(lines) })
+    const position = pointCell(x, y)
     return sendTerm({ type: 'terminal.scroll', direction: lines > 0 ? 'up' : 'down', lines: Math.abs(lines), ...position, modifiers, source: 'touch', epoch: touchEpoch, preview })
   }
   function cancelTouchScroll() {

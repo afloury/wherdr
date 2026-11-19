@@ -15,7 +15,7 @@ vi.mock('~/utils/xtermLoader', () => {
     loadAddon(a: { kind: string }) { this.state.addons.push(a.kind) }
     focus() { this.state.focused = true }
     dispose() { this.state.disposed = true }
-    write() {} open() {} refresh() {} reset() {} attachCustomWheelEventHandler() {}
+    write() {} open() {} refresh() {} reset() {} attachCustomWheelEventHandler() {} parser = { registerCsiHandler() {}, registerEscHandler() {} };
     attachCustomKeyEventHandler() {} onData() {} onBinary() {}
   }
   class FitAddon { kind = 'fit'; proposeDimensions() { return null } }
