@@ -91,8 +91,8 @@ export interface Proposal { template: Template, diff: string, at: number, base: 
 // coordinator proposed another before the user answered.
 export type ProposalOutcome = 'accepted' | 'refused' | 'replaced' | 'outdated: the template changed since, propose again'
 // An answer, kept for its card in the coordinator's conversation:
-// proposedAt places it, summary says what that proposal changed.
-export interface ProposalAnswer { outcome: ProposalOutcome, at: number, by?: string, proposedAt?: number, summary?: string[] }
+// proposedAt places it, summary says what that proposal changed, title what it did (changeTitle).
+export interface ProposalAnswer { outcome: ProposalOutcome, at: number, by?: string, proposedAt?: number, summary?: string[], title?: string }
 // The last answers kept, oldest first.
 export const PROPOSAL_ANSWERS = 10
 
