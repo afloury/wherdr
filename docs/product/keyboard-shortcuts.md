@@ -5,8 +5,15 @@ Status: **implemented** (2026-10-01). Code: `app/utils/shortcuts.ts` (table and 
 (help sheet), `app/components/ShortcutsReference.vue` (shared with Settings › Shortcuts). Tests: `tests/shortcuts.test.ts`, `tests/cardKeys.test.ts`.
 `[INFERENCE]` marks claims nobody has tested on a device yet.
 
-> v3 (herdr-core): pane swaps (`Alt+Shift+arrows`) and side-by-side focus moves are v2 only;
-> Mod+Alt+O (reveal) needs `/api/reveal`, which herdr-core mode does not serve.
+> v3 (herdr-core): pane swaps (`Alt+Shift+arrows`) and side-by-side focus moves are v2 only.
+
+> 2026-11-19 (WHR-1): Mod+Alt+O works again on v3. `POST /api/open-editor` (`server/utils/openEditor.ts`)
+> takes only the pane id and opens the pane's own folder, on its machine: this computer, or another
+> one through core's `machine.exec`. The folder must exist and lie under that machine's home (checked
+> there, after symlinks); only `open` runs, the folder is a positional argument. macOS only: another
+> system answers "… is not a Mac", and the menu entry is hidden for a pane whose machine is known not
+> to be a Mac. The editor is `WH_OPEN_EDITOR` or the first line of `~/.local/share/wherdr/editor`
+> (an app name), else the default app for folders.
 
 > 2026-11-19: Mod+Alt+S splits the current pane right, Mod+Alt+Shift+S down (v3, wherdr's own
 > layout). Not ⌥⌘D: macOS shows or hides the Dock with it. No browser binding known for ⌘⌥S,
@@ -17,7 +24,7 @@ Status: **implemented** (2026-10-01). Code: `app/utils/shortcuts.ts` (table and 
 > browser binding known for ⌘⌥P or Ctrl+Alt+P `[INFERENCE]`.
 
 > 2026-10-02: Mod+Alt+O (current agent folder in the default editor, via the existing
-> /api/reveal "Open" action on the folder path) added since; action in
+> /api/reveal "Open" action on the folder path, now `/api/open-editor`) added since; action in
 > `app/composables/useHerdr.ts` (`openFolderOnMachine`). First bound to E, moved to O the
 > same day: Firefox and Zen own ⌘⌥E (Network Monitor) on macOS, Zen also Ctrl+Alt+E
 > ("Forward workspace").
@@ -206,7 +213,7 @@ The composer blurs itself on Esc. After a stop it gets the focus back.
 - **Q4.** Mod+Alt+N opens "New agent". Because that sheet creates a new space, it is also the
   "new workspace" shortcut. Mod+Alt+T (new tab) and Mod+Alt+W (close pane) follow the same pattern.
 - **Q8.** Mod+Alt+O opens the agent's current folder in its default editor on the agent's Mac
-  (same `/api/reveal` "Open" action as a path in the conversation: never apps or scripts, the
+  (`/api/open-editor`: never apps or scripts, the
   folder is opened as a folder). First bound to E: Firefox and Zen take ⌘⌥E on macOS (Network
   Monitor), Zen also Ctrl+Alt+E (Forward workspace) — the shortcut never reached wherdr. O is
   free in Firefox, Zen, Chromium and Safari (⌘O "Open File" needs no Alt). The agent menu gets
