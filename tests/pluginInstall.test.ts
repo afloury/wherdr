@@ -30,6 +30,8 @@ function fakeGitHub(trees: Record<string, Record<string, Node>>, refs: Record<st
       if (!kind) return json({ default_branch: 'main' })
       if (kind === 'releases') return opts.release ? json({ tag_name: opts.release }) : missing()
       if (kind === 'commits') return refs[rest.join('/')] ? json({ sha: refs[rest.join('/')] }) : missing()
+      if (kind === 'branches') return json(Object.keys(refs).filter(r => !/^[0-9a-f]{40}$/.test(r)).map(name => ({ name })))
+      if (kind === 'tags') return json([])
       // Every commit of the fake is on some ref, except a fork's.
       if (kind === 'compare') {
         const [base, head] = rest.join('/').split('...')
@@ -114,9 +116,14 @@ describe('install', () => {
 
   it('refuses a fork\'s commit served under the parent\'s name', async () => {
     const gh = fakeGitHub({ [A]: plugin(), [B]: plugin() }, { main: A, [B]: B }, { fork: B })
-    await expect(previewFromGitHub(`me/hello@${B}`, gh, dir)).rejects.toThrow(/may come from a fork/)
+    await expect(previewFromGitHub(`me/hello@${B}`, gh, dir)).rejects.toThrow(/not on a branch or tag/)
     await expect(installFromGitHub({ repo: 'me/hello', ref: 'main', commit: B }, gh, dir)).rejects.toThrow(/not on main/)
     expect(await fsp.readdir(dir)).toEqual([])
+  })
+
+  it('takes a commit given alone that is only on another branch', async () => {
+    const gh = fakeGitHub({ [A]: plugin(), [B]: plugin() }, { main: A, next: B, [B]: B })
+    await expect(previewFromGitHub(`me/hello@${B}`, gh, dir)).resolves.toMatchObject({ source: { commit: B } })
   })
 
   it('restores a plugin a crash left aside and removes leftover temp folders', async () => {

@@ -57,20 +57,31 @@ async function resolveRef(gh: GitHub, repo: string, ref: string): Promise<{ reso
 }
 
 // GitHub serves a fork's commit under the parent's name too: the commit must be
-// on the branch or tag asked for (a commit given alone: the latest release or the
-// default branch). `behind` is fine, the branch may have moved on since.
+// on the branch or tag asked for; a commit given alone, on any branch or tag of
+// the repository (the latest release and the default branch first, then the
+// first 100 branches and tags). `behind` is fine, the branch may have moved on.
 async function reachable(gh: GitHub, repo: string, ref: string, commit: string) {
-  let bases = ref && !/^[0-9a-f]{7,40}$/.test(ref) ? [ref] : []
-  if (!bases.length) {
-    const meta = await getJson(gh, `${gh.api}/repos/${repo}`)
-    const rel = await getJson(gh, `${gh.api}/repos/${repo}/releases/latest`)
-    bases = [rel?.tag_name, meta?.default_branch].filter((b): b is string => typeof b === 'string' && b !== '')
-  }
-  for (const base of bases) {
+  const on = async (base: string) => {
     const c = await getJson(gh, `${gh.api}/repos/${repo}/compare/${encodeURIComponent(base)}...${commit}`)
-    if (c?.status === 'identical' || c?.status === 'behind') return
+    return c?.status === 'identical' || c?.status === 'behind'
   }
-  throw fail(`Commit ${commit.slice(0, 12)} is not on ${ref && bases[0] === ref ? ref : 'the latest release or the default branch'} of ${repo} (it may come from a fork).`)
+  if (ref && !/^[0-9a-f]{7,40}$/.test(ref)) {
+    if (await on(ref)) return
+    throw fail(`Commit ${commit.slice(0, 12)} is not on ${ref} of ${repo} (it may come from a fork).`)
+  }
+  const names = (l: unknown) => (Array.isArray(l) ? l.map(x => x?.name).filter((n): n is string => typeof n === 'string' && n !== '') : [])
+  const meta = await getJson(gh, `${gh.api}/repos/${repo}`)
+  const rel = await getJson(gh, `${gh.api}/repos/${repo}/releases/latest`)
+  const tried = new Set<string>()
+  const first = [rel?.tag_name, meta?.default_branch].filter((b): b is string => typeof b === 'string' && b !== '')
+  for (const more of [async () => first, async () => names(await getJson(gh, `${gh.api}/repos/${repo}/branches?per_page=100`)), async () => names(await getJson(gh, `${gh.api}/repos/${repo}/tags?per_page=100`))]) {
+    for (const base of await more()) {
+      if (tried.has(base)) continue
+      tried.add(base)
+      if (await on(base)) return
+    }
+  }
+  throw fail(`Commit ${commit.slice(0, 12)} is not on a branch or tag of ${repo} (it may come from a fork).`)
 }
 
 interface Entry { name: string, path: string, type: string, size: number }
