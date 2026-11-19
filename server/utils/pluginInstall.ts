@@ -58,8 +58,8 @@ async function resolveRef(gh: GitHub, repo: string, ref: string): Promise<{ reso
 
 // GitHub serves a fork's commit under the parent's name too: the commit must be
 // on the branch or tag asked for; a commit given alone, on any branch or tag of
-// the repository (the latest release and the default branch first, then the
-// first 100 branches and tags). `behind` is fine, the branch may have moved on.
+// the repository (the latest release and the default branch first, then every
+// branch and tag). `behind` is fine, the branch may have moved on.
 async function reachable(gh: GitHub, repo: string, ref: string, commit: string) {
   const on = async (base: string) => {
     const c = await getJson(gh, `${gh.api}/repos/${repo}/compare/${encodeURIComponent(base)}...${commit}`)
@@ -73,12 +73,21 @@ async function reachable(gh: GitHub, repo: string, ref: string, commit: string) 
   const meta = await getJson(gh, `${gh.api}/repos/${repo}`)
   const rel = await getJson(gh, `${gh.api}/repos/${repo}/releases/latest`)
   const tried = new Set<string>()
-  const first = [rel?.tag_name, meta?.default_branch].filter((b): b is string => typeof b === 'string' && b !== '')
-  for (const more of [async () => first, async () => names(await getJson(gh, `${gh.api}/repos/${repo}/branches?per_page=100`)), async () => names(await getJson(gh, `${gh.api}/repos/${repo}/tags?per_page=100`))]) {
-    for (const base of await more()) {
+  const check = async (list: string[]) => {
+    for (const base of list) {
       if (tried.has(base)) continue
       tried.add(base)
-      if (await on(base)) return
+      if (await on(base)) return true
+    }
+    return false
+  }
+  if (await check([rel?.tag_name, meta?.default_branch].filter((b): b is string => typeof b === 'string' && b !== ''))) return
+  // Every page, each compared before the next is fetched (a rate limit stops it with its own error).
+  for (const kind of ['branches', 'tags']) {
+    for (let page = 1; ; page++) {
+      const list = names(await getJson(gh, `${gh.api}/repos/${repo}/${kind}?per_page=100&page=${page}`))
+      if (await check(list)) return
+      if (list.length < 100) break
     }
   }
   throw fail(`Commit ${commit.slice(0, 12)} is not on a branch or tag of ${repo} (it may come from a fork).`)

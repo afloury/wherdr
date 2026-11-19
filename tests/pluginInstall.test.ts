@@ -9,7 +9,7 @@ const A = 'a'.repeat(40)
 const B = 'b'.repeat(40)
 type Node = string | { link: string } | Record<string, unknown>
 // A fake GitHub: one repo, a tree per commit, refs pointing at commits.
-function fakeGitHub(trees: Record<string, Record<string, Node>>, refs: Record<string, string>, opts: { release?: string, offline?: boolean, fork?: string } = {}): GitHub {
+function fakeGitHub(trees: Record<string, Record<string, Node>>, refs: Record<string, string>, opts: { release?: string, offline?: boolean, behind?: Record<string, string[]> } = {}): GitHub {
   const json = (v: unknown) => new Response(JSON.stringify(v), { status: 200 })
   const missing = () => new Response('{}', { status: 404 })
   const at = (tree: Record<string, Node>, p: string) => p.split('/').filter(Boolean).reduce<Node | undefined>((n, k) => (n && typeof n === 'object' ? (n as Record<string, Node>)[k] : undefined), tree)
@@ -30,13 +30,16 @@ function fakeGitHub(trees: Record<string, Record<string, Node>>, refs: Record<st
       if (!kind) return json({ default_branch: 'main' })
       if (kind === 'releases') return opts.release ? json({ tag_name: opts.release }) : missing()
       if (kind === 'commits') return refs[rest.join('/')] ? json({ sha: refs[rest.join('/')] }) : missing()
-      if (kind === 'branches') return json(Object.keys(refs).filter(r => !/^[0-9a-f]{40}$/.test(r)).map(name => ({ name })))
+      if (kind === 'branches') {
+        const page = Number(u.searchParams.get('page') || 1)
+        return json(Object.keys(refs).filter(r => !/^[0-9a-f]{40}$/.test(r)).slice((page - 1) * 100, page * 100).map(name => ({ name })))
+      }
       if (kind === 'tags') return json([])
-      // Every commit of the fake is on some ref, except a fork's.
+      // A commit is on a ref at its tip, or among the older commits `behind` lists for it.
       if (kind === 'compare') {
         const [base, head] = rest.join('/').split('...')
         if (!refs[base!]) return missing()
-        return json({ status: refs[base!] === head ? 'identical' : Object.values(refs).includes(head!) && head !== opts.fork ? 'behind' : 'ahead' })
+        return json({ status: refs[base!] === head ? 'identical' : opts.behind?.[base!]?.includes(head!) ? 'behind' : 'ahead' })
       }
       const tree = trees[u.searchParams.get('ref')!]
       const dir = tree && at(tree, rest.join('/'))
@@ -115,14 +118,17 @@ describe('install', () => {
   })
 
   it('refuses a fork\'s commit served under the parent\'s name', async () => {
-    const gh = fakeGitHub({ [A]: plugin(), [B]: plugin() }, { main: A, [B]: B }, { fork: B })
+    const gh = fakeGitHub({ [A]: plugin(), [B]: plugin() }, { main: A, [B]: B })
     await expect(previewFromGitHub(`me/hello@${B}`, gh, dir)).rejects.toThrow(/not on a branch or tag/)
     await expect(installFromGitHub({ repo: 'me/hello', ref: 'main', commit: B }, gh, dir)).rejects.toThrow(/not on main/)
     expect(await fsp.readdir(dir)).toEqual([])
   })
 
-  it('takes a commit given alone that is only on another branch', async () => {
-    const gh = fakeGitHub({ [A]: plugin(), [B]: plugin() }, { main: A, next: B, [B]: B })
+  it('takes a commit given alone that is only on another branch, past the first page', async () => {
+    const C = 'c'.repeat(40)
+    const others = Object.fromEntries(Array.from({ length: 100 }, (_, i) => [`b${i}`, A]))
+    // `next` is the 101st branch and holds B below its tip C.
+    const gh = fakeGitHub({ [A]: plugin(), [B]: plugin() }, { main: A, ...others, next: C, [B]: B }, { behind: { next: [B] } })
     await expect(previewFromGitHub(`me/hello@${B}`, gh, dir)).resolves.toMatchObject({ source: { commit: B } })
   })
 
