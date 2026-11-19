@@ -47,7 +47,7 @@ token runs every coordinator command on each member, with no setting to change,
 under the same rules as on the workspace itself (a turn of the user, the
 autopilot, the guards). Beyond list, show, adding, starting and editing tasks or
 tell, it ends a step it holds on a member's task (`step done`, `step wait`,
-`step back`), decides after N send-backs (`task decide`), merges (`pr merge`),
+`step back`), decides after N send-backs (`task decide`), merges a member's contributor PR (`pr merge … --project <member>`),
 shows things (`ui action`, `ui show`) and proposes automations; commands that
 name a project take `--project <member>`. Unlike [Other projects this coordinator may act on](project-management.md#coordinators-on-other-projects),
 nothing stays with another coordinator: a member has none. A member's settings

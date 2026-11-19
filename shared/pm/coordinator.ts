@@ -234,7 +234,7 @@ export const COMMANDS: { usage: string, does: string }[] = [
   ...MAP_COMMANDS,
   ...REPO_COMMANDS,
   ...FEATURE_COMMANDS,
-  { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log' },
+  { usage: 'pr merge <number> --user-said "<their words>" [--method squash|merge|rebase] [--project <KEY>]', does: 'merge an outside contributor\'s open PR, green and mergeable, after the user\'s yes; only in a turn of the user, never a board task\'s PR; written to the project\'s log; --project: a workspace\'s member' },
 ]
 // Listed only where the project's guard allows it.
 const GUARDED_COMMAND = 'pr merge'
@@ -260,7 +260,7 @@ export function tellTarget(runs: Run[], task: string, holder: Holder | undefined
 const TASK_RE = /^[A-Z][A-Z0-9]{1,9}-\d{1,6}$/
 const KEY_RE = /^[A-Z][A-Z0-9]{1,9}$/
 // The main coordinator names the project with --project <KEY>; a task names its own.
-const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'incidents', 'automation list', 'automation show', 'automation propose', 'task add', 'map show', 'map list', 'map set', 'map remove', 'repo adopt', 'feature add']
+const PROJECT_VERBS = ['list', 'plan', 'template show', 'autopilot show', 'incidents', 'automation list', 'automation show', 'automation propose', 'task add', 'map show', 'map list', 'map set', 'map remove', 'repo adopt', 'feature add', 'pr merge']
 // template edit --project: a member's own workflow is the user's (docs/workspaces.md).
 const MEMBER_WORKFLOW_EDIT = 'template edit changes your own project\'s workflow only, never another project\'s or a member\'s (no --project): a member\'s own workflow is the user\'s, set in its Workflow tab. To change what members run, propose a change to the workspace\'s workflow (template edit, no --project): every member without its own runs it'
 const URL_RE = /^https?:\/\/\S{1,2000}$/

@@ -914,7 +914,7 @@ describe('role files', () => {
     const off = roleFiles(p, company, EXAMPLES), on = roleFiles(p, { ...company, guards: { ...company.guards, contributorPrs: 'others' } }, EXAMPLES)
     for (const f of ['AGENTS.md', '.claude/skills/wherdr-pm/SKILL.md']) {
       expect(off[f]).not.toContain('pr merge')
-      expect(on[f]).toContain('`wherdr pm pr merge <number> --user-said "<their words>" [--method squash|merge|rebase]`')
+      expect(on[f]).toContain('`wherdr pm pr merge <number> --user-said "<their words>" [--method squash|merge|rebase] [--project <KEY>]`')
     }
     expect(on['AGENTS.md']).toContain('never into a branch reserved for the user; never a board task\'s PR')
   })
@@ -949,6 +949,20 @@ describe('pr merge (WHR-42)', () => {
     expect(await runCommand(d, token, { argv })).toEqual({ merged: view.url, into: 'docs' })
     expect(merged).toEqual([['/src/co', view.url, 'abc', 'squash']])
     expect(await store.projectLog('CO')).toEqual([{ at: expect.any(Number), by: 'coordinator CO', pr: 9, said: 'yes, merge it', text: 'merged contributor PR #9 into docs (squash) on the user\'s yes: "yes, merge it"' }])
+  })
+
+  it('a workspace\'s coordinator merges a member\'s contributor PR with --project; another project\'s stays refused (WHR-516)', async () => {
+    const raw = JSON.parse(await fs.readFile(store.files.projects, 'utf8'))
+    raw.projects.push({ key: 'WS', name: 'Work', machine: '', path: '/src/work', kind: 'workspace', git: false, addedAt: 1 },
+      { key: 'PA', name: 'Payroll', machine: '', path: '/src/work/payroll-api', workspace: 'WS', addedAt: 1 })
+    await fs.writeFile(store.files.projects, JSON.stringify(raw))
+    await store.saveWorkflow('WS', { ...structuredClone(company), guards: { ...company.guards, contributorPrs: 'others' } })
+    const ws = await issueToken(store, 'WS'), { merged, deps: d } = fake(view)
+    await noteTurn(store, 'WS', 'user', 'yes, merge it')
+    expect(await runCommand(d, ws, { argv: [...argv, '--project', 'PA'] })).toEqual({ merged: view.url, into: 'docs' })
+    expect(merged).toEqual([['/src/work/payroll-api', view.url, 'abc', 'squash']])
+    expect((await store.projectLog('PA'))[0]).toMatchObject({ by: 'coordinator WS', pr: 9 })
+    await refused(runCommand(d, ws, { argv: [...argv, '--project', 'ST'] }), 'pr merge on project ST stays with its own coordinator')
   })
 })
 
