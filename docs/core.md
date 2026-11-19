@@ -44,7 +44,7 @@ space's `herdr.space`, a new `herdr.tab` and `herdr.seen=0`, so it also appears 
 herdr-app. Terminals made from the "New" sheet get the space whose folder holds
 their cwd, else a new one. A tab of one terminal not named in herdr-app's layout is renamed
 through that terminal's `herdr.title`; closing a tab or a space kills each of its terminals.
-**Split right** and **Split down** start the new shell with its tab's `herdr.space` / `herdr.tab` (from the labels or
+**Split right**, **Split down** and **Split with agent…** start the new terminal with its tab's `herdr.space` / `herdr.tab` (from the labels or
 the layout); a folder tab gets a wherdr-own `wherdr.tab` label on both terminals, which herdr-app
 ignores (a terminal's `cwd` stays its start folder, so the space holds). The split layout is
 wherdr's own: a tree per tab (leaves are core addresses) in the synced setting `tabSplits`, never

@@ -19,6 +19,8 @@ const allGroups = computed<Group[]>(() => [
     { id: 'new-space', label: tl('New agent, in a new space'), keys: [shortcutKbds('new-space')] },
     { id: 'new-tab', label: tl('New tab in this space'), keys: [shortcutKbds('new-tab')], v2: true },
     { id: 'close-pane', label: tl('Close this pane'), keys: [shortcutKbds('close-pane')] },
+    { id: 'split-right', label: tl('Split this pane right (new shell)'), keys: [shortcutKbds('split-right')] },
+    { id: 'split-down', label: tl('Split this pane down (new shell)'), keys: [shortcutKbds('split-down')] },
     { id: 'open-editor', label: tl('Current agent folder in the editor'), keys: [shortcutKbds('open-editor')], v2: true },
     { id: 'settings', label: t('Settings'), keys: [shortcutKbds('settings')] },
     { id: 'notes', label: tl('Notes'), keys: [shortcutKbds('notes')] },

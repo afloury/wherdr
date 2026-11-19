@@ -6,7 +6,8 @@
 
 - **Spaces and tabs**: sidebar with every space, tabs at the top, active tab remembered per space.
   With herdr-core each terminal of a space is a tab, unless **Split right** or **Split down** (a
-  pane's **…** menu) put a second shell beside or under it in the same tab, in wherdr's own layout
+  pane's **…** menu, or Mod+Alt+S and Mod+Alt+Shift+S) put a second shell beside or under it in
+  the same tab, or **Split with agent…** puts a new agent to its right, in wherdr's own layout
   (synced to every device; herdr-app keeps its own); the header's map button lists the space's
   terminals to switch between. Drag the line between two cells to resize them (written on
   release, the same on every device; double-click goes back to 50/50, each side keeps at least
@@ -94,6 +95,6 @@ several, then tap a key or type one ASCII character on the phone keyboard. The
 modifiers reset after that key; tapping a selected modifier cancels it. Pasting
 or entering composed text clears the selection and keeps the text unchanged.
 
-Splits drawn from herdr-app's layout, dragging panes, pane swaps (`Alt+Shift+arrows`) and
-side-by-side focus moves are v2 only for now; Split right, Split down and dragging their dividers
-work with herdr-core, in wherdr's own layout.
+The split terminal works with herdr-core in wherdr's own layout: Split right, Split down, Split
+with agent, their shortcuts and dragging the dividers. Splits drawn from herdr-app's layout,
+dragging panes and pane swaps (`Alt+Shift+arrows`) are v2 only for now.

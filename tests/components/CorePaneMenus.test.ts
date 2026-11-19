@@ -4,7 +4,8 @@ import { mountSuspended } from '@nuxt/test-utils/runtime'
 import AgentCard from '~/components/AgentCard.vue'
 import PhoneIdentity from '~/components/PhoneIdentity.vue'
 import { desk, herdrState } from '~/composables/useHerdr'
-import { currentPaneItems, paneItems } from '~/composables/useSpaces'
+import { currentPaneItems, paneItems, splitAgentPane } from '~/composables/useSpaces'
+import { newAgentOpen } from '~/composables/useUi'
 import type { Pane } from '#shared/types'
 
 // herdr-core has no move or swap: the pane menus must not offer them (Split right and
@@ -36,7 +37,17 @@ it('core mode: no move or swap entry in the pane menus; rename and close stay', 
     expect(l).toContain('Rename pane')
     expect(l.some(x => /^Close/.test(x))).toBe(true)
   }
-  expect(labels(paneItems(pane))).toEqual(expect.arrayContaining(['Split right', 'Split down']))
+  expect(labels(paneItems(pane))).toEqual(expect.arrayContaining(['Split right', 'Split down', 'Split with agent…']))
+})
+
+it('Split with agent… opens the New agent sheet on that pane', () => {
+  herdrState.value = state()
+  const item = paneItems(pane).find(i => i.label === 'Split with agent…') as { run: () => void }
+  item.run()
+  try {
+    expect(splitAgentPane.value?.id).toBe('w1:p1')
+    expect(newAgentOpen.value).toBe(true)
+  } finally { newAgentOpen.value = false; splitAgentPane.value = null }
 })
 
 it('core mode: the phone "Panes and tabs" sheet has no move or swap', async () => {
