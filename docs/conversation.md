@@ -154,6 +154,10 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   answers. wherdr reads the screen again right before answering and refuses the answer if the
   question changed meanwhile. A free answer selects its option, waits for the field, then types
   the text. Unrecognized blocking screens offer the real terminal.
+- **While the agent works**: the line under the conversation shows what it is doing, read from
+  its screen: Claude Code's own verb with its spinning star (*✻ Orbiting…*, orange), omp's running
+  step and the turn's time; other agents, or a Claude conversation that is not open, show
+  *… is working…*. The line goes once the turn ends.
 - **Composer**: send messages while the agent works (queued: the agent's own queue when it takes
   them, else held by wherdr and sent when the turn ends; never sent twice; a message sent while
   wherdr types a wake or another of its own messages into the agent waits for it, then goes;

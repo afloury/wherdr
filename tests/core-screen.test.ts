@@ -126,6 +126,20 @@ describe('enrich', () => {
     await s.screens.enrich([w])
     expect(w.claudeScreen?.shell).toMatchObject({ command: 'make deploy', lines: ['step 3 of 9'], hidden: 2, since: -35_000 })
   })
+  it('sets a viewed working Claude\'s verb and an omp\'s running step, and clears them when the turn ends', async () => {
+    const texts: Record<string, string> = { 'm/w': working, 'm/o': fx('omp-working.txt') }
+    const s = setup(texts)
+    const w = pane('w', { status: 'working' }), o = pane('o', { agent: 'omp', status: 'working' })
+    await s.screens.enrich([w, o])
+    expect(w.activity).toBe('Pondering')
+    expect(o.ompActivity).toEqual({ step: 'Sleeping first time', since: -5000 })
+    texts['m/w'] = input
+    s.tick(1000)
+    const done = pane('w', { status: 'idle', activity: 'Pondering' }), rest = pane('o', { agent: 'omp', status: 'idle', ompActivity: { step: 'x', since: 0 } })
+    await s.screens.enrich([done, rest])
+    expect(done.activity).toBeUndefined()
+    expect(rest.ompActivity).toBeUndefined()
+  })
   it('caches reads per viewed / background pace and re-applies them', async () => {
     const { screens, reads, tick } = setup({ 'm/a': bash }, () => false)
     await screens.enrich([pane('a')])
