@@ -191,8 +191,8 @@ export async function runCommand(deps: Deps, token: unknown, body: CliBody) {
   }
 }
 
-// A token's own scope: its project and, for a workspace, each member, at the
-// Act level of reach.ts (members have no coordinator of their own).
+// A token's own scope: its project and, for a workspace, each member (members
+// have no coordinator of their own: the workspace's runs every command on them).
 export const inScope = (projects: Project[], scope: string, project: string) =>
   project === scope || membersOf(scope, projects).some(m => m.key === project)
 
@@ -214,9 +214,9 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
   const self = projects.find(x => x.key === scope)
   const shown = (k: string) => shownKey(projects.find(x => x.key === k) ?? { key: k })
   const reach = (k: string) => {
-    const level = inScope(projects, scope, k) ? { key: scope, reach: [{ project: k, level: 'act' as const }] } : self
-    // A workspace's coordinator reads its members' workflow too (only the user changes a member's own).
-    const why = main || k === scope || (cmd.name === 'template show' && inScope(projects, scope, k)) ? undefined : reachRefusal(level, k, cmd.name, { self: shown(scope), other: shown(k) })
+    // A workspace's coordinator runs every command on its members as on its own project, under
+    // the same rules; template edit never takes --project (a member's own workflow is the user's).
+    const why = main || inScope(projects, scope, k) ? undefined : reachRefusal(self, k, cmd.name, { self: shown(scope), other: shown(k) })
     if (why) throw new HerdrError('refused', why)
   }
   if (named && projects.some(x => x.key === named)) reach(named)
