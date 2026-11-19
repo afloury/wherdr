@@ -22,7 +22,7 @@ import { ensureReady } from './pmReady'
 import { fileConflict, filesSection, pastAgents } from '../../shared/pm/files'
 import { branchFor } from '../../shared/pm/branchName'
 import { showIds, shownKey, shownTaskId } from '../../shared/pm/projectKey'
-import { LABEL, TMP_DIR, WS_FILES_SCRIPT, parseWsFiles, wsFilesSection, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, startBase, taskPlan, workflowBaseNote, missingBaseNote, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, TMP_DIR, WS_FILES_SCRIPT, parseWsFiles, wsFilesSection, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, startBase, taskPlan, workflowBaseNote, missingBaseNote, startMissing, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type Run, type Task } from '../../shared/pm/run'
 import { isOpen, type Incident, type Recovery } from '../../shared/pm/incident'
 import { recordGone, type CoreList } from './pmIncidents'
 import { interruptTask } from './pmRecovery'
@@ -125,6 +125,11 @@ export async function linkSkills(deps: Pick<CoreAdminDeps, 'call'>, store: PmSto
 export const FETCH_BRANCH_SCRIPT = `git -C "$1" ls-remote -q --exit-code origin "refs/heads/$2" >/dev/null 2>&1; c=$?
 [ $c = 2 ] && exit 2; [ $c = 0 ] || { echo "origin unreachable (git ls-remote exit $c)"; exit 1; }
 git -C "$1" fetch -q origin "+refs/heads/$2:refs/remotes/origin/$2" 2>&1 || exit 1`
+// The branch a task type starts from (TaskType.start), at the task's first
+// start: fetched from origin, or the local one when there is no origin. Exits 2
+// when it is not there (the remote answers without it, or no local one).
+export const START_BRANCH_SCRIPT = `if ! git -C "$1" remote get-url origin >/dev/null 2>&1; then git -C "$1" rev-parse -q --verify "refs/heads/$2" >/dev/null || exit 2; exit 0; fi
+${FETCH_BRANCH_SCRIPT}`
 // A read-only snapshot of a member's base branch for context folders ($1 its
 // clone, $2 the folder of its snapshots, $3 the base branch; '' the repository's
 // default, $4 a commit it pinned at an earlier start, or ''). A pinned commit is
@@ -455,6 +460,10 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const cont = fetched?.code === 0
   const contLine = fetched?.code === 2 ? `Branch \`${task.fromBranch}\` is no longer on the remote: this task starts from the base branch instead.` : ''
   if (contLine) task = await store.logTask(task, 'engine', contLine)
+  // A promotion's type starts from its own branch, pinned at the first start (the task's branch keeps that commit); never the working branch instead.
+  const start = cont ? undefined : t.taskTypes[task.type]?.start
+  const at = start && !task.branch && !task.run ? await exec(deps, on, START_BRANCH_SCRIPT, [repo, start]) : undefined
+  if (at && at.code !== 0) return wait(store, task, startMissing(start!, at.code === 2 ? '' : at.out.split('\n').slice(-2).join(' ') || 'timeout'))
   // Named at the first start (a task started before has task/<id>): a later title, tag or template change leaves it alone.
   const paths = taskPaths(home, task.id, task.branch || (cont ? task.fromBranch : task.run ? undefined : branchFor(p.branchName, { ...task, id: shownTaskId([p], task.id) })), pmDir())
   // Recorded at the first start: changing the project's branch later leaves this task alone.
@@ -462,8 +471,8 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   if (started.fromWorkflow) await noteWorkflowBase(store, p.key, started.base!)
   let base = started.base ?? ''
   // The workspace's working branch (not the member's own, nor the task's): a repository without it starts from its current branch.
-  const shared = !!base && !started.fromWorkflow && task.base === undefined && !!p.workspace && !(p.overrides ?? []).includes('base')
-  const wt = await exec(deps, on, WORKTREE_SCRIPT, [repo, paths.worktree, paths.branch, base, cont ? `origin/${task.fromBranch}` : '', ...(shared ? ['1'] : [])])
+  const shared = !start && !!base && !started.fromWorkflow && task.base === undefined && !!p.workspace && !(p.overrides ?? []).includes('base')
+  const wt = await exec(deps, on, WORKTREE_SCRIPT, [repo, paths.worktree, paths.branch, start ?? base, cont ? `origin/${task.fromBranch}` : '', ...(shared ? ['1'] : [])])
   if (wt.code !== 0) return wait(store, task, `git worktree failed: ${wt.out.split('\n').slice(-3).join(' ') || 'timeout'}`)
   const missing = /^wherdr-base-missing ?(.*)$/m.exec(wt.out)
   if (missing) {

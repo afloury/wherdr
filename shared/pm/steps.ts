@@ -215,7 +215,7 @@ function failureText(step: Step, error: string | undefined, link?: string): stri
 
 // The steps of a task type, shared steps resolved, each with the text its
 // holder gets: every level's instructions, broadest first, then the proofs.
-// base: the project's working branch (withBase, fillBase).
+// base: the project's working branch (withBase, fillBase); {start}: where the type's tasks start.
 export function planSteps(t: Template, input: TaskInput, base?: string): PlannedStep[] {
   const tt = t.taskTypes[input.type]
   if (!tt) return []
@@ -230,7 +230,7 @@ export function planSteps(t: Template, input: TaskInput, base?: string): Planned
     const parts = [t.instructions, tt.instructions, input.instructions, s.instructions, own?.instructions].map(x => x?.trim()).filter(Boolean)
     if (s.evidence?.length) parts.push(`Before you say you are done, give ${s.evidence.map(proofOf(s)).join(', ')}.`)
     if (s.evidence?.includes('screenshots')) parts.push(SHOT_HOW)
-    return { ...s, ...(own?.timeout ? { timeout: own.timeout } : {}), ...guarded, text: fillBase(parts.join('\n\n'), base) }
+    return { ...s, ...(own?.timeout ? { timeout: own.timeout } : {}), ...guarded, text: fillBase(parts.join('\n\n'), base).replaceAll('{start}', tt.start || base || 'the base branch') }
   })
 }
 

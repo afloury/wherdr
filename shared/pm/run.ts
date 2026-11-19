@@ -258,6 +258,11 @@ export const workflowBaseNote = (base: string) => `no working branch set: using 
 // The task log line when the workspace's working branch is not in a member's repository.
 export const missingBaseNote = (base: string, current: string) => `${base} not found in this repository: using ${current || 'its current branch'}`
 
+// Why a task whose type starts from another branch waits at its first start: that branch is not there (why ''), or could not be fetched.
+export const startMissing = (start: string, why: string) => why
+  ? `Could not fetch branch \`${start}\`, which this task type starts from: ${why}`
+  : `Branch \`${start}\`, which this task type starts from, is not on the remote (nor in the clone, without one): push it, then start the task again`
+
 // A task's planned steps, with its working branch.
 export const taskPlan = (t: Template, task: Pick<Task, 'type' | 'prefs' | 'base'>, p?: Pick<Project, 'base'>) =>
   planSteps(t, { type: task.type, ...(task.prefs ? { prefs: task.prefs } : {}) }, taskBase(task, p))

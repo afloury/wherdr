@@ -236,7 +236,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     // Merged (by the engine, or on the Git host and confirmed): the task's remote branch goes, when safe.
     const merged = result.ok && run && endsMerged(act.action.kind)
     const gone = merged && await dropMergedBranch(actionShell(deps, runOn(deps, run)), {
-      worktree: run.worktree, branch: run.branch, guards: taskGuards(t, task.type), bases: [p.base, act.action.target, act.action.base], on: p.deleteBranch !== false,
+      worktree: run.worktree, branch: run.branch, guards: taskGuards(t, task.type), bases: [p.base, act.action.target, act.action.base, t.taskTypes[task.type]?.start], on: p.deleteBranch !== false,
     }).catch((e: Error) => `kept the remote branch ${run.branch}: ${e.message}`)
     // The approval dropped: the worker says why, with new screenshots.
     if (result.unapproved && state.lookAgain) await askWhy(deps, p, task.id, askWhyText(state.lookAgain.why)).catch(() => {})
