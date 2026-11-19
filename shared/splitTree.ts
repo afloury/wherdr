@@ -67,6 +67,30 @@ export function treeLayout(tab: { id: string, workspace: string }, t: SplitTree,
   return { tab: tab.id, workspace: tab.workspace, zoomed: false, focused: panes[0]?.pane ?? null, area: { x: 0, y: 0, width: 1000, height: 1000 }, panes, splits }
 }
 
+// A divider's ratio is kept between these bounds (each side keeps 15 %).
+export const clampRatio = (r: number) => Math.round(Math.min(0.85, Math.max(0.15, r)) * 1000) / 1000
+
+// The tree with the split at `path` ('' root, '0' first child, '1' second…) set to `ratio`.
+export function setRatio(t: SplitTree, path: string, ratio: number): SplitTree {
+  if (typeof t === 'string') return t
+  if (!path) return { ...t, ratio: clampRatio(ratio) }
+  return path[0] === '0' ? { ...t, a: setRatio(t.a, path.slice(1), ratio) } : { ...t, b: setRatio(t.b, path.slice(1), ratio) }
+}
+
+// Dividers of a tree's layout, as percentages of the tab: `at` = the line (x for `right`,
+// y for `down`), `from`/`span` = its extent on the other axis, `start`/`size` = its split's.
+export interface Divider { path: string, direction: SplitDir, ratio: number, at: number, from: number, span: number, start: number, size: number }
+export function treeDividers(layout: TabLayout): Divider[] {
+  const { area } = layout
+  return (layout.splits ?? []).map((s) => {
+    const h = s.direction === 'right'
+    const [start, size, total] = h ? [s.rect.x - area.x, s.rect.width, area.width] : [s.rect.y - area.y, s.rect.height, area.height]
+    const [from, span, other] = h ? [s.rect.y - area.y, s.rect.height, area.height] : [s.rect.x - area.x, s.rect.width, area.width]
+    const pct = (v: number, t: number) => (t > 0 ? (v / t) * 100 : 0)
+    return { path: s.path, direction: s.direction, ratio: s.ratio, at: pct(start + size * s.ratio, total), from: pct(from, other), span: pct(span, other), start: pct(start, total), size: pct(size, total) }
+  })
+}
+
 function cleanTree(v: unknown): SplitTree | null {
   if (typeof v === 'string') return v || null
   if (!v || typeof v !== 'object') return null

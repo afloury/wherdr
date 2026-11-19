@@ -2656,6 +2656,18 @@ ol[data-slot="viewport"] { top: calc(var(--safe-top) + 12px) !important; bottom:
    the active cell has an accent border (and receives the keyboard). */
 .split { position: relative; flex: 1; min-height: 0; margin: 10px 12px 12px; border-top: 1px solid var(--line); border-left: 1px solid var(--line); }
 .split-box { position: absolute; display: flex; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); overflow: hidden; }
+/* Dividers of wherdr's split tree: a 9px grip over the cell border, the line lit on hover, focus and drag. */
+.divider { position: absolute; z-index: 4; touch-action: none; outline: none; }
+.divider.right { width: 9px; transform: translateX(-50%); cursor: col-resize; }
+.divider.down { height: 9px; transform: translateY(-50%); cursor: row-resize; }
+.divider::after { content: ''; position: absolute; background: transparent; transition: background .1s ease; }
+.divider.right::after { top: 0; bottom: 0; left: calc(50% - 1px); width: 2px; }
+.divider.down::after { left: 0; right: 0; top: calc(50% - 1px); height: 2px; }
+.divider:hover::after, .divider:focus-visible::after, .divider.on::after { background: var(--accent); }
+.split.resizing { -webkit-user-select: none; user-select: none; }
+.split.resizing .split-box { pointer-events: none; }
+.split.resizing:has(.divider.right.on) { cursor: col-resize; }
+.split.resizing:has(.divider.down.on) { cursor: row-resize; }
 .cell-view { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
 .cell-view .agent-top {
   grid-template-columns: minmax(0, 1fr) auto auto; grid-template-areas: "head tabs actions";
