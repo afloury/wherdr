@@ -10,6 +10,12 @@ All notable changes to this project are documented here. The format follows
 
 - **Open in editor is back on v3.** Mod+Alt+O, or *Open in editor* in an agent's **…** menu, opens the agent's folder in the default editor of the Mac it runs on (this computer or another machine). Only a folder under that machine's home opens.
 
+### Fixed
+
+- **omp conversations and coordinators.** Conversations open for omp agents running in herdr-core terminals, including sessions with a leading title entry; project coordinators receive an explicit role to delegate work to task agents (#973, thanks to SunnySydeUp).
+- **omp status.** The footer stays readable when an extension adds a status line below it (#974, thanks to SunnySydeUp).
+- **Default project workflow.** An omp coordinator's tasks use omp and its selected model before a custom workflow is saved (#975, thanks to SunnySydeUp).
+
 ## [3.2.1] — 2026-11-19
 
 wherdr 3.2.1 brings back the split terminal on v3 and fixes scrolling in an agent's Terminal view, now smooth on a fast scroll of Claude's fullscreen view; it also brings a clearer Autopilot window, questions and choices cards that stay answerable, *N shell running in the background*, Claude's activity verb back in the status line, 12 project colors with dashed members' badges, a workspace coordinator that can finish its members' steps, and three batches of minor fixes from bug hunts. Release notes: [docs/release-notes-3.2.1.md](docs/release-notes-3.2.1.md).
