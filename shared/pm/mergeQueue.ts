@@ -67,10 +67,12 @@ export const mergeWaits = (task: Pick<Task, 'mergeAfter'>, tasks: Task[]) =>
 // on their host already, it is logged as a warning (server/utils/pmBoard.ts).
 export const HELD_MERGES = new Set(['git.land', 'github.merge', 'bitbucket.merge'])
 export const mergeHoldText = (ids: string[]) => `Merges once ${ids.join(', ')} ${ids.length > 1 ? 'are' : 'is'} done`
-export function mergeHold(kind: string, task: Pick<Task, 'mergeAfter'>, tasks: Task[], s: StepState, now: number): StepState | undefined {
+// by: who started it; a user's click stays theirs (mergeBy), so their guard applies when the engine runs it later.
+export function mergeHold(kind: string, task: Pick<Task, 'mergeAfter'>, tasks: Task[], s: StepState, now: number, by: 'user' | 'engine'): StepState | undefined {
   const waits = HELD_MERGES.has(kind) ? mergeWaits(task, tasks) : []
   if (!waits.length) return
-  return { ...s, acting: true, watch: { from: s.watch?.from ?? now, next: now + MERGE_WAIT.every }, mergeWait: mergeHoldText(waits) }
+  const user = by === 'user' || s.mergeBy === 'user' ? { mergeBy: 'user' as const } : {}
+  return { ...s, acting: true, watch: { from: s.watch?.from ?? now, next: now + MERGE_WAIT.every }, mergeWait: mergeHoldText(waits), ...user }
 }
 
 // A task it merges after that was stopped or abandoned: its coordinator is

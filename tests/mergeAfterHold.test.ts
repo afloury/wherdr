@@ -4,6 +4,7 @@ import path from 'node:path'
 import { afterEach, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
 import { stepAction, userStep } from '../server/utils/pmBoard'
+import { SCRIPT } from '../shared/pm/actions'
 import { cardOf } from '../shared/pm/board'
 import { runsNow } from '../shared/pm/advance'
 import { planSteps, type Step } from '../shared/pm/steps'
@@ -77,4 +78,23 @@ it('"I merged it" before a task it merges after is done is accepted, with a warn
   const after = await userStep(deps, id, true)
   expect(after.step).toMatchObject({ at: 2 })
   expect(after.log?.at(-1)?.text).toMatch(new RegExp(`merged before ${up} was done: the merge order \\(merge after\\) was not kept`))
+})
+
+// The user's click on a merge the guards keep for them: held, then run by the engine as theirs.
+it('a held click on a merge kept for the user lands once the upstream is done, under the user\'s guard', async () => {
+  const { store, id, upDone } = await setup({ id: 'land', ends: 'user', action: { kind: 'git.land', target: 'develop' } }, 'user')
+  await store.saveRun({ id: 'r1', task: id, role: 'worker', program: 'claude', model: 'm', machine: '', worktree: '/w', branch: 'task/WS-2', instructions: '/i', attempt: 1, state: 'running', startedAt: 1 })
+  const landed: string[][] = []
+  const call = async (_: string, p: { argv: string[] }) => {
+    const [, , script, , ...args] = p.argv
+    if (script!.includes(SCRIPT.land)) landed.push(args)
+    return { code: script!.includes(SCRIPT.land) ? 0 : 1, stdout: Buffer.from(script!.includes(SCRIPT.land) ? 'abc123' : '').toString('base64') }
+  }
+  const deps = { store, call, machines: () => [{ key: '', label: 'here', local: true }] } as unknown as CoreAdminDeps & { store: typeof store }
+  expect((await userStep(deps, id)).step).toMatchObject({ mergeWait: 'Merges once WS-1 is done', mergeBy: 'user' })
+  expect(landed).toHaveLength(0)
+  await upDone()
+  const after = await stepAction(deps, id, 'engine')
+  expect(landed).toHaveLength(1)
+  expect(after.step).toMatchObject({ done: true, proofs: { land: { commit: 'abc123' } } })
 })

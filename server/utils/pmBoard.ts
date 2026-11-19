@@ -208,7 +208,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
   if (act?.kind === 'action') {
     // A merge whose tasks to merge after are not done: held, checked again at the engine's next pass (mergeQueue.ts mergeHold).
     const all = task.mergeAfter ? await store.tasks() : []
-    const hold = mergeHold(act.action.kind, task, all, state, Date.now())
+    const hold = mergeHold(act.action.kind, task, all, state, Date.now(), by)
     if (hold) {
       const wake = mergeAfterWake(task, all)
       if (wake) {
@@ -217,15 +217,16 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
       }
       return cur.mergeWait === hold.mergeWait ? store.saveTask({ ...task, step: hold }) : store.logTask({ ...task, step: hold }, 'engine', `${act.step}: held: ${hold.mergeWait}`)
     }
-    // Released: the hold's watch is not the merge's own wait for its checks.
-    if (cur.mergeWait) state = { ...state, watch: undefined, mergeWait: undefined }
+    // Released: the hold's watch is not the merge's own wait for its checks; a held click runs as the user's.
+    const heldClick = !!cur.mergeWait && cur.mergeBy === 'user'
+    if (cur.mergeWait) state = { ...state, watch: undefined, mergeWait: undefined, mergeBy: undefined }
     // The user merged on their host before a task it merges after was done: accepted, with a warning.
     const early = act.action.kind === 'git.verify-merged' ? mergeWaits(task, all) : []
     await store.saveTask({ ...task, step: state }) // checking, before the action runs
     const run = await workerRun(store, task.id)
     let result: ActionResult = run
       ? await runAction({ store, sh: actionShell(deps, runOn(deps, run)) }, {
-          task, shown: shownTaskId(p ? [p] : [], task.id), ...messageOf(p, task), step: act.step, attempt: act.attempt, action: act.action, by: approved ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
+          task, shown: shownTaskId(p ? [p] : [], task.id), ...messageOf(p, task), step: act.step, attempt: act.attempt, action: act.action, by: approved || heldClick ? 'user' : by, guards: taskGuards(t, task.type), worktree: run.worktree, branch: run.branch,
           reviewed: reviewedCommit(plan, state), ...(approved && state.approved!.commit ? { approved: state.approved!.commit } : {}),
           halted: async () => !!(await store.task(task.id))?.stopped,
         }).catch((e: Error) => ({ ok: false, error: thrownReason(e) }))
