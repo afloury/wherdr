@@ -6,15 +6,20 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.2.2] — 2026-11-19
+
+wherdr 3.2.2 brings back *Open in editor* on v3 (Mod+Alt+O) and fixes omp: its conversations open from herdr-core terminals, its status shows with an extension's status line, an omp coordinator keeps coordinating, and a project's default workflow runs on its coordinator's agent. Release notes: [docs/release-notes-3.2.2.md](docs/release-notes-3.2.2.md).
+
 ### New
 
-- **Open in editor is back on v3.** Mod+Alt+O, or *Open in editor* in an agent's **…** menu, opens the agent's folder in the default editor of the Mac it runs on (this computer or another machine). Only a folder under that machine's home opens.
+- **Open in editor is back on v3.** Mod+Alt+O, or *Open in editor* in an agent's **…** menu, opens the agent's folder in the default editor of the Mac it runs on (this computer or another machine). Only a folder under that machine's home opens (#976).
 
 ### Fixed
 
-- **omp conversations and coordinators.** Conversations open for omp agents running in herdr-core terminals, including sessions with a leading title entry; project coordinators receive an explicit role to delegate work to task agents (#973, thanks to SunnySydeUp).
-- **omp status.** The footer stays readable when an extension adds a status line below it (#974, thanks to SunnySydeUp).
-- **Default project workflow.** An omp coordinator's tasks use omp and its selected model before a custom workflow is saved (#975, thanks to SunnySydeUp).
+- **omp conversations.** The conversation of an omp agent in a herdr-core terminal opens again: wherdr finds its session in omp's session folder for the terminal's folder, and reads sessions that start with omp's title line. Thanks to [@SunnySydeUp](https://github.com/SunnySydeUp) (#973).
+- **An omp coordinator keeps coordinating.** omp keeps some writing tools whatever the tool list, so a project coordinator on omp sometimes followed a pasted command and did a task's work itself; its system prompt now gives it the coordinator's role: add and start tasks, never do the work in its own conversation. A coordinator already running gets it once restarted. Thanks to [@SunnySydeUp](https://github.com/SunnySydeUp) (#973).
+- **omp status with an extension's status line.** When an omp extension adds a status line under omp's footer, the conversation view still reads the footer: the context gauge, quota meters and model show again. Thanks to [@SunnySydeUp](https://github.com/SunnySydeUp) (#974).
+- **Default project workflow.** Until a workflow is accepted, an omp coordinator's tasks run on omp with its model (a reviewer of the same model), and a workspace member without its own workflow takes its workspace coordinator's agent; Claude, Codex and no coordinator keep the Claude default; an accepted workflow keeps its own agents. Thanks to [@SunnySydeUp](https://github.com/SunnySydeUp) (#975).
 
 ## [3.2.1] — 2026-11-19
 
