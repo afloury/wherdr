@@ -9,7 +9,7 @@ const A = 'a'.repeat(40)
 const B = 'b'.repeat(40)
 type Node = string | { link: string } | Record<string, unknown>
 // A fake GitHub: one repo, a tree per commit, refs pointing at commits.
-function fakeGitHub(trees: Record<string, Record<string, Node>>, refs: Record<string, string>, opts: { release?: string, offline?: boolean } = {}): GitHub {
+function fakeGitHub(trees: Record<string, Record<string, Node>>, refs: Record<string, string>, opts: { release?: string, offline?: boolean, fork?: string } = {}): GitHub {
   const json = (v: unknown) => new Response(JSON.stringify(v), { status: 200 })
   const missing = () => new Response('{}', { status: 404 })
   const at = (tree: Record<string, Node>, p: string) => p.split('/').filter(Boolean).reduce<Node | undefined>((n, k) => (n && typeof n === 'object' ? (n as Record<string, Node>)[k] : undefined), tree)
@@ -30,6 +30,12 @@ function fakeGitHub(trees: Record<string, Record<string, Node>>, refs: Record<st
       if (!kind) return json({ default_branch: 'main' })
       if (kind === 'releases') return opts.release ? json({ tag_name: opts.release }) : missing()
       if (kind === 'commits') return refs[rest.join('/')] ? json({ sha: refs[rest.join('/')] }) : missing()
+      // Every commit of the fake is on some ref, except a fork's.
+      if (kind === 'compare') {
+        const [base, head] = rest.join('/').split('...')
+        if (!refs[base!]) return missing()
+        return json({ status: refs[base!] === head ? 'identical' : Object.values(refs).includes(head!) && head !== opts.fork ? 'behind' : 'ahead' })
+      }
       const tree = trees[u.searchParams.get('ref')!]
       const dir = tree && at(tree, rest.join('/'))
       if (!dir || typeof dir !== 'object' || 'link' in dir) return missing()
@@ -104,6 +110,23 @@ describe('install', () => {
     const res = await Promise.allSettled(['one/hello', 'two/hello'].map(repo => installFromGitHub({ repo, ref: 'main', commit: A }, gh, dir)))
     expect(res.map(r => r.status)).toEqual(['fulfilled', 'rejected'])
     expect((await listClientPlugins(dir))[0]!.source!.repo).toBe('one/hello')
+  })
+
+  it('refuses a fork\'s commit served under the parent\'s name', async () => {
+    const gh = fakeGitHub({ [A]: plugin(), [B]: plugin() }, { main: A, [B]: B }, { fork: B })
+    await expect(previewFromGitHub(`me/hello@${B}`, gh, dir)).rejects.toThrow(/may come from a fork/)
+    await expect(installFromGitHub({ repo: 'me/hello', ref: 'main', commit: B }, gh, dir)).rejects.toThrow(/not on main/)
+    expect(await fsp.readdir(dir)).toEqual([])
+  })
+
+  it('restores a plugin a crash left aside and removes leftover temp folders', async () => {
+    await fsp.mkdir(path.join(dir, '.old-hello-0123abcd'))
+    await fsp.writeFile(path.join(dir, '.old-hello-0123abcd', 'manifest.json'), '{}')
+    await fsp.mkdir(path.join(dir, '.install-hello-89abcdef'))
+    const gh = fakeGitHub({ [A]: plugin() }, { main: A })
+    // The restored folder has no source: it is someone else's, and stays.
+    await expect(installFromGitHub({ repo: 'me/hello', ref: 'main', commit: A }, gh, dir)).rejects.toThrow(/somewhere else/)
+    expect(await fsp.readdir(dir)).toEqual(['hello'])
   })
 
   it('says so for a private repository or no network', async () => {

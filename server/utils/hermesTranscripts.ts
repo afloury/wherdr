@@ -122,6 +122,9 @@ export function createHermesTranscripts({ fs = localFs, sqlite }: {
   async function local(db: string, list: Query[]): Promise<unknown[][]> {
     if (sqlite === null) throw Object.assign(new Error('node:sqlite is not available'), { code: SQLITE_UNSUPPORTED })
     const Db = sqlite ?? await databaseSyncCtor()
+    // Not atomic with the open below: sidecars removed in between are
+    // recreated, empty, beside Hermes's database and left there (deleting them
+    // could remove a live writer's WAL; SQLite reuses them on the next open).
     const live = () => existsSync(`${db}-wal`) && existsSync(`${db}-shm`)
     for (let attempt = 0; attempt < 2; attempt++) {
       if (!existsSync(db)) throw missing()

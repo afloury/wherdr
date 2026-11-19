@@ -56,6 +56,23 @@ async function resolveRef(gh: GitHub, repo: string, ref: string): Promise<{ reso
   return { resolved, commit: String(c.sha) }
 }
 
+// GitHub serves a fork's commit under the parent's name too: the commit must be
+// on the branch or tag asked for (a commit given alone: the latest release or the
+// default branch). `behind` is fine, the branch may have moved on since.
+async function reachable(gh: GitHub, repo: string, ref: string, commit: string) {
+  let bases = ref && !/^[0-9a-f]{7,40}$/.test(ref) ? [ref] : []
+  if (!bases.length) {
+    const meta = await getJson(gh, `${gh.api}/repos/${repo}`)
+    const rel = await getJson(gh, `${gh.api}/repos/${repo}/releases/latest`)
+    bases = [rel?.tag_name, meta?.default_branch].filter((b): b is string => typeof b === 'string' && b !== '')
+  }
+  for (const base of bases) {
+    const c = await getJson(gh, `${gh.api}/repos/${repo}/compare/${encodeURIComponent(base)}...${commit}`)
+    if (c?.status === 'identical' || c?.status === 'behind') return
+  }
+  throw fail(`Commit ${commit.slice(0, 12)} is not on ${ref && bases[0] === ref ? ref : 'the latest release or the default branch'} of ${repo} (it may come from a fork).`)
+}
+
 interface Entry { name: string, path: string, type: string, size: number }
 const encPath = (p: string) => p.split('/').map(encodeURIComponent).join('/')
 
@@ -100,9 +117,16 @@ async function inspect(gh: GitHub, repo: string, commit: string) {
 async function download(gh: GitHub, repo: string, commit: string, e: Entry, max: number): Promise<Buffer> {
   const r = await get(gh, `${gh.raw}/${repo}/${commit}/${encPath(e.path)}`)
   if (!r) throw fail(`Could not download ${e.path}.`)
-  const buf = Buffer.from(await r.arrayBuffer())
-  if (buf.length > max) throw fail('The plugin is too big (5 MB max).')
-  return buf
+  // Read in chunks and stop past the cap, whatever size the listing claimed.
+  const chunks: Buffer[] = []
+  let n = 0
+  const reader = r.body?.getReader()
+  for (let c = await reader?.read(); c && !c.done; c = await reader!.read()) {
+    n += c.value.length
+    if (n > max) { await reader!.cancel().catch(() => {}); throw fail('The plugin is too big (5 MB max).') }
+    chunks.push(Buffer.from(c.value))
+  }
+  return Buffer.concat(chunks)
 }
 
 // A plugin folder that exists and was not installed from this repository.
@@ -118,6 +142,7 @@ export async function previewFromGitHub(spec: string, gh = GITHUB, dir = PLUGINS
   const p = parsePluginSpec(spec)
   if (!p) throw fail('Type owner/repo, optionally followed by @tag, @branch or @commit.')
   const { resolved, commit } = await resolveRef(gh, p.repo, p.ref)
+  await reachable(gh, p.repo, p.ref, commit)
   const { info } = await inspect(gh, p.repo, commit)
   await clash(dir, info.id, p.repo)
   const installed = await readSource(dir, info.id)
@@ -136,11 +161,26 @@ async function locked<T>(key: string, fn: () => Promise<T>): Promise<T> {
 
 export async function installFromGitHub(source: PluginSource, gh = GITHUB, dir = PLUGINS_DIR): Promise<ClientPluginInfo> {
   if (!parsePluginSpec(source.repo + (source.ref ? `@${source.ref}` : '')) || !SHA_RE.test(source.commit)) throw fail('Bad source.')
+  await reachable(gh, source.repo, source.ref, source.commit)
   const { info, manifest, entries } = await inspect(gh, source.repo, source.commit)
   return locked(path.join(dir, info.id), () => write(source, info, [manifest, ...entries], gh, dir))
 }
 
+// What a crash mid-install left for this id: the plugin moved aside and never
+// moved back is restored, temp folders are removed. Runs under the id's lock.
+async function sweep(dir: string, id: string) {
+  const names = await fsp.readdir(dir).catch(() => [] as string[])
+  const dest = path.join(dir, id)
+  for (const n of names) {
+    const old = n.startsWith(`.old-${id}-`) && /^[0-9a-f]{8}$/.test(n.slice(`.old-${id}-`.length))
+    if (!old && !(n.startsWith(`.install-${id}-`) && /^[0-9a-f]{8}$/.test(n.slice(`.install-${id}-`.length)))) continue
+    if (old && await fsp.rename(path.join(dir, n), dest).then(() => true, () => false)) continue
+    await fsp.rm(path.join(dir, n), { recursive: true, force: true })
+  }
+}
+
 async function write(source: PluginSource, info: ClientPluginInfo, todo: Entry[], gh: GitHub, dir: string): Promise<ClientPluginInfo> {
+  await sweep(dir, info.id)
   await clash(dir, info.id, source.repo)
   let left = MAX_BYTES
   const files: [string, Buffer][] = []
