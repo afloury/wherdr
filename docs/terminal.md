@@ -16,7 +16,9 @@
   wheel or by touch. A program that tracks the mouse in its own full screen (Claude Code's
   fullscreen view, `vim`, `less --mouse`) gets the wheel and touch scrolling as mouse wheel
   events, as in a desktop terminal, so it scrolls its own history; this never takes control of
-  the terminal's size.
+  the terminal's size. A fast scroll is paced on the program's repaints (one burst at a time, at
+  most a page kept while it is busy) and allows for Claude Code's wheel acceleration, so a
+  trackpad flick moves as far as the fingers and stops when they do.
 - **Copy and links**: on a computer, drag over the text on screen to select it: releasing the
   button copies it, as do `⌘C` / `Ctrl+Shift+C`. Links (OSC 8 hyperlinks and plain `http(s)://`
   URLs, even wrapped over several rows) open in a new tab with `⌘`+click / `Ctrl`+click, or a tap

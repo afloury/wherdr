@@ -25,7 +25,7 @@ import { uploadPhoto } from '~/utils/photoUpload'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
 import { bindTerminalMouse, terminalCell } from '~/utils/terminalMouse'
 import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
-import { trackSgrMouse, wheelReports, type SgrMouse } from '~/utils/terminalWheel'
+import { createWheelPacer, trackSgrMouse, wheelReports, type SgrMouse } from '~/utils/terminalWheel'
 import { virtualNavigationBytes, virtualNavigationKeys } from '~/utils/keybarKeys'
 import { createCompositionTracker, toggleVirtualModifier, virtualChord, virtualInputKey, type VirtualModifier } from '~/utils/terminalModifiers'
 
@@ -74,6 +74,12 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let mouseSupported = false
   // The program asked for SGR mouse coordinates (DECSET 1006): see wheelReports.
   let mouseSgr: SgrMouse | null = null
+  // Wheel reports to the program, paced on its repaints (see createWheelPacer).
+  let wheelCell = { column: 0, row: 0 }
+  const wheel = createWheelPacer({
+    send: n => sendTerm({ type: 'terminal.wheel', text: wheelReports(n, wheelCell, mouseSgr?.on() === true, (term?.rows || 24) + 1) }),
+    page: () => term?.rows || 24,
+  })
   let coreStream = false
   // herdr-core: whether this viewer's size is the terminal's (see coreTerm.ts).
   let coreControl = true
@@ -88,6 +94,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   // the view (Conversation/Terminal toggle) and sockets get replaced: a stale
   // coreStream would skip the next fit and attach at xterm's default 80×24.
   function forgetStream() {
+    wheel.cancel()
     mouseSupported = false
     coreStream = false
     coreControl = true
@@ -489,6 +496,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
             if (coreStream && !coreControl) followCursor()
             selectionHint.refresh(current, mouseSupported)
             if (smoothTouchScrolling.value) frameTick.value++
+            if (bytes.length) wheel.frame()
           },
         })
       } else if (m.type === 'terminal.control') {
@@ -597,9 +605,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       // A program tracking the mouse gets the wheel (its own history: Claude
       // Code's fullscreen view); otherwise xterm scrolls the history it kept.
       if (term.modes.mouseTrackingMode !== 'none' && opts.input?.() !== false) {
-        const cell = pointCell(x, y) ?? { column: Math.floor(term.cols / 2), row: Math.floor(term.rows / 2) }
+        if (!tws || tws.readyState !== 1) return false
+        wheelCell = pointCell(x, y) ?? { column: Math.floor(term.cols / 2), row: Math.floor(term.rows / 2) }
         // Not terminal.input: scrolling neither cancels a touch gesture nor takes control.
-        if (!sendTerm({ type: 'terminal.wheel', text: wheelReports(lines, cell, mouseSgr?.on() === true, term.rows) })) return false
+        wheel.push(lines)
       } else term.scrollLines(-lines)
       if (touch && preview && smoothTouchScrolling.value) scrollAck.value += lines
       return true
@@ -633,6 +642,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     takeoverQueued = false
     focusQueued = false
     stopSmoothWatch()
+    wheel.cancel()
     disconnect()
     unbindSelection?.()
     unbindPaste?.()

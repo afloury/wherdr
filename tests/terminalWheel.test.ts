@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Terminal } from '@xterm/xterm'
-import { takeLines, trackSgrMouse, wheelPixels, wheelReports } from '../app/utils/terminalWheel'
+import { createWheelPacer, takeLines, trackSgrMouse, wheelPixels, wheelPlan, wheelReports } from '../app/utils/terminalWheel'
 import { writeTerminalFrame } from '../app/utils/terminalFrame'
 
 describe('wheelPixels', () => {
@@ -55,5 +55,72 @@ describe('trackSgrMouse', () => {
     await write(t, '\x1b[?1006l')
     expect(sgr.on()).toBe(false)
     t.dispose()
+  })
+})
+
+describe('wheelPlan', () => {
+  it('follows the program acceleration: one row when rested, then +0.3 per report up to 6', () => {
+    expect(wheelPlan(4, 0)).toEqual({ reports: 4, rows: 4, mult: expect.closeTo(1.9) })
+    expect(wheelPlan(12, 5.8)).toEqual({ reports: 2, rows: 12, mult: 6 })
+  })
+  it('never overshoots after the first report', () => {
+    expect(wheelPlan(7, 5)).toEqual({ reports: 1, rows: 5, mult: 5.3 })
+    expect(wheelPlan(2, 5)).toEqual({ reports: 1, rows: 5, mult: 5.3 })
+  })
+})
+
+describe('createWheelPacer', () => {
+  afterEach(() => { vi.useRealTimers() })
+  const setup = (page = 50) => {
+    vi.useFakeTimers()
+    const sent: number[] = []
+    const pacer = createWheelPacer({ send: n => { sent.push(n); return true }, page: () => page, now: () => Date.now() })
+    return { sent, pacer }
+  }
+
+  it('keeps one burst in flight and sends the net amount on the next repaint', () => {
+    const { sent, pacer } = setup()
+    pacer.push(3)
+    pacer.push(4)
+    pacer.push(2)
+    expect(sent).toEqual([3])
+    vi.advanceTimersByTime(10)
+    pacer.frame()
+    // 6 rows, accelerated from where the first burst left the program.
+    expect(sent).toEqual([3, 3])
+  })
+
+  it('keeps at most a page while the program does not repaint, then stops waiting', () => {
+    const { sent, pacer } = setup(10)
+    pacer.push(1)
+    for (let i = 0; i < 20; i++) pacer.push(5)
+    vi.advanceTimersByTime(199)
+    expect(sent).toEqual([1])
+    vi.advanceTimersByTime(1)
+    // 10 rows from rest (> 40 ms): 1, 1, 1, 1, 2, 2, 2.
+    expect(sent).toEqual([1, 7])
+  })
+
+  it('sends a remainder smaller than one accelerated report after the pause, one row each', () => {
+    const { sent, pacer } = setup()
+    pacer.push(40)
+    // 39 rows in 15 reports.
+    expect(sent).toEqual([15])
+    vi.advanceTimersByTime(5)
+    pacer.frame()
+    // 1 left, the next report would move 5: wait for the multiplier to rest.
+    expect(sent).toEqual([15])
+    vi.advanceTimersByTime(40)
+    expect(sent).toEqual([15, 1])
+  })
+
+  it('drops the other direction on a reversal and adds the report the program swallows', () => {
+    const { sent, pacer } = setup()
+    pacer.push(2)
+    pacer.push(5)
+    pacer.push(-3)
+    vi.advanceTimersByTime(10)
+    pacer.frame()
+    expect(sent).toEqual([2, -4])
   })
 })
