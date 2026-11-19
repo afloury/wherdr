@@ -191,8 +191,10 @@ its message under the field and keeps what you typed.
 - **Coordinator name**: what the project's coordinator is called after its key badge,
   in its sidebar row, its conversation header and what names it (notifications,
   decisions, proposals). Empty: the project's name, which follows a rename.
-- **Other projects this coordinator may act on**: one row per other project, Off
-  (the default), Read or Act. See [Coordinators on other projects](#coordinators-on-other-projects).
+- **Other projects this coordinator may act on**: only the projects it may reach,
+  each with Read or Act and a remove button (back to Off, the default). **Add**
+  opens a picker of the other projects (a search field past 8); a pick starts at
+  Read. None: *This coordinator acts on its own project only.* See [Coordinators on other projects](#coordinators-on-other-projects).
 - **Base branch**: the project's working branch. New tasks start their worktree
   from it, and a step that names no branch opens its PR to it or merges into it.
   Pick one of the repository's branches or type a name. Unset: the branch the
