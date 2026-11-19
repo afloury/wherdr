@@ -94,6 +94,22 @@ describe('pm store', () => {
     expect(await store.savedWorkflow('WEB')).toBeNull()
     expect(await store.workflowLog('WEB')).toEqual([])
   })
+
+  it('runs the default workflow with the agent of the coordinator, until a workflow is accepted', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await store.addProject({ ...input, template: '' }, okFolder)
+    // No coordinator started yet, or Claude's: the Claude default.
+    expect((await store.workflow('WEB'))!.prefs).toEqual({ agent: 'claude', model: 'sonnet' })
+    // omp: its own agent for the worker, its model pinned (the engine always pins one), and a reviewer of the same model.
+    await store.saveCoordinator({ ...(await store.coordinator('WEB'))!, ran: { program: 'omp', model: 'anthropic/claude-opus-5-5' } })
+    expect((await store.workflow('WEB'))!.prefs).toEqual({ agent: 'omp', model: 'anthropic/claude-opus-5-5', reviewModel: 'same' })
+    await store.saveCoordinator({ ...(await store.coordinator('WEB'))!, ran: { program: 'omp' } })
+    expect((await store.workflow('WEB'))!.prefs).toMatchObject({ agent: 'omp', model: expect.stringMatching(/^\S+$/), reviewModel: 'same' })
+    // An accepted workflow keeps its own agents.
+    await store.saveWorkflow('WEB', { ...defaultWorkflow('WEB'), prefs: { agent: 'claude', model: 'opus' } })
+    expect((await store.workflow('WEB'))!.prefs).toEqual({ agent: 'claude', model: 'opus' })
+  })
 })
 
 describe('removing a project (WHR-513)', () => {
