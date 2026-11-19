@@ -35,7 +35,7 @@ export interface Banner { text: string, btn: string, fn: () => void }
 
 // `fill`: side-by-side cell, the terminal takes the whole cell instead of the
 // reading column of a pane opened alone.
-export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | null) => void, hasBanner: () => boolean, fill?: () => boolean, input?: () => boolean }) {
+export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | null) => void, hasBanner: () => boolean, fill?: () => boolean, input?: () => boolean, wheelAccel?: () => boolean }) {
   let term: Terminal | null = null
   let fit: FitAddon | null = null
   let webgl: WebglAddon | null = null
@@ -79,6 +79,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   const wheel = createWheelPacer({
     send: n => sendTerm({ type: 'terminal.wheel', text: wheelReports(n, wheelCell, mouseSgr?.on() === true, (term?.rows || 24) + 1) }),
     page: () => term?.rows || 24,
+    accel: opts.wheelAccel,
   })
   let coreStream = false
   // herdr-core: whether this viewer's size is the terminal's (see coreTerm.ts).

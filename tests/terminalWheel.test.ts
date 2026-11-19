@@ -71,10 +71,10 @@ describe('wheelPlan', () => {
 
 describe('createWheelPacer', () => {
   afterEach(() => { vi.useRealTimers() })
-  const setup = (page = 50) => {
+  const setup = (page = 50, accel = true) => {
     vi.useFakeTimers()
     const sent: number[] = []
-    const pacer = createWheelPacer({ send: n => { sent.push(n); return true }, page: () => page, now: () => Date.now() })
+    const pacer = createWheelPacer({ send: n => { sent.push(n); return true }, page: () => page, accel: () => accel, now: () => Date.now() })
     return { sent, pacer }
   }
 
@@ -90,15 +90,33 @@ describe('createWheelPacer', () => {
     expect(sent).toEqual([3, 3])
   })
 
-  it('keeps at most a page while the program does not repaint, then stops waiting', () => {
+  it('keeps at most a page, and a stalled program gets no more bursts until it paints', () => {
     const { sent, pacer } = setup(10)
     pacer.push(1)
-    for (let i = 0; i < 20; i++) pacer.push(5)
-    vi.advanceTimersByTime(199)
+    for (let t = 20; t < 1900; t += 20) { vi.advanceTimersByTime(20); pacer.push(5) }
+    // The first burst never got its repaint: what came after is dropped, not queued.
     expect(sent).toEqual([1])
-    vi.advanceTimersByTime(1)
-    // 10 rows from rest (> 40 ms): 1, 1, 1, 1, 2, 2, 2.
+    pacer.frame()
+    pacer.push(30)
+    // 10 rows at most, from rest: 1, 1, 1, 1, 2, 2, 2.
     expect(sent).toEqual([1, 7])
+  })
+
+  it('leaves a stall or an edge on a reversal', () => {
+    const { sent, pacer } = setup()
+    pacer.push(3)
+    vi.advanceTimersByTime(300)
+    pacer.push(3)
+    pacer.push(-2)
+    expect(sent).toEqual([3, -3])
+  })
+
+  it('sends one report per row to a program without acceleration', () => {
+    const { sent, pacer } = setup(50, false)
+    pacer.push(40)
+    pacer.frame()
+    pacer.push(-3)
+    expect(sent).toEqual([40, -3])
   })
 
   it('sends a remainder smaller than one accelerated report after the pause, one row each', () => {

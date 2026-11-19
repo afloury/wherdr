@@ -65,30 +65,34 @@ export interface WheelPacer { push: (lines: number) => void, frame: () => void, 
 
 // Paces wheel reports to a program tracking the mouse: rows add up while a
 // burst waits for its repaint (one burst in flight, never a queue behind a
-// busy program), at most a page is kept (a program that stalls does not jump
-// on), and the rows are turned into reports through the program's
-// acceleration, so it moves as far as the gesture.
+// busy program) and at most a page is kept. A burst with no repaint within
+// `wait` (a stalled program, or an edge with nothing to redraw) sends nothing
+// more in that direction until the program paints again, so a stall never
+// collects bursts that land at once afterwards. With `accel` (Claude Code),
+// rows become reports through its acceleration; otherwise one report per row.
 export function createWheelPacer(o: {
   send: (reports: number) => boolean
   page: () => number
+  accel?: () => boolean
   now?: () => number
-  // A burst that gets no repaint (an edge, nothing to redraw) stops blocking after this.
   wait?: number
 }): WheelPacer {
   const now = o.now ?? (() => performance.now())
   const wait = o.wait ?? 200
-  let pending = 0, mult = 0, sentAt = -Infinity, inFlight = false, dir = 0
+  let pending = 0, mult = 0, sentAt = -Infinity, inFlight = false, stalled = false, dir = 0
   let timer: ReturnType<typeof setTimeout> | undefined
   const later = (ms: number) => { clearTimeout(timer); timer = setTimeout(flush, Math.max(0, ms)) }
   function flush() {
     timer = undefined
-    if (!pending) return
     const t = now()
-    if (inFlight && t - sentAt < wait) return later(sentAt + wait - t)
+    if (inFlight && t - sentAt >= wait) { inFlight = false; stalled = true; pending = 0 }
+    if (!pending || stalled) return
+    if (inFlight) return later(sentAt + wait - t)
     const sign = Math.sign(pending)
-    const flip = dir !== 0 && sign !== dir
+    const accel = o.accel?.() ?? false
+    const flip = accel && dir !== 0 && sign !== dir
     const rested = flip || t - sentAt > ACCEL_GAP
-    const plan = wheelPlan(Math.abs(pending), rested ? 0 : mult)
+    const plan = accel ? wheelPlan(Math.abs(pending), rested ? 0 : mult) : { reports: Math.abs(pending), rows: Math.abs(pending), mult: 0 }
     // Less than one accelerated report left: sent one row at a time after the pause.
     if (!rested && plan.rows > Math.abs(pending)) return later(sentAt + ACCEL_GAP + 1 - t)
     if (!o.send(sign * (plan.reports + (flip ? 1 : 0)))) { pending = 0; return }
@@ -97,23 +101,26 @@ export function createWheelPacer(o: {
     sentAt = t
     dir = sign
     inFlight = true
-    if (pending) later(wait)
+    later(wait)
   }
   return {
     push(lines) {
       if (!lines) return
-      // A reversal drops what the other direction still had to do.
-      if (pending && Math.sign(lines) !== Math.sign(pending)) pending = 0
+      // A reversal drops what the other direction still had to do, and may leave an edge.
+      if (dir && Math.sign(lines) !== dir) { pending = 0; inFlight = false; stalled = false }
+      else if (pending && Math.sign(lines) !== Math.sign(pending)) pending = 0
+      if (stalled) return
       const max = Math.max(1, o.page())
       pending = Math.max(-max, Math.min(max, pending + lines))
       flush()
     },
     frame() {
+      stalled = false
       if (!inFlight) return
       inFlight = false
       flush()
     },
-    cancel() { clearTimeout(timer); timer = undefined; pending = 0; inFlight = false; mult = 0; dir = 0 },
+    cancel() { clearTimeout(timer); timer = undefined; pending = 0; inFlight = stalled = false; mult = 0; dir = 0 },
   }
 }
 
