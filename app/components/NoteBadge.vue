@@ -14,10 +14,12 @@ const project = computed(() => {
 })
 const custom = computed(() => (props.badge.kind === 'custom' ? props.badge : null))
 const link = computed(() => project.value?.link || custom.value?.link || '')
+// A web address (a PR) opens in a new tab: the installed app stays where it is.
+const web = computed(() => /^[a-z][a-z0-9+.-]*:/i.test(link.value))
 </script>
 
 <template>
-  <component :is="link ? 'a' : 'span'" :href="link || undefined" class="note-badge-wrap" data-testid="note-badge">
+  <component :is="link ? 'a' : 'span'" :href="link || undefined" :target="web ? '_blank' : undefined" :rel="web ? 'noopener noreferrer' : undefined" class="note-badge-wrap" data-testid="note-badge">
     <ProjectBadge v-if="project" :text="project.text" :color="project.color" />
     <span v-else-if="custom" class="note-badge" :style="custom.colour ? { '--key-c': projectColorVar(custom.colour) } : undefined">
       <UIcon v-if="custom.icon" :name="custom.icon" />{{ custom.label }}
