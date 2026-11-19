@@ -8,6 +8,11 @@ Status: **implemented** (2026-10-01). Code: `app/utils/shortcuts.ts` (table and 
 > v3 (herdr-core): pane swaps (`Alt+Shift+arrows`) and side-by-side focus moves are v2 only;
 > Mod+Alt+O (reveal) needs `/api/reveal`, which herdr-core mode does not serve.
 
+> 2026-11-19: Mod+Alt+S splits the current pane right, Mod+Alt+Shift+S down (v3, wherdr's own
+> layout). Not ⌥⌘D: macOS shows or hides the Dock with it. No browser binding known for ⌘⌥S,
+> ⌘⌥⇧S, Ctrl+Alt+S or Ctrl+Alt+Shift+S in Chromium, Firefox or Safari, and none in GNOME's
+> default keys (its own use Super) `[INFERENCE]`: not tried in Safari or on GNOME yet.
+
 > 2026-11-13: Mod+Alt+P toggles the Notes panel (P for pad: N is the new space). No
 > browser binding known for ⌘⌥P or Ctrl+Alt+P `[INFERENCE]`.
 
@@ -37,6 +42,7 @@ promise that wherdr "can replace the Herdr terminal client day to day".
 | New agent in a new space: the "New agent" sheet, which creates the space (`workspace.create`) | Mod+Alt+N | Computer, online | Yes (caught before the terminal) |
 | New tab in the current pane's space: the "Start in a new tab" sheet | Mod+Alt+T | Computer, online, a pane being viewed | Yes (caught before the terminal) |
 | Close the current pane, through the same confirmation as the menu | Mod+Alt+W | Computer, online, a pane being viewed | Yes (caught before the terminal) |
+| Split the current pane right / down: a shell in the same folder, as the menu's Split right / Split down | Mod+Alt+S / Mod+Alt+Shift+S | Computer, online, a pane with a known folder | Yes (caught before the terminal) |
 | The current agent's folder in its default editor, on the agent's machine | Mod+Alt+O | Computer, a pane with a folder, on a Mac (`machineOs`) | Yes (caught before the terminal) |
 | Search this conversation; if search is already open, focus and select its field | Mod+F | Agent in conversation mode | No: the browser keeps its Find there |
 | Switch between conversation and terminal | Ctrl+`` ` `` on every platform, by position (`Backquote`; on macOS also `IntlBackslash`, the key left of 1 on ISO keyboards) | Agent with a conversation, or the active cell | Yes (xterm sends nothing for it) |

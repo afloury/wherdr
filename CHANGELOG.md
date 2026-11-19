@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **The split terminal is back on v3.** A pane's **…** menu offers *Split right*, *Split down* (a shell in the same folder, in the same tab) and *Split with agent…* (the New agent sheet on that machine and folder, the agent to the right). On a computer, Mod+Alt+S splits right and Mod+Alt+Shift+S down, from the terminal too; drag a divider to resize, double-click for 50/50. The layout is wherdr's own, synced to every device; herdr-app keeps its own ([Terminal](docs/terminal.md)).
+
 ## [3.2.0] — 2026-11-19
 
 wherdr 3.2.0 brings plugins with a Community plugins switch and install from GitHub, omp as a task agent and coordinator, Antigravity CLI and Hermes Agent conversations, workspace context folders, skills and plan files, Tasks to review in place of the Decisions page, updates that roll back a build that does not answer, and security and reliability fixes from three bug hunts; it also ships everything prepared for 3.1.1, which was never released: workspace member settings, a workspace from New › Project, a command run when a task changes state, a commit message template, questions cards, and fixes to photo messages, message states, keep awake on a remote Mac and Devin conversations. Release notes: [docs/release-notes-3.2.0.md](docs/release-notes-3.2.0.md).

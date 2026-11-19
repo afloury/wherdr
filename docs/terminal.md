@@ -27,6 +27,10 @@
   tab, taking the right or bottom half of the pane's cell; the tab view opens on it. The layout is
   wherdr's own (a synced setting, the same on every open device within a second); herdr-app keeps
   its own and wherdr never writes it. Closing a terminal gives its room to its neighbour.
+  On a computer, **Mod+Alt+S** splits the pane being viewed to the right and **Mod+Alt+Shift+S**
+  splits it down, from the terminal too (changeable in Settings › Shortcuts).
+- **Split with agent…** (same menu): the New agent sheet on the pane's machine and folder; the
+  agent (or a terminal) it launches takes the right half of the pane's cell.
 - **Resize** (computer): drag the line between two cells; each terminal fits its cell as it
   moves, and the new proportion is saved on release (arrows on a focused line move it by 5 %).
   Double-click a line to go back to 50/50. Each side keeps at least 15 %. Not on a phone.
