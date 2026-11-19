@@ -21,7 +21,7 @@ export interface CoreMenuContext {
   rename: (paneId: string) => void
   /** Opens the file browser of the agent's folder. */
   browseFiles: () => void
-  /** Split down entry of the pane (absent when its folder is unknown), already built. */
+  /** Split right / down entries of the pane (absent when its folder is unknown), already built. */
   split?: MenuItem[]
   /** Settings entries (not in a side-by-side cell), already built. */
   settings: MenuItem[]

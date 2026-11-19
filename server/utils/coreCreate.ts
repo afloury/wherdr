@@ -279,7 +279,7 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
       deps.onQueued?.(watch)
     }
   }
-  return { pane_id: pane.id, workspace_id: pane.workspace, tab_id: pane.tab, name: kind === 'shell' ? null : name || kind, first_message: sent, ...(queued ? { queued } : {}) }
+  return { pane_id: pane.id, workspace_id: pane.workspace, tab_id: pane.tab, address, name: kind === 'shell' ? null : name || kind, first_message: sent, ...(queued ? { queued } : {}) }
 }
 
 // Adds a machine over SSH (like `hc machine add <target>`): no command (`via`) and no

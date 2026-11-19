@@ -5,11 +5,12 @@
 ### On a computer
 
 - **Spaces and tabs**: sidebar with every space, tabs at the top, active tab remembered per space.
-  With herdr-core each terminal of a space is a tab, unless **Split down** (a pane's **…** menu)
-  put a second shell under it in the same tab, drawn one under the other in equal parts; the
-  header's map button lists the space's terminals to switch between. On a phone, Split down opens
-  the tab's plan with both panes. Split right, resizing and move of tabs are not available yet;
-  renaming a tab named in herdr-app's layout stays in herdr-app.
+  With herdr-core each terminal of a space is a tab, unless **Split right** or **Split down** (a
+  pane's **…** menu) put a second shell beside or under it in the same tab, in wherdr's own layout
+  (synced to every device; herdr-app keeps its own); the header's map button lists the space's
+  terminals to switch between. On a phone, a split opens the tab's plan with the panes. Resizing
+  and move of tabs are not available yet; renaming a tab named in herdr-app's layout stays in
+  herdr-app.
 - **Composer under the terminal**: an agent's terminal keeps the message field below it.
   The sidebar can be resized, or collapsed to a narrow rail (search, new agent, settings and
   state counters) with the button next to Settings; the choice is kept on the device.
@@ -91,6 +92,6 @@ several, then tap a key or type one ASCII character on the phone keyboard. The
 modifiers reset after that key; tapping a selected modifier cancels it. Pasting
 or entering composed text clears the selection and keeps the text unchanged.
 
-Split right, splits drawn from herdr-app's layout, dragging panes and dividers, pane swaps
-(`Alt+Shift+arrows`) and side-by-side focus moves are v2 only for now; Split down works with
-herdr-core.
+Splits drawn from herdr-app's layout, dragging panes and dividers, pane swaps
+(`Alt+Shift+arrows`) and side-by-side focus moves are v2 only for now; Split right and Split down
+work with herdr-core, in wherdr's own layout.
