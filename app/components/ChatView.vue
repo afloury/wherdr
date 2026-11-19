@@ -986,9 +986,9 @@ function syncQuoted() {
   }
 }
 // `choices` buttons (utils/markdown.ts): a tap sends the option as the user's
-// reply, quoted to the question before them (or to the message). Only those
-// of the agent's last message are live, until a sent message answers them;
-// the others are greyed, the answer given pressed.
+// reply, quoted to the question before them (or to the message). They stay
+// live until a sent message answers them, even under a later agent message
+// (a wake, a report); then greyed, the answer given pressed.
 function choiceRef(btn: HTMLElement): Reference | null {
   const key = btn.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey
   const b = key ? blocks.value.find(x => x.key === key) : null
@@ -1006,13 +1006,12 @@ function sentAnswer(key: string, ref: Reference): string | null {
   return null
 }
 function syncChoices() {
-  const last = blocks.value.findLast(b => b.k === 'assistant')?.key
   for (const group of listEl.value?.querySelectorAll<HTMLElement>('.w-choices') || []) {
     const key = group.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey || ''
     const buttons = [...group.querySelectorAll<HTMLButtonElement>('.q-choice')]
     const ref = buttons[0] ? choiceRef(buttons[0]) : null
     const given = ref ? sentAnswer(key, ref)?.toLowerCase() ?? null : null
-    const live = key === last && given === null && !readOnly.value
+    const live = given === null && !readOnly.value
     group.classList.toggle('done', !live)
     for (const b of buttons) {
       b.disabled = !live
@@ -1033,7 +1032,7 @@ provide<QuestionsHost>(QUESTIONS_HOST, {
     const key = el.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey || ''
     const ref = choiceRef(el)
     const given = ref ? sentAnswer(key, ref) : null
-    return { live: key === blocks.value.findLast(b => b.k === 'assistant')?.key && given === null && !readOnly.value, given }
+    return { live: given === null && !readOnly.value, given }
   },
   send(el, text) {
     const ref = choiceRef(el)
