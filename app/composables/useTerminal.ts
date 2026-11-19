@@ -25,7 +25,7 @@ import { uploadPhoto } from '~/utils/photoUpload'
 import { terminalClosedText, terminalUnavailableText } from '~/utils/terminalClosed'
 import { bindTerminalMouse, terminalCell } from '~/utils/terminalMouse'
 import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
-import { wheelReports } from '~/utils/terminalWheel'
+import { trackSgrMouse, wheelReports, type SgrMouse } from '~/utils/terminalWheel'
 import { virtualNavigationBytes, virtualNavigationKeys } from '~/utils/keybarKeys'
 import { createCompositionTracker, toggleVirtualModifier, virtualChord, virtualInputKey, type VirtualModifier } from '~/utils/terminalModifiers'
 
@@ -73,7 +73,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let mouse: ReturnType<typeof bindTerminalMouse> | null = null
   let mouseSupported = false
   // The program asked for SGR mouse coordinates (DECSET 1006): see wheelReports.
-  let mouseSgr = false
+  let mouseSgr: SgrMouse | null = null
   let coreStream = false
   // herdr-core: whether this viewer's size is the terminal's (see coreTerm.ts).
   let coreControl = true
@@ -243,13 +243,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // Wheel: xterm does nothing with it (it would send ↑/↓ to the agent, see
     // utils/terminalWheel.ts); TerminalView converts it to terminal.scroll.
     term.attachCustomWheelEventHandler(() => false)
-    // xterm tracks the mouse modes but does not expose the encoding.
-    const sgrMode = (on: boolean) => (params: (number | number[])[]) => {
-      if (params.includes(1006)) mouseSgr = on
-      return false
-    }
-    term.parser.registerCsiHandler({ prefix: '?', final: 'h' }, sgrMode(true))
-    term.parser.registerCsiHandler({ prefix: '?', final: 'l' }, sgrMode(false))
+    mouseSgr = trackSgrMouse(term)
     // Shift+Enter as a named key; Ctrl+V (outside Apple) and F12 left to the browser.
     bindTerminalKeys(term, key => sendVirtualKey(key))
     term.onData(d => {
@@ -489,6 +483,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
             if (smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
             if (coreStream) offerFit()
           },
+          reset: () => mouseSgr?.reset(),
           written: () => {
             if (credit && tws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'credit', bytes: credit }))
             if (coreStream && !coreControl) followCursor()
@@ -569,7 +564,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
   const isConnected = () => Boolean(tws && tws.readyState <= 1)
 
-  function reset() { term?.reset() }
+  function reset() { term?.reset(); mouseSgr?.reset() }
   function focus() {
     focusQueued = !term && mounting
     term?.focus()
@@ -604,7 +599,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       if (term.modes.mouseTrackingMode !== 'none' && opts.input?.() !== false) {
         const cell = pointCell(x, y) ?? { column: Math.floor(term.cols / 2), row: Math.floor(term.rows / 2) }
         // Not terminal.input: scrolling neither cancels a touch gesture nor takes control.
-        if (!sendTerm({ type: 'terminal.wheel', text: wheelReports(lines, cell, mouseSgr, term.rows) })) return false
+        if (!sendTerm({ type: 'terminal.wheel', text: wheelReports(lines, cell, mouseSgr?.on() === true, term.rows) })) return false
       } else term.scrollLines(-lines)
       if (touch && preview && smoothTouchScrolling.value) scrollAck.value += lines
       return true
