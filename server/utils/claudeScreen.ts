@@ -45,6 +45,32 @@ export function parseClaudeActivity(text: string | null | undefined): string | n
   return null
 }
 
+// Jobs left running once Claude's turn is over, as its footer counts them under the
+// input field ("⏵⏵ auto mode on · 1 shell · ↓ to manage"), else as the turn's last
+// line says ("✻ Brewed for 7s · done 12:49 PM · 1 shell still running"). Null while
+// a turn runs (its verb line is up) or when nothing runs in the background.
+const JOB = /^(\d+) ((?:background )?(?:shells?|tasks?|agents?|monitors?|teammates?))$/
+const STILL_RUNNING = /^[*✢✳✶✻✽·]\s+\S.*?·\s+done\b.*?·\s+(\d+ \S+(?: \S+)?) still running$/
+const TURN_END = /^[*✢✳✶✻✽·]\s+\S.*\bfor \d/
+export function parseClaudeBackground(text: string | null | undefined): string | null {
+  if (!text || parseClaudeActivity(text)) return null
+  const lines = text.trimEnd().split('\n').map(l => l.trimEnd())
+  let rule = -1
+  for (let i = lines.length - 1; i >= 0 && rule < 0; i--) if (RULE_RE.test(lines[i]!)) rule = i
+  if (rule < 0) return null
+  const jobs = lines.slice(rule + 1).flatMap(l => l.split(' · ').flatMap(s => JOB.exec(s.trim().replace(/^⏵⏵\s+/, ''))?.[0] ?? []))
+  if (jobs.length) return jobs.join(', ')
+  // Else the latest turn's end line only: an older turn's count is stale once a newer turn
+  // ended ("✻ Worked for 2s") or began (a "❯ " message above the input field).
+  let top = rule - 1
+  while (top >= 0 && !RULE_RE.test(lines[top]!)) top--
+  for (let i = top - 1; i >= Math.max(0, top - 24); i--) {
+    if (TURN_END.test(lines[i]!)) return STILL_RUNNING.exec(lines[i]!)?.[1] ?? null
+    if (lines[i]!.startsWith('❯ ')) return null
+  }
+  return null
+}
+
 // "1m 14s" → ms.
 export function elapsedMs(s: string | null | undefined): number | null {
   const m = /^(?:(\d+)h\s*)?(?:(\d+)m\s*)?(\d+)s$/.exec(String(s || '').trim())
