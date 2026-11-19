@@ -90,6 +90,8 @@ const loops = computed(() => plan.value.flatMap((s, to) => {
 }))
 const LEGEND: [Kind | 'loop', string][] = [['agent', 'An agent works'], ['engine', 'The engine acts'], ['you', 'Waits for you'], ['loop', 'Sent back'], ['edge', 'Start or finish']]
 const about = computed(() => props.workflow.taskTypes[props.type]?.instructions?.trim() ?? '')
+// A promotion's type starts from its own branch, said first on the route line.
+const start = computed(() => props.workflow.taskTypes[props.type]?.start)
 
 // Layout: as many columns as the width allows, the rows snaking (the second
 // one right to left), so each arrow goes to a neighbouring card.
@@ -152,7 +154,8 @@ const KINDS: Kind[] = ['agent', 'engine', 'you', 'edge']
   <div class="wf" data-testid="wf-diagram">
     <p v-if="impact" class="wf-impact" data-testid="wf-impact">{{ impact }}</p>
     <p v-if="nodes.length && !compact" class="wf-route" data-testid="wf-route">
-      <template v-for="(n, i) in nodes.filter(x => x.short)" :key="n.s.id"><span v-if="i" class="wf-to" aria-hidden="true">→</span><span :class="`k-${n.kind}`">{{ n.short }}</span></template>
+      <span v-if="start" class="k-edge" data-testid="wf-start">{{ tl(`Starts from ${start}`) }}</span>
+      <template v-for="(n, i) in nodes.filter(x => x.short)" :key="n.s.id"><span v-if="i || start" class="wf-to" aria-hidden="true">→</span><span :class="`k-${n.kind}`">{{ n.short }}</span></template>
     </p>
     <p v-if="about && !compact" class="wf-about">{{ about }}</p>
     <ul class="wf-legend" :aria-label="tl('Legend')">

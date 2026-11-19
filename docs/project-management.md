@@ -427,7 +427,7 @@ you merged on the Git host), wherdr deletes the task's remote branch, unless
 the project's General tab says to keep branches. It deletes it only when the
 branch's head is the merged PR's head (no commit pushed since), no other open
 PR uses or targets it, and it is neither a protected branch, a base (the
-project's, the step's) nor the repository's default branch. Otherwise it stays,
+project's, the step's, the task type's `start`) nor the repository's default branch. Otherwise it stays,
 and the task's log says why (*kept the remote branch task/WHR-12: commit
 1a2b3c4 was pushed after its merge*). A PR closed without a merge, or an
 archived task, keeps its branch.
@@ -436,6 +436,36 @@ In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
 In a workspace's member project, a task type may also set `context` (`"all"` or
 a list of member keys): the task's agents get read-only snapshots of those other
 members ([Context folders](workspaces.md#context-folders)).
+
+<a id="promotion-branches"></a>**Promotion branches.** A task type may set
+`start` to a branch (`"start": "develop"`): its tasks start from that branch's
+tip on origin (the local branch when there is no origin) instead of the working
+branch. The commit is taken at the task's first start and kept: later restarts
+and new commits on develop do not change it. The task's own branch is made from
+it as usual; `{base}` in instructions stays the working branch, `{start}` names
+this one. If the branch is not on the remote at that first start, the task
+waits for you with the reason; it never starts from the working branch instead.
+wherdr never deletes or rewrites a `start` branch: the cleanup after a merge
+keeps it like a base, and only a step that names it as its target lands into
+it. The Workflow tab's route line says *Starts from develop*; an empty or
+invalid branch name is refused when the workflow is saved. The built-in
+*company* example has one, `promote-uat`: develop's tip lands into uat once you
+press Promote, then the engine watches the uat pipeline.
+
+```json
+"promote-uat": { "start": "develop", "steps": [
+  { "id": "todo", "column": "To do" },
+  { "id": "check", "column": "Working", "holder": "worker", "ends": "report",
+    "instructions": "This task promotes {start} to uat. Change nothing: check that the {start} pipeline is green." },
+  { "id": "land", "column": "Deploy", "holder": "none", "ends": "user", "userLabel": "Promote",
+    "action": { "kind": "git.land", "target": "uat" } },
+  { "id": "deploy", "column": "Deploy", "ends": "action",
+    "action": { "kind": "pipeline.watch", "branch": "uat", "every": "2m", "timeout": "90m" } },
+  { "id": "done", "column": "Done" } ] }
+```
+
+A `promote-master` type is the same with `"start": "uat"` and `master` as the
+land's target.
 
 **Bitbucket Cloud.** A worker step can open the PR with the agent's own
 Bitbucket tool (`evidence: ["link"]`). Then either a step that ends with you and
