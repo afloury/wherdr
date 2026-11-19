@@ -2,6 +2,8 @@
 // wherdr knows steps, who holds them, how they end and the guards the user
 // sets; what each step asks of an agent is plain text written in the template.
 
+import { isGitBranch } from './project'
+
 export const HOLDERS = ['worker', 'reviewer', 'coordinator', 'none'] as const
 export type Holder = typeof HOLDERS[number]
 // report: the agent says it is done. verdict: pass or send back. user: the
@@ -103,6 +105,7 @@ export interface TaskType {
   prefs?: Prefs
   childType?: string // the type of the tasks this one proposes (a split)
   context?: ContextSpec // read-only context folders for its tasks (context.ts); a task's own setting wins
+  start?: string // the branch its tasks start from (origin's tip at their first start) instead of the working branch: a promotion
   steps: (Step | string)[] // a string reuses a shared step by its id
 }
 
@@ -310,7 +313,8 @@ export function validateTemplate(t: unknown): WorkflowError[] {
   for (const [name, tt] of Object.entries(t.taskTypes)) {
     const path = `taskTypes.${name}`
     if (!isObj(tt)) { errs.push({ path, message: 'must be an object' }); continue }
-    checkKeys(tt, ['instructions', 'weight', 'guards', 'prefs', 'childType', 'context', 'steps'], path, errs)
+    checkKeys(tt, ['instructions', 'weight', 'guards', 'prefs', 'childType', 'context', 'start', 'steps'], path, errs)
+    if (tt.start !== undefined && !(typeof tt.start === 'string' && isGitBranch(tt.start))) errs.push({ path: `${path}.start`, message: 'must be a branch name, such as develop' })
     if (tt.context !== undefined) { const c = readContext(tt.context); if (!c || isContextError(c)) errs.push({ path: `${path}.context`, message: c ? c.error : 'must be "all" or a list of member project keys' }) }
     if (tt.weight !== undefined && !isWeight(tt.weight)) errs.push({ path: `${path}.weight`, message: `must be one of ${WEIGHTS.join(', ')}` })
     if (tt.instructions !== undefined && typeof tt.instructions !== 'string') errs.push({ path: `${path}.instructions`, message: 'must be text' })

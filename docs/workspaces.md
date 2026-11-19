@@ -488,6 +488,11 @@ a feature, never a cycle, counting `after` and `mergeAfter` together (a task
 that merges after one that starts after it would block both). While it waits,
 its new commits are not pushed either: they go once the upstream is done.
 
+A promotion across a feature's repositories (develop → uat, say) is one
+promote sub-task per repository, of a type that [starts from
+develop](project-management.md#promotion-branches), each with `--merge-after`
+mirroring the feature's order.
+
 A sub-task's worker that finds halfway it needs something the split did not
 plan reports `blocked:on <task|repo>: <need>`: its task parks until that task
 is done, then goes on in the same conversation (see
