@@ -3,7 +3,7 @@
 // (computer), swiping between the panes of a tab.
 import { tabEntry, workspaceTree } from '#shared/workspaces'
 import { type Closing, type Landing, type TabMemory, type Viewed, afterClose, neighborTab, rememberTab, spaceTab } from '#shared/spaces'
-import { type SplitDir, fitTree, insertSplit, readTabSplits, writeTabSplits } from '#shared/splitTree'
+import { type SplitDir, fitTree, insertSplit, readTabSplits, setRatio, writeTabSplits } from '#shared/splitTree'
 import type { Pane } from '#shared/types'
 
 // wherdr's own split layout of each tab (shared/splitTree.ts), synced to every device;
@@ -62,6 +62,13 @@ export function addSplit(tabId: string, from: Pane, leaf: string, dir: SplitDir)
   const shown = (tabOf(from.tab)?.panes ?? [from]).map(p => p.coreAddress).filter((a): a is string => Boolean(a) && a !== leaf)
   const { [from.tab]: base, ...rest } = tabSplits.value
   tabSplits.value = { ...rest, [tabId]: insertSplit(fitTree(base, shown), from.coreAddress, leaf, dir) }
+}
+
+// A divider of tab `tabId` dragged (or reset) to `ratio`: written once, on release.
+// The drawn tree (fitted to the tab's panes) is the one stored.
+export function resizeSplit(tabId: string, path: string, ratio: number) {
+  const tree = tabOf(tabId)?.tree
+  if (tree) tabSplits.value = { ...tabSplits.value, [tabId]: setRatio(tree, path, ratio) }
 }
 
 // Direction of the last swipe (+1 next, -1 previous): the incoming pane slides

@@ -8,8 +8,10 @@
   With herdr-core each terminal of a space is a tab, unless **Split right** or **Split down** (a
   pane's **…** menu) put a second shell beside or under it in the same tab, in wherdr's own layout
   (synced to every device; herdr-app keeps its own); the header's map button lists the space's
-  terminals to switch between. On a phone, a split opens the tab's plan with the panes. Resizing
-  and move of tabs are not available yet; renaming a tab named in herdr-app's layout stays in
+  terminals to switch between. Drag the line between two cells to resize them (written on
+  release, the same on every device; double-click goes back to 50/50, each side keeps at least
+  15 %). On a phone, a split opens the tab's plan with the panes, which is a summary: no resizing
+  there. Move of tabs is not available yet; renaming a tab named in herdr-app's layout stays in
   herdr-app.
 - **Composer under the terminal**: an agent's terminal keeps the message field below it.
   The sidebar can be resized, or collapsed to a narrow rail (search, new agent, settings and
@@ -92,6 +94,6 @@ several, then tap a key or type one ASCII character on the phone keyboard. The
 modifiers reset after that key; tapping a selected modifier cancels it. Pasting
 or entering composed text clears the selection and keeps the text unchanged.
 
-Splits drawn from herdr-app's layout, dragging panes and dividers, pane swaps
-(`Alt+Shift+arrows`) and side-by-side focus moves are v2 only for now; Split right and Split down
+Splits drawn from herdr-app's layout, dragging panes, pane swaps (`Alt+Shift+arrows`) and
+side-by-side focus moves are v2 only for now; Split right, Split down and dragging their dividers
 work with herdr-core, in wherdr's own layout.
