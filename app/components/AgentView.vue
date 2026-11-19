@@ -157,6 +157,8 @@ const ctl = createTerminal(props.paneId, {
   hasBanner: () => Boolean(banner.value),
   fill: () => Boolean(props.cell),
   input: () => live.value,
+  // Claude Code accelerates wheel reports: see createWheelPacer.
+  wheelAccel: () => pane.value?.agent === 'claude',
 })
 const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void, focusSearch: () => void, gotoUnanswered: () => void } | null>(null)
 // Questions of the agent's last message the draft does not answer yet (ChatView): the composer's reminder.
