@@ -27,7 +27,7 @@ class FakeTerm {
   focus() { this.textarea.focus() }
   write(_d: unknown, cb?: () => void) { cb?.() }
   loadAddon() {} dispose() {} refresh() {} reset() {}
-  attachCustomWheelEventHandler() {} attachCustomKeyEventHandler() {}
+  attachCustomWheelEventHandler() {} parser = { registerCsiHandler() {}, registerEscHandler() {} }; attachCustomKeyEventHandler() {}
   onData() {} onBinary() {} onScroll() {}
   scrollToLine() {}
 }
