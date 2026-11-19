@@ -277,9 +277,9 @@ choices "Rate limits" | "CSV export" | "Both"
 ````
 
 A tap sends that option at once as your reply, quoted to the last question written before the
-block (to the whole message when there is none), the same as typing it. Only the choices of the
-agent's last message are live; once a sent message answers them, and in older messages, they are
-greyed, the answer given marked. A `wherdr` block with a line wherdr does not understand (a
+block (to the whole message when there is none), the same as typing it. The buttons stay live
+until a sent message answers them, even when the agent wrote another message below (a wake, a
+report); then they are greyed, the answer given marked. A `wherdr` block with a line wherdr does not understand (a
 missing quote, no option or more than four, an unknown kind) shows as ordinary code.
 
 **Several questions in one card.** When an agent has several questions at once (a plan to
@@ -302,8 +302,9 @@ answer. On a computer, with the focus in the card, a digit goes to that question
 (`a` to `d`) picks that option and moves to the next one. **Send** sends all the answers as one
 reply, quoted to the message, one line per question: `1A Postgres`, then `2B No, remove it`: the
 number, the option's letter and its text, or your own words, exactly as typed, after the number. Send needs one answer at least; a question left
-unanswered is sent as `skip`, and the card says how many will be. Like choice buttons, only the
-card of the agent's last message is live; once answered it is greyed with the answers given. In
+unanswered is sent as `skip`, and the card says how many will be. Like choice buttons, the card stays
+live until you answer it, even under a later agent message; once answered it is greyed with the
+answers given. In
 Tasks to review, the card in the agent's question answers it the same way.
 
 Above the field, **N questions unanswered** counts the questions of the agent's last message
