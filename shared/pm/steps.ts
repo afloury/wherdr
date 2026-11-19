@@ -41,6 +41,8 @@ export interface StepState {
   rereview?: Rereview // the PR head moved after the review: only that change is reviewed again
   acting?: boolean // an engine action is running
   watch?: { from: number, next: number } // pipeline.watch or a merge waiting for CI: since when, and its next look
+  mergeWait?: string // its merge action is held for the tasks it merges after (mergeQueue.ts mergeHold): the card's reason
+  mergeBy?: 'user' // that held merge was the user's click: it runs as theirs once released
   notify?: string // for the coordinator, once: what a watched pipeline said when it failed
   yourTurn?: YourTurn
   agent?: AgentWork
@@ -249,7 +251,7 @@ function act(s: StepState, step: PlannedStep, effects: Effect[], now: number): S
 // Enters step i: a step with no end is passed through (the last one is done).
 function enter(plan: PlannedStep[], prev: StepState, i: number, now: number, effects: Effect[]): StepState {
   const step = plan[i]
-  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, paused: undefined, recheckAt: undefined, rechecks: undefined, news: undefined, waitUser: undefined, acting: undefined, watch: undefined, yourTurn: undefined, agent: undefined, fix: undefined, rereview: undefined, catchUp: undefined, caughtUp: undefined }
+  const s: StepState = { ...prev, at: Math.min(i, plan.length - 1), started: true, since: now, deadline: undefined, paused: undefined, recheckAt: undefined, rechecks: undefined, news: undefined, waitUser: undefined, acting: undefined, watch: undefined, mergeWait: undefined, mergeBy: undefined, yourTurn: undefined, agent: undefined, fix: undefined, rereview: undefined, catchUp: undefined, caughtUp: undefined }
   if (!step) return effects.push({ kind: 'done' }), { ...s, done: true }
   if (!step.ends) return i === plan.length - 1 ? (effects.push({ kind: 'done' }), { ...s, done: true }) : enter(plan, s, i + 1, now, effects)
   if (step.timeout) s.deadline = now + durationMs(step.timeout)
