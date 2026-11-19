@@ -158,6 +158,9 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   its screen: Claude Code's own verb with its spinning star (*✻ Orbiting…*, orange), omp's running
   step and the turn's time; other agents, or a Claude conversation that is not open, show
   *… is working…*. The line goes once the turn ends.
+- **Background jobs**: when Claude Code's turn is over but jobs it started still run (its footer
+  counts them, *· 1 shell*), the line says so with a still dot, *1 shell running in the
+  background*, instead of *Claude is working…*; the composer is at rest, messages go at once.
 - **Composer**: send messages while the agent works (queued: the agent's own queue when it takes
   them, else held by wherdr and sent when the turn ends; never sent twice; a message sent while
   wherdr types a wake or another of its own messages into the agent waits for it, then goes;
