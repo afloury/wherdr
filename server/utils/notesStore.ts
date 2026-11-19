@@ -86,7 +86,9 @@ export function notesStore(folder = path.join(DATA_DIR, 'notes')) {
       const old = await store.get(id)
       if (!old) throw new HerdrError('not_found', `No note ${id}`)
       if (ifUpdated && Date.parse(old.updated) !== Date.parse(ifUpdated)) throw new HerdrError('conflict', `Note ${id} changed since (updated ${old.updated}): show it again, then edit`)
-      const note = { ...old, ...change, updated: new Date().toISOString() }
+      // Always later than the stamp it replaces, even within the same millisecond:
+      // an equal stamp would let a stale --if-updated edit through.
+      const note = { ...old, ...change, updated: new Date(Math.max(Date.now(), Date.parse(old.updated) + 1)).toISOString() }
       await write(`${id}.md`, noteText(note))
       await log(by, 'edit', id)
       return note
