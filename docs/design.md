@@ -117,6 +117,10 @@ A bar pinned at the bottom of the scroll (`position: sticky; bottom: 0`, a
 task's To do buttons on the phone, the folder picker's buttons) is the body's
 last element and carries that padding itself; the body then has none, so the
 bar sits on the sheet's edge and nothing scrolls under it.
+Home's list follows the same rule: its scroll runs to the screen's bottom edge,
+under the floating **+ New** (`.fab-wrap`, `position: absolute`), and its bottom
+padding (the button's height plus the safe area) lets the last card scroll clear
+of the button; no footer band is reserved for it.
 What could overflow shrinks, wraps or is ellipsized: grid
 and flex children get `min-width: 0` (`minmax(0, 1fr)` tracks), long names and
 paths wrap with `overflow-wrap: anywhere`, fields are `w-full` or
