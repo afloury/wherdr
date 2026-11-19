@@ -118,7 +118,7 @@ opens its sheet), and `[[label|icon|colour|link]]` a badge of the agent's own, s
 `[[Waiting|clock|amber]]` or `[[Plan|file||plans/x.md]]`: an icon from a short list (flag,
 clock, calendar, alert, info, check, x, pause, star, bug, lightbulb, rocket, eye, lock, link,
 file, branch, pr, server, bell), a project palette colour (violet, blue, teal, green, amber,
-orange, red, pink), an optional link; an empty field is skipped. Anywhere else the text stays
+orange, red, pink, cyan, lime, indigo, magenta), an optional link; an empty field is skipped. Anywhere else the text stays
 as written. You read them in the [Notes panel](home.md#notes).
 
 A note links to another note (`[Plan](other-note.md)`), a linked file

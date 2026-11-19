@@ -559,7 +559,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       // A removed project's workflow and log under the same key are not the new one's.
       await Promise.all([workflowFile(fields.key), workflowLogFile(fields.key)].map(f => fs.rm(f, { force: true })))
       let added: Project = ws.fields.workspace
-        ? { key: fields.key, name: fields.name, color: fields.color ?? defaultColor(list), machine: fields.machine, path: folder, workspace: ws.fields.workspace, addedAt: Date.now() }
+        ? { key: fields.key, name: fields.name, color: fields.color ?? defaultColor(list, ws.fields.workspace), machine: fields.machine, path: folder, workspace: ws.fields.workspace, addedAt: Date.now() }
         : { ...fields, ...ws.fields, color: fields.color ?? defaultColor(list), path: folder, ...(git && !ws.fields.kind ? {} : { git: false as const }), addedAt: Date.now() }
       if (source) added = { ...added, from: (await copyTemplate(added.key, source, 'user')).from }
       await saveProjects([...list, added])

@@ -9,8 +9,7 @@ const props = defineProps<{ badge: NoteBadge }>()
 const project = computed(() => {
   const b = props.badge
   if (b.kind !== 'project') return null
-  const c = projectCoordinators.value.find(x => x.project === b.key || x.label === b.key)
-  return { text: b.task ?? b.key, color: c?.color, link: b.task ? `#/board?task=${b.task}` : '' }
+  return { text: b.task ?? b.key, color: projectBadgeOf(b.key)?.color, link: b.task ? `#/board?task=${b.task}` : '' }
 })
 const custom = computed(() => (props.badge.kind === 'custom' ? props.badge : null))
 const link = computed(() => project.value?.link || custom.value?.link || '')

@@ -65,10 +65,17 @@ export function paneBadge(p?: Pane | null): { text: string, color?: string, coor
 }
 // Each project's shown key and color, by its key: the coordinators', then their
 // workspaces' members (no coordinator of their own).
-const projectBadges = computed(() => new Map<string, { label?: string, color?: CoordinatorView['color'] }>(projectCoordinators.value.flatMap(c => [
+const projectBadges = computed(() => new Map<string, { label?: string, color?: CoordinatorView['color'], member?: true }>(projectCoordinators.value.flatMap(c => [
   [c.project, { label: c.label, color: c.color }] as const,
-  ...(c.workspace?.members ?? []).map(m => [m.key, { label: m.label, color: m.color }] as const),
+  ...(c.workspace?.members ?? []).map(m => [m.key, { label: m.label, color: m.color, member: true as const }] as const),
 ])))
+// A project's badge by any key it shows (its stored or shown key), or undefined.
+export function projectBadgeOf(key: string) {
+  for (const [k, v] of projectBadges.value) if (k === key || v.label === key) return v
+  return undefined
+}
+// Is a badge's text (WD, WD-5) a workspace member's key or task id? Its badge has a dashed border.
+export const isMemberBadge = (text?: string) => Boolean(text && projectBadgeOf(text.replace(/-\d+$/, ''))?.member)
 // A coordinator's pane (Alfred's included, projects on or off) is titled by its name; '' for any other pane.
 export function paneCoordinatorName(p?: Pane | null) {
   if (p?.coreAddress && p.coreAddress === alfred.value?.terminal) return alfred.value.name || 'Alfred'

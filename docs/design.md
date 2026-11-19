@@ -20,6 +20,10 @@ Use theme variables only in interface styling: `--text`, `--text-2`, `--muted`,
 and the semantic state tokens. Do not add hardcoded hex, RGB or named colors to
 components. Palette values belong in the theme definitions in `main.css` and
 [themes.ts](../app/utils/themes.ts); themes can override the state colors too.
+Project key badges ([ProjectBadge.vue](../app/components/ProjectBadge.vue)) take
+one of 12 fixed `--project-<color>` tokens (`PROJECT_COLORS` in
+[projectKey.ts](../shared/pm/projectKey.ts)), mid-tones readable on dark and light; a
+workspace member's badge has a dashed border.
 Examples: `.menu button:active` uses `--surface-2`, `.task-chip` uses `--line`,
 and `.card-state.working` uses `--working`.
 
