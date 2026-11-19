@@ -27,5 +27,8 @@
   tab, taking the right or bottom half of the pane's cell; the tab view opens on it. The layout is
   wherdr's own (a synced setting, the same on every open device within a second); herdr-app keeps
   its own and wherdr never writes it. Closing a terminal gives its room to its neighbour.
+- **Resize** (computer): drag the line between two cells; each terminal fits its cell as it
+  moves, and the new proportion is saved on release (arrows on a focused line move it by 5 %).
+  Double-click a line to go back to 50/50. Each side keeps at least 15 %. Not on a phone.
 
-Dragging dividers and pane swaps are v2 only for now; move of tabs stays in herdr-app.
+Pane swaps are v2 only for now; move of tabs stays in herdr-app.

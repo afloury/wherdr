@@ -2,9 +2,10 @@
 // order), with the layout to show. Pure (tested).
 import type { HerdrState, Pane, Tab, Workspace } from './types'
 import { type TabLayout, readingOrder, tabLayout } from './layout'
-import { type TabSplits, fitTree, treeLayout } from './splitTree'
+import { type SplitNode, type TabSplits, fitTree, treeLayout } from './splitTree'
 
-export interface TabEntry { tab: Tab, layout: TabLayout, panes: Pane[] }
+// `tree`: wherdr's split tree the layout was drawn from (its dividers can be dragged).
+export interface TabEntry { tab: Tab, layout: TabLayout, panes: Pane[], tree?: SplitNode }
 export interface WorkspaceEntry { workspace: Workspace, tabs: TabEntry[] }
 // `splits`: wherdr's own split trees (setting tabSplits), drawn for tabs without herdr's layout.
 type State = Pick<HerdrState, 'workspaces' | 'panes'> & Partial<Pick<HerdrState, 'tabs'>> & { splits?: TabSplits }
@@ -37,7 +38,7 @@ function entryOf(tab: Tab, all: Pane[], splits?: TabSplits): TabEntry {
     ? treeLayout(tab, tree, leaf => paneOf.get(leaf)!)
     : tabLayout({ ...tab, layout: exact ? l : null }, mine.map(p => p.id))
   const byId = new Map(mine.map(p => [p.id, p]))
-  return { tab, layout, panes: readingOrder(layout).map(p => byId.get(p.pane)!) }
+  return { tab, layout, panes: readingOrder(layout).map(p => byId.get(p.pane)!), ...(tree && typeof tree !== 'string' ? { tree } : {}) }
 }
 
 // `machine`: only this machine ('' = local); missing = all.

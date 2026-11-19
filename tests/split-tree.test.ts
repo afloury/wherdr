@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { fitTree, insertSplit, readTabSplits, removeLeaf, treeLayout, writeTabSplits } from '../shared/splitTree'
+import { fitTree, insertSplit, readTabSplits, removeLeaf, setRatio, treeDividers, treeLayout, writeTabSplits } from '../shared/splitTree'
 import { paneBoxes } from '../shared/layout'
 import { tabEntry } from '../shared/workspaces'
 import type { Pane } from '../shared/types'
@@ -18,6 +18,13 @@ describe('split tree', () => {
     expect(treeLayout(tab, t, l => l).splits!.map(s => [s.path, s.direction])).toEqual([['', 'right'], ['1', 'down']])
   })
 
+  it('sets a nested ratio, bounded to 0.15–0.85, and places its divider', () => {
+    const t = { dir: 'right' as const, ratio: 0.5, a: 'x', b: { dir: 'down' as const, ratio: 0.5, a: 'y', b: 'z' } }
+    expect(setRatio(t, '1', 0.99)).toEqual({ ...t, b: { ...t.b, ratio: 0.85 } })
+    expect(setRatio(t, '', 0.01).ratio).toBe(0.15)
+    const d = treeDividers(treeLayout(tab, setRatio(t, '', 0.3), l => l))
+    expect(d.map(x => [x.path, x.at, x.from, x.span])).toEqual([['', 30, 0, 100], ['1', 50, 30, 70]])
+  })
   it('removing a leaf gives its room to its sibling', () => {
     const t = insertSplit(insertSplit(null, 't1', 't2', 'right'), 't2', 't3', 'down')
     expect(removeLeaf(t, 't2')).toEqual({ dir: 'right', ratio: 0.5, a: 't1', b: 't3' })
