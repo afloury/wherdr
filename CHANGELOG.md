@@ -6,9 +6,37 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [3.2.1] — 2026-11-19
+
+wherdr 3.2.1 brings back the split terminal on v3 and fixes scrolling in an agent's Terminal view, now smooth on a fast scroll of Claude's fullscreen view; it also brings a clearer Autopilot window, questions and choices cards that stay answerable, *N shell running in the background*, Claude's activity verb back in the status line, 12 project colors with dashed members' badges, a workspace coordinator that can finish its members' steps, and three batches of minor fixes from bug hunts. Release notes: [docs/release-notes-3.2.1.md](docs/release-notes-3.2.1.md).
+
 ### New
 
 - **The split terminal is back on v3.** A pane's **…** menu offers *Split right*, *Split down* (a shell in the same folder, in the same tab) and *Split with agent…* (the New agent sheet on that machine and folder, the agent to the right). On a computer, Mod+Alt+S splits right and Mod+Alt+Shift+S down, from the terminal too; drag a divider to resize, double-click for 50/50. The layout is wherdr's own, synced to every device; herdr-app keeps its own ([Terminal](docs/terminal.md)).
+- **12 project colors.** Cyan, lime, indigo and magenta join the palette. A new workspace member gets the color least used among its workspace's members (ties: palette order); a top-level project keeps its rule and existing colors never change. A member's badge has a dashed border wherever its key or task id shows; workspaces and top-level projects keep the solid one ([Workspaces](docs/workspaces.md)).
+
+### Improved
+
+- **Smooth fast scrolling of Claude's fullscreen view.** Wheel reports to a program that tracks the mouse are paced on its repaints, capped at a page, and matched to Claude's own acceleration, so a fast trackpad flick moves about as far as the gesture instead of jumping thousands of rows to the top. Slow scrolling still moves one row at a time ([Terminal](docs/terminal.md)).
+- **Autopilot window.** The autopilot's switch and state sit above the *Settings* and *Activity* tabs, so it can be turned on from either; *Run now* reads *Wake now* and says what it does; *Every* says that empty means no timed wake (only the checked events) and that a timed wake is skipped while nothing is new; the goal is marked optional ([Autopilot](docs/project-management.md#autopilot)).
+- **N shell running in the background.** When Claude's turn is over but a shell it started still runs, the status line says *1 shell running in the background* with a still dot, instead of *Claude is working…*, and the composer stays at rest ([Conversation](docs/conversation.md)).
+- **Claude's activity verb and omp's step are back.** A working conversation's status line shows Claude's own verb (*Orbiting…*) and omp's running step again, instead of *Claude is working…* ([Conversation](docs/conversation.md)).
+- **The workspace coordinator on its members' tasks.** It may end, hold or send back a step, decide after send-backs, merge and propose automations on a member's task, under the same rules as on the workspace's own; a member's own workflow stays yours ([Workspaces](docs/workspaces.md#the-workspaces-coordinator)).
+- **Plugins.** An update clears a plugin's earlier failure and reloads its relative imports too; an install refuses a fork's commit served under the parent repository's name, reads files in chunks up to the size cap, and restores or sweeps what a crash left ([Plugins](docs/plugins.md)).
+- **Installer and updates.** A re-run of the installer keeps the release tag `update.sh` chose instead of moving back to the tip of `v3`; with auto-deploy, `update.sh <version>` installs the latest prebuilt build instead of failing; [Update with an agent](docs/update-with-an-agent.md) runs `update.sh` in the background.
+- **Notes.** A web badge (a PR) opens in a new tab, `notes edit --if-updated <iso>` refuses an edit over a newer version, and a network blip no longer reads as a missing file.
+
+### Fixed
+
+- **Scrolling in the Terminal view.** The wheel and touch scroll Claude Code's fullscreen view (and any program that tracks the mouse) again: they send mouse wheel reports at the pointer, as the legacy server did; other programs keep the local scrollback ([Terminal](docs/terminal.md)).
+- **Questions and choices cards stay answerable.** A card stays live until you answer it, even after the agent wrote another message below it (a wake, a report); once answered it shows your reply, locked ([Conversation](docs/conversation.md)).
+- **Home tabs and workspace members.** A member's tasks (in Tasks to review too) show only on its workspace's tabs, and a member task's badge takes the member's key and color ([Home](docs/home.md)).
+- **Home on the phone** scrolls to the bottom under the floating *+ New*, with no blank band reserved under the list.
+- **Message sending.** An unreadable Claude field (a paste in progress, a lost connection) is never typed over; a held message whose herdr-core connection dropped is never typed again; a message ending with `\` is matched; a *Not sent* message still in Claude's field shows once; the server's send, photo fallback included, answers within the app's 120 s deadline.
+- **Settings and stores.** Alfred's theme cards and recent folders are written in turn, never over an unreadable file; the pacing log never glues two lines; a notes write leaves no temp file; notification rules keep the last ones read, and notes commands refuse on an unreadable settings file.
+- **Engine.** Run reconciliation keeps trying once a minute until herdr-core answers instead of giving up after 5 minutes; a failed resume of one task paused for room no longer stops the others; a wake whose coordinator is gone ends after an hour; a chained task refused by the autopilot's limits says why on its card; a cycle in `after`/`mergeAfter` is refused again on edit.
+- **Workspaces, plans and context folders.** Alfred's `tell`, `last`, `coordinator open` and `project memory` resolve a member to its workspace's coordinator; a failed feature split removes the sub-tasks already written; a plan naming an existing member by its path resolves to it; setting a member's agents or worktree back to the workspace's leaves no override; context snapshots run no git hook and are removed only under their lock; plan retries and dead links are bounded.
+- **Readers and security.** An Antigravity reader never removes a base still being acquired; `WHERDR_PM_DIR` is quoted; [SECURITY.md](SECURITY.md) notes that without a passkey a local POST to `/api/prompt` counts as your turn, and where Alfred's token lives.
 
 ## [3.2.0] — 2026-11-19
 
