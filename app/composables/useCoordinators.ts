@@ -60,9 +60,15 @@ export function paneBadge(p?: Pane | null): { text: string, color?: string, coor
   if (c) return c.main ? null : { text: c.label ?? c.project, color: c.color, coordinator: true }
   const i = p?.task?.lastIndexOf('-') ?? -1
   if (!p?.task || i < 1) return null
-  const pc = projectCoordinators.value.find(x => x.project === p.task!.slice(0, i))
+  const pc = projectBadges.value.get(p.task.slice(0, i))
   return { text: `${pc?.label ?? p.task.slice(0, i)}${p.task.slice(i)}`, color: pc?.color }
 }
+// Each project's shown key and color, by its key: the coordinators', then their
+// workspaces' members (no coordinator of their own).
+const projectBadges = computed(() => new Map<string, { label?: string, color?: CoordinatorView['color'] }>(projectCoordinators.value.flatMap(c => [
+  [c.project, { label: c.label, color: c.color }] as const,
+  ...(c.workspace?.members ?? []).map(m => [m.key, { label: m.label, color: m.color }] as const),
+])))
 // A coordinator's pane (Alfred's included, projects on or off) is titled by its name; '' for any other pane.
 export function paneCoordinatorName(p?: Pane | null) {
   if (p?.coreAddress && p.coreAddress === alfred.value?.terminal) return alfred.value.name || 'Alfred'
