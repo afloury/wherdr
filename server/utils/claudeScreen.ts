@@ -51,6 +51,7 @@ export function parseClaudeActivity(text: string | null | undefined): string | n
 // a turn runs (its verb line is up) or when nothing runs in the background.
 const JOB = /^(\d+) ((?:background )?(?:shells?|tasks?|agents?|monitors?|teammates?))$/
 const STILL_RUNNING = /^[*✢✳✶✻✽·]\s+\S.*?·\s+done\b.*?·\s+(\d+ \S+(?: \S+)?) still running$/
+const TURN_END = /^[*✢✳✶✻✽·]\s+\S.*\bfor \d/
 export function parseClaudeBackground(text: string | null | undefined): string | null {
   if (!text || parseClaudeActivity(text)) return null
   const lines = text.trimEnd().split('\n').map(l => l.trimEnd())
@@ -59,9 +60,13 @@ export function parseClaudeBackground(text: string | null | undefined): string |
   if (rule < 0) return null
   const jobs = lines.slice(rule + 1).flatMap(l => l.split(' · ').flatMap(s => JOB.exec(s.trim().replace(/^⏵⏵\s+/, ''))?.[0] ?? []))
   if (jobs.length) return jobs.join(', ')
-  for (let i = rule - 1; i >= Math.max(0, rule - 24); i--) {
-    const m = STILL_RUNNING.exec(lines[i]!)
-    if (m) return m[1]!
+  // Else the latest turn's end line only: an older turn's count is stale once a newer turn
+  // ended ("✻ Worked for 2s") or began (a "❯ " message above the input field).
+  let top = rule - 1
+  while (top >= 0 && !RULE_RE.test(lines[top]!)) top--
+  for (let i = top - 1; i >= Math.max(0, top - 24); i--) {
+    if (TURN_END.test(lines[i]!)) return STILL_RUNNING.exec(lines[i]!)?.[1] ?? null
+    if (lines[i]!.startsWith('❯ ')) return null
   }
   return null
 }

@@ -159,5 +159,11 @@ describe('parseClaudeBackground', () => {
     expect(parseClaudeBackground(fx('claude-done-time.txt'))).toBeNull()
     expect(parseClaudeBackground(fx('claude-done-background.txt').replace('✻ Brewed for 7s · done 12:49 PM · 1 shell still running', '✻ Brewing… (3s)'))).toBeNull()
     expect(parseClaudeBackground(null)).toBeNull()
+    // The jobs ended and a newer turn followed: the older "still running" line is stale.
+    const later = fx('claude-done-background.txt').replace(' · 1 shell · ↓ to manage', '')
+      .replace('1 shell still running\n', '1 shell still running\n\n❯ Thanks.\n\n● You are welcome.\n\n✻ Worked for 2s\n')
+    expect(parseClaudeBackground(later)).toBeNull()
+    // A newer turn without its end line yet: no stale count either.
+    expect(parseClaudeBackground(later.replace('\n✻ Worked for 2s\n', '\n'))).toBeNull()
   })
 })
