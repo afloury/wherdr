@@ -82,7 +82,9 @@ export function failure(e: unknown): never {
   if (kind === 'spawn_failed') throw new HerdrError('spawn_failed', 'The program could not start: check the folder and that it is installed')
   if (kind === 'timeout') throw new HerdrError('timeout', 'herdr-core did not confirm in time: check the terminal before sending again')
   if (kind === 'unreachable' || kind === 'machine_unknown') throw new HerdrError('unreachable', 'The machine of this terminal is unreachable')
-  if (kind === 'unavailable' || kind === 'disconnected') throw new HerdrError('unreachable', 'herdr-core is unreachable')
+  if (kind === 'unavailable') throw new HerdrError('unreachable', 'herdr-core is unreachable')
+  // Lost during a call: the request may have reached herdr-core (see coreHeld.ts).
+  if (kind === 'disconnected') throw Object.assign(new HerdrError('unreachable', 'herdr-core is unreachable'), { unconfirmed: true })
   throw new HerdrError(kind, e instanceof Error ? e.message : 'herdr-core rejected the request')
 }
 
@@ -99,8 +101,17 @@ export async function coreSend(deps: CoreInputDeps, b: { pane_id?: unknown, text
   if (!text.trim() || isBareBang(text)) throw new HerdrError('empty', 'Empty message')
   if (text.length > MAX_TEXT) throw new HerdrError('too_large', 'Message too large')
   const waited = typingInto(p.coreAddress!)
-  return inTurn(p.coreAddress!, () => typeIn(deps, p, text, b.pastes, waited), deps.turnSettleMs)
+  const queuedAt = Date.now()
+  // Bounded under the app's SEND_DEADLINE_MS (app/utils/outbox.ts, 120 s): at
+  // most TURN_WAIT_MS behind another writer (nothing typed then), and no Enter
+  // after SEND_BUDGET_MS (the message stays in the field, with Send now / Clear).
+  return inTurn(p.coreAddress!, () => {
+    if (Date.now() - queuedAt > TURN_WAIT_MS) throw new HerdrError('busy', 'Another message to this terminal took too long: nothing was typed, send again.')
+    return typeIn(deps, p, text, b.pastes, waited, queuedAt + SEND_BUDGET_MS)
+  }, deps.turnSettleMs)
 }
+const TURN_WAIT_MS = 25_000
+export const SEND_BUDGET_MS = 100_000
 
 // Claude turns a pasted photo path into "[Image #N]" a moment after the
 // paste; core's Enter right after it may come first, and Claude then submits
@@ -114,10 +125,17 @@ export const holdEnter = (text: string) => (uploadNames(text).length ? `${text}\
 // text out of the field: a few looks before calling the field busy.
 const BUSY_LOOKS = 5
 
-async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknown, waited: boolean) {
+async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknown, waited: boolean, until = Infinity) {
   const field = p.agent === 'claude' ? deps.field : undefined
-  for (let i = 0; field && await field(p).catch(() => null); i++) {
-    if (!waited || i >= BUSY_LOOKS) throw new HerdrError('input_busy', 'Claude’s input still holds text that was not sent: send it or clear it first, then send again.')
+  // A failed read (Claude still taking in a paste included) is no empty field:
+  // looked at again, then refused, never typed over.
+  for (let i = 0; field; i++) {
+    const seen = await field(p).then(t => (t ? 'text' : null), (e: unknown) => e)
+    if (seen === null) break
+    if (seen === 'text' ? !waited || i >= BUSY_LOOKS : i >= BUSY_LOOKS) {
+      if (seen === 'text' || (seen as HerdrError)?.code === 'pasting') throw new HerdrError('input_busy', 'Claude’s input still holds text that was not sent: send it or clear it first, then send again.')
+      failure(seen)
+    }
     await new Promise(res => setTimeout(res, deps.settleMs ?? 400))
   }
   if (!isSlashCommand(text)) keepPastes(text, pastes)
@@ -139,7 +157,7 @@ async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknow
     // took the message (WHR-398). So the field is always looked at: empty, the
     // message was taken; holding it, it is submitted (WHR-413).
     if (field) {
-      const enters = await submitLeftInput(deps, p, field, text, async () => { await send() }, pastedAt)
+      const enters = await submitLeftInput(deps, p, field, text, async () => { await send() }, pastedAt, until)
       if (enters) started = null // unconfirmed: Enter pressed, no turn observed yet
     } else if (started === false && text.includes('\n')) {
       // Without a field reading: on an empty input, one more Enter is harmless.
@@ -210,7 +228,7 @@ const RESUBMIT_AFTER = [1, 2, 3, 4, 5, 5, 5, 5, 5, 5]
 // A photo left as its path: pasted `again` once (RAW_LOOKS); still a path
 // then, or when the wait ends, the message goes as it is, which the agent
 // can still open, the lone "\" of holdEnter taken out first (WHR-454).
-async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) => Promise<string | null>, text: string, again?: () => Promise<void>, pastedAt = Date.now()): Promise<number> {
+async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) => Promise<string | null>, text: string, again?: () => Promise<void>, pastedAt = Date.now(), until = Infinity): Promise<number> {
   const settle = deps.settleMs ?? 400
   const started = pastedAt
   const waitMs = deps.photoWaitMs ?? PHOTO_WAIT_MS
@@ -306,6 +324,7 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
   let enters = 0
   let left = true
   for (const after of RESUBMIT_AFTER) {
+    if (Date.now() >= until) break
     await deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['enter'] }, 10000)
     enters++
     if (!await holds(after)) { left = false; break }

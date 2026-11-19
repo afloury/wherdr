@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defaultNotifications, type NotificationSettings } from '../shared/notificationRules'
 
 const deps = vi.hoisted(() => ({ readSettings: vi.fn(), pushSend: vi.fn(), allowed: vi.fn(), findPane: vi.fn() }))
-vi.mock('../server/utils/settings', () => ({ readSettings: deps.readSettings }))
+vi.mock('../server/utils/settings', () => ({ readSettings: deps.readSettings, loadSettings: deps.readSettings }))
 vi.mock('../server/utils/machines', () => ({ getMachine: () => undefined, machineOfPane: () => undefined }))
 
 import { notificationAllowed, notificationPresence } from '../server/utils/notificationRules'

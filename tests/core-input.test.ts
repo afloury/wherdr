@@ -60,6 +60,21 @@ describe('core input routes', () => {
     expect(t.calls).toEqual([])
   })
 
+  it('Claude\'s input cannot be read (still pasting, core lost): looked at again, never typed over', async () => {
+    const t = deps(() => ({ started: true }))
+    t.d.settleMs = 1
+    t.d.field = async () => { throw new HerdrError('pasting', 'Claude is still pasting') }
+    await expect(coreSend(t.d, { pane_id: 't1', text: 'hi' })).rejects.toMatchObject({ code: 'input_busy' })
+    t.d.field = async () => { throw new CoreError('disconnected', 'closed') }
+    await expect(coreSend(t.d, { pane_id: 't1', text: 'hi' })).rejects.toMatchObject({ code: 'unreachable', unconfirmed: true })
+    expect(t.calls).toEqual([])
+  })
+
+  it('a message of its own ending with "\\" matches the field that holds it', () => {
+    expect(fieldHolds('C:\\dir\\', 'C:\\dir\\', true)).toBe(true)
+    expect(fieldHolds('C:\\dir', 'C:\\dir\\', true)).toBe(false)
+  })
+
   it('a send while a wake is being typed waits for it, then goes once the field is empty', async () => {
     let release!: () => void
     const wake = new Promise<void>(r => { release = r })
