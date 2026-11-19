@@ -30,6 +30,22 @@ async function quickTab(body: Record<string, unknown>) {
   }
   catch (err) { toast((err as Error).message, true) }
 }
+// Split down: a shell like this pane's (same machine and folder) in the same tab,
+// then the tab view on it. None for a pane whose folder is unknown; off offline.
+export function splitDownItem(p: Pane): MenuItem[] {
+  const like = sameTabBody(p, [])
+  if (!like) return []
+  const offline = offlineView.value || (p.machine ? machineInfo(p.machine)?.status !== 'online' : false)
+  return [{ label: t('Split down'), icon: 'i-lucide-rows-2', disabled: offline, run: () => splitDown({ ...like, beside: p.id }) }]
+}
+async function splitDown(body: Record<string, unknown>) {
+  haptic()
+  try {
+    const r = await api<{ pane_id: string, tab_id: string }>('/api/agents', body)
+    navigateTo({ path: tabPath(r.tab_id), query: { pane: r.pane_id } })
+  }
+  catch (err) { toast((err as Error).message, true) }
+}
 // New tab with a choice of kind and folder (the sheet).
 export function newTabChoose(workspaceId: string) {
   haptic()
@@ -140,6 +156,7 @@ export function paneItems(p: Pane): MenuItem[] {
   return [
     notificationMenuItem(p),
     { label: t('Rename pane'), icon: 'i-lucide-pencil', run: () => { renameTarget.value = p.id } },
+    ...splitDownItem(p),
     { kind: 'separator' },
     closePaneItem(p),
   ]

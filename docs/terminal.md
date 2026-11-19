@@ -22,5 +22,8 @@
   restarts or loses it.
 - **Close** ends the terminal's program (`terminal.kill`) after confirmation.
 
-Split layouts, dragging panes and dividers, and pane swaps are v2 only: with herdr-core, every
-terminal of a space is a tab, and rename, split and move of tabs stay in herdr-app.
+- **Split down** (pane's **…** menu, absent when its folder is unknown, off while its machine is
+  offline): a shell on the same machine and in the same folder, in the same tab, drawn under the
+  others in equal parts; the tab view opens on it. Closing one gives a simple tab back.
+
+Split right, dragging dividers and pane swaps are v2 only for now; move of tabs stays in herdr-app.
