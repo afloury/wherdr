@@ -216,14 +216,14 @@ describe('startTask', () => {
 
   it.each([0, 2])('a type that starts from develop: its worktree starts there at the first start; develop missing on the remote waits (exit %s)', async (code) => {
     const promote = { ...template, taskTypes: { ...template.taskTypes, simple: { ...template.taskTypes.simple!, start: 'develop' } } }
-    const { deps, execs } = await setup({ template: promote, fails: s => code && s === START_BRANCH_SCRIPT ? code : undefined })
+    const { deps, execs } = await setup({ template: promote, fails: s => code && s === START_BRANCH_SCRIPT ? code : undefined, exec: s => s === START_BRANCH_SCRIPT ? 'refs/remotes/origin/develop' : undefined })
     const t = await startTask(deps, 'WEB-1')
     expect(execs.find(e => e.script === START_BRANCH_SCRIPT)!.args).toEqual(['/home/u/web', 'develop'])
     const wt = execs.find(e => e.script === WORKTREE_SCRIPT)
     if (code) {
       expect(t).toMatchObject({ state: 'waiting', waiting: expect.stringMatching(/^Branch `develop`, which this task type starts from, is not on the remote/) })
       expect(wt).toBeUndefined()
-    } else expect(wt!.args.slice(2, 4)).toEqual([t.branch, 'develop'])
+    } else expect(wt!.args.slice(2, 4)).toEqual([t.branch, 'refs/remotes/origin/develop'])
   })
 
   it('a task whose branch to continue cannot be fetched (remote unreachable) waits, without a worktree', async () => {

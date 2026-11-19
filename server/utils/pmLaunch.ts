@@ -126,10 +126,12 @@ export const FETCH_BRANCH_SCRIPT = `git -C "$1" ls-remote -q --exit-code origin 
 [ $c = 2 ] && exit 2; [ $c = 0 ] || { echo "origin unreachable (git ls-remote exit $c)"; exit 1; }
 git -C "$1" fetch -q origin "+refs/heads/$2:refs/remotes/origin/$2" 2>&1 || exit 1`
 // The branch a task type starts from (TaskType.start), at the task's first
-// start: fetched from origin, or the local one when there is no origin. Exits 2
-// when it is not there (the remote answers without it, or no local one).
-export const START_BRANCH_SCRIPT = `if ! git -C "$1" remote get-url origin >/dev/null 2>&1; then git -C "$1" rev-parse -q --verify "refs/heads/$2" >/dev/null || exit 2; exit 0; fi
-${FETCH_BRANCH_SCRIPT}`
+// start: fetched from origin, or the local one when there is no origin. Prints
+// its full ref (a tag of the same name is never taken for it); exits 2 when it
+// is not there (the remote answers without it, or no local one).
+export const START_BRANCH_SCRIPT = `if ! git -C "$1" remote get-url origin >/dev/null 2>&1; then git -C "$1" rev-parse -q --verify "refs/heads/$2" >/dev/null || exit 2; echo "refs/heads/$2"; exit 0; fi
+${FETCH_BRANCH_SCRIPT}
+echo "refs/remotes/origin/$2"`
 // A read-only snapshot of a member's base branch for context folders ($1 its
 // clone, $2 the folder of its snapshots, $3 the base branch; '' the repository's
 // default, $4 a commit it pinned at an earlier start, or ''). A pinned commit is
@@ -464,6 +466,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const start = cont ? undefined : t.taskTypes[task.type]?.start
   const at = start && !task.branch && !task.run ? await exec(deps, on, START_BRANCH_SCRIPT, [repo, start]) : undefined
   if (at && at.code !== 0) return wait(store, task, startMissing(start!, at.code === 2 ? '' : at.out.split('\n').slice(-2).join(' ') || 'timeout'))
+  const startRef = at ? at.out.trim().split('\n').pop() || start : start
   // Named at the first start (a task started before has task/<id>): a later title, tag or template change leaves it alone.
   const paths = taskPaths(home, task.id, task.branch || (cont ? task.fromBranch : task.run ? undefined : branchFor(p.branchName, { ...task, id: shownTaskId([p], task.id) })), pmDir())
   // Recorded at the first start: changing the project's branch later leaves this task alone.
@@ -472,7 +475,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   let base = started.base ?? ''
   // The workspace's working branch (not the member's own, nor the task's): a repository without it starts from its current branch.
   const shared = !start && !!base && !started.fromWorkflow && task.base === undefined && !!p.workspace && !(p.overrides ?? []).includes('base')
-  const wt = await exec(deps, on, WORKTREE_SCRIPT, [repo, paths.worktree, paths.branch, start ?? base, cont ? `origin/${task.fromBranch}` : '', ...(shared ? ['1'] : [])])
+  const wt = await exec(deps, on, WORKTREE_SCRIPT, [repo, paths.worktree, paths.branch, startRef ?? base, cont ? `origin/${task.fromBranch}` : '', ...(shared ? ['1'] : [])])
   if (wt.code !== 0) return wait(store, task, `git worktree failed: ${wt.out.split('\n').slice(-3).join(' ') || 'timeout'}`)
   const missing = /^wherdr-base-missing ?(.*)$/m.exec(wt.out)
   if (missing) {

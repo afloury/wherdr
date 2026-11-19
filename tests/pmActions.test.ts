@@ -314,12 +314,17 @@ describe('on a real repo', () => {
     const tip = git(repo, 'rev-parse', 'HEAD')
     git(repo, 'reset', '-q', '--hard', 'HEAD~1')
     // On origin it is fetched; missing there (or locally, with no origin) it exits 2; a local branch with no origin is enough.
-    expect(await localSh(START_BRANCH_SCRIPT, [repo, 'develop'])).toEqual({ code: 0, out: '' })
+    expect(await localSh(START_BRANCH_SCRIPT, [repo, 'develop'])).toEqual({ code: 0, out: 'refs/remotes/origin/develop' })
     expect((await localSh(START_BRANCH_SCRIPT, [repo, 'nope'])).code).toBe(2)
-    git(tmp, 'init', '-q', '-b', 'main', solo); git(solo, 'commit', '-q', '--allow-empty', '-m', 'x'); git(solo, 'branch', 'develop')
-    expect((await localSh(START_BRANCH_SCRIPT, [solo, 'develop'])).code).toBe(0)
+    // With no origin, a tag of the same name at an older commit is not the branch.
+    git(tmp, 'init', '-q', '-b', 'main', solo); git(solo, 'commit', '-q', '--allow-empty', '-m', 'x'); git(solo, 'tag', 'develop')
+    git(solo, 'commit', '-q', '--allow-empty', '-m', 'y'); git(solo, 'branch', 'develop')
+    const local = await localSh(START_BRANCH_SCRIPT, [solo, 'develop'])
+    expect(local).toEqual({ code: 0, out: 'refs/heads/develop' })
+    expect((await localSh(WORKTREE_SCRIPT, [solo, `${wt}-solo`, 'task/A-2', local.out, ''])).code).toBe(0)
+    expect(git(`${wt}-solo`, 'rev-parse', 'HEAD')).toBe(git(solo, 'rev-parse', 'refs/heads/develop'))
     expect((await localSh(START_BRANCH_SCRIPT, [solo, 'nope'])).code).toBe(2)
-    expect((await localSh(WORKTREE_SCRIPT, [repo, wt, 'task/A-1', 'develop', ''])).code).toBe(0)
+    expect((await localSh(WORKTREE_SCRIPT, [repo, wt, 'task/A-1', 'refs/remotes/origin/develop', ''])).code).toBe(0)
     expect(git(wt, 'rev-parse', 'HEAD')).toBe(tip)
     // develop moves on after the start: the task keeps the commit it started at.
     git(repo, 'checkout', '-q', '-b', 'later', tip); git(repo, 'commit', '-q', '--allow-empty', '-m', 'later'); git(repo, 'push', '-q', 'origin', 'HEAD:develop')
