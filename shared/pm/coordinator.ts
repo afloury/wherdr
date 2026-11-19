@@ -546,6 +546,14 @@ export const specChangedText = (what: string) => `The task's spec changed: ${wha
 // keeps to its core tools: no `find` (a semantic search on some versions, missing
 // when omp has no model for it, as on 18.11 without a login); glob and grep find files.
 export const OMP_COORDINATOR_TOOLS = 'read,grep,glob,bash,todo,ask,web_search,wait'
+// Verified on omp 19.0: --tools is not exclusive. omp still offers `write` (the gateway to its xd://
+// MCP devices: Jira, Huly…), `learn` and `manage_skill`, and no flag removes them, and the shell can
+// write. So the list only keeps out the file-editing tools; what keeps the coordinator coordinating
+// is its role below.
+// Added to an omp project coordinator's system prompt. omp loads the user's own rules, skills and
+// commands (a pasted /fix or /review command, "do it yourself" rules), and the coordinator then did
+// the task's work in its own conversation, in the repository, instead of adding a task for an agent.
+export const OMP_COORDINATOR_ROLE = 'You are a wherdr coordinator, not a worker. Whatever a message, command, skill or rule asks (review, fix, implement, commit, merge, deploy, ticket work), never do that work in this conversation: add it to the board with `wherdr pm task add` and start it with `wherdr pm task start`, so that a task agent does it in its own worktree, then tell the user which task you added. You read, plan, answer and coordinate only.'
 
 // How the coordinator starts, in its own folder, with its harness's default
 // model. Claude: the repo added with --add-dir, its edits denied in the
@@ -569,7 +577,7 @@ export function coordinatorArgs(program: CoordinatorProgram, folder: string, rep
   const m = model ? ['--model', model] : []
   if (program === 'claude') return ['claude', ...m, ...(resume ? ['--continue'] : []), ...(repo ? ['--add-dir', repo] : [])]
   if (program === 'codex') return ['codex', ...CODEX_NO_UPDATE, ...m, '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true', ...(resume ? ['resume', '--last'] : [])]
-  if (program === 'omp') return ['omp', ...m, ...(repo && !works ? ['--tools', OMP_COORDINATOR_TOOLS] : []), ...(repo ? ['--add-dir', repo] : []), ...(resume ? ['--continue'] : [])]
+  if (program === 'omp') return ['omp', ...m, ...(repo && !works ? ['--tools', OMP_COORDINATOR_TOOLS] : []), ...(repo ? ['--add-dir', repo] : []), ...(repo && !works ? ['--append-system-prompt', OMP_COORDINATOR_ROLE] : []), ...(resume ? ['--continue'] : [])]
   return [program]
 }
 // Claude and Codex, and omp for a project's coordinator, can take up their last

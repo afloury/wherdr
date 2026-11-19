@@ -12,7 +12,7 @@ import { execFileSync } from 'node:child_process'
 import { trustKeys } from '../shared/pm/run'
 import { coordinatorStart, setupDone } from '../shared/pm/setup'
 import { WORKSPACE_FIRST } from '../shared/pm/workspace'
-import { FIRST_REPLY, MAIN, OMP_COORDINATOR_TOOLS, canResume, canRunCoordinator, defaultProjectProgram, parseCommand, promptAsArg, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
+import { FIRST_REPLY, MAIN, OMP_COORDINATOR_ROLE, OMP_COORDINATOR_TOOLS, canResume, canRunCoordinator, defaultProjectProgram, parseCommand, promptAsArg, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
 import { EXAMPLES, common, company as example, github } from '../shared/pm/examples'
 import { DONE_CMD, reviewFile } from '../shared/pm/advance'
@@ -797,10 +797,10 @@ describe('role files', () => {
     const { runs, deps } = fakeCore()
     const line = () => String(runs.filter(r => r.method === 'terminal.run').at(-1)!.line)
     await startCoordinator(deps, 'CO', { program: 'omp' }, urls, ['A task was reported'])
-    expect(line()).toMatch(new RegExp(`exec 'omp' '--tools' '${OMP_COORDINATOR_TOOLS}' '--add-dir' '/src/co' '.*A task was reported.*'$`, 's'))
+    expect(line()).toMatch(new RegExp(`exec 'omp' '--tools' '${OMP_COORDINATOR_TOOLS}' '--add-dir' '/src/co' '--append-system-prompt' '[^']*coordinator, not a worker[^']*' '[^]*A task was reported[^]*'$`))
     expect(line()).not.toContain('--continue')
     await startCoordinator(deps, 'CO', { resume: true }, urls)
-    expect(line()).toMatch(new RegExp(`exec 'omp' '--tools' '${OMP_COORDINATOR_TOOLS}' '--add-dir' '/src/co' '--continue'$`))
+    expect(line()).toMatch(new RegExp(`exec 'omp' '--tools' '${OMP_COORDINATOR_TOOLS}' '--add-dir' '/src/co' '--append-system-prompt' '[^']*coordinator, not a worker[^']*' '--continue'$`))
   })
 
   it('first start on a project with no accepted workflow: no template needed, its first reply proposes one, in the user\'s turn; not again', async () => {
@@ -887,9 +887,12 @@ describe('role files', () => {
     // The guard is the list: none of the tools that write, apply edits, run code or spawn agents.
     expect(tools.split(',').filter(x => /^(edit|write|ast_edit|eval|task|debug|lsp)$/.test(x))).toEqual([])
     expect(tools.split(',')).toEqual(expect.arrayContaining(['read', 'bash']))
-    expect(coordinatorArgs('omp', '/h/c', '/src/co')).toEqual(['omp', '--tools', tools, '--add-dir', '/src/co'])
-    expect(coordinatorArgs('omp', '/h/c', '/src/co', false, false, 'anthropic/claude-sonnet-5-5')).toEqual(['omp', '--model', 'anthropic/claude-sonnet-5-5', '--tools', tools, '--add-dir', '/src/co'])
-    expect(coordinatorArgs('omp', '/h/c', '/src/co', false, true)).toEqual(['omp', '--tools', tools, '--add-dir', '/src/co', '--continue'])
+    // Its role outranks what a message, skill or command asks: it adds tasks, never does their work in its own conversation.
+    const role = ['--append-system-prompt', OMP_COORDINATOR_ROLE]
+    expect(OMP_COORDINATOR_ROLE).toMatch(/coordinator, not a worker[^]*wherdr pm task add/)
+    expect(coordinatorArgs('omp', '/h/c', '/src/co')).toEqual(['omp', '--tools', tools, '--add-dir', '/src/co', ...role])
+    expect(coordinatorArgs('omp', '/h/c', '/src/co', false, false, 'anthropic/claude-sonnet-5-5')).toEqual(['omp', '--model', 'anthropic/claude-sonnet-5-5', '--tools', tools, '--add-dir', '/src/co', ...role])
+    expect(coordinatorArgs('omp', '/h/c', '/src/co', false, true)).toEqual(['omp', '--tools', tools, '--add-dir', '/src/co', ...role, '--continue'])
     // A plain folder is the coordinator's to change: omp's default tools. Alfred has no repository.
     expect(coordinatorArgs('omp', '/h/c', '/src/co', true)).toEqual(['omp', '--add-dir', '/src/co'])
     expect(coordinatorArgs('omp', '/h/c')).toEqual(['omp'])

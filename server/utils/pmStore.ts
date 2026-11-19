@@ -363,7 +363,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     workflow: async (key: string) => {
       if (!KEY_RE.test(key)) return null
       const list = await projects(), p = list.find(x => x.key === key), ws = p && workspaceOf(p, list)
-      return effectiveWorkflow(key, await readJson<Template>(workflowFile(key)), p, ws, ws ? await readJson<Template>(workflowFile(ws.key)) : null)
+      const saved = await readJson<Template>(workflowFile(key)), shared = ws ? await readJson<Template>(workflowFile(ws.key)) : null
+      // With no accepted workflow (its own or its workspace's), the tasks run on the coordinator's own
+      // agent: a member's is its workspace's.
+      const c = saved || shared ? null : await readJson<CoordinatorRecord>(path.join(files.coordinators, `${ws?.key ?? key}.json`))
+      return effectiveWorkflow(key, saved, p, ws, shared, c?.ran ?? c?.agent)
     },
     savedWorkflow: (key: string) => (KEY_RE.test(key) ? readJson<Template>(workflowFile(key)) : Promise.resolve(null)),
     workflowLog: (key: string) => (KEY_RE.test(key) ? readLog(workflowLogFile(key)) : Promise.resolve([])),
