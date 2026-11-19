@@ -17,7 +17,7 @@ import type { UiCard } from '../../shared/uiActions'
 import { cleanProjectInput, isBranch, isGitBranch, machinesOf, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
 import { defaultColor, keyClash, projectOf, renamed, showIds, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
-import { WEIGHTS, defaultPrefs, defaultWorkflow, isContextError, isDefaultWorkflow, isWeight, readContext, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
+import { WEIGHTS, defaultWorkflow, isContextError, isWeight, readContext, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
 import { checkTaskContext } from '../../shared/pm/context'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
 import { publicTask, taskPlan, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
@@ -363,11 +363,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     workflow: async (key: string) => {
       if (!KEY_RE.test(key)) return null
       const list = await projects(), p = list.find(x => x.key === key), ws = p && workspaceOf(p, list)
-      const t = effectiveWorkflow(key, await readJson<Template>(workflowFile(key)), p, ws, ws ? await readJson<Template>(workflowFile(ws.key)) : null)
-      // Until one is accepted, the tasks run on the coordinator's own agent (a member follows its workspace's setup).
-      if (!isDefaultWorkflow(t) || ws) return t
-      const c = await readJson<CoordinatorRecord>(path.join(files.coordinators, `${key}.json`))
-      return { ...t, prefs: defaultPrefs(c?.ran ?? c?.agent) }
+      const saved = await readJson<Template>(workflowFile(key)), shared = ws ? await readJson<Template>(workflowFile(ws.key)) : null
+      // With no accepted workflow (its own or its workspace's), the tasks run on the coordinator's own
+      // agent: a member's is its workspace's.
+      const c = saved || shared ? null : await readJson<CoordinatorRecord>(path.join(files.coordinators, `${ws?.key ?? key}.json`))
+      return effectiveWorkflow(key, saved, p, ws, shared, c?.ran ?? c?.agent)
     },
     savedWorkflow: (key: string) => (KEY_RE.test(key) ? readJson<Template>(workflowFile(key)) : Promise.resolve(null)),
     workflowLog: (key: string) => (KEY_RE.test(key) ? readLog(workflowLogFile(key)) : Promise.resolve([])),

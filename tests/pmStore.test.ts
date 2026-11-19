@@ -258,3 +258,19 @@ describe('cleanProjectInput', () => {
     expect(errors.map(e => e.path)).toEqual(['key', 'machine', 'path', 'base', 'template'])
   })
 })
+
+describe('workspace members and the coordinator\'s agent', () => {
+  it('runs a member with no workflow of its own on its workspace coordinator\'s agent', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await store.addProject({ key: 'ws', name: 'Work', machine: '', path: '~/work', kind: 'workspace', group: 'g1' }, okFolder)
+    await store.addProject({ key: 'pay', machine: '', path: '~/work/payroll-api', workspace: 'ws' }, okFolder)
+    expect((await store.workflow('PAY'))!.prefs).toEqual({ agent: 'claude', model: 'sonnet' })
+    await store.saveCoordinator({ ...(await store.coordinator('WS'))!, ran: { program: 'omp', model: 'anthropic/claude-opus-5-5' } })
+    expect((await store.workflow('PAY'))!.prefs).toEqual({ agent: 'omp', model: 'anthropic/claude-opus-5-5', reviewModel: 'same' })
+    expect((await store.workflow('WS'))!.prefs).toEqual({ agent: 'omp', model: 'anthropic/claude-opus-5-5', reviewModel: 'same' })
+    // The workspace's accepted workflow wins over the coordinator's agent.
+    await store.saveWorkflow('WS', { ...defaultWorkflow('WS'), prefs: { agent: 'claude', model: 'opus' } })
+    expect((await store.workflow('PAY'))!.prefs).toEqual({ agent: 'claude', model: 'opus' })
+  })
+})
