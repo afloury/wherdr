@@ -1,6 +1,6 @@
 {
   "name": "wherdr",
-  "version": "3.2.1-dev",
+  "version": "3.2.1",
   "private": true,
   "license": "MIT",
   "type": "module",
