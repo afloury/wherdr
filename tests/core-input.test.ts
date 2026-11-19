@@ -204,6 +204,31 @@ describe('core input routes', () => {
     expect(cold.logs.join('\n')).not.toMatch(/look|srv/)
   })
 
+  it('a slow core (each read, send and key near its timeout): the photo fallback stops in time, answered under 120 s', async () => {
+    const msg = 'look at this\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png'
+    let clock = 1_000_000
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => clock)
+    let field: string | null = null
+    const t = deps((m, params) => {
+      if (m === 'terminal.send') { clock += 29_000; field = `${msg}\n\\` }
+      if (m === 'terminal.keys') {
+        clock += 9_000
+        if (params.keys[0] === 'backspace') field = `${msg}\n\\`
+      }
+      return m === 'terminal.send' ? { started: false } : {}
+    })
+    t.d.settleMs = 1
+    let looks = 0
+    t.d.field = async () => { clock += 15_000; return looks++ ? field : null }
+    const warn = console.warn
+    console.warn = () => {}
+    const start = clock
+    try {
+      await coreSend(t.d, { pane_id: 't1', text: msg }).catch(() => null)
+    } finally { console.warn = warn; now.mockRestore() }
+    expect(clock - start).toBeLessThan(120_000)
+  })
+
   it('a photo path cleared to be pasted again: never sent in part, nor lost when the field cannot be read', async () => {
     const msg = 'important instructions\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png'
     // `cleared`: the field after each clear (a clear that leaves part of the text, or a field no longer readable).

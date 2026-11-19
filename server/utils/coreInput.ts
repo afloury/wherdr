@@ -107,9 +107,10 @@ export async function coreSend(deps: CoreInputDeps, b: { pane_id?: unknown, text
   // Bounded under the app's SEND_DEADLINE_MS (app/utils/outbox.ts, 120 s).
   // Not typed within START_BY_MS (its turn behind another writer, the looks at
   // a busy field): refused, nothing typed, and its turn, when it comes, does
-  // nothing. Once typed, every step has its own timeout, the photo wait ends
-  // PHOTO_WAIT_MS after the paste, and no Enter starts after SEND_BUDGET_MS
-  // (the message stays in the field, with Send now / Clear).
+  // nothing. Once typed, every step has its own timeout (about 30 s at most,
+  // a terminal.send) and none starts after SEND_BUDGET_MS: no look, clear,
+  // Backspace or Enter, nor a second paste without 30 s left (the message
+  // stays in the field, with Send now / Clear).
   const startBy = queuedAt + (deps.startByMs ?? START_BY_MS)
   const late = () => new HerdrError('busy', 'Another message to this terminal took too long: nothing was typed, send again.')
   let expired = false
@@ -126,8 +127,9 @@ export async function coreSend(deps: CoreInputDeps, b: { pane_id?: unknown, text
   return Promise.race([turn, deadline])
 }
 const START_BY_MS = 25_000
-// Each Enter step (a key, the settle, a field read) takes up to about 20 s.
-export const SEND_BUDGET_MS = 90_000
+// The longest step started before it (a key and a field read, ~27 s) still ends under 120 s.
+export const SEND_BUDGET_MS = 85_000
+const PASTE_STEP_MS = 30_000
 
 // Claude turns a pasted photo path into "[Image #N]" a moment after the
 // paste; core's Enter right after it may come first, and Claude then submits
@@ -280,8 +282,9 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
   }
   // Wait for it whole (null: the field emptied, the message was taken). Every
   // decision is on the latest read; a failed read decides nothing.
+  const over = (need = 0) => Date.now() + need >= until
   for (let i = 0, rawLooks = 0, clearing = 0; ; i++) {
-    if (i >= SUBMIT_LOOKS) giveUp(clearing)
+    if (i >= SUBMIT_LOOKS || over()) giveUp(clearing)
     const now = await look()
     const late = i + 1 >= SUBMIT_LOOKS || Date.now() >= deadline
     if (now === undefined) {
@@ -293,6 +296,7 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
       // The wait is over before the field emptied: the message is no longer whole there, refused for Retry.
       if (late) giveUp(clearing)
       if (now === null) {
+        if (over(PASTE_STEP_MS)) giveUp(clearing)
         console.warn(`[wherdr] message to ${p.coreAddress}: a photo stayed a path after ${Date.now() - started} ms, pasted again`)
         const paste = again!
         again = undefined
@@ -313,7 +317,7 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
     if (now === null) return 0
     if (fieldHolds(now, text, true)) break
     rawLooks = fieldHoldsRawPhoto(now, text) ? rawLooks + 1 : 0
-    if (rawLooks >= RAW_LOOKS && again && deadline - Date.now() >= Math.min(AGAIN_WAIT_MS, waitMs / 3)) {
+    if (rawLooks >= RAW_LOOKS && again && deadline - Date.now() >= Math.min(AGAIN_WAIT_MS, waitMs / 3) && !over(PASTE_STEP_MS)) {
       await keys(clearKeys(now.split('\n').length))
       clearing = 1
       continue
@@ -325,6 +329,10 @@ async function submitLeftInput(deps: CoreInputDeps, p: Pane, field: (p: Pane) =>
       // The lone "\" (and only it): one Backspace at a time while the field
       // ends with it; Enter only on a field read holding our message whole.
       for (let k = 0, cur = now; /\\\s*$/.test(cur); k++) {
+        if (over()) {
+          console.warn(`[wherdr] message to ${p.coreAddress}: not submitted, out of time while its "\\" was taken out: ${why()}`)
+          return 0
+        }
         if (k < 3) await keys(['backspace'])
         const after = k < 3 ? await look() : undefined
         if (after === null) return 0
