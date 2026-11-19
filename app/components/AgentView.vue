@@ -414,6 +414,9 @@ function coreMenuItems(p: Pane | undefined): MenuItem[] {
     reconnect: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) },
     browseFiles: () => { filesOpen.value = true },
     split: p ? splitItems(p) : [],
+    editor: p && canOpenOnMachine(p)
+      ? { label: t('Open in editor'), icon: 'i-lucide-square-code', kbds: desk.value && live.value ? shortcutKbds('open-editor') : undefined, run: () => openFolderOnMachine(p) }
+      : undefined,
     settings: props.cell ? [] : settingsMenuItems(),
     close: p && !compactPhone.value ? closePaneItem(p, live.value ? shortcutKbds('close-pane') : undefined) : undefined,
   })

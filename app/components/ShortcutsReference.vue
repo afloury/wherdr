@@ -10,7 +10,7 @@ const mac = /Macintosh|Mac OS X|iPhone|iPad/.test(navigator.userAgent)
 const ARROWS = ['arrowleft', 'arrowright', 'arrowup', 'arrowdown']
 type Row = { label: string, keys: string[][], id?: ShortcutId, v2?: true }
 type Group = { title: string, rows: Row[] }
-// herdr-core (v3): the rows marked v2 (tabs, editor, swap) are not offered yet.
+// herdr-core (v3): the rows marked v2 (tabs, swap) are not offered yet.
 const allGroups = computed<Group[]>(() => [
   { title: tl('Anywhere'), rows: [
     { id: 'search-all', label: tl('Search agents and conversations'), keys: [shortcutKbds('search-all')] },
@@ -21,7 +21,7 @@ const allGroups = computed<Group[]>(() => [
     { id: 'close-pane', label: tl('Close this pane'), keys: [shortcutKbds('close-pane')] },
     { id: 'split-right', label: tl('Split this pane right (new shell)'), keys: [shortcutKbds('split-right')] },
     { id: 'split-down', label: tl('Split this pane down (new shell)'), keys: [shortcutKbds('split-down')] },
-    { id: 'open-editor', label: tl('Current agent folder in the editor'), keys: [shortcutKbds('open-editor')], v2: true },
+    { id: 'open-editor', label: tl('Current agent folder in the editor'), keys: [shortcutKbds('open-editor')] },
     { id: 'settings', label: t('Settings'), keys: [shortcutKbds('settings')] },
     { id: 'notes', label: tl('Notes'), keys: [shortcutKbds('notes')] },
     { id: 'help', label: tl('Keyboard shortcuts'), keys: [shortcutKbds('help'), ['?']] },

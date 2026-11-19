@@ -50,8 +50,8 @@ function run(id: Exclude<ShortcutId, 'search-all'>, overlay: boolean): boolean {
   const p = herdrState.value.panes.find(x => x.id === curPane.value)
   // Same conditions as the buttons: nothing is created or closed offline.
   const writable = eventsOpen.value && !offlineView.value
-  // herdr-core (v3): no tab or editor opening yet; the other shortcuts work as in v2.
-  if (id === 'new-tab' || id === 'open-editor') return false
+  // herdr-core (v3): no tab opening yet; the other shortcuts work as in v2.
+  if (id === 'new-tab') return false
   switch (id) {
     case 'search-chat': return view?.searchChat() ?? false
     case 'toggle-term': return view?.toggleTerm() ?? false
@@ -71,6 +71,11 @@ function run(id: Exclude<ShortcutId, 'search-all'>, overlay: boolean): boolean {
     case 'split-right':
     case 'split-down':
       return writable && Boolean(p) && !paneStale(p) && splitPane(p!, id === 'split-right' ? 'right' : 'down')
+    case 'open-editor':
+      if (!p || !canOpenOnMachine(p)) return false
+      haptic()
+      openFolderOnMachine(p)
+      return true
     case 'settings':
       navigateTo('/settings')
       return true
