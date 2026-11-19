@@ -411,7 +411,7 @@ function coreMenuItems(p: Pane | undefined): MenuItem[] {
     rename: (id) => { renameTarget.value = id },
     reconnect: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) },
     browseFiles: () => { filesOpen.value = true },
-    split: p ? splitDownItem(p) : [],
+    split: p ? splitItems(p) : [],
     settings: props.cell ? [] : settingsMenuItems(),
     close: p && !compactPhone.value ? closePaneItem(p, live.value ? shortcutKbds('close-pane') : undefined) : undefined,
   })

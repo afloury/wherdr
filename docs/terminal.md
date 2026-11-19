@@ -22,8 +22,10 @@
   restarts or loses it.
 - **Close** ends the terminal's program (`terminal.kill`) after confirmation.
 
-- **Split down** (pane's **…** menu, absent when its folder is unknown, off while its machine is
-  offline): a shell on the same machine and in the same folder, in the same tab, drawn under the
-  others in equal parts; the tab view opens on it. Closing one gives a simple tab back.
+- **Split right** and **Split down** (pane's **…** menu, absent when its folder is unknown, off
+  while its machine is offline): a shell on the same machine and in the same folder, in the same
+  tab, taking the right or bottom half of the pane's cell; the tab view opens on it. The layout is
+  wherdr's own (a synced setting, the same on every open device within a second); herdr-app keeps
+  its own and wherdr never writes it. Closing a terminal gives its room to its neighbour.
 
-Split right, dragging dividers and pane swaps are v2 only for now; move of tabs stays in herdr-app.
+Dragging dividers and pane swaps are v2 only for now; move of tabs stays in herdr-app.
