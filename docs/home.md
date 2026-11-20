@@ -172,6 +172,29 @@ is offered for a project's coordinator but never picked for you: with no explici
 offered Claude or Codex is the default, even when omp is first in your order (omp is the default
 only when neither is offered). Choices and order follow you on every device.
 
+### Named agents
+
+Settings › Agents › **Named agents** gives a name to a command on some machines: an
+executable on the machine's PATH (often a wrapper script) and its fixed options, for a second
+account of the same program (a subscription and an API key) or launch options such as
+`--thinking medium`. Each one has a name (`omp-sub`), the program it runs (claude, codex or
+omp: wherdr reads its conversation, choices and status as that program's), the command
+(`omp-sub --thinking medium`) and the machines that have it; *Add named agent*, then edit or
+remove a row. A workflow names it in `prefs.agent`, `reviewAgent` or `reviewFallbackAgent`
+([Worker and reviewer agents](project-management.md#worker-and-reviewer-agents)). The list
+follows you on every device and is read by the engine.
+
+**No secret ever goes in wherdr**: only a name and a command line (a command holding
+`api_key=`, `token=` or the like is refused). The wrapper script reads its key itself, from the
+keychain for instance:
+
+```sh
+#!/bin/sh
+# ~/bin/omp-sub: omp on the API account, its key from the keychain.
+OMP_API_KEY="$(secret-tool lookup service omp-api)" exec omp "$@"
+# macOS: security find-generic-password -s omp-api -w
+```
+
 ### Machines as tabs
 
 The **machine tabs** at the top of the list are **All**, then one tab per machine (the host, the

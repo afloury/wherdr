@@ -22,7 +22,9 @@ import { ensureReady } from './pmReady'
 import { fileConflict, filesSection, pastAgents } from '../../shared/pm/files'
 import { branchFor } from '../../shared/pm/branchName'
 import { showIds, shownKey, shownTaskId } from '../../shared/pm/projectKey'
-import { LABEL, TMP_DIR, WS_FILES_SCRIPT, parseWsFiles, wsFilesSection, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, startBase, taskPlan, workflowBaseNote, missingBaseNote, startMissing, reconcile, runLabels, taskPaths, tmpRefusal, workerPlan, type Run, type Task } from '../../shared/pm/run'
+import { namedAgents } from './settings'
+import { agentsMissing } from '../../shared/pm/namedAgents'
+import { LABEL, TMP_DIR, WS_FILES_SCRIPT, parseWsFiles, wsFilesSection, agentEnv, agentLine, isAuthFailure, instructionsText, shotStep, startBase, taskPlan, workflowBaseNote, missingBaseNote, startMissing, reconcile, runLabels, taskPaths, tmpRefusal, taskAgents, workerPlan, type Run, type Task } from '../../shared/pm/run'
 import { isOpen, type Incident, type Recovery } from '../../shared/pm/incident'
 import { recordGone, type CoreList } from './pmIncidents'
 import { interruptTask } from './pmRecovery'
@@ -426,7 +428,8 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const p = await ensureVisibility(deps, found)
   const t = p ? await store.workflow(p.key) : null
   if (!t) return wait(store, task, `The project has no workflow: ask its coordinator to propose one in ${projectPlace(task.project, 'workflow')}`)
-  const plan = workerPlan(t, task)
+  const named = await namedAgents()
+  const plan = workerPlan(t, task, named)
   if ('reason' in plan) return wait(store, task, plan.reason)
   // Stopped at a step the worker does not hold (the review): no new worker. That
   // step's holder is told again (the reviewer started again) by the next advance
@@ -449,6 +452,8 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
     return wait(store, task, (e as Error).message)
   }
   if (!(await kindsOf(deps, on)).includes(plan.program)) return wait(store, task, `${plan.program} is not installed on ${label}`)
+  const lacking = agentsMissing(taskAgents(t, task, named), named, machine)
+  if (lacking) return wait(store, task, `${label}: ${lacking}`)
   const home = await homeOf(deps, on)
   if (!home) return wait(store, task, `${label}: home folder not found`)
   const repo = cloneOn(p, machine, home)
@@ -516,7 +521,8 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   // Claude's conversation id, pinned: a later resume takes it up again.
   const taken = plan.program === 'claude' ? resume : undefined
   const session = () => (plan.program === 'claude' ? { session: randomUUID() } : {})
-  let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...plan, machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now(), ...(taken ? { session: taken.session } : session()), ...(ctx.folders.length ? { context: ctx.folders } : {}) }
+  const { command: _command, ...who } = plan
+  let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...who, machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now(), ...(taken ? { session: taken.session } : session()), ...(ctx.folders.length ? { context: ctx.folders } : {}) }
   for (;;) {
     await store.saveRun(run) // the receipt, before the terminal exists
     await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, stopped: undefined, held: undefined, sameFiles: undefined, machineWait: undefined, run: run.id, step, base, branch: paths.branch, branchStart: task.branchStart ?? paths.branch, ...(shotToken ? { shotToken } : {}) })
@@ -525,7 +531,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
       address = (await deps.call<{ address: string }>('terminal.run', {
         cwd: paths.worktree, ...(on ? { on } : {}), no_parent: true, wait: false,
         env: agentEnv(paths.worktree), labels: runLabels(install, run),
-        line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, paths.instructions, run.session ? { id: run.session, ...(taken && run.attempt === 1 ? { resume: taken.text } : {}) } : undefined, undefined, ctx.folders.map(f => f.dir))}`,
+        line: `${PATH_SETUP}; ${agentLine(plan, plan.model, paths.instructions, run.session ? { id: run.session, ...(taken && run.attempt === 1 ? { resume: taken.text } : {}) } : undefined, undefined, ctx.folders.map(f => f.dir))}`,
       }, 30000)).address
     } catch (e) {
       // Unconfirmed: it may run anyway. The watchdog finds it by its labels, or ends the run (staleStarts).

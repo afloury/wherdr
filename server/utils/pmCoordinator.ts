@@ -1,6 +1,7 @@
 // A project coordinator on the server: its token (one per project, scoped to
 // it), where its current turn comes from, the `wherdr pm` commands it runs,
 // and its role files, written in its own folder on the project's machine.
+import { namedAgents } from './settings'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
@@ -325,7 +326,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       // Always the project's own workflow, whatever id the JSON names.
       if (t && next && typeof next === 'object') next = { ...next, id: t.id }
       editRefusal(t, next, turn, key)
-      const errors = validateTemplate(next)
+      const errors = validateTemplate(next, await namedAgents())
       if (errors.length) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
       // The user accepts or refuses it in the interface; nothing is saved yet.
       // by: who proposed it; said, saidAt: the user's message it follows.

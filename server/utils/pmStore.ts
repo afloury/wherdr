@@ -10,6 +10,7 @@
 // maps/<WS>.json (a workspace's map: shared/pm/workspaceMap.ts).
 // Atomic writes (temp file + rename), one at a time. Switched off, every
 // write is refused except turning it back on.
+import { namedAgents } from './settings'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -389,7 +390,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     saveWorkflow: (key: string, raw: unknown, { by = 'user', said = '' } = {}) => write(async () => {
       const { list, i } = await findProject(key)
       const t = raw && typeof raw === 'object' && !Array.isArray(raw) ? ownWorkflow(raw as Template) : raw
-      const errors = validateTemplate(t)
+      const errors = validateTemplate(t, await namedAgents())
       if (errors.length) throw badInput(errors)
       const old = await readJson<Template>(workflowFile(key)), ws = workspaceOf(list[i]!, list)
       const shared = ws ? await readJson<Template>(workflowFile(ws.key)) : null

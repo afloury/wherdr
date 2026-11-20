@@ -3,6 +3,7 @@
 // sets; what each step asks of an agent is plain text written in the template.
 
 import { isGitBranch } from './project'
+import { resolveAgent, type AgentRef, type NamedAgent } from './namedAgents'
 
 export const HOLDERS = ['worker', 'reviewer', 'coordinator', 'none'] as const
 export type Holder = typeof HOLDERS[number]
@@ -88,14 +89,17 @@ export const SAME_MODEL = 'same'
 export const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/
 
 // A reviewer's agent and model (`field` asked for it): another model than the
-// worker's, or "same" with the worker's agent. Returns the reason it cannot run.
-export function reviewerCheck(worker: { program: string, model: string }, program: string, asked: string, field: 'reviewModel' | 'reviewFallbackModel'): { program: string, model: string } | { reason: string } {
+// worker's, or "same" with the worker's program. agent: a program or a named
+// agent (named: the list, when known). Returns the reason it cannot run.
+export function reviewerCheck(worker: { program: string, model: string }, agent: string, asked: string, field: 'reviewModel' | 'reviewFallbackModel', named?: readonly NamedAgent[]): AgentRef & { model: string } | { reason: string } {
   const same = asked === SAME_MODEL, model = same ? worker.model : asked
-  if (!(PROGRAMS as readonly string[]).includes(program)) return { reason: `The engine cannot start "${program}": claude, codex or omp` }
-  if (same && program !== worker.program) return { reason: `${field} "${SAME_MODEL}" needs the worker's agent (${worker.program})` }
+  const ref = resolveAgent(agent, named)
+  if ('reason' in ref) return ref
+  const program = 'unknown' in ref ? '' : ref.program
+  if (same && program && program !== worker.program) return { reason: `${field} "${SAME_MODEL}" needs the worker's agent (${worker.program})` }
   if (!MODEL_RE.test(model)) return { reason: model ? `Invalid review model "${model}"` : `No review model set: add prefs.${field} to the template` }
   if (!same && model === worker.model) return { reason: `The reviewer must use another model than the worker (${model}), or set ${field} to "${SAME_MODEL}"` }
-  return { program, model }
+  return 'unknown' in ref ? { program: '', agent, model } : { ...ref, model }
 }
 
 export interface TaskType {
@@ -209,12 +213,18 @@ function checkGuards(g: unknown, path: string, errs: WorkflowError[], project = 
   }
 }
 
-export function checkPrefs(p: unknown, path: string, errs: WorkflowError[]) {
+// named: the named agents (Settings › Agents), when known: an agent field names
+// a program or one of them; unknown, any well-formed name passes.
+export function checkPrefs(p: unknown, path: string, errs: WorkflowError[], named?: readonly NamedAgent[]) {
   if (p === undefined) return
   if (!isObj(p)) return void errs.push({ path, message: 'must be an object' })
   checkKeys(p, PREF_KEYS, path, errs)
-  for (const [k, v] of Object.entries(p)) if (!isStr(v)) errs.push({ path: `${path}.${k}`, message: 'must be text' })
+  for (const [k, v] of Object.entries(p)) {
+    if (!isStr(v)) errs.push({ path: `${path}.${k}`, message: 'must be text' })
+    else if (AGENT_PREFS.includes(k)) { const r = resolveAgent(v as string, named); if ('reason' in r) errs.push({ path: `${path}.${k}`, message: r.reason }) }
+  }
 }
+const AGENT_PREFS = ['agent', 'reviewAgent', 'reviewFallbackAgent']
 
 const STEP_KEYS = ['id', 'column', 'holder', 'instructions', 'ends', 'userLabel', 'badge', 'evidence', 'screenshots', 'recheck', 'timeout', 'sendBack', 'rounds', 'action']
 
@@ -292,7 +302,7 @@ export function startOverFrom(source: Template, own: Template | null): Template 
 }
 
 // Every problem in a template, each with the path of the field at fault.
-export function validateTemplate(t: unknown): WorkflowError[] {
+export function validateTemplate(t: unknown, named?: readonly NamedAgent[]): WorkflowError[] {
   const errs: WorkflowError[] = []
   if (!isObj(t)) return [{ path: '', message: 'must be an object' }]
   checkKeys(t, ['id', 'version', 'guards', 'instructions', 'prefs', 'worktree', 'steps', 'taskTypes'], '', errs)
@@ -301,7 +311,7 @@ export function validateTemplate(t: unknown): WorkflowError[] {
   if (t.version !== undefined && !Number.isInteger(t.version)) errs.push({ path: 'version', message: 'must be a whole number' })
   if (t.instructions !== undefined && typeof t.instructions !== 'string') errs.push({ path: 'instructions', message: 'must be text' })
   checkGuards(t.guards, 'guards', errs, true)
-  checkPrefs(t.prefs, 'prefs', errs)
+  checkPrefs(t.prefs, 'prefs', errs, named)
   const shared = isObj(t.steps) ? t.steps : {}
   if (t.steps !== undefined && !isObj(t.steps)) errs.push({ path: 'steps', message: 'must be an object' })
   for (const [id, s] of Object.entries(shared)) {
@@ -319,7 +329,7 @@ export function validateTemplate(t: unknown): WorkflowError[] {
     if (tt.weight !== undefined && !isWeight(tt.weight)) errs.push({ path: `${path}.weight`, message: `must be one of ${WEIGHTS.join(', ')}` })
     if (tt.instructions !== undefined && typeof tt.instructions !== 'string') errs.push({ path: `${path}.instructions`, message: 'must be text' })
     checkGuards(tt.guards, `${path}.guards`, errs)
-    checkPrefs(tt.prefs, `${path}.prefs`, errs)
+    checkPrefs(tt.prefs, `${path}.prefs`, errs, named)
     if (tt.childType !== undefined && !Object.hasOwn(t.taskTypes, tt.childType as string)) errs.push({ path: `${path}.childType`, message: 'must name a task type of this template' })
     if (!Array.isArray(tt.steps) || !tt.steps.length) { errs.push({ path: `${path}.steps`, message: 'needs at least one step' }); continue }
     const seen: string[] = []
@@ -333,14 +343,14 @@ export function validateTemplate(t: unknown): WorkflowError[] {
       if (id && seen.includes(id)) errs.push({ path: `${p}.id`, message: `step "${id}" appears twice` })
       if (id) seen.push(id)
     })
-    checkFallback(t as unknown as Template, name, shared, errs)
+    checkFallback(t as unknown as Template, name, shared, errs, named)
   }
   return errs
 }
 
 // A task type's reviewer fallback, as its levels set it: both prefs or none,
 // and the reviewer's rules against the worker of that type.
-function checkFallback(t: Template, name: string, shared: Record<string, unknown>, errs: WorkflowError[]) {
+function checkFallback(t: Template, name: string, shared: Record<string, unknown>, errs: WorkflowError[], named?: readonly NamedAgent[]) {
   const tt = t.taskTypes[name]!
   const steps = Array.isArray(tt.steps) ? tt.steps.map(s => (typeof s === 'string' ? shared[s] : s)) : []
   if (!steps.some(s => isObj(s) && s.holder === 'reviewer')) return
@@ -351,9 +361,10 @@ function checkFallback(t: Template, name: string, shared: Record<string, unknown
   if (!agent && !model) return
   const add = (path: string, message: string) => { if (!errs.some(e => e.path === path && e.message === message)) errs.push({ path, message }) }
   if (!agent || !model) return add(at(agent ? 'reviewFallbackAgent' : 'reviewFallbackModel'), 'reviewFallbackAgent and reviewFallbackModel go together')
-  const worker = { program: pick('agent'), model: pick('model') }
+  const ref = resolveAgent(pick('agent'), named)
+  const worker = { program: 'program' in ref ? ref.program : '', model: pick('model') }
   if (!worker.program || !worker.model) return
-  const r = reviewerCheck(worker, agent, model, 'reviewFallbackModel')
+  const r = reviewerCheck(worker, agent, model, 'reviewFallbackModel', named)
   if ('reason' in r) add(at(r.reason.startsWith('The engine') ? 'reviewFallbackAgent' : 'reviewFallbackModel'), `${r.reason} (task type ${name})`)
 }
 
