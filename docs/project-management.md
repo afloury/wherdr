@@ -547,6 +547,18 @@ whose worker or reviewer uses one starts only on a machine that has it; on the
 others it waits (*no named agent omp-sub (Settings › Agents)*). A name that is
 neither a program nor a named agent is refused when the workflow is saved.
 
+One task may use another agent than its workflow says: its coordinator adds it
+with `wherdr pm task add "<title>" --type <type> --agent omp-api
+[--review-agent codex]`, or changes it with `wherdr pm task edit <task>
+--agent omp-api --reason "<why>"` before its first start (`--agent ""` puts
+back the workflow's). The task's own agent wins over its task type's and the
+project's; its model stays the workflow's. A name that is neither a program nor
+a named agent is refused. The task's card names its agent after its id
+(*omp-api*, or *omp-api · review codex* when the reviewer is another one), its
+sheet says *Worker omp-api · Reviewer codex*: the agent of each role's last
+run, else the one it will start with. `autopilot show` gives each machine's
+agents at work by name (*agents omp-api, 2 claude*).
+
 #### Reviewer fallback
 
 The workflow's `prefs` (template, task type or task, the nearest wins) say
@@ -780,7 +792,7 @@ leave every start to the coordinator's wakes and to you.
 The coordinator sees the same with `wherdr pm autopilot show`: whether Keep the
 board busy is on and the task it starts next (or why none), the project's
 placement strategy, one line per machine the project allows (memory, cores and load, its agents at work by
-weight, and the heaviest weight it takes now, or why none: full, not ready,
+weight and by name, and the heaviest weight it takes now, or why none: full, not ready,
 paced, offline), and what each weight counts (*light* ≈ 0.7 GB, *standard* ≈
 1.8 GB, *heavy* ≈ 3.9 GB at first) with the weight of each task type. While a
 task runs, the engine measures the memory its worktree's processes take (the

@@ -39,6 +39,7 @@ export interface Card {
   holder: Holder
   terminal?: string // herdr-core address of the holder's agent, if it runs
   agents?: { worker?: string, reviewer?: string } // herdr-core address of each role's agent still running (Open the agent)
+  who?: CardAgents // the agent of its worker and its reviewer, by name (cardAgents)
   released?: number // its worker was released to free memory, at (0: unknown): opening it starts it again (release.ts)
   yourTurn?: string // the badge
   stall?: Stall // stalled, the machine may still fix it (blocked.ts); past HANDLE_AFTER_MS, also its yourTurn
@@ -88,6 +89,23 @@ export interface BoardProject { kind?: 'workspace', workspace?: string, base?: s
 export interface Board { projects: BoardProject[], cards: Card[], archived?: Record<string, number> }
 
 export const columnOf = (s: PlannedStep) => s.column || s.id
+
+// Who works on a task, by name: a named agent (Settings › Agents) or a program.
+// Each role's latest run says it; a role that never ran, the agent the workflow
+// and the task's prefs plan for it (planned).
+export interface CardAgents { worker?: string, reviewer?: string }
+export function cardAgents(task: Pick<Task, 'id'>, runs: Run[], planned: CardAgents = {}): CardAgents | undefined {
+  const name = (role: Run['role']) => {
+    const r = runs.filter(x => x.task === task.id && x.role === role).sort((a, b) => b.startedAt - a.startedAt)[0]
+    return r ? r.agent ?? r.program : planned[role]
+  }
+  const worker = name('worker'), reviewer = name('reviewer')
+  return worker || reviewer ? { ...(worker ? { worker } : {}), ...(reviewer ? { reviewer } : {}) } : undefined
+}
+
+// The card's line: "omp-api", or "omp-api · review codex" when the reviewer is another agent.
+export const agentsLabel = (w?: CardAgents) =>
+  !w ? '' : [w.worker, w.reviewer && w.reviewer !== w.worker ? `review ${w.reviewer}` : ''].filter(Boolean).join(' · ')
 
 // The columns of a project: those of every task type's steps, in order, once each.
 export function boardColumns(plans: PlannedStep[][]): string[] {

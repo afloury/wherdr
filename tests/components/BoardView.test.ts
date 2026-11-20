@@ -455,3 +455,10 @@ it('a workspace picked: each feature is one card with its sub-tasks as chips, fo
   expect(w.findAll('[data-testid="board-card"]').map(c => c.attributes('data-task'))).toEqual(['WEB-1', 'MOB-1', 'PAY-1'])
   expect(card(w, 'MOB-1').find('.board-chip').text()).toBe('WS-1')
 })
+
+it('names the card\'s agents: its worker\'s, and its reviewer\'s when another', async () => {
+  board.cards[1] = { ...board.cards[1]!, who: { worker: 'omp-api', reviewer: 'codex' } }
+  const w = await mount()
+  expect(card(w, 'CO-1').find('[data-testid="board-agents"]').text()).toBe('omp-api · review codex')
+  expect(card(w, 'VIB-1').find('[data-testid="board-agents"]').exists()).toBe(false)
+})

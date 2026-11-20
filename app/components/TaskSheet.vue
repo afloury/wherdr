@@ -74,6 +74,8 @@ onBeforeUnmount(() => io?.disconnect())
 
 // Time per step, the waits for the user apart, review rounds and CI fixes, in one line.
 const times = computed(() => (props.card.times ? timesText(props.card.times) : ''))
+// Its agents by name (a named agent of Settings › Agents, else the program).
+const agents = computed(() => [props.card.who?.worker && `${tl('Worker')} ${props.card.who.worker}`, props.card.who?.reviewer && `${tl('Reviewer')} ${props.card.who.reviewer}`].filter(Boolean).join(' · '))
 // A step the coordinator rechecks: when its next recheck is due.
 const recheck = computed(() => { const n = nextRecheck(props.card.state); return n === 'user' ? tl('Next recheck: when you write to the coordinator or act on the task') : n ? `${tl('Next recheck')} ${n - Date.now() < 43_200_000 ? fmtTime(n) : fmtDateTime(n)}` : '' })
 
@@ -133,6 +135,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
           <BranchLine v-if="branch" :line="branch" />
           <a v-if="pr" :href="pr.url" target="_blank" rel="noopener" class="board-chip task-pr" data-testid="task-pr">{{ linkLabel(pr) }} <UIcon name="i-lucide-arrow-up-right" aria-hidden="true" /></a>
         </div>
+        <p v-if="agents" class="task-times" data-testid="task-agents">{{ agents }}</p>
         <p v-if="times" class="task-times" data-testid="task-times">{{ times }}</p>
         <p v-if="recheck" class="task-times" data-testid="task-recheck">{{ recheck }}</p>
         <p v-if="card.archived" class="muted" data-testid="task-archived">{{ tl('Archived') }} {{ fmtWhen(new Date(card.archived).toISOString()) }}</p>

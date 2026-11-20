@@ -2,7 +2,7 @@
 // the coordinators, drawn from projects.ts by the app's own code (shared/pm), as
 // the server does. The user's button and an answer to an agent's question move a
 // task like the real engine; nothing runs and nothing leaves the page.
-import { boardColumns, cardOf, toHandle, type Board, type Card } from '../../shared/pm/board'
+import { boardColumns, cardAgents, cardOf, toHandle, type Board, type Card } from '../../shared/pm/board'
 import { onEvent, planSteps } from '../../shared/pm/steps'
 import { publicTask, taskPlan, type Task } from '../../shared/pm/run'
 import { MAIN, type CoordinatorView } from '../../shared/pm/coordinator'
@@ -26,7 +26,7 @@ export class DemoPm {
   board(): Board {
     const now = this.clock.now()
     const done = (t: Task) => !!t.step?.done
-    const card = (t: Task): Card => ({ ...cardOf(t, this.plan(t), this.runs, now), ...(this.projects.find(p => p.key === t.project)?.color ? { color: this.projects.find(p => p.key === t.project)!.color } : {}) })
+    const card = (t: Task): Card => ({ ...cardOf(t, this.plan(t), this.runs, now), ...(cardAgents(t, this.runs) ? { who: cardAgents(t, this.runs) } : {}), ...(this.projects.find(p => p.key === t.project)?.color ? { color: this.projects.find(p => p.key === t.project)!.color } : {}) })
     const plans = Object.keys(P.TEMPLATE.taskTypes).map(type => ({ id: type, steps: planSteps(P.TEMPLATE, { type }, 'main') }))
     return {
       projects: this.projects.map(p => ({ key: p.key, name: p.name, base: 'main', ...(p.color ? { color: p.color } : {}), columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → ') })) })),

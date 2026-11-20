@@ -81,5 +81,5 @@ export function tasks(now: number): Task[] {
 export const runs = (now: number): Run[] => {
   const run = (task: string, role: Run['role'], program: string, terminal: string, ago: number): Run =>
     ({ id: `r-${task}-${role}`, task, role, program, model: '', machine: '', worktree: `${HOME}/.wherdr/worktrees/${task}`, branch: `task/${task}`, instructions: '', terminal, attempt: 1, state: 'running', startedAt: now - ago * 60_000 })
-  return [run('WEB-7', 'worker', 'claude', WEB_AT, 95), run('API-12', 'worker', 'codex', CODEX_AT, 30), run('API-13', 'worker', 'omp', OMP_AT, 25)]
+  return [run('WEB-7', 'worker', 'claude', WEB_AT, 95), run('API-12', 'worker', 'codex', CODEX_AT, 30), { ...run('API-13', 'worker', 'omp', OMP_AT, 25), agent: 'omp-sub' }] // omp-sub: a named agent (Settings › Agents)
 }

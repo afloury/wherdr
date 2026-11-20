@@ -2,7 +2,9 @@
 // usable wherever a workflow pref names an agent.
 import { describe, expect, it } from 'vitest'
 import { agentsMissing, namedAgentError, readNamedAgents, type NamedAgent } from '../shared/pm/namedAgents'
-import { agentLine, reviewerPlan, taskAgents, workerPlan, type Task } from '../shared/pm/run'
+import { agentLine, reviewerPlan, taskAgents, taskPrefsOf, workerPlan, type Task } from '../shared/pm/run'
+import { parseCommand } from '../shared/pm/coordinator'
+import { agentsLabel, cardAgents } from '../shared/pm/board'
 import { checkPrefs, validateTemplate, type Template, type WorkflowError } from '../shared/pm/workflow'
 
 const sub: NamedAgent = { name: 'omp-sub', program: 'omp', command: 'omp-sub --thinking medium', machines: ['laptop'] }
@@ -49,5 +51,32 @@ describe('named agents', () => {
     expect(agentsMissing(needed, [sub], 'desktop')).toBe('no named agent omp-sub (Settings › Agents)')
     // Plain programs need nothing.
     expect(taskAgents({ ...template, prefs: { agent: 'claude', model: 'opus', reviewModel: 'sonnet' } }, task, [sub])).toEqual([])
+  })
+
+  it('a task\'s own agent wins over its task type\'s, which wins over the project\'s', () => {
+    const api: NamedAgent = { ...sub, name: 'omp-api', command: 'omp-api' }
+    const t: Template = { ...template, prefs: { agent: 'claude', model: 'sonnet', reviewModel: 'opus' }, taskTypes: { simple: { ...template.taskTypes.simple!, prefs: { agent: 'codex' } } } }
+    expect(workerPlan(t, task, [api])).toMatchObject({ program: 'codex' })
+    expect(workerPlan({ ...t, taskTypes: { simple: template.taskTypes.simple! } }, task, [api])).toMatchObject({ program: 'claude' })
+    const own = { ...task, prefs: { agent: 'omp-api', reviewAgent: 'claude' } }
+    expect(workerPlan(t, own, [api])).toMatchObject({ agent: 'omp-api', program: 'omp', model: 'sonnet' })
+    expect(reviewerPlan(t, own, undefined, [api])).toMatchObject({ program: 'claude', model: 'opus' })
+  })
+
+  it('task add --agent: a malformed name never parses, an unknown one is refused', () => {
+    expect(parseCommand(['task', 'add', 'Fix it', '--type', 'simple', '--agent', 'omp-api', '--review-agent', 'codex'])).toMatchObject({ prefs: { agent: 'omp-api', reviewAgent: 'codex' } })
+    expect(parseCommand(['task', 'add', 'Fix it', '--type', 'simple', '--agent', 'Not a name!'])).toEqual({ error: expect.stringContaining('--agent') })
+    expect(parseCommand(['task', 'edit', 'WEB-1', '--agent', '', '--reason', 'back to the workflow'])).toMatchObject({ prefs: { agent: '' } })
+    expect(taskPrefsOf({ agent: 'omp-sub' }, [sub])).toEqual({ prefs: { agent: 'omp-sub' } })
+    expect(taskPrefsOf({ agent: 'omp-api' }, [sub])).toEqual({ errors: [{ path: 'prefs.agent', message: expect.stringContaining('cannot start "omp-api"') }] })
+    expect(taskPrefsOf({ agent: '', reviewAgent: 'codex' }, [sub])).toEqual({ prefs: { reviewAgent: 'codex' } })
+  })
+
+  it('names each role\'s agent: its last run\'s, else the planned one', () => {
+    const run = { id: 'r', task: 'WEB-1', role: 'worker' as const, program: 'omp', agent: 'omp-sub', model: 'm', machine: '', worktree: '/w', branch: 'b', instructions: '/i', attempt: 1, state: 'running' as const, startedAt: 1 }
+    expect(cardAgents(task, [run], { worker: 'claude', reviewer: 'codex' })).toEqual({ worker: 'omp-sub', reviewer: 'codex' })
+    expect(cardAgents(task, [])).toBeUndefined()
+    expect(agentsLabel({ worker: 'omp-sub', reviewer: 'codex' })).toBe('omp-sub · review codex')
+    expect(agentsLabel({ worker: 'omp-sub', reviewer: 'omp-sub' })).toBe('omp-sub')
   })
 })
