@@ -35,11 +35,12 @@ const FIELD: Record<string, string> = { holder: 'Holder', ends: 'Ends', action: 
 const fieldText = (f: FieldChange) => (f.field === 'instructions' ? tl('Instructions edited') : `${tl(FIELD[f.field] ?? f.field)}: ${f.before ?? tl('none')} → ${f.after ?? tl('none')}`)
 const impact = computed(() => (props.changes ? tl(taskImpact(props.changes, props.type, props.workflow)) : ''))
 const guards = computed(() => taskGuards(props.workflow, props.type))
-const agentOf = (r: { program: string, model: string } | { reason: string }) =>
-  'reason' in r ? tl('not set') : `${kindLabel(r.program)} · ${r.model}`
+// A named agent (Settings › Agents) shows by its name.
+const agentOf = (r: { program: string, agent?: string, model: string } | { reason: string }) =>
+  'reason' in r ? tl('not set') : `${r.agent ?? kindLabel(r.program)} · ${r.model}`
 const agents = computed(() => {
-  const task = { type: props.type } as Task
-  return { worker: agentOf(workerPlan(props.workflow, task)), reviewer: agentOf(reviewerPlan(props.workflow, task)) }
+  const task = { type: props.type } as Task, named = namedAgents.value
+  return { worker: agentOf(workerPlan(props.workflow, task, named)), reviewer: agentOf(reviewerPlan(props.workflow, task, undefined, named)) }
 })
 
 // Where a merge goes, for the guard line: the land's target, or the PR's base.

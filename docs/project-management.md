@@ -539,6 +539,14 @@ fallback is never started because of an omp reviewer's quota. An omp agent on a
 login prompt opens no login incident (wherdr knows no credentials file for omp):
 its task waits for you like for any prompt.
 
+They may also name a [named agent](home.md#named-agents) of Settings › Agents
+(`"agent": "omp-sub"`): the engine starts its command and options, then the
+program's usual arguments (`exec omp-sub '--thinking' 'medium' '--model' …`),
+and the rules above are its program's (the model, `"same"`, resuming). A task
+whose worker or reviewer uses one starts only on a machine that has it; on the
+others it waits (*no named agent omp-sub (Settings › Agents)*). A name that is
+neither a program nor a named agent is refused when the workflow is saved.
+
 #### Reviewer fallback
 
 The workflow's `prefs` (template, task type or task, the nearest wins) say

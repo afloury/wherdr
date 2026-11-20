@@ -34,7 +34,7 @@ describe('worker plan and command line', () => {
     expect(workerPlan(template, task({ prefs: { model: 'haiku' } }))).toEqual({ program: 'claude', model: 'haiku' })
     expect(workerPlan(template, task({ type: 'talk' }))).toEqual({ reason: 'Task type "talk" has no worker step' })
     expect(workerPlan({ ...template, prefs: { agent: 'claude' } }, task())).toMatchObject({ reason: expect.stringMatching(/^No model set/) })
-    expect(workerPlan(template, task({ prefs: { agent: 'pi' } }))).toEqual({ reason: 'The engine cannot start "pi": claude, codex or omp' })
+    expect(workerPlan(template, task({ prefs: { agent: 'pi' } }))).toEqual({ reason: 'The engine cannot start "pi": claude, codex, omp or a named agent of Settings › Agents' })
     // omp starts with a pinned model too (a provider/model name is a valid model).
     expect(workerPlan(template, task({ prefs: { agent: 'omp', model: 'anthropic/claude-sonnet-5-5' } }))).toEqual({ program: 'omp', model: 'anthropic/claude-sonnet-5-5' })
     expect(workerPlan(template, task({ prefs: { model: 'x; rm -rf ~' } }))).toMatchObject({ reason: expect.stringMatching(/^Invalid model/) })

@@ -1,7 +1,8 @@
 // Tasks and the agent runs that work on them. A run's terminal carries
 // wherdr.* labels on herdr-core, so the engine finds it again after a restart.
 import type { Project } from './project'
-import { MODEL_RE, PROGRAMS, reviewerCheck, type ContextSpec, type Prefs, type Step, type Template, type Weight } from './workflow'
+import { MODEL_RE, reviewerCheck, type ContextSpec, type Prefs, type Step, type Template, type Weight } from './workflow'
+import { commandWords, resolveAgent, type AgentRef, type NamedAgent } from './namedAgents'
 import type { ContextFolder } from './context'
 import { fillBase, planSteps, type StepState } from './steps'
 import { needsShots, shotMode } from './shots'
@@ -130,6 +131,7 @@ export interface Run {
   task: string
   role: 'worker' | 'reviewer'
   program: string // claude, codex or omp
+  agent?: string // the named agent (Settings › Agents) that started it
   model: string // pinned at launch
   machine: string // herdr-core machine key, '' = the wherdr host
   worktree: string
@@ -212,10 +214,14 @@ const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 // up again (--resume) with `resume` as its first message.
 // then: said after the instructions, in the same first message.
 // dirs: read-only context folders (context.ts) the agent may read (see dirArgs).
-export function agentLine(program: string, model: string, instructions: string, session?: { id: string, resume?: string }, then?: string, dirs: string[] = []) {
+// agent: a program, or a named agent (Settings › Agents): its command and fixed
+// options first, then the program's usual arguments.
+export function agentLine(agent: string | AgentRef, model: string, instructions: string, session?: { id: string, resume?: string }, then?: string, dirs: string[] = []) {
+  const { program, command } = typeof agent === 'string' ? { program: agent, command: undefined } : agent
   const own = program === 'claude' && session ? (session.resume ? ['--resume', session.id] : ['--session-id', session.id]) : []
   const first = own[0] === '--resume' ? session!.resume! : `Read ${instructions} and follow it.${then ? ` ${then}` : ''}`
-  return ['exec', program, ...(program === 'codex' ? CODEX_NO_UPDATE : []), ...dirArgs(program, dirs), '--model', model, ...own, first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
+  const [exe, ...options] = command ? commandWords(command) : [program]
+  return ['exec', exe!, ...options, ...(program === 'codex' ? CODEX_NO_UPDATE : []), ...dirArgs(program, dirs), '--model', model, ...own, first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
 }
 
 // How a program gets access to folders beside its worktree: the one place that
@@ -272,15 +278,19 @@ export const typeSteps = (t: Template, type: string): Step[] =>
 
 // Program and model of the worker: the nearest level wins (task, task type,
 // template). Returns the reason when the task cannot start.
-export function workerPlan(t: Template, task: Task): { program: string, model: string } | { reason: string } {
+// named: the named agents (Settings › Agents) a pref may name; agent and
+// command then say which one and how to start it.
+export function workerPlan(t: Template, task: Task, named: readonly NamedAgent[] = []): AgentRef & { model: string } | { reason: string } {
   const tt = t.taskTypes[task.type]
   if (!tt) return { reason: `The template has no task type "${task.type}"` }
   if (!typeSteps(t, task.type).some(s => s.holder === 'worker')) return { reason: `Task type "${task.type}" has no worker step` }
   const pick = (k: 'agent' | 'model') => task.prefs?.[k] || tt.prefs?.[k] || t.prefs?.[k] || ''
-  const program = pick('agent'), model = pick('model')
-  if (!(PROGRAMS as readonly string[]).includes(program)) return { reason: program ? `The engine cannot start "${program}": claude, codex or omp` : 'No agent set: add prefs.agent to the template' }
+  const agent = pick('agent'), model = pick('model')
+  if (!agent) return { reason: 'No agent set: add prefs.agent to the template' }
+  const ref = resolveAgent(agent, named)
+  if (!('program' in ref)) return { reason: 'reason' in ref ? ref.reason : agent }
   if (!MODEL_RE.test(model)) return { reason: model ? `Invalid model "${model}"` : 'No model set: add prefs.model to the template (the model is always pinned)' }
-  return { program, model }
+  return { ...ref, model }
 }
 
 // Program and model of the reviewer: reviewAgent and reviewModel, nearest
@@ -289,17 +299,22 @@ export function workerPlan(t: Template, task: Task): { program: string, model: s
 // out: why the review agent cannot take this review now (its account at its
 // limit). With reviewFallbackAgent and reviewFallbackModel set, the fallback
 // takes it (`switched` says why); without, nothing changes.
-export function reviewerPlan(t: Template, task: Task, out?: string): { program: string, model: string, switched?: string } | { reason: string } {
-  const worker = workerPlan(t, task)
+export function reviewerPlan(t: Template, task: Task, out?: string, named: readonly NamedAgent[] = []): AgentRef & { model: string, switched?: string } | { reason: string } {
+  const worker = workerPlan(t, task, named)
   if ('reason' in worker) return worker
   if (!typeSteps(t, task.type).some(s => s.holder === 'reviewer')) return { reason: `Task type "${task.type}" has no reviewer step` }
   const pick = (k: keyof Prefs) => prefOf(t, task, k)
-  const main = reviewerCheck(worker, pick('reviewAgent') || worker.program, pick('reviewModel'), 'reviewModel')
+  const main = reviewerCheck(worker, pick('reviewAgent') || worker.agent || worker.program, pick('reviewModel'), 'reviewModel', named)
   const agent = pick('reviewFallbackAgent'), model = pick('reviewFallbackModel')
   if (!out || (!agent && !model) || 'reason' in main) return main
   if (!agent || !model) return { reason: 'reviewFallbackAgent and reviewFallbackModel go together' }
-  const fallback = reviewerCheck(worker, agent, model, 'reviewFallbackModel')
+  const fallback = reviewerCheck(worker, agent, model, 'reviewFallbackModel', named)
   return 'reason' in fallback ? fallback : { ...fallback, switched: out }
+}
+
+// The named agents a task's worker and reviewer use: the machine it runs on needs them.
+export function taskAgents(t: Template, task: Task, named: readonly NamedAgent[]): string[] {
+  return [workerPlan(t, task, named), reviewerPlan(t, task, undefined, named)].flatMap(p => ('agent' in p && p.agent ? [p.agent] : []))
 }
 
 // A pref of a task: the nearest level that sets it (task, task type, template).
