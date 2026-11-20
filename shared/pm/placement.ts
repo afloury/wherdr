@@ -188,11 +188,11 @@ export function machineNow(c: MachineView, estimates: Record<Weight, Estimate> =
 export function machineLine(c: MachineView, estimates: Record<Weight, Estimate> = WEIGHT_DEFAULTS): string {
   const name = `${c.label || 'this host'}${c.home ? ' (home)' : ''}`
   const hours = c.settings.hours ? [`available ${hoursLabel(c.settings.hours)}`] : []
-  if (c.paused) return `${name}: ${PAUSED}${c.running.length ? ` · ${c.running.length} agents at work` : ''}`
-  if (!c.online) return [`${name}: offline`, ...hours].join(' · ')
-  const count = WEIGHTS.slice().reverse().map(w => [w, c.running.filter(r => r.weight === w).length] as const).filter(([, n]) => n)
   const names = [...new Set(c.running.flatMap(r => (r.agent ? [r.agent] : [])))]
   const agents = names.map(n => { const k = c.running.filter(r => r.agent === n).length; return k > 1 ? `${k} ${n}` : n })
+  if (c.paused) return `${name}: ${PAUSED}${c.running.length ? ` · ${c.running.length} agents at work${agents.length ? ` (${agents.join(', ')})` : ''}` : ''}`
+  if (!c.online) return [`${name}: offline`, ...hours].join(' · ')
+  const count = WEIGHTS.slice().reverse().map(w => [w, c.running.filter(r => r.weight === w).length] as const).filter(([, n]) => n)
   const fits = WEIGHTS.slice().reverse().find(w => !misfit(c, w, estimates[w]))
   return `${name}: ${[
     ...capacityParts(c.capacity, c.settings, c.running.length),
