@@ -204,6 +204,57 @@ describe('core input routes', () => {
     expect(cold.logs.join('\n')).not.toMatch(/look|srv/)
   })
 
+  // A core photo path (~90 chars) wider than Claude's field: drawn over two lines (WHR-546).
+  const wrapped = (msg: string) => {
+    const keys: string[] = []
+    const sent: string[] = []
+    let field: string | null = null
+    const t = deps((m, params) => {
+      if (m === 'terminal.send') {
+        sent.push(params.text)
+        const [text, path, ...rest] = params.text.split('\n')
+        field = path ? [text, path.slice(0, 40), path.slice(40), ...rest].join('\n') : params.text
+      }
+      if (m === 'terminal.keys') {
+        keys.push(...params.keys)
+        if (params.keys[0] === 'ctrl+u') field = null
+        if (params.keys[0] === 'backspace' && params.keys.length === 1) field = field!.replace(/\n?\\$/, '')
+        if (params.keys[0] === 'enter') { sent.push(`enter on ${field}`); field = null }
+      }
+      return m === 'terminal.send' ? { started: false } : {}
+    })
+    t.d.settleMs = 1
+    t.d.field = async () => field
+    return { t, keys, sent }
+  }
+  const longMsg = 'look at this\n/home/user/.local/share/herdr-core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png'
+
+  it('a photo path Claude draws over two lines, kept through the wait: submitted once as a path, its "\\" taken out first', async () => {
+    const { t, keys, sent } = wrapped(longMsg)
+    const warn = console.warn
+    console.warn = () => {}
+    try {
+      expect(await coreSend(t.d, { pane_id: 't1', text: longMsg })).toEqual({ ok: true, started: null })
+    } finally { console.warn = warn }
+    expect(keys.filter(k => k === 'enter')).toHaveLength(1)
+    expect(keys.slice(-2)).toEqual(['backspace', 'enter'])
+    expect(sent.at(-1)).toMatch(/^enter on [^\\]*$/)
+  })
+
+  it('a message sent while the one before is still being submitted: sent after it, in order', async () => {
+    const { t, sent } = wrapped(longMsg)
+    const warn = console.warn
+    console.warn = () => {}
+    try {
+      const first = coreSend(t.d, { pane_id: 't1', text: longMsg })
+      await new Promise(r => setTimeout(r, 5))
+      const second = coreSend(t.d, { pane_id: 't1', text: 'and then?' })
+      expect(await first).toEqual({ ok: true, started: null })
+      expect(await second).toEqual({ ok: true, started: null })
+    } finally { console.warn = warn }
+    expect(sent.filter(s => !s.startsWith('enter'))).toEqual([`${longMsg}\n\\`, `${longMsg}\n\\`, 'and then?'])
+  })
+
   it('a slow core (each read, send and key near its timeout): the photo fallback stops in time, answered under 120 s', async () => {
     const msg = 'look at this\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png'
     let clock = 1_000_000

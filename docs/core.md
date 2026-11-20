@@ -218,7 +218,8 @@ The 18 seconds count from the first paste, clears and the second paste included:
 is pasted again only with 6 seconds still left, otherwise it goes as it is at once.
 A photo still shown as its path after that, or when the wait ends, is never left there: wherdr takes the
 `\` out (Backspace, only while the box ends with it), presses Enter, and the message goes
-with its path, which the agent can still open; this leaves one line in the server log (the
+with its path, which the agent can still open (also a path wider than the box, which Claude
+draws over two lines); this leaves one line in the server log (the
 wait's duration and the sizes, never the text). A box that never holds the message alone
 when the wait ends (part of it, or other text) gets no Enter: the send is refused, so the
 message reads **Not sent** with Retry, and that text shows with **Send now** / **Clear**. The whole send (paste, wait, Enters) runs
