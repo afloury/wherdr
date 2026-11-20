@@ -184,8 +184,10 @@ remove a row. A workflow names it in `prefs.agent`, `reviewAgent` or `reviewFall
 ([Worker and reviewer agents](project-management.md#worker-and-reviewer-agents)). The list
 follows you on every device and is read by the engine.
 
-**No secret ever goes in wherdr**: only a name and a command line (a command holding
-`api_key=`, `token=` or the like is refused). The wrapper script reads its key itself, from the
+**No secret ever goes in wherdr**: only a name and a command line (a command naming a key,
+token, secret or password, as `--api-key VALUE` or `TOKEN=…`, is refused). Options are split
+on spaces and passed as typed, so quotes are refused: an option whose value has spaces goes
+in the wrapper script. The wrapper script reads its key itself, from the
 keychain for instance:
 
 ```sh

@@ -36,6 +36,10 @@ describe('named agents', () => {
     expect(readNamedAgents(JSON.stringify([sub, { ...sub }, { ...sub, name: 'claude' }, { ...sub, name: 'bad', command: 'x; rm' }]))).toEqual([sub])
     expect(namedAgentError({ ...sub, command: 'omp-sub --api-key=abc' })).toMatch(/No key/)
     expect(namedAgentError({ ...sub, command: 'API_KEY=abc omp' })).toMatch(/No key|executable/)
+    expect(namedAgentError({ ...sub, command: 'omp-sub --api-key placeholder' })).toMatch(/No key/)
+    expect(namedAgentError({ ...sub, command: 'omp-sub --token placeholder' })).toMatch(/No key/)
+    expect(namedAgentError({ ...sub, command: 'omp-sub --profile "account two"' })).toMatch(/no quotes/)
+    expect(namedAgentError({ ...sub, command: 'omp-sub --profile=two' })).toBeUndefined()
     expect(namedAgentError({ ...sub, machines: [] })).toMatch(/machine/)
   })
 

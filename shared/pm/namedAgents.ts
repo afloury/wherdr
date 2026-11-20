@@ -10,8 +10,12 @@ export interface NamedAgent { name: string, program: string, command: string, ma
 export const AGENT_NAME_RE = /^[a-z0-9][a-z0-9._-]{0,31}$/
 // The executable: a word on the PATH or a path, nothing the shell would read.
 const EXE_RE = /^[A-Za-z0-9._/~+-]+$/
-// A key written in the command: refused, it belongs in the wrapper script.
-const SECRET_RE = /(api[_-]?key|token|secret|password)\s*=|\bsk-[A-Za-z0-9]/i
+// A key written in the command, as an assignment or an option (--api-key VALUE,
+// --token=…): refused, it belongs in the wrapper script.
+const SECRET_RE = /api[_-]?key|token|secret|passw(or)?d|credential|\bsk-[A-Za-z0-9]/i
+// Options are split on spaces and each passed quoted, as typed: a quote or a
+// backslash would reach the program as such, so none is accepted.
+const QUOTE_RE = /['"\\]/
 export const COMMAND_MAX = 200
 
 // Why a named agent cannot be kept (others: the names already taken), or undefined.
@@ -24,6 +28,7 @@ export function namedAgentError(a: NamedAgent, others: readonly string[] = []): 
   if (!words.length || a.command.length > COMMAND_MAX || /[\n\r]/.test(a.command)) return `Command: an executable and its options, up to ${COMMAND_MAX} characters`
   if (!EXE_RE.test(words[0]!)) return 'Command: its first word is an executable on the PATH or a path'
   if (SECRET_RE.test(a.command)) return 'No key in the command: the wrapper script reads it (from the keychain)'
+  if (QUOTE_RE.test(a.command)) return 'Command: no quotes; options are split on spaces (an option with spaces goes in the wrapper script)'
   if (!a.machines.length) return 'Choose at least one machine'
 }
 
