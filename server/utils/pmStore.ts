@@ -90,7 +90,7 @@ async function readJson<T>(file: string): Promise<T | null> {
   }
 }
 
-const writeJson = (file: string, data: unknown) => writeJsonAtomic(file, data, { dirMode: 0o700 })
+const writeJsonStored = (file: string, data: unknown) => writeJsonAtomic(file, data, { dirMode: 0o700 })
 
 // A line of a project's log: a task removed (task), or a contributor's PR
 // merged on the user's yes (pr, said: the user's own message), by whom and why.
@@ -124,28 +124,41 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     const names = (await fs.readdir(folder).catch(() => [] as string[])).filter(n => n.endsWith('.json')).sort()
     return (await Promise.all(names.map(n => readJson<T>(path.join(folder, n)).catch(() => null)))).filter((x): x is Awaited<T> & {} => !!x)
   }
-  // The runs, kept in memory: clients and ticks ask for them all the time, and
-  // finished runs pile up. Every save is a rename into the folder, which
-  // changes the folder's mtime: while it stays the same, nothing is read; when
-  // it changes, only the files whose mtime or size changed are read again.
-  let runCache: { at: number, files: Map<string, { mtime: number, size: number, run: Run | null }>, list: Run[] } | null = null
-  const runs = async (): Promise<Run[]> => {
-    const at = (await fs.stat(files.runs).catch(() => null))?.mtimeMs
-    if (at === undefined) return []
-    if (runCache?.at === at) return [...runCache.list]
-    const names = (await fs.readdir(files.runs).catch(() => [] as string[])).filter(n => n.endsWith('.json')).sort()
-    const old = runCache?.files, next = new Map<string, { mtime: number, size: number, run: Run | null }>()
-    await Promise.all(names.map(async (n) => {
-      const file = path.join(files.runs, n), s = await fs.stat(file).catch(() => null)
-      if (!s) return
-      const was = old?.get(n)
-      const run = was && was.mtime === s.mtimeMs && was.size === s.size ? was.run : await readJson<Run>(file).catch(() => null)
-      next.set(n, { mtime: s.mtimeMs, size: s.size, run })
-    }))
-    runCache = { at, files: next, list: names.flatMap(n => next.get(n)?.run ?? []) }
-    return [...runCache.list]
+  // The runs and the tasks, kept in memory: clients and ticks ask for them all
+  // the time, and finished runs and archived tasks pile up (hundreds of tasks
+  // parsed again on every tick kept a small host's CPU busy and its memory high).
+  // Every save is a rename into the folder, which changes the folder's mtime:
+  // while it stays the same, nothing is read; when it changes, only the files
+  // whose mtime, size or inode changed are read again. Our own writes also mark
+  // the folder stale (a rename within the clock's tick may leave its mtime as is).
+  // A write during a read leaves that read untrusted. The objects are shared
+  // between callers: never change one in place.
+  const folders = new Map<string, () => void>()
+  function cachedFolder<T>(folder: string) {
+    let cache: { at: number, files: Map<string, { mtime: number, size: number, ino: number, value: T | null }>, list: T[] } | null = null
+    let gen = 0
+    folders.set(folder, () => { gen++; if (cache) cache.at = -1 })
+    return async (): Promise<T[]> => {
+      const g = gen, at = (await fs.stat(folder).catch(() => null))?.mtimeMs
+      if (at === undefined) return []
+      if (cache?.at === at) return [...cache.list]
+      const names = (await fs.readdir(folder).catch(() => [] as string[])).filter(n => n.endsWith('.json')).sort()
+      const old = cache?.files, next = new Map<string, { mtime: number, size: number, ino: number, value: T | null }>()
+      await Promise.all(names.map(async (n) => {
+        const file = path.join(folder, n), s = await fs.stat(file).catch(() => null)
+        if (!s) return
+        const was = old?.get(n)
+        const value = was && was.mtime === s.mtimeMs && was.size === s.size && was.ino === s.ino ? was.value : await readJson<T>(file).catch(() => null)
+        next.set(n, { mtime: s.mtimeMs, size: s.size, ino: s.ino, value })
+      }))
+      cache = { at: g === gen ? at : -1, files: next, list: names.flatMap(n => next.get(n)?.value ?? []) }
+      return [...cache.list]
+    }
   }
-  const tasks = () => readAll<Task>(files.tasks)
+  const stale = (file: string) => folders.get(path.dirname(file))?.()
+  const writeJson = async (file: string, data: unknown) => { try { await writeJsonStored(file, data) } finally { stale(file) } }
+  const runs = cachedFolder<Run>(files.runs)
+  const tasks = cachedFolder<Task>(files.tasks)
   // The project's log: the tasks removed, by whom and why.
   const projectLog = async (key: string) =>
     (TASK_ID_RE.test(`${key}-1`) ? (await readJson<{ entries?: ProjectLogEntry[] }>(path.join(files.projectLog, `${key}.json`)))?.entries : null) ?? []
@@ -431,7 +444,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const logFile = path.join(files.projectLog, `${t.project}.json`)
       const entries = await projectLog(t.project)
       await writeJson(logFile, { v: 1, entries: [...entries, { at: Date.now(), by, text: showIds(await readProjects(), text), task: t.id }].slice(-500) })
-      await fs.rm(path.join(files.tasks, `${t.id}.json`), { force: true })
+      const file = path.join(files.tasks, `${t.id}.json`)
+      await fs.rm(file, { force: true }).finally(() => stale(file))
     }),
     projectLog,
     logProject: (key: string, entry: Omit<ProjectLogEntry, 'at'>) => write(async () => {
@@ -506,7 +520,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await writeJson(file, next)
       return next
     }),
-    saveRun: (r: Run) => write(async () => { await writeJson(path.join(files.runs, `${r.id}.json`), r); if (runCache) runCache.at = -1 }),
+    saveRun: (r: Run) => write(() => writeJson(path.join(files.runs, `${r.id}.json`), r)),
     receipt: (id: string) => readJson<Receipt>(path.join(files.receipts, `${id}.json`)),
     saveReceipt: (r: Receipt) => write(() => writeJson(path.join(files.receipts, `${r.id}.json`), r)),
 
@@ -540,7 +554,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
         for (const t of added) { const f = path.join(files.tasks, `${t.id}.json`); await writeJson(f, t); written.push(f) }
         await writeJson(path.join(files.tasks, `${id}.json`), split)
       } catch (e) {
-        await Promise.all(written.map(f => fs.rm(f, { force: true }).catch(() => {})))
+        await Promise.all(written.map(f => fs.rm(f, { force: true }).catch(() => {}).finally(() => stale(f))))
         throw e
       }
       return { feature: split, tasks: added }
