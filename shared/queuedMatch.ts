@@ -45,6 +45,18 @@ const fieldForm = (t: string) => tagsFirst(String(t || ''), imageTagCount(t))
 // Claude may also leave a photo there as its path, not yet (or never) turned
 // into "[Image #N]", from the home folder or as "~/…" (WHR-398): left out too.
 const PHOTO_PATH = /(?:~|\/)\S*\/(?:\.cache\/herdr-web\/uploads\/\S+|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{6}\.(?:jpg|png|webp|gif|heic))/g
+// A path wider than Claude's field is drawn over several lines (a core photo
+// path is about 90 characters, an 80-column terminal's field less): put back
+// whole, so it is still seen as a path (WHR-546). Only the message's own
+// photo paths, as sent or as "~/…".
+function unwrapPaths(field: string, text: string): string {
+  const spread = (p: string) => [...p].map(c => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s*')
+  for (const p of String(text || '').split('\n').filter(isUploadLine).map(l => l.trim())) {
+    const forms = [p, ...[...p.matchAll(/\//g)].map(m => `~${p.slice(m.index)}`)]
+    field = field.replace(new RegExp(forms.map(spread).join('|'), 'g'), m => m.replace(/\s+/g, ''))
+  }
+  return field
+}
 const looseForm = (t: string) => String(t || '').replace(IMAGE_TAG, '').replace(PHOTO_PATH, '').replace(/\s+/g, '')
 const PASTE_TAG = /\[Pasted text #\d+(?: \+\d+ lines)?\]/
 const messageForm = (text: string) => tagsFirst(withoutUploads(text), uploadNames(text).length + imageTagCount(text))
@@ -55,7 +67,7 @@ const messageForm = (text: string) => tagsFirst(withoutUploads(text), uploadName
 // photo missing from its "[Image #N]" tags is inside it as its path (Claude
 // turns them into images when it takes the paste, never later; WHR-472).
 export function fieldHoldsRawPhoto(field: string | null | undefined, text: string): boolean {
-  const f = String(field || '').replace(/\\\s*$/, '')
+  const f = unwrapPaths(String(field || '').replace(/\\\s*$/, ''), text)
   if (PASTE_TAG.test(f)) return imageTagCount(f) < uploadNames(text).length && fieldHolds(f, text, true, true)
   const raw = (f.match(PHOTO_PATH) || []).length
   return raw > 0 && raw + imageTagCount(f) === uploadNames(text).length
@@ -72,6 +84,7 @@ export function fieldHolds(field: string | null | undefined, text: string, exact
   if (uploadNames(text).length) field = field.replace(/\\\s*$/, '')
   // Photos alone: only their tags tell them apart, so they are counted.
   const free = loose && Boolean(withoutUploads(text))
+  if (free) field = unwrapPaths(field, text)
   const form = free ? looseForm : fieldForm
   const m = free ? looseForm(withoutUploads(text)) : messageForm(text)
   const parts = String(field || '').split(PASTE_TAG).map(form)
