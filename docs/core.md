@@ -244,7 +244,9 @@ A message only tells what wherdr knows: from the tap until it is in the agent's 
 its bubble reads **Sending…** with a small turning loader, whatever the send answered or the
 screen shows, also on another device or after a reload (the server marks the terminal as
 sending while it submits a message, text or photos); it never claims the agent read it.
-Held in Claude's own queue, it reads **Queued by Claude · sent when it finishes**. Once in
+Held in Claude's own queue, it reads **Queued by Claude · sent when it finishes**. Waiting
+messages show in the order they were sent, the oldest on top, whether wherdr or Claude's own
+queue lists them. Once in
 the transcript, the transcript's own message replaces it. Only once the server is done
 (its Enters over) and the message is still in the box does its bubble read **Not sent yet ·
 waiting in the agent's input** (the box's **Not sent — still in Claude's input**, with
