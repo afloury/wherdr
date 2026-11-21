@@ -3,10 +3,11 @@
 // core supplies those (terminal.get) and, for a remote core machine, the machine's disk
 // (machine.exec through createShellFs), so the same reader, parsers, search and queue apply.
 import { createShellFs, localFs, type ExecResult, type MachineFs, type ShellExec } from './fsx'
-import { createTranscripts, type TranscriptPane, type Transcripts } from './transcripts'
+import { createTranscripts, type Loc, type TranscriptPane, type Transcripts } from './transcripts'
 import { CoreError } from './core'
-import type { Pane } from '../../shared/types'
+import type { ChatResponse, Pane } from '../../shared/types'
 import { DEVIN_PROCESS_SCRIPT, devinProcesses } from './devinProcesses'
+import { createCmdCore } from './commandCodeCore'
 import type { CodexHistory } from './codexDaemon'
 
 type Call = <T>(method: string, params: object, timeout: number) => Promise<T>
@@ -14,12 +15,13 @@ export interface CoreTranscriptDeps {
   call: Call
   pane: (id: string) => Pane | undefined
   localHome: string
+  now?: () => number // injected clock for the Command Code evidence TTL (tests)
   // This machine's shared Codex app-server (codexDaemon.ts): paginated history read first.
   codexHistory?: CodexHistory
 }
 
 interface CoreProcess { pid?: number, name?: string, argv?: string[], cwd?: string, startedAt?: number, argvExact?: boolean, childPids?: number[] }
-interface CoreDetail { pid?: number, argv?: string[], created_ms?: number, foreground?: CoreProcess | null }
+interface CoreDetail { state?: string, pid?: number, argv?: string[], created_ms?: number, foreground?: CoreProcess | null }
 
 // The machine part of a core address (`mac/t7` -> `mac`; local ones have none).
 export const machineOfAddress = (address: string | undefined) => (address && address.includes('/') ? address.split('/')[0]! : '')
@@ -33,64 +35,14 @@ export function processInfo(d: CoreDetail) {
   return { process_info: { foreground_processes: procs } }
 }
 
-const CMD_PROGRAMS = new Set(['cmd', 'command-code', 'command_code', 'commandcode', 'cmdc'])
-const AGENT_PROGRAMS = new Set(['claude', 'codex', 'omp', 'devin', 'agy', 'antigravity', 'antigravity-cli', 'hermes', ...CMD_PROGRAMS])
+const AGENT_PROGRAMS = new Set(['claude', 'codex', 'omp', 'devin', 'agy', 'antigravity', 'antigravity-cli', 'hermes'])
 const baseName = (s: string | undefined) => (s || '').split('/').pop() || ''
-// Command Code's package entrypoints prove the launch when an interpreter or
-// `env` wraps it: `node …/command-code/dist/index.mjs` is the agent, a plain
-// `node index.mjs` of another package is not.
-const CMD_ENTRY = /\/command-code\/(?:dist\/(?:index|cli)\.mjs|bin\/(?:cmd|cmdc|command-code|commandcode|command_code))$/
-const INTERPRETER = /^(node|nodejs|bunx?|deno)\d*$/
-
-// env option shapes that consume no operand, and ones that consume exactly
-// one (long forms may also carry it as --opt=value). Anything else is an
-// unproven boundary: unknown options may inject or hide arguments.
-const ENV_NOARG = new Set(['-', '-i', '--ignore-environment', '-0', '--null', '-v', '--debug', '--list-signal-handling'])
-const ENV_ARG = new Set(['-u', '--unset', '-C', '--chdir', '-S', '--split-string', '-P', '--default-sig', '--block-signal', '--ignore-signal'])
-function envOperand(argv: string[], i: number): number | null {
-  for (; i < argv.length; i++) {
-    const a = argv[i]!
-    if (a === '--') return i + 1 < argv.length ? i + 1 : null
-    if (ENV_NOARG.has(a)) continue
-    if (a.startsWith('--')) {
-      const eq = a.indexOf('=')
-      const name = eq < 0 ? a : a.slice(0, eq)
-      if (ENV_ARG.has(name) && (eq >= 0 || ++i < argv.length)) continue
-      return null
-    }
-    if (ENV_ARG.has(a)) {
-      if (++i >= argv.length) return null
-      continue
-    }
-    if (a.startsWith('-') || !a.includes('=')) return a.startsWith('-') ? null : i
-  }
-  return null
-}
-
-// The agent an argv launches: a known bin (argv0, or argv1 for one-deep
-// wrappers like `sh -c`), unwrapped through `env`, or an interpreter whose
-// operand is a Command Code entrypoint. Anything unproven is not an agent.
-function agentName(argv: string[] | undefined): string {
-  if (!argv?.length) return ''
-  const direct = [baseName(argv[0]), baseName(argv[1])].find(n => AGENT_PROGRAMS.has(n))
-  if (direct) return direct
-  if (baseName(argv[0]) === 'env') {
-    const i = envOperand(argv, 1)
-    if (i !== null) {
-      const n = agentName(argv.slice(i))
-      if (n) return n
-    }
-  }
-  if (INTERPRETER.test(baseName(argv[0])) && argv.slice(1).some(a => !a.startsWith('-') && (CMD_PROGRAMS.has(baseName(a)) || CMD_ENTRY.test(a)))) return 'cmd'
-  return ''
-}
-
 // Programs under the terminal's process, from `ps -e -o pid=,ppid=,args=`: an agent started by a
 // shell, or hosted by a helper, is not the foreground process of the terminal.
 const psRows = (ps: string) => ps.split('\n').map(l => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(l)).filter(Boolean)
   .map(m => ({ pid: Number(m![1]), ppid: Number(m![2]), argv: m![3]!.split(/\s+/) }))
 const agentRow = (r: { pid: number, argv: string[] }): CoreProcess | null => {
-  const name = agentName(r.argv)
+  const name = [baseName(r.argv[0]), baseName(r.argv[1])].find(n => AGENT_PROGRAMS.has(n)) || ''
   return name ? { pid: r.pid, name, argv: r.argv, argvExact: false } : null
 }
 
@@ -125,12 +77,21 @@ export function coreShell(call: Call, on: string): ShellExec {
     const seconds = Math.max(1, Math.ceil((opts.timeoutMs ?? 15000) / 1000))
     try {
       const r = await call<{ code: number | null, stdout?: string, stderr?: string, timed_out?: boolean, truncated?: boolean }>('machine.exec', {
-        argv: ['sh', '-c', script, 'sh', ...args], on, timeout: seconds,
+        // An empty machine name is never sent: omitting `on` runs on this core.
+        argv: ['sh', '-c', script, 'sh', ...args], ...(on ? { on } : {}), timeout: seconds,
         ...(opts.input ? { input: opts.input.toString('base64') } : {}),
       }, seconds * 1000 + 5000)
-      const stdout = Buffer.from(r.stdout || '', 'base64')
-      if (r.timed_out) return { code: 124, stdout, stderr: 'timed out' }
-      if (opts.maxBytes && (r.truncated || stdout.length > opts.maxBytes)) return { code: 125, stdout: Buffer.alloc(0), stderr: 'output too large' }
+      // A timed-out reply is a failure: its partial stdout is discarded,
+      // never decoded into a buffer.
+      if (r.timed_out) return { code: 124, stdout: Buffer.alloc(0), stderr: 'timed out' }
+      // base64 emits exactly 4*ceil(n/3) chars for n bytes: more than that for
+      // the bound means over-budget or cut output — reject before decoding.
+      const enc = r.stdout || ''
+      if (r.truncated || (opts.maxBytes && enc.length > Math.ceil(opts.maxBytes / 3) * 4)) {
+        return { code: 125, stdout: Buffer.alloc(0), stderr: 'output too large' }
+      }
+      const stdout = Buffer.from(enc, 'base64')
+      if (opts.maxBytes && stdout.length > opts.maxBytes) return { code: 125, stdout: Buffer.alloc(0), stderr: 'output too large' }
       return { code: r.code, stdout, stderr: Buffer.from(r.stderr || '', 'base64').toString('utf8') }
     } catch (e) {
       // An unreachable machine reads as the SSH failure code (the file's state is unknown).
@@ -138,6 +99,22 @@ export function coreShell(call: Call, on: string): ShellExec {
       return { code: 255, stdout: Buffer.alloc(0), stderr: coreFailure(e) }
     }
   }
+}
+
+// $HOME over the wire: `printf %s` writes no newline. Only a successful
+// bounded reply is an absolute home — a timeout, nonzero code or truncated
+// answer cannot give a partial trusted path, and the bytes are never
+// trimmed: a path's own trailing whitespace is part of it, not a route
+// into another directory.
+async function machineHome(shell: ShellExec): Promise<string> {
+  const r = await shell('printf %s "$HOME"', [], { maxBytes: 4096 })
+  const s = r.code === 0 && r.stdout.length <= 4096 ? r.stdout.toString('utf8') : ''
+  // Roundtrip: bytes that are not valid UTF-8 would silently decode into
+  // another directory, so they are refused like any other failed lookup.
+  if (!s.startsWith('/') || /[\r\n\0]/.test(s) || !Buffer.from(s, 'utf8').equals(r.stdout)) {
+    throw new CoreError('unreachable', 'machine home unknown')
+  }
+  return s
 }
 
 export function createCoreTranscripts(deps: CoreTranscriptDeps) {
@@ -162,10 +139,11 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
     const psTable = () => table ??= deps.call<{ stdout?: string }>('machine.exec', {
       argv: ['ps', '-e', '-o', 'pid=,ppid=,args='], ...(machineOfAddress(address) ? { on: machineOfAddress(address) } : {}), timeout: 5,
     }, 8000).catch(() => null).then(ps => Buffer.from(ps?.stdout || '', 'base64').toString('utf8'))
-    if (!procs.some(p => agentName(p.argv) || AGENT_PROGRAMS.has(baseName(p.name))) && typeof d.pid === 'number') {
+    if (!procs.some(p => AGENT_PROGRAMS.has(baseName(p.argv?.[0] || p.name))) && typeof d.pid === 'number') {
       procs.unshift(...agentDescendants(await psTable(), d.pid))
     }
-    const isDevin = (p: CoreProcess) => [baseName(p.name), ...(p.argv?.slice(0, 2).map(baseName) || [])].includes('devin')
+    const names = (p: CoreProcess) => [baseName(p.name), ...(p.argv?.slice(0, 2).map(baseName) || [])]
+    const isDevin = (p: CoreProcess) => names(p).includes('devin')
     const devin = procs.filter(p => isDevin(p) && Number.isSafeInteger(p.pid) && p.pid! > 0)
     // Devin 3000.12 runs a launcher (the foreground) and its engine `devin acp`
     // as a direct child; the session lock names the engine, so a launcher
@@ -176,7 +154,7 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
       if (kids.length) p.childPids = kids
     }
     const snapshotNames = new Set(['devin', 'agy', 'antigravity', 'antigravity-cli'])
-    const snapshotted = procs.filter(p => [baseName(p.name), ...(p.argv?.slice(0, 2).map(baseName) || [])].some(n => snapshotNames.has(n)) && Number.isSafeInteger(p.pid) && p.pid! > 0)
+    const snapshotted = procs.filter(p => names(p).some(n => snapshotNames.has(n)) && Number.isSafeInteger(p.pid) && p.pid! > 0)
     if (snapshotted.length) {
       // Exact argv and a conservative birth bound for Devin and Antigravity
       // processes, read together on the agent's machine.
@@ -192,20 +170,43 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
   }
 
   const machines = new Map<string, Promise<Transcripts>>()
+  // Warm instances by machine name: the synchronous final predicate
+  // (live below) reaches the reader that produced a reply without a new
+  // dispatch. A superseded entry is still the owning reader for replies
+  // it bound; a new instance overwrites it when its promise resolves.
+  const resolved = new Map<string, Transcripts>()
   function forMachine(name: string): Promise<Transcripts> {
     let t = machines.get(name)
     if (!t) {
       t = (async () => {
-        if (!name) return createTranscripts({ home: deps.localHome, herdr, fs: localFs, codexHistory: deps.codexHistory })
+        // Census/discovery/header work goes through machine.exec on the core
+        // itself — locally too (an omitted `on` runs on this machine); only
+        // transcript file reads use localFs directly.
         const shell = coreShell(deps.call, name)
-        const home = (await shell('printf %s "$HOME"')).stdout.toString('utf8').trim()
-        if (!home.startsWith('/')) throw new CoreError('unreachable', 'machine home unknown')
-        const fs: MachineFs = createShellFs(shell)
-        return createTranscripts({ home, herdr, fs })
+        const home = name ? await machineHome(shell) : deps.localHome
+        if (!home.startsWith('/') || home.includes('\0')) throw new CoreError('unreachable', 'machine home unknown')
+        // Transcript reads ride core's reply ceiling in 4 MiB decoded chunks.
+        const fs: MachineFs = name ? createShellFs(shell) : localFs
+        // Command Code: the census-backed locator decides what this pane's
+        // terminal really shows. Only THIS machine's terminal.get detail of
+        // the pane's exact coreAddress feeds it — state is passed unchanged
+        // (only an exact 'live' resolves), never defaulted.
+        const cmd = createCmdCore(shell, home, deps.now ? { now: deps.now } : {})
+        const locateCommandCode = async (p: TranscriptPane): Promise<Loc | null> => {
+          const address = deps.pane(p.id)?.coreAddress
+          if (!address || machineOfAddress(address) !== name) return null
+          const d = await detail(address).catch(() => null)
+          if (!d) return null
+          const r = await cmd.locate({ state: d.state, pid: d.pid, argv: d.argv, foreground: d.foreground ? { pid: d.foreground.pid } : null })
+          return 'file' in r ? { file: r.file, session: r.session, guessed: true } : null
+        }
+        return createTranscripts({ home, herdr, fs, locateCommandCode, codexHistory: name ? undefined : deps.codexHistory })
       })()
       machines.set(name, t)
-      // Not remembered when it fails: the machine may come back.
-      t.catch(() => { if (machines.get(name) === t) machines.delete(name) })
+      // One derived promise, both branches handled — a failed build is
+      // not remembered (the machine may come back) and never unhandled.
+      void t.then(x => { if (machines.get(name) === t) resolved.set(name, x) },
+        () => { if (machines.get(name) === t) machines.delete(name) })
     }
     return t
   }
@@ -225,12 +226,25 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
   }
 
   const of = (p: { id: string }) => forMachine(machineOfAddress(deps.pane(p.id)?.coreAddress))
+  // A failed machine entry (home lookup, core error) resolves as each
+  // method's own typed unavailable for Command Code panes — the value the
+  // method answers when nothing can be read. Other agents keep throwing.
+  const unavailable: Record<string, unknown> = {
+    chat: { available: false, reason: 'not_found' },
+    search: { hits: [], limited: false, kind: null },
+    pendingAsk: [],
+    pendingClaudeQuestions: []
+  }
+  const machineOf = (p: TranscriptPane) => of(p).catch(e => {
+    if (p.agent === 'cmd') return null
+    throw e
+  })
   type Fn<K extends keyof Transcripts> = Transcripts[K] extends (p: TranscriptPane, ...a: infer A) => infer R ? (p: TranscriptPane, ...a: A) => R : never
   const viaPane = <K extends 'chat' | 'preview' | 'latestReply' | 'locate' | 'model' | 'pendingTool' | 'pendingAsk' | 'pendingClaudeQuestions' | 'search'>(k: K) =>
     (async (p: TranscriptPane, ...a: unknown[]) => {
-      const t = await of(p)
+      const t = await machineOf(p)
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      return (t[k] as any)(await withBirth(p), ...a)
+      return t ? (t[k] as any)(await withBirth(p), ...a) : unavailable[k] ?? null
     }) as unknown as Fn<K>
 
   return {
@@ -243,7 +257,25 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
     pendingAsk: viaPane('pendingAsk'),
     pendingClaudeQuestions: viaPane('pendingClaudeQuestions'),
     search: viaPane('search'),
-    image: async (p: TranscriptPane, file: string | null, ref: string | null, i: number) => (await of(p)).image(await withBirth(p), file, ref, i),
+    // The reply-context revalidation exists for Command Code replies only:
+    // gated before any machine/birth resolution so other agents gain no
+    // extra failure path — they answer null (nothing to check) without
+    // ever dispatching.
+    current: async (p: TranscriptPane, r: ChatResponse) => {
+      if (p.agent !== 'cmd') return null
+      const t = await machineOf(p)
+      return t ? t.current(await withBirth(p), r) : 'gone'
+    },
+    // The synchronous final predicate for a reply's bound context — the
+    // already-warm machine's own reader answers it; a cold machine or a
+    // reply no reader bound answers null for other agents, false for a
+    // Command Code available reply (it must have been bound somewhere).
+    live: (p: TranscriptPane, r: ChatResponse) =>
+      resolved.get(machineOfAddress(deps.pane(p.id)?.coreAddress))?.live(p, r) ?? (p.agent === 'cmd' && r.available ? false : null),
+    image: async (p: TranscriptPane, file: string | null, ref: string | null, i: number) => {
+      const t = await machineOf(p)
+      return t ? t.image(await withBirth(p), file, ref, i) : null
+    },
     forget: (id: string) => { for (const t of machines.values()) void t.then(x => x.forget(id)).catch(() => {}) },
     // Called with every inventory: the Codex claims need each peer's start time.
     async observe(panes: Pane[]) {

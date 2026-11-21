@@ -264,6 +264,12 @@ export interface ChatItem {
   text: string
   ts: string | null
   name?: string
+  // Command Code tool call id: lets a result appended after the page was
+  // loaded update the item already shown (see toolUpdates).
+  toolId?: string
+  // Command Code tool call: revision (absolute result byte offset) of the
+  // outcome applied to this item — compared when late outcomes arrive.
+  toolAt?: number
   // Output of a 'bash' or 'cmd' command (stdout / stderr).
   out?: string
   err?: string
@@ -314,6 +320,19 @@ export interface OmpToolView {
 // the entry is one of wherdr's messages with photos.
 export interface ClaudeQueueEntry { text: string, ts: string | null, images?: number, sent?: string }
 
+// Outcome appended to a Command Code tool call (see ChatResponse.toolUpdates).
+export interface CommandCodeToolUpdate {
+  id: string
+  // Absolute byte offset of the result this outcome comes from: its
+  // revision — an older offset arriving later must not replace a newer one.
+  at?: number
+  out?: string
+  error?: boolean
+  images?: number
+  ref?: string
+  imageAt?: number
+}
+
 export interface ChatResponse {
   available: boolean
   // 'no_integration': not found, and Herdr's integration of this agent is
@@ -333,6 +352,9 @@ export interface ChatResponse {
   // Temporary daemon failure: retain the current conversation and paging state.
   stale?: boolean
   items?: ChatItem[]
+  // Command Code: results appended after a tool page was loaded, matched by
+  // `toolId`, so the client can update items already on screen.
+  toolUpdates?: CommandCodeToolUpdate[]
   // Incremental re-read (server/utils/chatDelta.ts): the client keeps its
   // first `keep` items and `items` replace the rest. Absent: `items` is the
   // whole bottom of the conversation.
