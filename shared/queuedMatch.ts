@@ -58,7 +58,24 @@ function unwrapPaths(field: string, text: string): string {
   return field
 }
 const looseForm = (t: string) => String(t || '').replace(IMAGE_TAG, '').replace(PHOTO_PATH, '').replace(/\s+/g, '')
-const PASTE_TAG = /\[Pasted text #\d+(?: \+\d+ lines)?\]/
+export const PASTE_TAG = /\[Pasted text #\d+(?: \+\d+ lines)?\]/
+// Claude Code (2.1.319) collapses a paste into "[Pasted text #N +K lines]"
+// (K: its line breaks) from 3 line breaks, or past 800 characters as
+// "[Pasted text #N]" (one line) or with "+K lines". It counts what is left
+// once it took out the photo paths it could read as images; one it missed
+// stays inside as its path (WHR-549).
+export const pasteCollapses = (s: string) => s.length > 800 || s.split('\n').length > 3
+// The lines a stand-in stands for fit this message: its text lines, at most
+// the lone "\" of holdEnter and each photo not shown as "[Image #N]" more,
+// and no fewer than its text when nothing else of it is in the field.
+function pasteFits(field: string, text: string, alone: boolean): boolean {
+  const k = field.match(PASTE_TAG)![0].match(/\+(\d+) lines/)?.[1]
+  const body = withoutUploads(text)
+  if (k === undefined) return body.length > 800 && (!alone || !body.includes('\n'))
+  const lines = Number(k) + 1
+  const own = body.split('\n').length
+  return lines >= 2 && lines <= own + 1 + Math.max(0, uploadNames(text).length - imageTagCount(field)) && (!alone || lines >= own)
+}
 const messageForm = (text: string) => tagsFirst(withoutUploads(text), uploadNames(text).length + imageTagCount(text))
 // Claude's field holds this message alone with at least one photo still as
 // its path (the others as "[Image #N]"), the lone "\" aside: Claude took the
@@ -90,13 +107,17 @@ export function fieldHolds(field: string | null | undefined, text: string, exact
   const parts = String(field || '').split(PASTE_TAG).map(form)
   if (!m || !form(field || '')) return false
   if (parts.length === 1) return exact ? parts[0] === m : m.length > 0 && parts[0]!.startsWith(m)
-  // One paste stand-in, for a multi-line message: the text around it is ours,
-  // and it stands for at least one character of it. The server's own match
-  // (exact, not loose) counts the photos' tags: one missing is a path inside
-  // the stand-in (fieldHoldsRawPhoto).
-  if (parts.length !== 2 || !withoutUploads(text).includes('\n')) return false
-  if (exact && !loose && imageTagCount(field) !== uploadNames(text).length + imageTagCount(text)) return false
+  // One paste stand-in, for a message as long: the text around it is ours,
+  // it stands for at least one character of it, and its line count fits the
+  // message's (a one-line message may be collapsed too, with its photo paths
+  // or past 800 characters; WHR-549). The server's own match (exact, not
+  // loose) counts the photos' tags: one missing is a path inside the
+  // stand-in (fieldHoldsRawPhoto).
+  if (parts.length !== 2) return false
   const [before, after] = parts as [string, string]
+  const alone = !looseForm(field.replace(PASTE_TAG, ''))
+  if (!pasteFits(field, text, alone)) return false
+  if (exact && !loose && imageTagCount(field) !== uploadNames(text).length + imageTagCount(text)) return false
   return m.length > before.length + after.length && m.startsWith(before) && m.endsWith(after)
 }
 

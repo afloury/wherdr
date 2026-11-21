@@ -207,13 +207,22 @@ message is still there (up to ten times over about 16 seconds). A message with p
 with a lone `\` on its last line: core presses Enter right after its paste, and Claude,
 before it has turned a photo path into `[Image #N]`, would submit the path as plain text;
 `\` + Enter is a new line in Claude, so the message waits in the box for wherdr's Enter.
+Only when the box keeps the paste as it is: Claude collapses a paste of 3 line breaks or
+more, or over 800 characters (counted once it took out the photos it could read), into
+`[Pasted text #N +K lines]` (or `[Pasted text #N]`), and a `\` there would sit inside it,
+hold no Enter and reach Claude; such a message is sent without it. A stand-in counts as the
+message when its line count fits it (its text lines, plus the photos missing from its
+`[Image #N]` tags), also for a one-line text, with or without photos.
 Claude Code checks and reads a pasted photo path within one second, or keeps it as typed text
 for good (after an idle, on a loaded machine): a message whose photo shows as its path is
 cleared and pasted once more, only once its field is seen empty; a field that does not empty,
 or can no longer be read, after that clear refuses the send (**Not sent**, with Retry for the
 whole message), never submitting part of it. A multi-line message shows in the box as
 `[Pasted text #N +K lines]`, its photo paths hidden inside: a photo missing from the
-`[Image #N]` tags before it is such a path, and is pasted once more the same way.
+`[Image #N]` tags before it is such a path, and is pasted once more the same way. When the
+stand-in also hides the `\` (missed photos made a short text long enough to collapse), the
+message is pasted once more without it, at once, and goes with its paths if Claude misses
+them again.
 The 18 seconds count from the first paste, clears and the second paste included: the message
 is pasted again only with 6 seconds still left, otherwise it goes as it is at once.
 A photo still shown as its path after that, or when the wait ends, is never left there: wherdr takes the
