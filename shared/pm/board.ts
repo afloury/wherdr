@@ -222,8 +222,9 @@ export const asker = (c: Pick<Card, 'asks' | 'stopped' | 'terminal'>) => (c.asks
 // The card's one-tap link: its PR when it has one, else its first link.
 // A task the user may stop: started, not done, not stopped already.
 export const canStop = (c: Pick<Card, 'state' | 'stopped'>) => !!c.state?.started && !c.state.done && !c.stopped
-// One of the task's agents runs (worker, reviewer or the step's holder): only then is Stop of use on its sheet.
-export const agentRuns = (c: Pick<Card, 'agents' | 'terminal'>) => !!(c.agents?.worker || c.agents?.reviewer || c.terminal)
+// The agent holding the task's step runs: only then is Stop of use on its sheet
+// (at a merge step no agent holds it, even while the worker's conversation stays open).
+export const agentRuns = (c: Pick<Card, 'terminal'>) => !!c.terminal
 
 // A task the user may start by hand: to do, not stopped (its sheet resumes it).
 // One that waits for others shows them instead (waitsFor).

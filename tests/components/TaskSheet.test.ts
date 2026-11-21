@@ -351,7 +351,7 @@ it('shows the PR as a badge on the branch line, in the header once that line scr
   vi.unstubAllGlobals()
 })
 
-it('the header: the step\'s button first, Stop only while an agent runs, Check on GitHub and Report a problem in the ⋯ menu', async () => {
+it('the header: the step\'s button first, Stop only while the step\'s agent runs, Check on GitHub and Report a problem in the ⋯ menu', async () => {
   const merge = waiting({
     yourTurn: 'Look at the screenshots, then merge', userLabel: 'Merge', links: [{ label: 'pr', url: 'https://github.com/o/r/pull/7' }],
     state: at(4, { yourTurn: { reason: 'user', badge: 'Look at the screenshots, then merge' }, proofs: { pr: { link: 'https://github.com/o/r/pull/7' } } }),
@@ -364,8 +364,10 @@ it('the header: the step\'s button first, Stop only while an agent runs, Check o
   expect(w.find('[data-testid="task-times"]').exists()).toBe(false)
   await w.get('[data-testid="task-more"] button').trigger('click')
   expect(menuState.items.map(i => i.label)).toEqual(['Check on GitHub', 'Report a problem'])
-  // An agent of the task runs: Stop.
+  // The worker's conversation still open at the merge step: no Stop; an agent holding the step: Stop.
   await w.setProps({ card: { ...merge, agents: { worker: 'core-1' } } })
+  expect(w.find('[data-testid="task-stop"]').exists()).toBe(false)
+  await w.setProps({ card: { ...merge, terminal: 'core-1' } })
   expect(w.find('[data-testid="task-stop"]').exists()).toBe(true)
   w.unmount()
 })

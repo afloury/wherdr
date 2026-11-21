@@ -3,7 +3,7 @@
 // at most), the branch line with the PR's badge and its state (open, merged,
 // closed, conflict, red CI), the task's total time, then the buttons that make
 // sense now: the step's own (StepButton, first), Open the agent, Stop only while
-// an agent runs, and a ⋯ menu for Check on GitHub and Report a problem. The step
+// the agent holding the step runs, and a ⋯ menu for Check on GitHub and Report a problem. The step
 // times are at the top of History. A task waiting for the user opens on To do (TaskTodo): what
 // it needs from them and its buttons. Otherwise: its Plan (the steps, the current one, what its holder was
 // told, the proofs and rounds), its links, Open the agent (AgentButton: whatever the step, disabled once it ended), and

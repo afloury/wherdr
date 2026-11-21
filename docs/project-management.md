@@ -1102,7 +1102,7 @@ open a PR to v3* before its PR, with a button to copy the branch name), the
 task's PR as a badge on that line with its state (*PR #646 · open ↗*: *open*, *merged*, *closed*, *conflict* or *red CI*; opens it in a new tab; on a phone
 it wraps under the branches; once that line scrolls away, the badge shows in the
 sheet's header by the id, so the PR stays one tap away; nothing before a PR; before it, a short line says where the task stands), the task's total time at the end of that line, small and muted, and only the buttons that make sense now: the step's own first (*Merge*, *Approve screenshots*…, its state said under it in To do), *Start*,
-*Open the agent*, *Stop* only while one of its agents runs, *Delete…*, and a **⋯** menu for the secondary actions, *Check on GitHub* and *Report a problem*. The time it spent in each step, with the time it waited for you apart, its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
+*Open the agent*, *Stop* only while the agent holding the step runs (not at a merge step, even with the worker's conversation open), *Delete…*, and a **⋯** menu for the secondary actions, *Check on GitHub* and *Report a problem*. The time it spent in each step, with the time it waited for you apart, its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
 waited for you 1 h · 2 review rounds · 1 CI fix*) open the **History** tab. *Open the agent* is there whatever the
 step: it opens the conversation of the agent holding the step if it runs, else the worker's (*Open
 the reviewer* when only the reviewer runs), so you can ask it something; with both the worker and
