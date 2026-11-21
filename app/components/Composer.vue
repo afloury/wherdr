@@ -413,7 +413,7 @@ function tileOf(a: Att) {
     return { status, name: a.file.label, badge: ext, description: a.error || (a.file.size ? formatSize(a.file.size) : undefined), text: a.file.head, icon: attachmentIcon(a.file.label, a.file.kind) }
   }
   const name = a.label || attachmentDisplayName(a.name || '') || t('Photo')
-  return { status, name, badge: extensionOf(name).slice(0, 5).toUpperCase() || 'JPG', description: a.error, url: a.url, label: t('View image') }
+  return { status, name, badge: extensionOf(name).slice(0, 5).toUpperCase() || 'JPG', description: a.error || '', url: a.url, label: t('View image') }
 }
 function removeAtt(i: number) {
   const [a] = attachments.value.splice(i, 1)
