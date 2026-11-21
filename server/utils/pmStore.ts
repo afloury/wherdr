@@ -21,7 +21,7 @@ import type { RepoVisibility } from '../../shared/pm/visibility'
 import { WEIGHTS, defaultWorkflow, isContextError, isWeight, readContext, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
 import { checkTaskContext } from '../../shared/pm/context'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
-import { publicTask, taskPlan, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
+import { publicTask, taskPlan, taskPrefsOf, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
 import { replan } from '../../shared/pm/steps'
 import { afterIds } from '../../shared/pm/advance'
 import { parseFiles } from '../../shared/pm/files'
@@ -273,6 +273,13 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   // (replan), said in its log. Within the workflow's write.
   // A new task from addTask's input, checked, not saved; pending: those of
   // the same write, not saved yet.
+  // A task's own prefs (task add --agent), checked as the workflow's: an agent
+  // names a program or a named agent of Settings › Agents. Empty ones dropped.
+  async function taskPrefs(raw: unknown): Promise<Task['prefs']> {
+    const r = taskPrefsOf(raw, await namedAgents())
+    if ('errors' in r) throw badInput(r.errors)
+    return r.prefs
+  }
   async function newTask(raw: unknown, pending: Task[] = []): Promise<Task> {
     const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
     const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '')
@@ -309,7 +316,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     const refs = parseRefs(o.refs)
     if ('error' in refs) throw badInput([{ path: 'refs', message: refs.error }])
     if (refs.length && !feature) throw badInput([{ path: 'refs', message: 'plan lines of a feature: the task needs a feature' }])
-    return { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(isWorkspace(p) ? { kind: 'feature' as const } : {}), ...(feature ? { feature } : {}), ...(refs.length ? { refs } : {}), ...(after ? { after } : {}), ...(mergeAfter ? { mergeAfter } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}), ...(fromBranch ? { fromBranch } : {}), ...(checked ? { context: checked.context } : {}) }
+    const prefs = await taskPrefs(o.prefs)
+    return { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(isWorkspace(p) ? { kind: 'feature' as const } : {}), ...(feature ? { feature } : {}), ...(refs.length ? { refs } : {}), ...(after ? { after } : {}), ...(mergeAfter ? { mergeAfter } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}), ...(fromBranch ? { fromBranch } : {}), ...(checked ? { context: checked.context } : {}), ...(prefs ? { prefs } : {}) }
   }
 
   async function replanTasks(key: string, before: Template, after: Template) {
@@ -525,7 +533,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     receipt: (id: string) => readJson<Receipt>(path.join(files.receipts, `${id}.json`)),
     saveReceipt: (r: Receipt) => write(() => writeJson(path.join(files.receipts, `${r.id}.json`), r)),
 
-    // { project, title, description?, type, after?, mergeAfter?, feature?, auto?, origin?, addedBy? }: a new task, to do (origin: 'user' when unset).
+    taskPrefs,
+    // { project, title, description?, type, after?, mergeAfter?, feature?, auto?, origin?, addedBy?, prefs? }: a new task, to do (origin: 'user' when unset).
     addTask: (raw: unknown) => write(async () => {
       const task = await newTask(raw)
       await writeJson(path.join(files.tasks, `${task.id}.json`), task)
