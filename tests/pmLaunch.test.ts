@@ -45,6 +45,9 @@ describe('worker plan and command line', () => {
     expect(agentLine('omp', 'anthropic/claude-sonnet-5-5', "/h/it's.md")).toBe(`exec omp '--model' 'anthropic/claude-sonnet-5-5' 'Read /h/it'\\''s.md and follow it.'`)
     expect(agentLine('omp', 'sonnet', '/h/i.md', { id: 's1' }, 'Then stop.')).toBe(`exec omp '--model' 'sonnet' 'Read /h/i.md and follow it. Then stop.'`)
     expect(agentLine('codex', 'gpt-5', "/h/it's.md")).toBe(`exec codex '-c' 'check_for_update_on_startup=false' '--model' 'gpt-5' 'Read /h/it'\\''s.md and follow it.'`)
+    // A released worker reopened: its conversation taken up again with no first message (no model turn).
+    expect(agentLine('claude', 'opus', '/h/i.md', { id: 's1', resume: true })).toBe(`exec claude '--model' 'opus' '--resume' 's1'`)
+    expect(agentLine('codex', 'gpt-5', '/h/i.md', { id: 's1', resume: true })).toBe(`exec codex '-c' 'check_for_update_on_startup=false' '--model' 'gpt-5' 'resume' 's1'`)
   })
 })
 

@@ -1805,11 +1805,15 @@ An agent you talk to stays: your last message to one of the task's agents
 10, and while you have that conversation open in wherdr they are not ended at
 all. Only a machine short of memory for a task waiting to start cuts that
 grace (the plain 10 minutes then apply), and the log says so. Once the worker
-is released, *Open the agent* stays on the task, with one muted line under it
-(*Released at 12:43 to free memory: opening it starts it again.*): opening it
-starts the worker again in its worktree with its conversation taken up again,
-whose first line says *Restarted: it was released to free memory at 12:43*,
-and you write to it as before.
+is released, *Open the agent* stays on the task (and in Tasks to review): it
+first asks, in a small dialog, saying the agent was closed at 12:43 to free
+memory on its machine and that its conversation comes back as it was.
+*Reopen* starts the worker again in its worktree with its conversation taken
+up again and no message sent to it, so it costs no model turn until you write
+to it as before; *Cancel* leaves it closed. Claude and Codex workers get their
+conversation back (Codex's is found in its machine's Codex sessions); omp
+workers have no conversation wherdr can take up again, so a new one starts and
+reads the handover, as does a Codex worker whose conversation is not found.
 
 The same goes when you answer and the task moves on: a review decision (*pass*,
 say), *Send back*, *Try again* or a merge you confirm hands the next step to

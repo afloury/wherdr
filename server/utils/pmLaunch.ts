@@ -392,8 +392,10 @@ async function machineHold(deps: PmLaunchDeps, task: Task, machine: string, now 
 // any other first start of it stays to do, behind that task (the engine starts it then).
 // by: who starts it (the log's 'back to work' line, when that clears a timeout or a stall).
 // resume: a Claude worker's conversation taken up again (crash recovery), with
-// that first message; failing at once, a new conversation reads the instructions.
-type StartOpts = { handover?: string, revive?: true, on?: string, by?: string, anyway?: true, resume?: { session: string, text: string } }
+// that first message, or none (no text: the user opens a released worker);
+// a Codex worker's too, when its session was found (program: the session's,
+// never handed to another program); failing at once, a new conversation reads the instructions.
+type StartOpts = { handover?: string, revive?: true, on?: string, by?: string, anyway?: true, resume?: { session: string, text?: string, program?: string } }
 export async function startTask(deps: PmLaunchDeps, id: unknown, opts: StartOpts = {}): Promise<Task> {
   return oneStart(String(id), 'worker', async () => {
     const before = await deps.store.task(id)
@@ -518,8 +520,8 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const first = onEvent(taskPlan(t, task, p), initialState(), { kind: 'start' }, Date.now()).state
   const step = task.step?.started ? task.step : { ...first, told: first.since }
   const install = await store.install()
-  // Claude's conversation id, pinned: a later resume takes it up again.
-  const taken = plan.program === 'claude' ? resume : undefined
+  // Claude's conversation id, pinned: a later resume takes it up again. Codex: only one found.
+  const taken = (resume?.program ?? 'claude') === plan.program && (plan.program === 'claude' || plan.program === 'codex') ? resume : undefined
   const session = () => (plan.program === 'claude' ? { session: randomUUID() } : {})
   const { command: _command, ...who } = plan
   let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'worker', ...who, machine, ...paths, attempt: 1, state: 'starting', startedAt: Date.now(), ...(taken ? { session: taken.session } : session()), ...(ctx.folders.length ? { context: ctx.folders } : {}) }
@@ -531,7 +533,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
       address = (await deps.call<{ address: string }>('terminal.run', {
         cwd: paths.worktree, ...(on ? { on } : {}), no_parent: true, wait: false,
         env: agentEnv(paths.worktree), labels: runLabels(install, run),
-        line: `${PATH_SETUP}; ${agentLine(plan, plan.model, paths.instructions, run.session ? { id: run.session, ...(taken && run.attempt === 1 ? { resume: taken.text } : {}) } : undefined, undefined, ctx.folders.map(f => f.dir))}`,
+        line: `${PATH_SETUP}; ${agentLine(plan, plan.model, paths.instructions, run.session ? { id: run.session, ...(taken && run.attempt === 1 ? { resume: taken.text ?? true } : {}) } : undefined, undefined, ctx.folders.map(f => f.dir))}`,
       }, 30000)).address
     } catch (e) {
       // Unconfirmed: it may run anyway. The watchdog finds it by its labels, or ends the run (staleStarts).
@@ -551,7 +553,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
     // An agent that exits at once gets one more attempt, never a loop.
     if (run.attempt > 1 || failed.code === NOT_FOUND)
       return wait(store, task, `${plan.program} stopped right after starting (exit code ${failed.code}). Last output:\n${failed.lines || '(none)'}`, isAuthFailure(failed.lines) ? 'auth' : undefined)
-    run = { ...run, id: randomUUID().replace(/-/g, '').slice(0, 12), terminal: undefined, attempt: 2, state: 'starting', startedAt: Date.now(), ...session() }
+    run = { ...run, id: randomUUID().replace(/-/g, '').slice(0, 12), terminal: undefined, attempt: 2, state: 'starting', startedAt: Date.now(), session: undefined, ...session() }
   }
 }
 
