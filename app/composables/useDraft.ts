@@ -21,6 +21,8 @@ export interface DraftAtt {
   ref?: string
   // Long pasted text (shared/pastedText.ts): a card; sent as it is, after the text.
   paste?: string
+  // Upload refused: the reason, shown on the attachment until it is removed (never stored).
+  error?: string
 }
 type StoredAtt = { path: string, name?: string, file?: DraftAtt['file'], ref?: string }
 

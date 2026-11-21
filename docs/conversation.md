@@ -174,6 +174,11 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   and comes back into the field if Codex exits instead, see [Codex updates](quotas.md#codex-updates)), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), up to **8 MB per file** (core's `terminal.put`).
+  Above the field, a photo shows as a square thumbnail (a tap opens it) and a file as a card
+  (icon, name, type and size), each with its remove button: while it uploads, the photo is dimmed
+  under a spinner and the file's name shimmers; a refused upload stays as a card with the reason
+  until you remove it, and Send waits for it to go (*Remove the attachment that failed*), as it
+  waits for an upload still running (*Photo is uploading…*).
   A photo sent from this device shows in the message at once, from its own copy; an image that
   fails to load is tried again once, then shows *Tap to reload*.
   A sent file shows as a chip (icon and original name) in the message and its history, also in

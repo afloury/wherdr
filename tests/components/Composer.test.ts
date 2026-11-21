@@ -386,3 +386,41 @@ describe('Composer paste event handling', () => {
     w.unmount()
   })
 })
+
+// Upload in the test's hands: each call waits for its resolve() or reject().
+const uploads: { resolve: (r: { path: string, name: string }) => void, reject: (e: Error) => void }[] = []
+vi.mock('~/utils/photoUpload', () => ({
+  uploadPhoto: () => new Promise((resolve, reject) => uploads.push({ resolve, reject })),
+}))
+
+describe('Composer attachments (UChatAttachment)', () => {
+  it('a photo shows uploading, then idle; a failed one shows its reason; remove takes it away', async () => {
+    const id = 'att-1'
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:demo')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    const w = await mountSuspended(Composer, { props: { pane: pane(id), paneId: id, sendKeys: async () => {} } })
+    const vm = w.vm as unknown as { addImages: (f: File[]) => Promise<void> }
+    const photo = () => new File([new Uint8Array([1])], 'shot.png', { type: 'image/png' })
+    vm.addImages([photo()])
+    await vi.waitFor(() => expect(uploads).toHaveLength(1))
+    await nextTick()
+    const att = () => w.findAll('[data-slot="root"].att')
+    expect(att()[0]!.attributes('data-status')).toBe('uploading')
+    expect(att()[0]!.attributes('data-variant')).toBe('thumbnail')
+    uploads.shift()!.resolve({ path: '/tmp/shot.jpg', name: 'shot.jpg' })
+    await flushPromises()
+    expect(att()[0]!.attributes('data-status')).toBe('idle')
+
+    vm.addImages([photo()])
+    await vi.waitFor(() => expect(uploads).toHaveLength(1))
+    uploads.shift()!.reject(new Error('Disk full'))
+    await flushPromises()
+    expect(att()[1]!.attributes('data-status')).toBe('error')
+    expect(att()[1]!.find('[data-slot="description"]').text()).toContain('Disk full')
+
+    await att()[0]!.find('[data-slot="remove"]').trigger('click')
+    await att()[0]!.find('[data-slot="remove"]').trigger('click')
+    expect(att()).toHaveLength(0)
+    vi.restoreAllMocks()
+  })
+})

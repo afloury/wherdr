@@ -1698,7 +1698,10 @@ body.kb .composer { padding-bottom: 8px; }
   padding: 4px 6px 6px; gap: 2px;
   background: var(--bg-2); border: 1px solid var(--input-line); box-shadow: none; backdrop-filter: none;
   transition: border-color .15s ease;
+  /* Nuxt UI 4.13 isolates the root and blurs behind it with a ::before: off, the halo (.fx-halo) stays under the field. */
+  isolation: auto;
 }
+.prompt::before { content: none; }
 /* Focused field: the whole 1 px border takes the agent's color and a second color glides
    slowly around it, with a faint halo around the field. The agent's color is toned down a
    little toward the field's background so that the second color reads on it (the herdr mauve
@@ -1853,16 +1856,25 @@ body.kb .composer { padding-bottom: 8px; }
 
 .prompt-head { padding: 4px 2px 2px; }
 .attachments { display: flex; gap: 8px; overflow-x: auto; }
-.attachments .att { position: relative; width: 60px; height: 60px; overflow: hidden; flex: none; background: var(--surface-2); border: 1px solid var(--line); cursor: zoom-in; }
-.attachments .att:hover, .attachments .att:focus-visible { border-color: var(--accent); outline: none; }
-.attachments img { width: 100%; height: 100%; object-fit: cover; }
-.attachments .att.up::after { content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, .45); }
-.attachments .att .spinner { position: absolute; inset: 0; margin: auto; width: 18px; height: 18px; z-index: 1; }
-.attachments .att button {
-  position: absolute; top: 3px; right: 3px; width: 20px; height: 20px;
-  display: grid; place-items: center; background: rgba(0, 0, 0, .75); color: #fff; z-index: 2;
-}
-.attachments .att button .iconify { width: 13px; height: 13px; }
+.attachments > .att { flex: none; height: 60px; cursor: default; }
+.attachments > .att.photo { width: 60px; cursor: zoom-in; }
+.attachments > .att.photo:hover, .attachments > .att.photo:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+@media (max-width: 700px) { .attachments > .att[data-variant='card'] { max-width: 190px; } }
+/* UChatAttachment in wherdr's style (app.config.ts): square corners everywhere, its surfaces and type. */
+.hw-att, .hw-att * { border-radius: 0 !important; }
+.hw-att[data-variant='card'] { min-width: 0; max-width: 240px; gap: 8px; padding: 0 8px; background: var(--surface-2); border: 1px solid var(--line); color: var(--text); }
+.hw-att[data-status='error'] { border-color: var(--danger); }
+.hw-att-lead { background: var(--bg-2); color: var(--text-2); outline-color: var(--line); }
+.hw-att[data-variant='card'] .hw-att-lead { width: 26px; border: 1px solid var(--line); }
+.hw-att[data-variant='thumbnail'] .hw-att-lead { height: 100%; outline: 1px solid var(--line); outline-offset: -1px; }
+.hw-att[data-status='uploading'][data-variant='thumbnail'] .hw-att-lead { color: #fff; background: #000; }
+.hw-att[data-status='error'] .hw-att-lead { color: var(--danger); }
+.hw-att-name { font-size: 13px; line-height: 1.2; font-weight: 400; color: var(--text); }
+.hw-att-desc { margin-top: 1px; font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
+.hw-att[data-status='error'] .hw-att-desc { color: var(--danger); text-transform: none; letter-spacing: 0; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.hw-att-x { width: 22px; height: 22px; justify-content: center; color: var(--text-2); }
+.hw-att-x:hover { color: var(--text); background: var(--surface-3); }
+.hw-att[data-variant='thumbnail'] .hw-att-x { top: 3px; right: 3px; width: 20px; height: 20px; background: rgba(0, 0, 0, .75); color: #fff; box-shadow: none; opacity: 1; }
 
 /* Attached file (PDF, text, code…): square chip, icon, name, type and size. */
 .file-chip {
@@ -1882,8 +1894,6 @@ body.kb .composer { padding-bottom: 8px; }
 .file-chip-x { display: grid; place-items: center; width: 22px; height: 22px; margin-left: 2px; flex: none; color: var(--text-2); }
 .file-chip-x:hover { color: var(--text); background: var(--surface-3); }
 .file-chip-x .iconify { width: 13px; height: 13px; }
-.attachments .file-chip { height: 60px; }
-@media (max-width: 700px) { .attachments .file-chip { max-width: 190px; } }
 .msg-file-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; white-space: normal; }
 .msg-file-chips:last-child { margin-bottom: 2px; }
 .msg-file-chips .file-chip { background: var(--bg-2); max-width: min(100%, 260px); }

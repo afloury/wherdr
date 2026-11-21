@@ -12,7 +12,7 @@ import { quotesIn, removeQuote } from '~/utils/questionReply'
 import { attachQuoteMirror } from '~/utils/quoteMirror'
 import { isBareBang, isSlashCommand } from '#shared/queuedMatch'
 import { viaPrompt } from '#shared/sendRoute'
-import type { AttachKind } from '#shared/attachments'
+import { attachmentIcon, extensionOf, formatSize, type AttachKind } from '#shared/attachments'
 import { refusalText, sortForAgent } from '~/utils/fileDrop'
 import { uploadPhoto } from '~/utils/photoUpload'
 import { keepPreview } from '~/utils/sentPreviews'
@@ -231,6 +231,7 @@ const answered = (p?: Pane) => { if (p?.task && p.coreAddress) api('/api/pm/answ
 async function submit() {
   if (readOnly.value) return toast(t('Sending unavailable offline'), true)
   if (stopMode.value) return interrupt()
+  if (attachments.value.some(a => a.error)) return toast(t('Remove the attachment that failed'), true)
   if (attachments.value.some(a => !a.paste && !a.path)) return toast(t(attachments.value.some(a => !a.path && a.file) ? 'File is uploading…' : 'Photo is uploading…'))
   // Photos and files go as file paths (`@<path>` for a text file given to
   // Claude): Claude Code and Codex open them themselves. Pasted texts go as
@@ -393,7 +394,19 @@ function clearAttachments(sent = false) {
 }
 // Large preview (same viewer as the conversation), including while
 // sending: the local URL (blob) is enough.
-function viewAtt(a: Att) { lightboxSrc.value = a.url }
+// A click on the remove button is not a click on the photo.
+function viewAtt(a: Att, e?: Event) {
+  if ((e?.target as Element | null)?.closest('[data-slot="remove"]')) return
+  lightboxSrc.value = a.url
+}
+// UChatAttachment (Nuxt UI): the upload's state, and a file's type and size.
+const attStatus = (a: Att) => (a.error ? 'error' : a.path ? 'idle' : 'uploading')
+function attDescription(a: Att) {
+  if (a.error) return a.error
+  if (!a.file) return undefined
+  const ext = extensionOf(a.file.label).slice(0, 6) || (a.file.kind === 'text' ? 'txt' : '')
+  return [ext.toUpperCase(), a.file.size ? formatSize(a.file.size) : ''].filter(Boolean).join(' · ')
+}
 function removeAtt(i: number) {
   const [a] = attachments.value.splice(i, 1)
   if (a && a.url) URL.revokeObjectURL(a.url)
@@ -415,9 +428,7 @@ async function addImages(files: File[]) {
       a.path = r.path
       a.name = r.name
     } catch (err) {
-      toast(`${t('Photo upload failed')} : ${(err as Error).message}`, true)
-      attachments.value = attachments.value.filter(x => x !== a)
-      URL.revokeObjectURL(a.url)
+      a.error = `${t('Photo upload failed')}: ${(err as Error).message}`
     }
   }
 }
@@ -451,8 +462,7 @@ async function uploadFile(f: File, kind: AttachKind) {
     a.name = d.name
     a.ref = d.ref
   } catch (err) {
-    toast(`${f.name} : ${t('File upload failed')} — ${(err as Error).message}`, true)
-    attachments.value = attachments.value.filter(x => x !== a)
+    a.error = `${t('File upload failed')}: ${(err as Error).message}`
   }
 }
 function onFiles(e: Event) {
@@ -669,18 +679,16 @@ defineExpose({
         <div class="attachments">
           <template v-for="(a, i) in attachments" :key="a.url || a.path || a.file?.label || `paste:${i}`">
             <PastedCard v-if="a.paste" :text="a.paste" removable @remove="removeAtt(i)" />
-            <FileChip
-              v-else-if="a.file" :name="a.file.label" :size="a.file.size" :kind="a.file.kind" :uploading="!a.path" removable
-              @remove="removeAtt(i)"
+            <!-- Photos as thumbnails (a click opens them), files as cards; a failed upload as a card with its reason. -->
+            <UChatAttachment
+              v-else
+              :name="a.file?.label || t('Photo')" :type="a.file ? undefined : 'image/jpeg'" :url="a.file ? undefined : a.url"
+              :description="attDescription(a)" :status="attStatus(a)" :variant="a.file || a.error ? 'card' : 'thumbnail'"
+              :icon="a.file ? attachmentIcon(a.file.label, a.file.kind) : undefined" loading-icon="i-lucide-loader" error-icon="i-lucide-triangle-alert"
+              removable class="att" :class="{ photo: !a.file && !a.error }" :title="a.error || a.file?.label"
+              v-bind="a.file ? {} : { 'role': 'button', 'tabindex': 0, 'aria-label': t('View image') }"
+              @click="a.file || viewAtt(a, $event)" @keydown.enter.self="a.file || viewAtt(a)" @remove="removeAtt(i)"
             />
-            <div
-              v-else class="att" :class="{ up: !a.path }"
-              role="button" tabindex="0" :aria-label="t('View image')" @click="viewAtt(a)" @keydown.enter.self="viewAtt(a)"
-            >
-              <img :src="a.url" alt="">
-              <span v-if="!a.path" class="spinner" />
-              <button type="button" :aria-label="t('Remove')" @click.stop="removeAtt(i)"><UIcon name="i-lucide-x" /></button>
-            </div>
           </template>
         </div>
       </template>
