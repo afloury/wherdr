@@ -1810,9 +1810,10 @@ first asks, in a small dialog, saying the agent was closed at 12:43 to free
 memory on its machine and that its conversation comes back as it was.
 *Reopen* starts the worker again in its worktree with its conversation taken
 up again and no message sent to it, so it costs no model turn until you write
-to it as before; *Cancel* leaves it closed. A Claude worker's conversation is
-resumed; Codex and omp workers have no conversation wherdr can take up again,
-so a new one starts and reads the handover.
+to it as before; *Cancel* leaves it closed. Claude and Codex workers get their
+conversation back (Codex's is found in its machine's Codex sessions); omp
+workers have no conversation wherdr can take up again, so a new one starts and
+reads the handover, as does a Codex worker whose conversation is not found.
 
 The same goes when you answer and the task moves on: a review decision (*pass*,
 say), *Send back*, *Try again* or a merge you confirm hands the next step to

@@ -54,6 +54,17 @@ export function releaseDue(since: number | undefined, now: number, talk: Talk = 
 export const roomWanted = (tasks: Pick<Task, 'state' | 'held' | 'machine'>[], machine: string) =>
   tasks.some(t => t.state === 'todo' && !!t.held && isRoomHold(t.held) && (t.machine === undefined || t.machine === machine))
 
+// The Codex conversation of a worker started with `Read <instructions> and
+// follow it.` ($1), in its machine's Codex sessions: the newest rollout written
+// in the last $2 minutes (since that run started) whose first user message is
+// that line (its reviewer, in the same worktree, reads another file). Prints its
+// id, or nothing.
+export const CODEX_SESSION_SCRIPT = `d="\${CODEX_HOME:-$HOME/.codex}/sessions"; [ -d "$d" ] || exit 0
+find "$d" -name 'rollout-*.jsonl' -mmin "-$2" 2>/dev/null | LC_ALL=C sort -r | while IFS= read -r f; do
+  head -n 80 "$f" | grep -qF "\\"text\\":\\"Read $1 and follow it." || continue
+  basename "$f" .jsonl | sed -n 's/.*\\([0-9a-f]\\{8\\}-[0-9a-f]\\{4\\}-[0-9a-f]\\{4\\}-[0-9a-f]\\{4\\}-[0-9a-f]\\{12\\}\\)$/\\1/p'; break
+done`
+
 // The worker the engine released: started again when the task needs it.
 export const wasReleased = (r?: Pick<Run, 'state' | 'endedBy'>) => r?.state === 'ended' && r.endedBy === 'released'
 

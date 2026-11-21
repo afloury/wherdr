@@ -47,6 +47,7 @@ describe('worker plan and command line', () => {
     expect(agentLine('codex', 'gpt-5', "/h/it's.md")).toBe(`exec codex '-c' 'check_for_update_on_startup=false' '--model' 'gpt-5' 'Read /h/it'\\''s.md and follow it.'`)
     // A released worker reopened: its conversation taken up again with no first message (no model turn).
     expect(agentLine('claude', 'opus', '/h/i.md', { id: 's1', resume: true })).toBe(`exec claude '--model' 'opus' '--resume' 's1'`)
+    expect(agentLine('codex', 'gpt-5', '/h/i.md', { id: 's1', resume: true })).toBe(`exec codex '-c' 'check_for_update_on_startup=false' '--model' 'gpt-5' 'resume' 's1'`)
   })
 })
 

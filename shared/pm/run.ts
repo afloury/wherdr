@@ -144,7 +144,7 @@ export interface Run {
   startedAt: number
   endedAt?: number // when the engine released it (release.ts)
   peakMb?: number // the most its worktree's processes took, sampled each tick (peaks.ts)
-  session?: string // Claude's conversation id, pinned at launch: a resume takes it up again
+  session?: string // Claude's conversation id, pinned at launch (Codex's, once found to take it up again): a resume takes it up again
   context?: ContextFolder[] // the read-only context folders it was given (context.ts): cleanup keeps them while its task is not done
 }
 
@@ -210,18 +210,20 @@ export function tmpRefusal(out: string) {
 
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 // The shell line that starts the agent: model pinned, first message points at the file.
-// session (Claude only): the conversation's id, new (--session-id), or taken
-// up again (--resume) with `resume` as its first message.
+// session: Claude's conversation id, new (--session-id), or taken up again
+// (--resume) with `resume` as its first message; Codex's only taken up again
+// (`resume <id>`: its id is never pinned at launch, codexSessionScript finds it).
 // then: said after the instructions, in the same first message.
 // dirs: read-only context folders (context.ts) the agent may read (see dirArgs).
 // agent: a program, or a named agent (Settings › Agents): its command and fixed
 // options first, then the program's usual arguments.
-// session.resume: Claude's conversation taken up again with that first message,
+// session.resume: the conversation taken up again with that first message,
 // or (true) with none, costing no model turn until the user writes.
 export function agentLine(agent: string | AgentRef, model: string, instructions: string, session?: { id: string, resume?: string | true }, then?: string, dirs: string[] = []) {
   const { program, command } = typeof agent === 'string' ? { program: agent, command: undefined } : agent
-  const own = program === 'claude' && session ? (session.resume ? ['--resume', session.id] : ['--session-id', session.id]) : []
-  const first = own[0] !== '--resume' ? [`Read ${instructions} and follow it.${then ? ` ${then}` : ''}`] : session!.resume === true ? [] : [session!.resume!]
+  const own = program === 'claude' && session ? (session.resume ? ['--resume', session.id] : ['--session-id', session.id])
+    : program === 'codex' && session?.resume ? ['resume', session.id] : []
+  const first = !session?.resume || !own.length ? [`Read ${instructions} and follow it.${then ? ` ${then}` : ''}`] : session.resume === true ? [] : [session.resume]
   const [exe, ...options] = command ? commandWords(command) : [program]
   return ['exec', exe!, ...options, ...(program === 'codex' ? CODEX_NO_UPDATE : []), ...dirArgs(program, dirs), '--model', model, ...own, ...first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
 }
