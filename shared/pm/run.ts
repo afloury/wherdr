@@ -216,12 +216,14 @@ const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 // dirs: read-only context folders (context.ts) the agent may read (see dirArgs).
 // agent: a program, or a named agent (Settings › Agents): its command and fixed
 // options first, then the program's usual arguments.
-export function agentLine(agent: string | AgentRef, model: string, instructions: string, session?: { id: string, resume?: string }, then?: string, dirs: string[] = []) {
+// session.resume: Claude's conversation taken up again with that first message,
+// or (true) with none, costing no model turn until the user writes.
+export function agentLine(agent: string | AgentRef, model: string, instructions: string, session?: { id: string, resume?: string | true }, then?: string, dirs: string[] = []) {
   const { program, command } = typeof agent === 'string' ? { program: agent, command: undefined } : agent
   const own = program === 'claude' && session ? (session.resume ? ['--resume', session.id] : ['--session-id', session.id]) : []
-  const first = own[0] === '--resume' ? session!.resume! : `Read ${instructions} and follow it.${then ? ` ${then}` : ''}`
+  const first = own[0] !== '--resume' ? [`Read ${instructions} and follow it.${then ? ` ${then}` : ''}`] : session!.resume === true ? [] : [session!.resume!]
   const [exe, ...options] = command ? commandWords(command) : [program]
-  return ['exec', exe!, ...options, ...(program === 'codex' ? CODEX_NO_UPDATE : []), ...dirArgs(program, dirs), '--model', model, ...own, first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
+  return ['exec', exe!, ...options, ...(program === 'codex' ? CODEX_NO_UPDATE : []), ...dirArgs(program, dirs), '--model', model, ...own, ...first].map((s, i) => (i < 2 ? s : quote(s))).join(' ')
 }
 
 // How a program gets access to folders beside its worktree: the one place that

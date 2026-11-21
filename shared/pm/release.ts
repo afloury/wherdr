@@ -54,10 +54,6 @@ export function releaseDue(since: number | undefined, now: number, talk: Talk = 
 export const roomWanted = (tasks: Pick<Task, 'state' | 'held' | 'machine'>[], machine: string) =>
   tasks.some(t => t.state === 'todo' && !!t.held && isRoomHold(t.held) && (t.machine === undefined || t.machine === machine))
 
-// The first message of a released worker's conversation, taken up again when
-// the user opens it (at: when it was released, as the user's clock says it).
-export const restartedLine = (at: string) => `Restarted: it was released to free memory at ${at}. Wait for the user's next message.`
-
 // The worker the engine released: started again when the task needs it.
 export const wasReleased = (r?: Pick<Run, 'state' | 'endedBy'>) => r?.state === 'ended' && r.endedBy === 'released'
 

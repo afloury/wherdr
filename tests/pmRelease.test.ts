@@ -169,7 +169,7 @@ describe('release and restart on the server', () => {
     expect(calls.some(c => c[0] === 'terminal.send')).toBe(false)
   })
 
-  it('opening a released worker starts it again with its conversation, saying so', async () => {
+  it('opening a released worker starts it again with its conversation, sending it nothing', async () => {
     const { store, calls, deps } = await setup()
     await releaseIdle(deps, 0)
     await expect(wakeReleased(deps, 'WH-1')).rejects.toThrow('not released')
@@ -179,8 +179,7 @@ describe('release and restart on the server', () => {
     const t = await wakeReleased(deps, 'WH-1')
     expect(t.state).toBe('working')
     const line = String(calls.filter(c => c[0] === 'terminal.run')[1]![1].line)
-    expect(line).toContain(`'--resume' '${ended.session}'`)
-    expect(line).toMatch(/Restarted: it was released to free memory at \d\d:\d\d\./)
+    expect(line.endsWith(`'--resume' '${ended.session}'`)).toBe(true)
     expect(t.log!.at(-1)!.text).toBe('started the worker again in its worktree: the user opened its conversation')
   })
 })
