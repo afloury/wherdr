@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+- **Opening the phone keyboard no longer shakes the terminal.** The keyboard's slide animation reported a new viewport height every frame, and each one resized the pane — a burst of SIGWINCHes, a visible re-scroll of every row, and garbled glyphs on some GPUs until the glyph atlas was rebuilt. A rows-only change while the keyboard is open no longer resizes the pane at all (typing into the terminal itself still does), other viewport moves settle to one fit, and every resize repaints the atlas instead of trusting it.
+
 ## [3.2.2] — 2026-11-19
 
 wherdr 3.2.2 brings back *Open in editor* on v3 (Mod+Alt+O) and fixes omp: its conversations open from herdr-core terminals, its status shows with an extension's status line, an omp coordinator keeps coordinating, and a project's default workflow runs on its coordinator's agent. Release notes: [docs/release-notes-3.2.2.md](docs/release-notes-3.2.2.md).
