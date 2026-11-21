@@ -14,3 +14,15 @@ describe('waiting messages: sending order', () => {
     expect(list.map(q => q.mine)).toEqual([false, true])
   })
 })
+
+describe('wherdr\'s own notes in Claude\'s queue (WHR-550)', () => {
+  it('a card note and a wake: listed with their kind and text, held in the agent\'s queue', () => {
+    const claude = [
+      { text: 'From the card: Applied: Autopilot (off → on)', ts: '2026-01-01T00:00:30Z' },
+      { text: 'Autopilot: WHR-1, wake w-9\nreasons', ts: '2026-01-01T00:00:40Z' },
+    ]
+    const list = pendingQueue({ mine: [], claude, items: [], screen: null })
+    expect(list.map(q => q.note)).toEqual([{ kind: 'card', text: 'Applied: Autopilot (off → on)' }, { kind: 'autopilot', text: 'WHR-1, wake w-9' }])
+    expect(list.every(q => q.inAgentQueue && q.phase === 'queued')).toBe(true)
+  })
+})

@@ -189,7 +189,8 @@ prompt Claude puts back after an interrupt) shows at the end of the conversation
 paint of a passive `terminal.attach`) confirms it is typed text, not Claude's gray suggestion, with **Send now** (Enter, pressed
 again every ~1 s while the box still holds that text alone, then a check that the box emptied and a turn started) and **Clear**. When Claude's queue offers
 "ctrl+enter to send now", the conversation offers **Send now** too (ctrl+enter, then a check
-that Claude took its queue). Each action re-reads the screen first and refuses a box that
+that Claude took its queue), under the queued message it sends: a note wherdr typed itself (a
+card's outcome, a wake) shows there as its tagged row, marked *sent when it finishes*. Each action re-reads the screen first and refuses a box that
 changed (`server/utils/coreDraft.ts`). **Send now** spins and disables the row's buttons from
 the tap until the message leaves the screen; a failure says why under it (*Not sent: … Try
 again*). One action runs at a time per terminal: the same one asked again, from a second tap
