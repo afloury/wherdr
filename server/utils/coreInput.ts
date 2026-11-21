@@ -212,7 +212,8 @@ export async function resumeSubmitting(deps: CoreInputDeps, list: Submitting[]) 
       const forget = deps.submitting ? deps.submitting(terminal, s.text) : () => {}
       try {
         console.warn(`[wherdr] message to ${terminal}: resumed after a restart`)
-        await submitLeftInput(deps, p, field, s.text)
+        // Pasted again only without its "\": one hidden in a stand-in is never sent (WHR-549).
+        await submitLeftInput(deps, p, field, s.text, async () => { await deps.call('terminal.send', { terminal, text: s.text }, 30000) })
       } catch { /* the field's own "Not sent" remains */ } finally { forget(); deps.refresh() }
     }
   }))

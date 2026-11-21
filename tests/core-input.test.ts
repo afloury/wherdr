@@ -396,6 +396,27 @@ describe('core input routes', () => {
     }
   })
 
+  it('after a restart, a stand-in hiding the "\\": pasted again without it, never Enter on it', async () => {
+    const msg = 'Look at these\n/srv/core/files/t1/2026-01-01T10-00-00-000Z-a1b2c3.png\n/srv/core/files/t1/2026-01-01T10-00-01-000Z-d4e5f6.png'
+    let field: string | null = '[Pasted text #3 +3 lines]'
+    const keys: string[] = []
+    const sent: string[] = []
+    const t = deps((m, params) => {
+      if (m === 'terminal.send') { sent.push(params.text); field = null }
+      if (m === 'terminal.keys') { keys.push(...params.keys); if (params.keys[0] === 'ctrl+u') field = null }
+      return {}
+    })
+    t.d.settleMs = 1
+    t.d.field = async () => field
+    const warn = console.warn
+    console.warn = () => {}
+    try {
+      await resumeSubmitting(t.d, [{ id: 'c', terminal: 'm/t1', text: msg, at: Date.now() }])
+    } finally { console.warn = warn }
+    expect(sent).toEqual([msg])
+    expect(keys).not.toContain('enter')
+  })
+
   it('a long text alone that Claude collapses, with or without "+K lines": Enter once', async () => {
     for (const [text, collapsed] of [['x'.repeat(900), '[Pasted text #5]'], ['a\nb\nc\nd\ne', '[Pasted text #5 +4 lines]']]) {
       let enters = 0
