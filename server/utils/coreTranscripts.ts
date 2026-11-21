@@ -33,14 +33,64 @@ export function processInfo(d: CoreDetail) {
   return { process_info: { foreground_processes: procs } }
 }
 
-const AGENT_PROGRAMS = new Set(['claude', 'codex', 'omp', 'devin', 'agy', 'antigravity', 'antigravity-cli', 'hermes'])
+const CMD_PROGRAMS = new Set(['cmd', 'command-code', 'command_code', 'commandcode', 'cmdc'])
+const AGENT_PROGRAMS = new Set(['claude', 'codex', 'omp', 'devin', 'agy', 'antigravity', 'antigravity-cli', 'hermes', ...CMD_PROGRAMS])
 const baseName = (s: string | undefined) => (s || '').split('/').pop() || ''
+// Command Code's package entrypoints prove the launch when an interpreter or
+// `env` wraps it: `node …/command-code/dist/index.mjs` is the agent, a plain
+// `node index.mjs` of another package is not.
+const CMD_ENTRY = /\/command-code\/(?:dist\/(?:index|cli)\.mjs|bin\/(?:cmd|cmdc|command-code|commandcode|command_code))$/
+const INTERPRETER = /^(node|nodejs|bunx?|deno)\d*$/
+
+// env option shapes that consume no operand, and ones that consume exactly
+// one (long forms may also carry it as --opt=value). Anything else is an
+// unproven boundary: unknown options may inject or hide arguments.
+const ENV_NOARG = new Set(['-', '-i', '--ignore-environment', '-0', '--null', '-v', '--debug', '--list-signal-handling'])
+const ENV_ARG = new Set(['-u', '--unset', '-C', '--chdir', '-S', '--split-string', '-P', '--default-sig', '--block-signal', '--ignore-signal'])
+function envOperand(argv: string[], i: number): number | null {
+  for (; i < argv.length; i++) {
+    const a = argv[i]!
+    if (a === '--') return i + 1 < argv.length ? i + 1 : null
+    if (ENV_NOARG.has(a)) continue
+    if (a.startsWith('--')) {
+      const eq = a.indexOf('=')
+      const name = eq < 0 ? a : a.slice(0, eq)
+      if (ENV_ARG.has(name) && (eq >= 0 || ++i < argv.length)) continue
+      return null
+    }
+    if (ENV_ARG.has(a)) {
+      if (++i >= argv.length) return null
+      continue
+    }
+    if (a.startsWith('-') || !a.includes('=')) return a.startsWith('-') ? null : i
+  }
+  return null
+}
+
+// The agent an argv launches: a known bin (argv0, or argv1 for one-deep
+// wrappers like `sh -c`), unwrapped through `env`, or an interpreter whose
+// operand is a Command Code entrypoint. Anything unproven is not an agent.
+function agentName(argv: string[] | undefined): string {
+  if (!argv?.length) return ''
+  const direct = [baseName(argv[0]), baseName(argv[1])].find(n => AGENT_PROGRAMS.has(n))
+  if (direct) return direct
+  if (baseName(argv[0]) === 'env') {
+    const i = envOperand(argv, 1)
+    if (i !== null) {
+      const n = agentName(argv.slice(i))
+      if (n) return n
+    }
+  }
+  if (INTERPRETER.test(baseName(argv[0])) && argv.slice(1).some(a => !a.startsWith('-') && (CMD_PROGRAMS.has(baseName(a)) || CMD_ENTRY.test(a)))) return 'cmd'
+  return ''
+}
+
 // Programs under the terminal's process, from `ps -e -o pid=,ppid=,args=`: an agent started by a
 // shell, or hosted by a helper, is not the foreground process of the terminal.
 const psRows = (ps: string) => ps.split('\n').map(l => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(l)).filter(Boolean)
   .map(m => ({ pid: Number(m![1]), ppid: Number(m![2]), argv: m![3]!.split(/\s+/) }))
 const agentRow = (r: { pid: number, argv: string[] }): CoreProcess | null => {
-  const name = [baseName(r.argv[0]), baseName(r.argv[1])].find(n => AGENT_PROGRAMS.has(n)) || ''
+  const name = agentName(r.argv)
   return name ? { pid: r.pid, name, argv: r.argv, argvExact: false } : null
 }
 
@@ -112,7 +162,7 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
     const psTable = () => table ??= deps.call<{ stdout?: string }>('machine.exec', {
       argv: ['ps', '-e', '-o', 'pid=,ppid=,args='], ...(machineOfAddress(address) ? { on: machineOfAddress(address) } : {}), timeout: 5,
     }, 8000).catch(() => null).then(ps => Buffer.from(ps?.stdout || '', 'base64').toString('utf8'))
-    if (!procs.some(p => AGENT_PROGRAMS.has(baseName(p.argv?.[0] || p.name))) && typeof d.pid === 'number') {
+    if (!procs.some(p => agentName(p.argv) || AGENT_PROGRAMS.has(baseName(p.name))) && typeof d.pid === 'number') {
       procs.unshift(...agentDescendants(await psTable(), d.pid))
     }
     const isDevin = (p: CoreProcess) => [baseName(p.name), ...(p.argv?.slice(0, 2).map(baseName) || [])].includes('devin')
