@@ -5,7 +5,7 @@
 import { canCheckGithub } from '#shared/pm/ghCheck'
 import { turnText } from '#shared/pm/refusal'
 import { featureView, withFeatures } from '#shared/pm/featureCard'
-import { agentsLabel, asker, boardLanes, boardTags, branchLine, canStart, canStop, cardStatus, linkLabel, mainLink, mergeGoesNow, mergeStuck, mergeWaits, statusText, waitsFor, type Board, type BoardMachine, type Card } from '#shared/pm/board'
+import { asker, boardLanes, boardTags, branchLine, canStart, canStop, cardStatus, linkLabel, mainLink, mergeGoesNow, mergeStuck, mergeWaits, statusText, waitsFor, type Board, type BoardMachine, type Card } from '#shared/pm/board'
 import type { Task } from '#shared/pm/run'
 import { RESUMES } from '#shared/pm/stop'
 import { cardTime } from '#shared/pm/times'
@@ -191,7 +191,7 @@ const toReview = computed(() => { const pick = reviewPick(reviewKnown); return (
             <span v-if="hasAgent(c)" class="card-state" :class="live(c).key" role="img" :aria-label="live(c).label" :title="live(c).label" data-testid="holder-state"><i /></span>
             <b>{{ c.title }}</b>
           </span>
-          <small class="mono-label board-card-id"><ProjectBadge :text="c.shown" :color="c.color" copy /><template v-if="c.machine"> · <span data-testid="board-machine">{{ c.machine }}</span></template><template v-if="c.who"> · <span :title="tl('Its agents')" data-testid="board-agents">{{ agentsLabel(c.who) }}</span></template><template v-if="timeOf(c)"> · <span data-testid="board-time">{{ timeOf(c) }}</span></template><template v-else-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
+          <small class="mono-label board-card-id"><ProjectBadge :text="c.shown" :color="c.color" copy /><template v-if="c.machine"> · <span data-testid="board-machine">{{ c.machine }}</span></template><template v-if="timeOf(c)"> · <span data-testid="board-time">{{ timeOf(c) }}</span></template><template v-else-if="showStep(c, l.id)"> · {{ c.step }}</template></small>
           <small v-if="statusOf(c)" class="board-status" :class="statusOf(c)!.tone" :title="statusOf(c)!.text" data-testid="board-status">{{ statusOf(c)!.text }}</small>
           <BranchLine v-if="branchOf(c)" :line="branchOf(c)!" compact />
           <!-- A merge stuck on its worker (even in Your turn): no spinner, the sheet's Start the worker. -->

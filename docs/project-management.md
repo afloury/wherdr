@@ -553,11 +553,10 @@ with `wherdr pm task add "<title>" --type <type> --agent omp-api
 --agent omp-api --reason "<why>"` before its first start (`--agent ""` puts
 back the workflow's). The task's own agent wins over its task type's and the
 project's; its model stays the workflow's. A name that is neither a program nor
-a named agent is refused. The task's card names its agent after its id
-(*omp-api*, or *omp-api · review codex* when the reviewer is another one), its
-sheet says *Worker omp-api · Reviewer codex*: the agent of each role's last
-run, else the one it will start with. `autopilot show` gives each machine's
-agents at work by name (*agents omp-api, 2 claude*).
+a named agent is refused. The sheet's History names the agent of each run on
+the line where it starts (*started the task · Worker omp-api*, *review: started
+the reviewer · Reviewer codex*). `autopilot show` gives each machine's agents at
+work by name (*agents omp-api, 2 claude*).
 
 #### Reviewer fallback
 

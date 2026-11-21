@@ -1,13 +1,11 @@
 // The board's data, and the user's button on a step that waits for them.
-import { boardColumns, cardAgents, cardOf, shownTexts, type Board, type BoardMachine, type Card } from '../../shared/pm/board'
+import { boardColumns, cardOf, shownTexts, type Board, type BoardMachine, type Card } from '../../shared/pm/board'
 import { initialState, onEvent, planSteps, reviewedCommit, reworkSince, waitsToMerge, type StepEvent } from '../../shared/pm/steps'
 import { endsMerged, taskGuards, type ActionResult } from '../../shared/pm/actions'
 import type { MergeBy, Template } from '../../shared/pm/workflow'
 import { addShot, isImage, needsShots, POINTED_SHOTS, SHOT_FILE_RE, SHOT_TOKEN_HEADER, SHOT_TYPES, shotUrl, type Shot } from '../../shared/pm/shots'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
-import { reviewerPlan, taskPlan, workerPlan, type Task } from '../../shared/pm/run'
-import type { NamedAgent } from '../../shared/pm/namedAgents'
-import { namedAgents } from './settings'
+import { taskPlan, type Task } from '../../shared/pm/run'
 import { boardOrder } from '../../shared/pm/boardOrder'
 import { weightOf, weightText } from '../../shared/pm/weight'
 import { allowedMachines, type Project } from '../../shared/pm/project'
@@ -53,22 +51,14 @@ const machinesOf = (p: Project, known: MachineInfo[]): BoardMachine[] | undefine
   })
 }
 
-// The agents the workflow and the task's prefs plan for its worker and reviewer, by name.
-const plannedAgents = (t: Template | null | undefined, task: Task, named: NamedAgent[]) => {
-  if (!t) return {}
-  const w = workerPlan(t, task, named), r = reviewerPlan(t, task, undefined, named)
-  return { ...('program' in w ? { worker: w.agent ?? w.program } : {}), ...('program' in r && (r.agent || r.program) ? { reviewer: r.agent ?? r.program } : {}) }
-}
-
 // The cards of these tasks, as the board shows them.
 async function cardsOf(store: PmStore, tasks: Task[], known: MachineInfo[]): Promise<Card[]> {
-  const [projects, templates, runs, named] = [await store.projects(), await templatesOf(store), await store.runs(), await namedAgents()]
+  const [projects, templates, runs] = [await store.projects(), await templatesOf(store), await store.runs()]
   return tasks.map((task) => {
-    const who = cardAgents(task, runs, plannedAgents(templates.get(task.project), task, named))
     const p = projects.find(x => x.key === task.project)
     // A project with several machines: the card names the one its task went to.
     const on = task.machine !== undefined && p && allowedMachines(p).length > 1 ? known.find(m => m.key === task.machine)?.label ?? (task.machine || localMachineLabel()) : undefined
-    return withPr({ ...shownTexts(projects, cardOf(task, planOf(templates.get(task.project) ?? null, task, p), runs)), shown: shownTaskId(projects, task.id), ...(p?.color ? { color: p.color } : {}), ...(on ? { machine: on } : {}), ...(who ? { who } : {}), ...(task.sameFiles && task.state === 'todo' ? { sameFiles: shownTaskId(projects, task.sameFiles) } : {}) })
+    return withPr({ ...shownTexts(projects, cardOf(task, planOf(templates.get(task.project) ?? null, task, p), runs)), shown: shownTaskId(projects, task.id), ...(p?.color ? { color: p.color } : {}), ...(on ? { machine: on } : {}), ...(task.sameFiles && task.state === 'todo' ? { sameFiles: shownTaskId(projects, task.sameFiles) } : {}) })
   })
 }
 

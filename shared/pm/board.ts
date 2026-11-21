@@ -39,7 +39,7 @@ export interface Card {
   holder: Holder
   terminal?: string // herdr-core address of the holder's agent, if it runs
   agents?: { worker?: string, reviewer?: string } // herdr-core address of each role's agent still running (Open the agent)
-  who?: CardAgents // the agent of its worker and its reviewer, by name (cardAgents)
+  starts?: AgentStart[] // each run of its worker and reviewer: when it started and its agent by name (History)
   released?: number // its worker was released to free memory, at (0: unknown): opening it starts it again (release.ts)
   yourTurn?: string // the badge
   stall?: Stall // stalled, the machine may still fix it (blocked.ts); past HANDLE_AFTER_MS, also its yourTurn
@@ -88,24 +88,10 @@ export interface BoardProject { kind?: 'workspace', workspace?: string, base?: s
 // archived: each project's count of archived tasks, left out of cards (GET /api/pm/archived lists them).
 export interface Board { projects: BoardProject[], cards: Card[], archived?: Record<string, number> }
 
+// A run's start, its agent by name: a named agent (Settings › Agents), else its program.
+export interface AgentStart { at: number, role: Run['role'], agent: string }
+
 export const columnOf = (s: PlannedStep) => s.column || s.id
-
-// Who works on a task, by name: a named agent (Settings › Agents) or a program.
-// Each role's latest run says it; a role that never ran, the agent the workflow
-// and the task's prefs plan for it (planned).
-export interface CardAgents { worker?: string, reviewer?: string }
-export function cardAgents(task: Pick<Task, 'id'>, runs: Run[], planned: CardAgents = {}): CardAgents | undefined {
-  const name = (role: Run['role']) => {
-    const r = runs.filter(x => x.task === task.id && x.role === role).sort((a, b) => b.startedAt - a.startedAt)[0]
-    return r ? r.agent ?? r.program : planned[role]
-  }
-  const worker = name('worker'), reviewer = name('reviewer')
-  return worker || reviewer ? { ...(worker ? { worker } : {}), ...(reviewer ? { reviewer } : {}) } : undefined
-}
-
-// The card's line: "omp-api", or "omp-api · review codex" when the reviewer is another agent.
-export const agentsLabel = (w?: CardAgents) =>
-  !w ? '' : [w.worker, w.reviewer && w.reviewer !== w.worker ? `review ${w.reviewer}` : ''].filter(Boolean).join(' · ')
 
 // The columns of a project: those of every task type's steps, in order, once each.
 export function boardColumns(plans: PlannedStep[][]): string[] {
@@ -136,6 +122,10 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
   const stall = stallOf(task, plan, now)
   const lastWorker = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
   const branch = lastWorker?.branch
+  const log = (task.log ?? []).slice(-30)
+  // The runs started since the log shown begins, for History's start lines.
+  const starts: AgentStart[] = runs.filter(r => r.task === task.id && r.startedAt >= (log[0]?.at ?? Infinity) - 60_000)
+    .sort((a, b) => a.startedAt - b.startedAt).map(r => ({ at: r.startedAt, role: r.role, agent: r.agent ?? r.program }))
   // A done task (merged, archived) is never the user's turn.
   // In the merge queue, waiting its turn or out of line: a refused merge is the queue's, not the user's.
   const queue = task.queue && !s?.done ? task.queue : undefined
@@ -171,7 +161,8 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     // Then the links steps gave as their proof, labelled 'PR' when a pull request, else by step; each address once.
     links: [...task.links ?? [], ...plan.flatMap((p) => { const url = s?.proofs[p.id]?.link; return url ? [{ label: isPrUrl(url) ? 'PR' : p.id, url }] : [] })]
       .filter((l, i, all) => all.findIndex(x => x.url === l.url) === i),
-    log: (task.log ?? []).slice(-30),
+    log,
+    ...(starts.length ? { starts } : {}),
     plan,
     ...(s ? { state: s } : {}),
     ...(task.workReports?.length ? { workReports: task.workReports } : {}),

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { agentsMissing, namedAgentError, readNamedAgents, type NamedAgent } from '../shared/pm/namedAgents'
 import { agentLine, reviewerPlan, taskAgents, taskPrefsOf, workerPlan, type Task } from '../shared/pm/run'
 import { parseCommand } from '../shared/pm/coordinator'
-import { agentsLabel, cardAgents } from '../shared/pm/board'
+import { taskHistory } from '../shared/pm/history'
 import { checkPrefs, validateTemplate, type Template, type WorkflowError } from '../shared/pm/workflow'
 
 const sub: NamedAgent = { name: 'omp-sub', program: 'omp', command: 'omp-sub --thinking medium', machines: ['laptop'] }
@@ -72,11 +72,14 @@ describe('named agents', () => {
     expect(taskPrefsOf({ agent: '', reviewAgent: 'codex' }, [sub])).toEqual({ prefs: { reviewAgent: 'codex' } })
   })
 
-  it('names each role\'s agent: its last run\'s, else the planned one', () => {
-    const run = { id: 'r', task: 'WEB-1', role: 'worker' as const, program: 'omp', agent: 'omp-sub', model: 'm', machine: '', worktree: '/w', branch: 'b', instructions: '/i', attempt: 1, state: 'running' as const, startedAt: 1 }
-    expect(cardAgents(task, [run], { worker: 'claude', reviewer: 'codex' })).toEqual({ worker: 'omp-sub', reviewer: 'codex' })
-    expect(cardAgents(task, [])).toBeUndefined()
-    expect(agentsLabel({ worker: 'omp-sub', reviewer: 'codex' })).toBe('omp-sub · review codex')
-    expect(agentsLabel({ worker: 'omp-sub', reviewer: 'omp-sub' })).toBe('omp-sub')
+  it('names each run\'s agent on the History line that logged its start', () => {
+    const log = [
+      { at: 1000, by: 'user', text: 'started the task' },
+      { at: 5000, by: 'worker omp m', text: 'work: done' },
+      { at: 6000, by: 'engine', text: 'review: started the reviewer (codex m)' },
+    ]
+    const starts = [{ at: 900, role: 'worker' as const, agent: 'omp-sub' }, { at: 6500, role: 'reviewer' as const, agent: 'codex' }, { at: 900_000, role: 'worker' as const, agent: 'late' }]
+    expect(taskHistory(log, [{ id: 'work' }], undefined, true, [], starts).map(e => e.started))
+      .toEqual([[{ role: 'worker', agent: 'omp-sub' }], undefined, [{ role: 'reviewer', agent: 'codex' }]])
   })
 })
