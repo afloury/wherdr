@@ -6,7 +6,7 @@ import { HerdrError } from './herdr'
 import { PATH_SETUP, homeOf, machineOn } from './coreCreate'
 import { exec, wherdrBase, type PmLaunchDeps } from './pmLaunch'
 import { READY_SCRIPT, readyOf, readyRefusal, type Readiness } from '../../shared/pm/ready'
-import { reviewerPlan, shotStep, taskBase, taskPlan, workerPlan, type Task } from '../../shared/pm/run'
+import { prefOf, reviewerPlan, shotStep, taskBase, taskPlan, workerPlan, type Task } from '../../shared/pm/run'
 import { cloneOn, type Project } from '../../shared/pm/project'
 import type { Template } from '../../shared/pm/workflow'
 import { pmDir } from './pmHome'
@@ -31,7 +31,7 @@ async function runCheck(deps: PmLaunchDeps, p: Project, t: Template | null, task
   const programs = t && as ? [...new Set([workerPlan(t, as), reviewerPlan(t, as)].flatMap(x => ('program' in x ? [x.program] : [])))] : []
   const gh = !!t && !!as && taskPlan(t, as, p).some(s => s.action?.kind.startsWith('github.'))
   const base = as ? taskBase(as, p) ?? '' : p.base ?? ''
-  const args = [clone, base, visual ? wherdrBase(machine, deps.origin) : '', gh ? '1' : '0', visual ? '1' : '0', ...programs]
+  const args = [clone, base, visual ? wherdrBase(machine, deps.origin) : '', gh ? '1' : '0', visual ? '1' : '0', as && t && prefOf(t, as, 'browser') === 'relay' ? '1' : '0', ...programs]
   const r = await exec(deps, on, `${PATH_SETUP}\nWHERDR_PM_DIR=${pmDir()}\n${READY_SCRIPT}`, args, undefined, 90).catch(() => ({ out: '' }))
   const ready = readyOf(r.out, origin.out.trim())
   const refused = readyRefusal(ready)

@@ -76,8 +76,8 @@ export interface Guards {
 
 // reviewFallbackAgent and reviewFallbackModel (both, or none): the reviewer
 // started instead when the review agent's account is at its limit.
-export interface Prefs { agent?: string, model?: string, reviewAgent?: string, reviewModel?: string, reviewFallbackAgent?: string, reviewFallbackModel?: string }
-export const PREF_KEYS = ['agent', 'model', 'reviewAgent', 'reviewModel', 'reviewFallbackAgent', 'reviewFallbackModel'] as const
+export interface Prefs { agent?: string, model?: string, reviewAgent?: string, reviewModel?: string, reviewFallbackAgent?: string, reviewFallbackModel?: string, browser?: string }
+export const PREF_KEYS = ['agent', 'model', 'reviewAgent', 'reviewModel', 'reviewFallbackAgent', 'reviewFallbackModel', 'browser'] as const
 
 // Agents the engine knows how to start with a pinned model and a first message.
 export const PROGRAMS = ['claude', 'codex'] as const
@@ -180,6 +180,7 @@ export function checkPrefs(p: unknown, path: string, errs: WorkflowError[]) {
   if (!isObj(p)) return void errs.push({ path, message: 'must be an object' })
   checkKeys(p, PREF_KEYS, path, errs)
   for (const [k, v] of Object.entries(p)) if (!isStr(v)) errs.push({ path: `${path}.${k}`, message: 'must be text' })
+  if (isStr(p.browser) && p.browser !== 'relay') errs.push({ path: `${path}.browser`, message: 'must be "relay"' })
 }
 
 const STEP_KEYS = ['id', 'column', 'holder', 'instructions', 'ends', 'userLabel', 'badge', 'evidence', 'screenshots', 'recheck', 'timeout', 'sendBack', 'rounds', 'action']

@@ -39,6 +39,11 @@ disk ok 1048576`
     ].join('; '))
   })
 
+  it('names a missing browser relay as a machine problem', () => {
+    const r = readyOf('clone ok https://github.com/owner/project\nrelay fail the omp browser relay\'s native host is not registered in Chrome', ORIGIN)
+    expect(readyRefusal(r)).toBe('browser relay: the omp browser relay\'s native host is not registered in Chrome')
+  })
+
   it('refuses when the script printed nothing, or the disk could not be read', () => {
     expect(readyRefusal(readyOf('', ORIGIN))).toBe('the check could not run')
     expect(readyRefusal(readyOf('disk ok ', ORIGIN))).toBe('disk space: free space unknown')
