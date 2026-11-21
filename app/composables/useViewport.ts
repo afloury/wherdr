@@ -10,6 +10,9 @@ export const vvTop = ref(0)
 export const layoutTick = ref(0)
 
 const fullH = { orient: '', h: 0 }
+// The sheet geometry of the last layout() actually applied: --vv-bottom also
+// moves with innerHeight, which the keyboard can leave unchanged.
+let applied = { h: 0, top: 0, kb: false, sheetH: 0, sheetTop: 0, sheetBottom: 0 }
 
 export function layout() {
   const vv = window.visualViewport
@@ -28,15 +31,21 @@ export function layout() {
   kbOpen.value = kb
   // The on-screen keyboard is showing: no hardware keyboard in use.
   if (kb) hardwareKeyboard.value = false
+  // Bottom sheets follow the visible area (keyboard, iOS scroll offset).
+  const sheet = sheetViewport(window.innerHeight, top, h)
+  // The same geometry again (the vv scroll iOS fires while nothing moved, a
+  // spurious resize): three inherited custom properties, a body class and a
+  // layoutTick bump per call restyle the whole tree for nothing.
+  if (h === applied.h && top === applied.top && kb === applied.kb
+    && sheet.height === applied.sheetH && sheet.top === applied.sheetTop && sheet.bottom === applied.sheetBottom) return
   vvHeight.value = h
   vvTop.value = top
   document.body.classList.toggle('kb', kb)
-  // Bottom sheets follow the visible area (keyboard, iOS scroll offset).
-  const sheet = sheetViewport(window.innerHeight, top, h)
   const root = document.documentElement.style
   root.setProperty('--vv-h', `${sheet.height}px`)
   root.setProperty('--vv-top', `${sheet.top}px`)
   root.setProperty('--vv-bottom', `${sheet.bottom}px`)
+  applied = { h, top, kb, sheetH: sheet.height, sheetTop: sheet.top, sheetBottom: sheet.bottom }
   layoutTick.value++
 }
 
