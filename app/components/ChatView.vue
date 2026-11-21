@@ -16,7 +16,7 @@ import { type PendingMessage, type WaitingOn, inputShown, pendingLabel, pendingQ
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { CHAT_READ_MS, createFlipGuard, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
-import { missedAfter, replyId, sortNewReplies } from '~/utils/typewriter'
+import { missedReply, replyId, sortNewReplies } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
@@ -353,7 +353,7 @@ function showFresh(id: string) {
 }
 function markMissed(kept: ChatItem[]) {
   if (freshId.value || typing.value) return
-  const id = missedAfter(new Set(kept.filter(i => i.role === 'assistant').map(replyId)), items.value.filter(i => i.role === 'assistant').map(replyId))
+  const id = missedReply(kept, items.value)
   if (id) showFresh(id)
 }
 const typingAt = (id: string) => (typing.value && typing.value.id === id ? typing.value.at : null)

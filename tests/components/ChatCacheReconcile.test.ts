@@ -19,8 +19,9 @@ const kept: ChatItem[] = [
 let keptFile: string | undefined = 'demo.jsonl'
 // Holds the read of the kept end, to let the server answer first.
 let keptGate: Promise<void> = Promise.resolve()
+let keptItems = kept
 vi.mock('~/utils/offlineCache', () => ({
-  readChat: async () => (await keptGate, { id: 'w1:p1', items: kept, at: Date.parse(at(3)), file: keptFile }),
+  readChat: async () => (await keptGate, { id: 'w1:p1', items: keptItems, at: Date.parse(at(3)), file: keptFile }),
   saveChat: vi.fn(),
   touchChat: vi.fn(),
 }))
@@ -49,6 +50,7 @@ afterEach(() => {
   setOfflineAccess(null)
   keptFile = 'demo.jsonl'
   keptGate = Promise.resolve()
+  keptItems = kept
   vi.unstubAllGlobals()
 })
 
@@ -92,7 +94,11 @@ it('keeps the blocks already shown when the answer starts lower, and marks the r
   } finally { w.unmount() }
 })
 
-it('still marks the missed reply when the server answers before the kept end is read', async () => {
+it.each([
+  ['with a reply in common', kept],
+  ['left before the first reply', kept.slice(0, 1)],
+])('still marks the missed reply when the server answers before the kept end is read (%s)', async (_name, items) => {
+  keptItems = items
   let release!: () => void
   keptGate = new Promise((ok) => { release = ok })
   const w = await mount()

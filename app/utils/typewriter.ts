@@ -193,10 +193,16 @@ export function sortNewReplies(known: Set<string>, replies: string[], o: { follo
   return { typing: null, fresh: o.baseline ? first : null }
 }
 
-// The kept end read after the server's answer: the first reply after the
-// last one it holds was missed by this device (null if it holds none of them).
-export function missedAfter(kept: Set<string>, replies: string[]): string | null {
-  let last = -1
-  replies.forEach((id, i) => { if (kept.has(id)) last = i })
-  return last < 0 ? null : replies[last + 1] ?? null
+// The kept end read after the server's answer: as if read first (all its
+// replies known), the first reply it lacks was missed by this device. Only
+// one written after its last message: older ones were never in it.
+interface Said { role: string, ts: string | null, text: string }
+export function missedReply(kept: Said[], current: Said[]): string | null {
+  const seen = new Set(kept.filter(i => i.role === 'assistant').map(replyId))
+  const end = kept.reduce((m, i) => Math.max(m, i.ts ? Date.parse(i.ts) || -Infinity : -Infinity), -Infinity)
+  for (const it of current) {
+    if (it.role !== 'assistant' || seen.has(replyId(it))) continue
+    if (end === -Infinity || (it.ts && Date.parse(it.ts) > end)) return replyId(it)
+  }
+  return null
 }

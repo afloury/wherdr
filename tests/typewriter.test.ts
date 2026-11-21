@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   applyReveal, CATCHUP_MS, CIPHER_GAP, cipherSegments, effectiveTypingSpeed, encryptedTextActive, finishReveal, parseTypingSettings, planReveal, replyId, revealedAt,
-  sortNewReplies, trailGlyphs, typeDuration, typingFronts, wordStops, TRAIL_GLYPHS, TYPE_MAX_MS, TYPE_MIN_MS,
+  missedReply, sortNewReplies, trailGlyphs, typeDuration, typingFronts, wordStops, TRAIL_GLYPHS, TYPE_MAX_MS, TYPE_MIN_MS,
 } from '../app/utils/typewriter'
 import type { RevealNode } from '../app/utils/typewriter'
 
@@ -217,6 +217,17 @@ describe('historique vs nouveau', () => {
   it('a reply arriving while open: typed in, no marker (none with the typewriter off)', () => {
     expect(sort(new Set([a]), [a, b, c], true)).toEqual({ typing: c, fresh: null })
     expect(sortNewReplies(new Set([a]), [a, b], { following: true, animate: false, baseline: true })).toEqual({ typing: null, fresh: null })
+  })
+  it('kept end read after the server: the first reply it lacks, written after it, is missed', () => {
+    const user = { role: 'user', text: 'Go', ts: '2026-09-27T09:59:00Z' }
+    const r = (ts: string, text: string) => ({ role: 'assistant', text, ts })
+    const r1 = r('2026-09-27T10:00:00Z', 'Première réponse'), r2 = r('2026-09-27T10:01:00Z', 'Deuxième réponse')
+    // No reply in common: left before the first one.
+    expect(missedReply([user], [user, r1, r2])).toBe(replyId(r1))
+    // The kept replies pushed out of the server's tail: only newer ones count.
+    expect(missedReply([r('2026-09-27T09:00:00Z', 'Old'), user], [r1, r2])).toBe(replyId(r1))
+    expect(missedReply([user, r1], [r('2026-09-27T09:30:00Z', 'Before'), r1, r2])).toBe(replyId(r2))
+    expect(missedReply([user, r1, r2], [user, r1, r2])).toBeNull()
   })
   it('stable identity whatever the position in the list', () => {
     expect(replyId({ ts: '2026-09-27T10:00:00Z', text: 'Première réponse' })).toBe(a)
