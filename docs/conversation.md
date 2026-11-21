@@ -129,8 +129,11 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   applied or cancelled since.
 - **Files and screenshots beside the conversation**: an agent can show you a file of its own
   folder (`wherdr pm ui show file docs/plan.md`, a path relative to its folder: never `~`, `..`
-  or a path outside it) or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task
-  has some). On a wide computer they open in the side panel, in place of Settings: the file
+  or a path outside it), a coordinator also a file of one of its project's tasks' folders (its
+  report, screenshots, mockups: `ui show file ABC-24/mockups/page.html`, or the absolute path under
+  the pm tasks folder; another project's task only within its reach), or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task
+  has some). On a wide computer they open in the side panel, in place of Settings (drag its left
+  edge, or the arrow keys on it, to resize; double-click: default width; kept on the device): the file
   read-only as in Files (an HTML page runs as a page: see [Files](files.md)), the screenshots by step, before and after side by side, with a button
   to open the task. On a phone a card shows above the message field, and a tap opens a sheet
   (before and after toggled). A tap on a shown image (the file, an image of a shown Markdown

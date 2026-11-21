@@ -9,6 +9,7 @@ import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolVie
 import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
+import { folderGuesses } from '~/utils/pathFallback'
 import { uploadNames, uploadSrc } from '#shared/queuedMatch'
 import { userMessageParts } from '~/utils/userMessage'
 import { type PendingMessage, type WaitingOn, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
@@ -1251,11 +1252,24 @@ function openNotesFile(rel: string) {
   notesFile.value = rel
   openNotes()
 }
-// Each path chip of the replies: muted when found nowhere, after one request
-// for the paths not asked yet.
+// Each path chip of the replies, and for a bare name the same name in the
+// folders quoted before it in its message (utils/pathFallback.ts).
+function pathChips() {
+  return [...listEl.value?.querySelectorAll<HTMLElement>('.md-body') || []].flatMap((body) => {
+    const els = [...body.querySelectorAll<HTMLElement>('.md-path')].filter(el => el.closest('.md-body') === body)
+    const texts = els.map(el => (el.textContent || '').trim())
+    return els.map((el, i) => ({ el, p: texts[i]!, guesses: folderGuesses(texts, i) }))
+  })
+}
+// Muted when found nowhere (nor in those folders), after one request for the
+// paths not asked yet; found in a folder: that file opens (data-path).
 function paintPaths() {
-  for (const el of listEl.value?.querySelectorAll<HTMLElement>('.md-body .md-path') || []) {
-    const missing = writtenFound(props.pane.id, (el.textContent || '').trim())?.length === 0
+  const found = (p: string) => writtenFound(props.pane.id, p)
+  for (const { el, p, guesses } of pathChips()) {
+    const alt = found(p)?.length === 0 ? guesses.find(g => found(g)?.length) : undefined
+    if (alt) el.dataset.path = alt
+    else delete el.dataset.path
+    const missing = !alt && found(p)?.length === 0
     el.classList.toggle('md-path-missing', missing)
     if (missing) el.title = MISSING_PATH
     else el.removeAttribute('title')
@@ -1264,12 +1278,15 @@ function paintPaths() {
 async function markPaths() {
   if (offlineView.value) return
   paintPaths()
-  const paths = [...listEl.value?.querySelectorAll<HTMLElement>('.md-body .md-path') || []].map(el => (el.textContent || '').trim()).filter(p => p && !p.endsWith('/'))
-  if (await resolveWritten(props.pane.id, paths)) paintPaths()
+  const chips = pathChips()
+  if (await resolveWritten(props.pane.id, chips.map(c => c.p).filter(p => p && !p.endsWith('/')))) paintPaths()
+  // Then, for the bare names found nowhere, the folders quoted before them.
+  const guesses = chips.filter(c => writtenFound(props.pane.id, c.p)?.length === 0).flatMap(c => c.guesses)
+  if (await resolveWritten(props.pane.id, guesses)) paintPaths()
 }
 watch(visibleBlocks, () => nextTick(markPaths), { flush: 'post', immediate: true })
 function openPathMenu(el: HTMLElement, path?: string) {
-  const p = path || (el.textContent || '').trim()
+  const p = path || el.dataset.path || (el.textContent || '').trim()
   if (p) openCodeMenu(el, pathMenuItems(p), fileName(p))
 }
 const filePeek = reactive({ open: false, path: '' })

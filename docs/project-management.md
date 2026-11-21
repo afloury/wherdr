@@ -895,7 +895,9 @@ agents show you things rather than describe them.
   and `task <ID>` for a task's live card when its state matters.
 - Alfred and coordinators also: a setting highlighted (`ui open --target`), a
   live `status` card, and buttons you click (`ui action step|resume|open`),
-  screenshots beside the chat (`ui show shots`). Alfred proposes a setting
+  screenshots beside the chat (`ui show shots`), a task's report or page
+  beside it (`ui show file ABC-24/report.md`). Coordinators quote each file
+  by its own full path, never a bare name after its folder. Alfred proposes a setting
   change as a card you apply (`setting set … --propose`); it never applies it
   itself.
 - Task agents only write blocks: they have no `ui` command.
