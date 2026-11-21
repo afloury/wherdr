@@ -218,7 +218,8 @@ The 18 seconds count from the first paste, clears and the second paste included:
 is pasted again only with 6 seconds still left, otherwise it goes as it is at once.
 A photo still shown as its path after that, or when the wait ends, is never left there: wherdr takes the
 `\` out (Backspace, only while the box ends with it), presses Enter, and the message goes
-with its path, which the agent can still open; this leaves one line in the server log (the
+with its path, which the agent can still open (also a path wider than the box, which Claude
+draws over two lines); this leaves one line in the server log (the
 wait's duration and the sizes, never the text). A box that never holds the message alone
 when the wait ends (part of it, or other text) gets no Enter: the send is refused, so the
 message reads **Not sent** with Retry, and that text shows with **Send now** / **Clear**. The whole send (paste, wait, Enters) runs
@@ -243,7 +244,9 @@ A message only tells what wherdr knows: from the tap until it is in the agent's 
 its bubble reads **Sending…** with a small turning loader, whatever the send answered or the
 screen shows, also on another device or after a reload (the server marks the terminal as
 sending while it submits a message, text or photos); it never claims the agent read it.
-Held in Claude's own queue, it reads **Queued by Claude · sent when it finishes**. Once in
+Held in Claude's own queue, it reads **Queued by Claude · sent when it finishes**. Waiting
+messages show in the order they were sent, the oldest on top, whether wherdr or Claude's own
+queue lists them. Once in
 the transcript, the transcript's own message replaces it. Only once the server is done
 (its Enters over) and the message is still in the box does its bubble read **Not sent yet ·
 waiting in the agent's input** (the box's **Not sent — still in Claude's input**, with
