@@ -28,6 +28,11 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the
   **↓** button; content above that changes height (images, folding) does not move it. A
   conversation still opens at its last message.
+- **Typewriter and *New***: only a reply that arrives while you watch the open conversation is
+  typed in (**Settings › Conversation › Typewriter**). A reply already there when you open the
+  conversation, or when the app comes back from the background or offline, shows at once; if
+  this device never showed it, a thin *New* divider sits above the first such reply for a few
+  seconds, gone sooner once you scroll or write. None on a conversation's first open on a device.
 - **Message field focus**: the focused message field's border takes the agent's color, a
   second color glides slowly around it, with a faint glow around the field (omp's running
   actions get the same moving border, without the glow). It is frozen when the system asks for

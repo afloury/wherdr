@@ -1396,6 +1396,12 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 }
 .msg-system::before, .msg-system::after, .day-sep::before, .day-sep::after { content: ''; flex: 1; height: 1px; background: var(--line-soft); }
 .day-sep { color: var(--muted); }
+/* Above the first reply this device had not shown yet (ChatView): fades after a few seconds. */
+.new-sep { color: var(--accent); }
+.new-sep::before, .new-sep::after { background: var(--accent); opacity: .5; }
+.new-sep-leave-active { transition: opacity .6s ease; }
+.new-sep-leave-to { opacity: 0; }
+@media (prefers-reduced-motion: reduce) { .new-sep-leave-active { transition: none; } }
 /* Local "/" command with more output: the line opens it (see ChatView). */
 .msg-cmd > button.msg-system { width: 100%; background: none; border: 0; padding: 0; cursor: pointer; color: var(--dim); }
 .msg-cmd > button.msg-system > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
