@@ -66,7 +66,7 @@ export function tasks(now: number): Task[] {
       step: at(1, min(30)), branch: 'task/API-12', log: [{ at: min(31), by: 'Ada', text: 'Created for the 2.3 release' }],
     }),
     task('API-13', 'simple', 'Fix the flaky CSV export test', 'export.spec.ts fails about one run in ten in CI. Find out why and make it deterministic.', {
-      step: at(1, min(25)), branch: 'task/API-13', tags: ['ci'],
+      step: at(1, min(25)), branch: 'task/API-13', tags: ['ci'], log: [{ at: min(25), by: 'user', text: 'started the task' }],
     }),
     task('API-10', 'simple', 'Webhook retries with backoff', 'Retry failed webhook deliveries 5 times, doubling the wait, then mark them failed.', {
       step: at(3, min(6)), branch: 'task/API-10',
