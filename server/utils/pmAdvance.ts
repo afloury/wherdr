@@ -37,6 +37,8 @@ import { killTerminal } from './pmProcs'
 import { noteTaskError } from './pmSentinel'
 import { loginRestartText } from '../../shared/pm/recovery'
 import { isBlockedOn } from '../../shared/pm/park'
+import { isNeedsHuman } from '../../shared/pm/needsHuman'
+import { needsHumanReport } from './pmNeedsHuman'
 import { blockedOn } from './pmPark'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file,
@@ -125,6 +127,7 @@ export async function advanceTick(deps: PmLaunchDeps, now = Date.now()) {
     const said = alive(run)?.labels?.[LABEL.report]
     // Blocked on another task or repository: parked (park.ts), its signal cleared once handled.
     if (isBlockedOn(said)) { if (await blockedOn(deps, run, said!, now).then(() => true, () => false)) await clearSignal(deps, run.terminal!); continue }
+    if (isNeedsHuman(said)) { if (await needsHumanReport(deps, run, said!, now).then(() => true, () => false)) await clearSignal(deps, run.terminal!); continue }
     if (said !== 'done') continue
     // Cleared once handled; a failure leaves it for the next tick.
     if (await signal(deps, run, now).then(() => true, () => false)) await clearSignal(deps, run.terminal!)

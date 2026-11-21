@@ -9,7 +9,8 @@
 import type { ToHandle } from '#shared/pm/board'
 
 const all = ref<ToHandle[]>([])
-const tasks = computed(() => all.value.filter(x => projectOnBar(x.project)))
+// Tasks that need the user now have their own card (NeedsYouCard): not counted twice.
+const tasks = computed(() => all.value.filter(x => !x.needsHuman && projectOnBar(x.project)))
 const load = () => api<ToHandle[]>('/api/pm/handle').then((v) => { all.value = Array.isArray(v) ? v : []; markHomeLoad('handle', true) }, () => markHomeLoad('handle', false))
 let timer: ReturnType<typeof setInterval> | undefined
 // Read while the card is on screen: a hidden page waits for the next tick it is shown.

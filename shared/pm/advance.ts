@@ -11,6 +11,7 @@ import { earlierCommit, needsShots } from './shots'
 import { recovering } from './incident'
 import type { PlannedStep, StepEvent, StepState } from './steps'
 import { blockedOnLine } from './park'
+import { needsHumanLine } from './needsHuman'
 
 // The agent's own end signal, typed in its terminal (hc sets HC_TERMINAL_ID).
 export const DONE_CMD = `hc label "$HC_TERMINAL_ID" ${LABEL.report}=done`
@@ -43,6 +44,7 @@ export const doneSection = (note: string) => [
   `    ${DONE_CMD}`, '',
   `If you need the user's answer to go on, ask in your last message, then run \`${ASK_CMD}\`.`, '',
   blockedOnLine(), '',
+  needsHumanLine(), '',
 ]
 
 // The reviewer's instructions file: the task, what to review, the workspace's

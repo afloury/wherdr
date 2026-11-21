@@ -1573,6 +1573,21 @@ its clock stops: such a task never shows *over 3h*, it shows what it waits
 for, and the limit goes on from where it stopped once the agent can work
 again. The time in step shown on the card stays the real time.
 
+### A task that needs a person
+
+A worker that cannot go on without you (a login, a passkey, 2FA, a payment, an
+admin's approval) says so: `hc label "$HC_TERMINAL_ID" "wherdr.report=needs-human: login https://example.com/sign-in"`
+(`needs-human: <kind> <url>`; its instructions say how). Unlike `blocked:on`,
+the task is not parked: its worker stays where it is.
+
+- You get a push straight away, whatever conversation is on screen, with a link
+  to the task (subject to the *Needs you* notification rule), and again 5 and 15
+  minutes later if it is still open;
+- the task shows in **Needs you now**, its own card on Home above *Tasks to
+  review*, and first in Tasks to review, with the kind and the link;
+- the worker ends it with `wherdr.report=needs-human: clear` once you are through
+  and it works again; the task being done or stopped ends it too.
+
 ### A task waiting for another task
 
 A worker that finds halfway that it needs something from another task or

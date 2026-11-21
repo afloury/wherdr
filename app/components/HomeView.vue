@@ -539,6 +539,7 @@ function resetListWidth() {
       <div v-show="listShown && !homeSkeleton" data-testid="home-sections">
       <!-- Reviews first: right under Alfred, above a long Coordinators section. -->
       <AlfredRow v-if="st.ok" />
+      <NeedsYouCard v-if="st.ok" />
       <ReviewCard v-if="st.ok" />
       <CoordinatorsSection v-if="st.ok" />
 
