@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **Command Code transcript parsing (1/3).** The pure parser slice of the Command Code conversation reader: messages (human turns, replies, thinking, tool calls with summaries), tool outcomes that can arrive after their call (matched by call id, with revision chronology on absolute byte offsets), inline images (counted, hashed and extractable, inline payloads only), and model metadata (`model_change` records and the model stamped on assistant lines). Incremental feeds parse only appended lines and never mutate already-served items. No file IO, watching or UI yet — the reader, watching and generation validation slices follow (#998).
+
 ## [3.2.2] — 2026-11-19
 
 wherdr 3.2.2 brings back *Open in editor* on v3 (Mod+Alt+O) and fixes omp: its conversations open from herdr-core terminals, its status shows with an extension's status line, an omp coordinator keeps coordinating, and a project's default workflow runs on its coordinator's agent. Release notes: [docs/release-notes-3.2.2.md](docs/release-notes-3.2.2.md).
