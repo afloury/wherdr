@@ -179,6 +179,15 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   and comes back into the field if Codex exits instead, see [Codex updates](quotas.md#codex-updates)), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), up to **8 MB per file** (core's `terminal.put`).
+  Above the field, every attachment is the same square tile (about 96 px on the phone, 120 px on
+  a computer), on one row that scrolls sideways (swipe, trackpad, Shift+wheel) and fades out at
+  the right edge while more tiles follow: a badge with the extension (*JPG*, *PNG*, *PDF*, *MD*,
+  *LOG*, *TXT*) and the remove cross on top, a preview (the photo cropped to fill, the first lines
+  of pasted text or a text file in small mono type, an icon for a PDF or another file), then the
+  file's name and its size or the line count. A tap opens a photo, or the whole pasted text with
+  *Copy*. While it uploads, the preview is dimmed under a spinner and the name shimmers; a refused
+  upload stays with the reason in red until you remove it, and Send waits for it to go (*Remove
+  the attachment that failed*), as it waits for an upload still running (*Photo is uploading…*).
   A photo sent from this device shows in the message at once, from its own copy; an image that
   fails to load is tried again once, then shows *Tap to reload*.
   A sent file shows as a chip (icon and original name) in the message and its history, also in
@@ -191,8 +200,8 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
   inside the field on its right, on a phone. A long pasted text (log, output) becomes a
-  "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
-  conversation, where it opens in full with Copy; long typed messages fold with Show more. The
+  tile in the field (*N lines*), sent to the agent as it is and shown as a "Pasted text · N lines"
+  card in the conversation; both open in full with Copy; long typed messages fold with Show more. The
   draft (text, quotes, attachments) is kept per agent, across reloads.
 - **omp context**: in the header, after the state, a small gauge with the percentage of omp's
   context window and the estimated tokens (`68% · 136K`); select it for the window, the exact

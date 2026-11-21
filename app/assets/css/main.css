@@ -1076,7 +1076,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .msg-fold-btn { display: block; margin-top: 6px; padding: 0; font: 600 10.5px/1.6 var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--text-2); }
 .msg-fold-btn:hover, .msg-fold-btn:focus-visible { color: var(--accent); outline: none; }
 
-/* Long pasted text: a card (message field and sent message) that opens the whole text. */
+/* Long pasted text in a sent message: a card that opens the whole text (in the field: .att-tile). */
 .pasted-card { position: relative; display: flex; align-items: stretch; width: 260px; max-width: 100%; background: var(--bg-2); border: 1px solid var(--line); color: var(--text); white-space: normal; }
 .pasted-card:hover, .pasted-card:focus-within { border-color: var(--accent); }
 .pasted-open { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; padding: 8px 10px; text-align: left; cursor: pointer; }
@@ -1084,14 +1084,8 @@ body.short-bottom { --safe-bottom: 0px; }
 .pasted-head { display: flex; align-items: center; gap: 6px; font: 600 10px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--text-2); }
 .pasted-head .iconify { width: 13px; height: 13px; flex: none; }
 .pasted-line { font: 400 11.5px/1.35 var(--mono); color: var(--text-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pasted-x { display: grid; place-items: center; width: 26px; flex: none; color: var(--text-2); border-left: 1px solid var(--line); }
-.pasted-x:hover { color: var(--text); background: var(--surface-3); }
-.pasted-x .iconify { width: 13px; height: 13px; }
 .msg-pastes { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; white-space: normal; }
 .msg-fold + .msg-pastes, .msg-fold-btn + .msg-pastes { margin-top: 8px; }
-.attachments .pasted-card { height: 60px; width: 220px; }
-.attachments .pasted-open { justify-content: center; padding: 6px 8px; gap: 4px; }
-.attachments .pasted-line:nth-child(n + 3) { display: none; }
 .pasted-head { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pasted-full { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 400 14px/1.55 var(--sans, inherit); color: var(--text); user-select: text; -webkit-user-select: text; }
 .pasted-full.mono { font: 400 12.5px/1.5 var(--mono); }
@@ -1704,7 +1698,10 @@ body.kb .composer { padding-bottom: 8px; }
   padding: 4px 6px 6px; gap: 2px;
   background: var(--bg-2); border: 1px solid var(--input-line); box-shadow: none; backdrop-filter: none;
   transition: border-color .15s ease;
+  /* Nuxt UI 4.13 isolates the root and blurs behind it with a ::before: off, the halo (.fx-halo) stays under the field. */
+  isolation: auto;
 }
+.prompt::before { content: none; }
 /* Focused field: the whole 1 px border takes the agent's color and a second color glides
    slowly around it, with a faint halo around the field. The agent's color is toned down a
    little toward the field's background so that the second color reads on it (the herdr mauve
@@ -1858,17 +1855,47 @@ body.kb .composer { padding-bottom: 8px; }
 }
 
 .prompt-head { padding: 4px 2px 2px; }
-.attachments { display: flex; gap: 8px; overflow-x: auto; }
-.attachments .att { position: relative; width: 60px; height: 60px; overflow: hidden; flex: none; background: var(--surface-2); border: 1px solid var(--line); cursor: zoom-in; }
-.attachments .att:hover, .attachments .att:focus-visible { border-color: var(--accent); outline: none; }
-.attachments img { width: 100%; height: 100%; object-fit: cover; }
-.attachments .att.up::after { content: ''; position: absolute; inset: 0; background: rgba(0, 0, 0, .45); }
-.attachments .att .spinner { position: absolute; inset: 0; margin: auto; width: 18px; height: 18px; z-index: 1; }
-.attachments .att button {
-  position: absolute; top: 3px; right: 3px; width: 20px; height: 20px;
-  display: grid; place-items: center; background: rgba(0, 0, 0, .75); color: #fff; z-index: 2;
+/* The field's attachments (AttachTile): square tiles on one row that scrolls sideways (swipe,
+   trackpad, Shift+wheel); the last visible tile fades out at the right edge when more follow. */
+.attachments { display: flex; gap: 8px; overflow: auto hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.attachments::-webkit-scrollbar { height: 4px; }
+.attachments::-webkit-scrollbar-thumb { background: var(--line); }
+.attachments.more { mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent); }
+.att-tile { --tile: 96px; --foot: 31px; position: relative; flex: none; width: var(--tile); height: var(--tile); outline: none; }
+@media (min-width: 701px) { .att-tile { --tile: 120px; --foot: 34px; } }
+.att-tile.openable { cursor: pointer; }
+.att-tile.openable.has-photo { cursor: zoom-in; }
+/* UChatAttachment in wherdr's style (app.config.ts): square corners everywhere, its surfaces and type. */
+.hw-att, .hw-att * { border-radius: 0 !important; }
+.att-tile > .hw-att { width: 100%; height: 100%; max-width: none; min-width: 0; padding: 0; gap: 0; background: var(--surface-2); border: 1px solid var(--line); color: var(--text); }
+.att-tile.openable:hover > .hw-att, .att-tile.openable:focus-visible > .hw-att { border-color: var(--accent); }
+.att-tile[data-status='error'] > .hw-att { border-color: var(--danger); }
+.hw-att-lead { flex: 1; min-height: 0; width: 100%; aspect-ratio: auto; background: var(--bg-2); color: var(--text-3); border-bottom: 1px solid var(--line); }
+.hw-att-lead [data-slot='leadingIcon'] { z-index: 2; width: 24px; height: 24px; }
+.att-tile.has-text[data-status='idle'] .hw-att-lead [data-slot='leadingIcon'] { display: none; }
+.att-tile[data-status='uploading'] .hw-att-lead { color: var(--text); }
+.att-tile[data-status='uploading'].has-photo .hw-att-lead { color: #fff; background: #000; }
+.att-tile[data-status='error'] .hw-att-lead { color: var(--danger); }
+.hw-att > [data-slot='wrapper'] { flex: none; height: var(--foot); padding: 4px 6px; align-content: center; }
+.att-tile[data-status='error'] .hw-att > [data-slot='wrapper'] { height: auto; max-height: 62%; }
+.hw-att-name { font-size: 11.5px; line-height: 1.25; font-weight: 400; color: var(--text); }
+.hw-att-desc { margin-top: 1px; font: 400 9.5px/1.25 var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); }
+.att-tile[data-status='error'] .hw-att-desc { color: var(--danger); text-transform: none; letter-spacing: 0; white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
+.hw-att-x { top: 3px; right: 3px; z-index: 3; width: 22px; height: 22px; justify-content: center; background: rgba(0, 0, 0, .75); color: #fff; backdrop-filter: none; }
+.hw-att-x:hover, .hw-att-x:focus-visible { background: #000; color: #fff; }
+/* A text's first lines (pasted text, md, log, code) under a top strip that holds the extension's
+   badge (left) and the remove cross (right): neither covers the text. */
+.att-tile-text {
+  position: absolute; inset: 27px 1px calc(var(--foot) + 1px); margin: 0; padding: 2px 7px 4px; overflow: hidden; pointer-events: none;
+  font: 400 8.5px/1.4 var(--mono); color: var(--text-3); white-space: pre; tab-size: 2;
 }
-.attachments .att button .iconify { width: 13px; height: 13px; }
+@media (min-width: 701px) { .att-tile-text { font-size: 9px; } }
+.att-tile[data-status='uploading'] .att-tile-text { opacity: .4; }
+.att-tile-badge {
+  position: absolute; left: 4px; top: 6px; z-index: 1; pointer-events: none;
+  padding: 2px 4px; font: 600 9px/1.1 var(--mono); letter-spacing: .08em; background: var(--bg); color: var(--text); border: 1px solid var(--line);
+}
+.att-tile[data-status='error'] .att-tile-badge { display: none; }
 
 /* Attached file (PDF, text, code…): square chip, icon, name, type and size. */
 .file-chip {
@@ -1880,16 +1907,9 @@ body.kb .composer { padding-bottom: 8px; }
 .file-chip.clickable:hover, .file-chip.clickable:focus-visible { border-color: var(--accent); outline: none; }
 .file-chip-icon { display: grid; place-items: center; width: 26px; height: 26px; flex: none; border: 1px solid var(--line); background: var(--bg-2); color: var(--text-2); }
 .file-chip-icon .iconify { width: 15px; height: 15px; }
-.file-chip-icon .spinner { width: 14px; height: 14px; }
 .file-chip-body { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
 .file-chip-name { font-size: 13px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .file-chip-meta { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--text-2); white-space: nowrap; }
-.file-chip.up { opacity: .7; }
-.file-chip-x { display: grid; place-items: center; width: 22px; height: 22px; margin-left: 2px; flex: none; color: var(--text-2); }
-.file-chip-x:hover { color: var(--text); background: var(--surface-3); }
-.file-chip-x .iconify { width: 13px; height: 13px; }
-.attachments .file-chip { height: 60px; }
-@media (max-width: 700px) { .attachments .file-chip { max-width: 190px; } }
 .msg-file-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 8px; white-space: normal; }
 .msg-file-chips:last-child { margin-bottom: 2px; }
 .msg-file-chips .file-chip { background: var(--bg-2); max-width: min(100%, 260px); }
