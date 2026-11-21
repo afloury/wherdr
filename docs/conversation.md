@@ -180,10 +180,11 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), up to **8 MB per file** (core's `terminal.put`).
   Above the field, every attachment is the same square tile (about 96 px on the phone, 120 px on
-  a computer; tiles wrap to a new line): a preview on top (the photo cropped to fill, the first
-  lines of pasted text or a text file in small mono type, an icon for a PDF or another file), a
-  badge with the extension (*JPG*, *PDF*, *MD*, *LOG*, *TXT*), then the name and the size or the line
-  count, and a remove cross in the corner. A tap opens a photo, or the whole pasted text with
+  a computer), on one row that scrolls sideways (swipe, trackpad, Shift+wheel) and fades out at
+  the right edge while more tiles follow: a badge with the extension (*JPG*, *PNG*, *PDF*, *MD*,
+  *LOG*, *TXT*) and the remove cross on top, a preview (the photo cropped to fill, the first lines
+  of pasted text or a text file in small mono type, an icon for a PDF or another file), then the
+  file's name and its size or the line count. A tap opens a photo, or the whole pasted text with
   *Copy*. While it uploads, the preview is dimmed under a spinner and the name shimmers; a refused
   upload stays with the reason in red until you remove it, and Send waits for it to go (*Remove
   the attachment that failed*), as it waits for an upload still running (*Photo is uploading…*).

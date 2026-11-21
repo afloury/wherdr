@@ -24,14 +24,16 @@ export interface DraftAtt {
   paste?: string
   // Upload refused: the reason, shown on the attachment until it is removed (never stored).
   error?: string
+  // A photo's original file name (its tile shows it and its extension).
+  label?: string
 }
-type StoredAtt = { path: string, name?: string, file?: DraftAtt['file'], ref?: string }
+type StoredAtt = { path: string, name?: string, file?: DraftAtt['file'], ref?: string, label?: string }
 
 // A stored attachment back into the draft.
 export function restoreAtt(a: StoredAtt): DraftAtt {
   return a.file
     ? { url: '', path: a.path, name: a.name, file: a.file, ref: a.ref || a.path }
-    : { url: `/uploads/${encodeURIComponent(a.name!)}`, path: a.path, name: a.name }
+    : { url: `/uploads/${encodeURIComponent(a.name!)}`, path: a.path, name: a.name, label: a.label }
 }
 interface Draft { text: string, atts: DraftAtt[] }
 
@@ -77,7 +79,7 @@ function load(paneId: string): Draft {
 }
 
 function persist(paneId: string, d: Draft) {
-  const atts = d.atts.filter(a => a.path && a.name).map(a => (a.file ? { path: a.path, name: a.name, file: a.file, ref: a.ref } : { path: a.path, name: a.name }))
+  const atts = d.atts.filter(a => a.path && a.name).map(a => (a.file ? { path: a.path, name: a.name, file: a.file, ref: a.ref } : { path: a.path, name: a.name, label: a.label }))
   const pastes = d.atts.flatMap(a => (a.paste ? [a.paste] : []))
   try {
     if (!d.text && !atts.length && !pastes.length) localStorage.removeItem(KEY + paneId)

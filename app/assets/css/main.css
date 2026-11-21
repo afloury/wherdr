@@ -1855,8 +1855,12 @@ body.kb .composer { padding-bottom: 8px; }
 }
 
 .prompt-head { padding: 4px 2px 2px; }
-/* The field's attachments (AttachTile): square tiles that wrap, never a horizontal scroll. */
-.attachments { display: flex; flex-wrap: wrap; gap: 8px; }
+/* The field's attachments (AttachTile): square tiles on one row that scrolls sideways (swipe,
+   trackpad, Shift+wheel); the last visible tile fades out at the right edge when more follow. */
+.attachments { display: flex; gap: 8px; overflow: auto hidden; overscroll-behavior-x: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; }
+.attachments::-webkit-scrollbar { height: 4px; }
+.attachments::-webkit-scrollbar-thumb { background: var(--line); }
+.attachments.more { mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 56px), transparent); }
 .att-tile { --tile: 96px; --foot: 31px; position: relative; flex: none; width: var(--tile); height: var(--tile); outline: none; }
 @media (min-width: 701px) { .att-tile { --tile: 120px; --foot: 34px; } }
 .att-tile.openable { cursor: pointer; }
@@ -1879,15 +1883,16 @@ body.kb .composer { padding-bottom: 8px; }
 .att-tile[data-status='error'] .hw-att-desc { color: var(--danger); text-transform: none; letter-spacing: 0; white-space: normal; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; }
 .hw-att-x { top: 3px; right: 3px; z-index: 3; width: 22px; height: 22px; justify-content: center; background: rgba(0, 0, 0, .75); color: #fff; backdrop-filter: none; }
 .hw-att-x:hover, .hw-att-x:focus-visible { background: #000; color: #fff; }
-/* A text's first lines (pasted text, md, log, code), and the extension's badge, over the preview area. */
+/* A text's first lines (pasted text, md, log, code) under a top strip that holds the extension's
+   badge (left) and the remove cross (right): neither covers the text. */
 .att-tile-text {
-  position: absolute; inset: 1px 1px calc(var(--foot) + 1px); margin: 0; padding: 6px 7px; overflow: hidden; pointer-events: none;
+  position: absolute; inset: 27px 1px calc(var(--foot) + 1px); margin: 0; padding: 2px 7px 4px; overflow: hidden; pointer-events: none;
   font: 400 8.5px/1.4 var(--mono); color: var(--text-3); white-space: pre; tab-size: 2;
 }
 @media (min-width: 701px) { .att-tile-text { font-size: 9px; } }
 .att-tile[data-status='uploading'] .att-tile-text { opacity: .4; }
 .att-tile-badge {
-  position: absolute; left: 5px; bottom: calc(var(--foot) + 5px); z-index: 1; pointer-events: none;
+  position: absolute; left: 4px; top: 6px; z-index: 1; pointer-events: none;
   padding: 2px 4px; font: 600 9px/1.1 var(--mono); letter-spacing: .08em; background: var(--bg); color: var(--text); border: 1px solid var(--line);
 }
 .att-tile[data-status='error'] .att-tile-badge { display: none; }

@@ -12,7 +12,7 @@ import { quotesIn, removeQuote } from '~/utils/questionReply'
 import { attachQuoteMirror } from '~/utils/quoteMirror'
 import { isBareBang, isSlashCommand } from '#shared/queuedMatch'
 import { viaPrompt } from '#shared/sendRoute'
-import { attachmentIcon, extensionOf, formatSize, type AttachKind } from '#shared/attachments'
+import { attachmentDisplayName, attachmentIcon, extensionOf, formatSize, type AttachKind } from '#shared/attachments'
 import { refusalText, sortForAgent } from '~/utils/fileDrop'
 import { uploadPhoto } from '~/utils/photoUpload'
 import { keepPreview } from '~/utils/sentPreviews'
@@ -412,13 +412,23 @@ function tileOf(a: Att) {
     const ext = extensionOf(a.file.label).slice(0, 5).toUpperCase() || (a.file.kind === 'text' ? 'TXT' : 'FILE')
     return { status, name: a.file.label, badge: ext, description: a.error || (a.file.size ? formatSize(a.file.size) : undefined), text: a.file.head, icon: attachmentIcon(a.file.label, a.file.kind) }
   }
-  return { status, name: t('Photo'), badge: extensionOf(a.name || '').slice(0, 5).toUpperCase() || 'IMG', description: a.error, url: a.url, label: t('View image') }
+  const name = a.label || attachmentDisplayName(a.name || '') || t('Photo')
+  return { status, name, badge: extensionOf(name).slice(0, 5).toUpperCase() || 'JPG', description: a.error, url: a.url, label: t('View image') }
 }
 function removeAtt(i: number) {
   const [a] = attachments.value.splice(i, 1)
   if (a && a.url) URL.revokeObjectURL(a.url)
 }
-watch(() => attachments.value.length, () => nextTick(layout))
+// The attachments' row: the right edge fades while more tiles follow.
+const attRow = ref<HTMLElement | null>(null)
+const attMore = ref(false)
+function attEdge() {
+  const e = attRow.value
+  attMore.value = Boolean(e && e.scrollLeft + e.clientWidth < e.scrollWidth - 1)
+}
+onMounted(() => window.addEventListener('resize', attEdge))
+onBeforeUnmount(() => window.removeEventListener('resize', attEdge))
+watch(() => attachments.value.length, () => nextTick(() => { layout(); attEdge() }))
 // Long text: keep the caret in view once the field reaches its max height.
 watch(text, () => nextTick(() => {
   const el = ta.value
@@ -428,7 +438,9 @@ watch(text, () => nextTick(() => {
 
 async function addImages(files: File[]) {
   for (const f of files) {
-    const a = reactive<Att>({ url: URL.createObjectURL(f), path: null })
+    // A pasted image may come without a name: its type gives the extension.
+    const label = f.name || `image.${(f.type.split('/')[1] || 'jpg').replace('jpeg', 'jpg')}`
+    const a = reactive<Att>({ url: URL.createObjectURL(f), path: null, label })
     attachments.value.push(a)
     try {
       const r = await uploadPhoto(props.paneId, f)
@@ -685,7 +697,7 @@ defineExpose({
       @submit="submit" @keydown="onKeydown" @paste="onPaste" @beforeinput="onBeforeInput"
     >
       <template v-if="attachments.length" #header>
-        <div class="attachments">
+        <div ref="attRow" class="attachments" :class="{ more: attMore }" @scroll.passive="attEdge">
           <template v-for="(a, i) in attachments" :key="a.url || a.path || a.file?.label || `paste:${i}`">
             <AttachTile v-bind="tileOf(a)" @open="viewAtt(a)" @remove="removeAtt(i)" />
           </template>

@@ -407,6 +407,8 @@ describe('Composer attachments (AttachTile)', () => {
     const att = () => w.findAll('.att-tile')
     expect(att()[0]!.attributes('data-status')).toBe('uploading')
     expect(att()[0]!.find('[data-slot="image"]').attributes('src')).toBe('blob:demo')
+    expect(att()[0]!.find('.att-tile-badge').text()).toBe('PNG')
+    expect(att()[0]!.find('[data-slot="name"]').text()).toBe('shot.png')
     uploads.shift()!.resolve({ path: '/tmp/shot.jpg', name: 'shot.jpg' })
     await flushPromises()
     expect(att()[0]!.attributes('data-status')).toBe('idle')
