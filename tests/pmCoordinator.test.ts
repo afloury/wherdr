@@ -105,6 +105,16 @@ describe('other projects (WHR-311)', () => {
     await refused(cli(['task', 'add', 'More', '--type', 'study', '--project', 'ST']), 'needs Act')
   })
 
+  it('ui show file of another project\'s task: refused without reach, allowed with Read (WHR-544)', async () => {
+    const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
+    await noteTurn(store, 'CO', 'user', 'show me its report')
+    const show = () => cli(['ui', 'show', 'file', `${st.id}/report.md`])
+    await refused(show(), 'show on project ST needs Read or Act')
+    await reach('read')
+    // Past the reach check: what stops it now is only that no wherdr is open in this test.
+    await refused(show(), 'No open wherdr')
+  })
+
   it('Act: writes logged with the acting coordinator\'s name, its coordinator told at its next wake; guards, merges and settings stay out', async () => {
     const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
     await issueToken(store, 'ST')
