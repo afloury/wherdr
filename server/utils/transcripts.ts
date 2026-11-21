@@ -1,4 +1,4 @@
-import { createHash, type Hash } from 'node:crypto'
+import { createHash } from 'node:crypto'
 import { imageTagCount, uploadNames, withoutUploads } from '../../shared/queuedMatch'
 import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
 import { ompToolCall, ompToolResult, ompUserRun } from './ompTools'
@@ -17,16 +17,11 @@ import { createDevinTranscripts } from './devinTranscripts'
 import { devinSession } from './devinSessions'
 import { codexDaemonReplyKey, type CodexHistory } from './codexDaemon'
 import { clip, isNoise } from './transcriptText'
+import { createBoundedReads, type BottomRead } from './boundedRead'
 import { createAgyTranscripts } from './agyTranscripts'
 import { agySession } from './agySessions'
 import { type HermesLoc, createHermesTranscripts, locateHermes } from './hermesTranscripts'
 
-// Backward reading by windows until there are enough messages: Claude's
-// transcripts embed images in base64, a few screenshots
-// weigh several MB for three lines of conversation.
-const WINDOW_BYTES = 2 * 1024 * 1024
-const MAX_READ_BYTES = 24 * 1024 * 1024 // per request
-const PAGE_ITEMS = 120
 const PREVIEW_BYTES = 256 * 1024 // card previews read this much first (latestReply)
 
 export interface TranscriptPane {
@@ -50,14 +45,9 @@ type Parsed = ChatItem[] & { queue?: ClaudeQueueEntry[], popped?: ClaudeQueueEnt
 // `anchor`: fingerprint of the bytes just above `start` (see anchorAt).
 interface TailResult { start: number, items: ChatItem[], queue: ClaudeQueueEntry[], popped?: ClaudeQueueEntry[], anchor?: string }
 
-// Join check of a re-read from a cursor: the bytes just above it, hashed. A
-// transcript rewritten at the same size, or shortened but still longer than
-// the cursor, keeps the token's size and may keep a line start at the cursor,
-// so the client would splice a new bottom under pages of another file. The
-// token carries the anchor of its start (`/<start>.<hash>`) and a re-read from
-// that start checks it first.
-const ANCHOR_BYTES = 4096
-const anchorHash = (b: Uint8Array) => createHash('sha1').update(b).digest('hex').slice(0, 12)
+// The anchor in a client's token (`/<start>.<hash>`): the fingerprint the
+// bounded reads hash just above a page's start (see boundedRead.ts), checked
+// first on a re-read from that start.
 const ANCHOR = /\/(\d+)\.([0-9a-f]{12})(?=[~#]|$)/
 // Anchor of a token as the client sent it (other suffixes allowed after it).
 export function anchorOf(token: string | null | undefined): { start: number, hash: string } | null {
@@ -1100,8 +1090,6 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   }
   const locCache = new Map<string, { at: number, loc: Loc | null, session?: string | null }>()
   const lastLoc = new Map<string, Loc>() // last file found, fallback if a lookup fails
-  const parseCache = new Map<string, { size: number, gen: string, settled: boolean, r: TailResult }>()
-  const tailReads = new Map<string, Promise<TailResult>>()
   const previewCache = new Map<string, { size: number, gen: string, reply: { key: string, text: string } }>()
   const metaCache = new Map<string, Json>()
   const META_MAX = 2000
@@ -1389,16 +1377,78 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   }
 
   // ------------------------------------------------------------ reading
-  // Reads bytes [start, end) of the file. If `start` falls in the middle of a
-  // line, it is skipped: the returned `start` is always a line start. A
-  // `start` already at a line start (the byte before is a newline) is kept:
-  // re-reading the bottom from a known start must not lose its first message.
-  async function readRange(file: string, start: number, end: number) {
-    if (start <= 0) return { start: 0, text: (await fs.read(file, 0, end)).toString('utf8') }
-    const buf = await fs.read(file, start - 1, end - start + 1)
-    const nl = buf.indexOf(0x0a)
-    const off = nl < 0 ? buf.length : nl + 1
-    return { start: start - 1 + off, text: buf.subarray(off).toString('utf8') }
+  // The bounded reads every transcript reader here shares (see
+  // boundedRead.ts): the windows, anchors and incremental bottoms, with the
+  // parsers of each kind plugged in.
+  const reads = createBoundedReads<Parsed>(fs)
+
+  // How a kind's lines parse, for the windows and slices of one file: omp's
+  // session folder (its paths shown relative to it) is read once per file,
+  // its file commands re-read every 5 min (see refreshOmpTemplates).
+  async function windowReader(file: string, kind: string | null) {
+    const cwd = kind === 'omp' ? await ompCwd(file) : ''
+    return {
+      label: String(kind),
+      parse: (text: string, base: number) => parseLines(text, kind, base, home, ompTemplates.list, cwd),
+      join: (windows: Parsed[]) => {
+        const last = windows.at(-1)
+        return Object.assign(windows.flat(), { queue: last?.queue || [], popped: last?.popped || [] }) as Parsed
+      },
+      whole: kind === 'omp',
+      reduce: (line: string) => stripBlobs(line),
+      bottom: () => bottomOf(kind, cwd),
+    }
+  }
+
+  // The state kept between polls for one bottom (see reads.readBelow): an
+  // incremental parser for Claude's appended lines; Codex's and omp's lines
+  // are kept and their last turn parsed again (see lastTurn).
+  function bottomOf(kind: string | null, cwd: string) {
+    const store: LineStore = { lines: Object.assign([] as string[], { refs: [] as string[] }), hashes: new Map(), keep: kind === 'codex' || kind === 'omp' }
+    const claude = store.keep ? null : claudeParser(home)
+    const turns = { lines: 0, items: [] as ChatItem[], templates: ompTemplates.list }
+    let first: number | null = null
+    let end = 0
+    return {
+      feed(text: string, base: number) {
+        first ??= base
+        end = base + Buffer.byteLength(text) + 1
+        const added = storeLines(store, text, base)
+        claude?.feed(added)
+      },
+      result: () => {
+        const items = claude ? claude.result() : lastTurn(store, turns, kind, cwd)
+        withHashes(items, store.hashes)
+        return items
+      },
+      kept: () => (claude || first === null ? 0 : end - first),
+    }
+  }
+
+  // One poll's read, as the conversation API hands it out. `parsed` is a
+  // Parsed: its queue and popped ride on the array and must not go out on
+  // items (a reply's items is a plain list — extra keys would join the
+  // conversation and reach the client).
+  const toTail = (r: BottomRead<Parsed>): TailResult => ({
+    start: r.start,
+    items: r.parsed.slice(),
+    queue: r.parsed.queue || [],
+    ...(r.parsed.popped?.length ? { popped: r.parsed.popped } : {}),
+    ...(r.anchor ? { anchor: r.anchor } : {}),
+  })
+
+  // Goes back from `end` by windows up to PAGE_ITEMS messages (or the start).
+  async function readBackwards(file: string, end: number, kind: string | null): Promise<TailResult> {
+    return toTail(await reads.readBackwards(file, end, await windowReader(file, kind)))
+  }
+
+  // Bottom of the conversation: from `from` (already shown on the phone) or,
+  // on first load, the last PAGE_ITEMS messages. Cached by
+  // (file, kind, size, generation, from), when read once the state settled.
+  // Reads in progress are shared: several devices on one pane cost one read
+  // and one parse per change.
+  async function tail(file: string, kind: string | null, size: number, gen: string, from: number | null, settled = true, ino?: number): Promise<TailResult> {
+    return toTail(await reads.tail(file, await windowReader(file, kind), size, gen, from, settled, ino))
   }
 
   // omp session folder, from the file's first line ("session" entry): the
@@ -1410,7 +1460,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     let cwd = ''
     try {
       // omp 19 writes a "title" entry before the "session" one.
-      for (const l of (await readRange(file, 0, 4096)).text.split('\n').slice(0, 4)) {
+      for (const l of (await reads.readRange(file, 0, 4096)).text.split('\n').slice(0, 4)) {
         let d: Json
         try { d = JSON.parse(l) } catch { continue }
         if (d && d.type === 'session' && typeof d.cwd === 'string') { cwd = d.cwd.replace(/\/+$/, ''); break }
@@ -1421,217 +1471,30 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     return cwd
   }
 
-  async function anchorAt(file: string, start: number) {
-    const s0 = Math.max(0, start - ANCHOR_BYTES)
-    return anchorHash(start > 0 ? await fs.read(file, s0, start - s0) : new Uint8Array())
-  }
-
-  // Goes back from `end` by windows up to PAGE_ITEMS messages (or the start).
-  async function readBackwards(file: string, end: number, kind: string | null): Promise<TailResult> {
-    const cwd = kind === 'omp' ? await ompCwd(file) : ''
-    let start = end
-    let items: ChatItem[] = []
-    let queue: ClaudeQueueEntry[] | null = null
-    let popped: ClaudeQueueEntry[] | null = null
-    while (start > 0 && end - start < MAX_READ_BYTES) {
-      // Window widened as long as it contains no line start (a
-      // multi-MB line: message with images), within the cap.
-      let w = WINDOW_BYTES
-      let r: { start: number, text: string }
-      for (;;) {
-        const s0 = Math.max(0, start - w)
-        r = await readRange(file, s0, start)
-        if (r.start < start || s0 === 0 || w >= MAX_READ_BYTES) break
-        w *= 2
-      }
-      if (r.start === start) break // giant line beyond the cap: stop there
-      // Each window is parsed alone (a tool result in error whose
-      // call is in the previous window just loses its red mark).
-      const parsed = parseLines(r.text, kind, r.start, home, ompTemplates.list, cwd)
-      if (!queue) queue = parsed.queue || [] // the queue lives in the most recent window
-      if (!popped) popped = parsed.popped || []
-      items = parsed.concat(items)
-      start = r.start
-      if (items.length >= PAGE_ITEMS) break
-    }
-    return { start, items, queue: queue || [], popped: popped || [] }
-  }
-
-  // Bottom of the conversation: from `from` (already shown on the phone) or,
-  // on first load, the last PAGE_ITEMS messages. Cached by
-  // (file, kind, size, generation, from), when read once the state settled.
-  // Reads in progress are shared: several devices on one pane cost one read
-  // and one parse per change.
-  async function tail(file: string, kind: string | null, size: number, gen: string, from: number | null, settled = true, ino?: number): Promise<TailResult> {
-    const key = `${file}|${kind}|${from}`
-    const c = parseCache.get(key)
-    if (c && c.settled && c.size === size && c.gen === gen) return c.r
-    const flight = `${key}|${size}|${gen}`
-    let read = tailReads.get(flight)
-    if (!read) {
-      read = readTail(file, kind, size, from, ino).finally(() => { tailReads.delete(flight) })
-      tailReads.set(flight, read)
-    }
-    const r = await read
-    parseCache.set(key, { size, gen, settled, r })
-    if (parseCache.size > 16) parseCache.delete(parseCache.keys().next().value!)
-    return r
-  }
-  async function readTail(file: string, kind: string | null, size: number, from: number | null, ino?: number): Promise<TailResult> {
-    if (from !== null && from <= size && size - from <= MAX_READ_BYTES) {
-      return await locked(`${file}|${kind}|${from}`, () => readBelow(file, kind, size, from, ino))
-    }
-    const r = await readBackwards(file, size, kind)
-    r.anchor = await anchorAt(file, r.start)
-    return r
-  }
-  // The whole bottom from `from`, read and parsed again.
-  async function readSlice(file: string, kind: string | null, size: number, from: number): Promise<TailResult> {
-    // One read for the anchor above `from` and the bottom (as readRange: a
-    // `from` in the middle of a line skips to the next line start).
-    const s0 = Math.max(0, from - ANCHOR_BYTES)
-    const buf = await fs.read(file, s0, size - s0)
-    const above = buf.subarray(0, from - s0)
-    let off = from - s0
-    if (from > 0 && above[above.length - 1] !== 0x0a) {
-      const nl = buf.indexOf(0x0a, off)
-      off = nl < 0 ? buf.length : nl + 1
-    }
-    const items = parseLines(buf.subarray(off).toString('utf8'), kind, s0 + off, home, ompTemplates.list, kind === 'omp' ? await ompCwd(file) : '')
-    // Start kept even when it moved to the next line: the client then sees a
-    // stale anchor (or another start) and reloads from the bottom.
-    return { start: from, items, queue: items.queue || [], popped: items.popped || [], anchor: off === from - s0 ? anchorHash(above) : '' }
-  }
-
-  // Bottom below a client's cursor, kept between polls: while an agent
-  // writes, each poll reads only the bytes appended since (and the few KB
-  // around to check the rest is still there) instead of everything from the
-  // cursor. Claude's new lines are parsed alone (claudeParser); Codex's and
-  // omp's are kept and their last turn parsed again (see lastTurn). omp
-  // rewrites its file (retries, see ompTurnEnd): all its bytes below the
-  // cursor are checked, not only the last CHECK_BYTES.
-  interface Below extends LineStore {
-    ino?: number
-    start: number // first line start at or after the cursor
-    end: number // after the last complete line read
-    above: string // anchorHash of the bytes above the cursor
-    aligned: boolean // the cursor is a line start
-    check: string // anchorHash of the CHECK_BYTES before `end` (omp: from `start`)
-    claude: ClaudeParser | null
-    turns: { lines: number, items: ChatItem[], templates: readonly CommandTemplate[] } // see lastTurn
-  }
-  const CHECK_BYTES = 4096
-  const MAX_BELOW = 8
-  const MAX_KEPT_BYTES = 48 * 1024 * 1024 // Codex lines kept, all bottoms together
-  const below = new Map<string, Below>()
-  const queues = new Map<string, Promise<unknown>>()
-  // One update at a time per bottom (several devices, polls overlapping).
-  function locked<T>(key: string, run: () => Promise<T>): Promise<T> {
-    const r = (queues.get(key) || Promise.resolve()).then(run)
-    const done = r.catch(() => {})
-    queues.set(key, done)
-    void done.then(() => { if (queues.get(key) === done) queues.delete(key) })
-    return r
-  }
   // Codex and omp read a turn as a whole (a tool's result marks its call, an
   // image placeholder is declared after its message): the items of the turns
   // before the last one are kept, and only the last turn is parsed again. A
   // turn starts at a message the user typed. Kept items are handed out again
   // as the same objects (chatDelta signs each once).
-  function lastTurn(b: Below, kind: string | null, cwd: string): Parsed {
-    const all = b.lines
-    if (b.turns.templates !== ompTemplates.list) b.turns = { lines: 0, items: [], templates: ompTemplates.list }
+  function lastTurn(store: LineStore, turns: { lines: number, items: ChatItem[], templates: readonly CommandTemplate[] }, kind: string | null, cwd: string): Parsed {
+    const all = store.lines
+    if (turns.templates !== ompTemplates.list) {
+      turns.lines = 0
+      turns.items = []
+      turns.templates = ompTemplates.list
+    }
     const parse = (from: number, to = all.length) => {
       const lines: Lines = all.slice(from, to)
       lines.refs = all.refs.slice(from, to)
       return kind === 'omp' ? parseOmp(lines, home, ompTemplates.list, cwd) : parseCodex(lines)
     }
-    for (let i = all.length - 1; i > b.turns.lines; i--) {
+    for (let i = all.length - 1; i > turns.lines; i--) {
       if (!turnStart(all[i]!, kind)) continue
-      b.turns.items.push(...parse(b.turns.lines, i))
-      b.turns.lines = i
+      turns.items.push(...parse(turns.lines, i))
+      turns.lines = i
       break
     }
-    return b.turns.items.concat(parse(b.turns.lines))
-  }
-  async function readBelow(file: string, kind: string | null, size: number, from: number, ino?: number): Promise<TailResult> {
-    const key = `${file}|${kind}|${from}`
-    const s0 = Math.max(0, from - ANCHOR_BYTES)
-    let b = below.get(key)
-    below.delete(key) // put back below when up to date (most recent last)
-    let above: Buffer = Buffer.alloc(0)
-    let known: Buffer = Buffer.alloc(0) // bytes just before b.end, still the same
-    let fresh: Buffer = Buffer.alloc(0) // bytes from b.end
-    const whole = kind === 'omp'
-    // omp: one hash of the bytes from b.start, checked, then extended with the new ones.
-    let sum: Hash | null = null
-    const c0 = b ? (whole ? b.start : Math.max(b.start, b.end - CHECK_BYTES)) : 0
-    if (b && b.ino === ino && size >= b.end) {
-      if (c0 - from <= CHECK_BYTES) {
-        const buf = await fs.read(file, s0, size - s0)
-        above = buf.subarray(0, from - s0)
-        known = buf.subarray(c0 - s0, b.end - s0)
-        fresh = buf.subarray(b.end - s0)
-      } else {
-        above = await fs.read(file, s0, from - s0)
-        const buf = await fs.read(file, c0, size - c0)
-        known = buf.subarray(0, b.end - c0)
-        fresh = buf.subarray(b.end - c0)
-      }
-      // Rewritten, cut or replaced since: read again from the cursor.
-      sum = whole ? createHash('sha1').update(known) : null
-      const check = sum ? sum.copy().digest('hex').slice(0, 12) : anchorHash(known)
-      if (above.length !== from - s0 || known.length !== b.end - c0 || anchorHash(above) !== b.above || check !== b.check) b = undefined
-    }
-    if (!b || b.ino !== ino || size < b.end) {
-      const buf = await fs.read(file, s0, size - s0)
-      above = buf.subarray(0, from - s0)
-      let off = from - s0
-      if (from > 0 && above[above.length - 1] !== 0x0a) {
-        const nl = buf.indexOf(0x0a, off)
-        off = nl < 0 ? buf.length : nl + 1
-      }
-      known = Buffer.alloc(0)
-      sum = whole ? createHash('sha1') : null
-      const lines: Lines & { refs: string[] } = Object.assign([], { refs: [] })
-      const claude = kind === 'codex' || kind === 'omp' ? null : claudeParser(home)
-      b = { ino, start: s0 + off, end: s0 + off, above: anchorHash(above), aligned: off === from - s0, check: anchorHash(known), lines, hashes: new Map(), keep: !claude, claude,
-        turns: { lines: 0, items: [], templates: ompTemplates.list } }
-      fresh = buf.subarray(off)
-    }
-    const nl = fresh.lastIndexOf(0x0a)
-    if (nl >= 0) {
-      const added = storeLines(b, fresh.subarray(0, nl).toString('utf8'), b.end)
-      b.claude?.feed(added)
-      b.end += nl + 1
-      // From c0 (or the start) to the new end: covers the bytes to check next time.
-      if (sum) b.check = sum.update(fresh.subarray(0, nl + 1)).digest('hex').slice(0, 12)
-      else {
-        const tail = Buffer.concat([known, fresh.subarray(0, nl + 1)])
-        b.check = anchorHash(tail.subarray(Math.max(0, tail.length - CHECK_BYTES)))
-      }
-    }
-    below.set(key, b)
-    let kept = 0
-    for (const x of below.values()) kept += x.keep ? x.end - x.start : 0
-    for (const [k, x] of below) {
-      if (x === b || (below.size <= MAX_BELOW && kept <= MAX_KEPT_BYTES)) break
-      below.delete(k)
-      kept -= x.keep ? x.end - x.start : 0
-    }
-    // A last line not ended yet is left for the next poll, unless it already
-    // parses (written whole, its newline still to come): read the whole
-    // bottom for this poll, as before.
-    const partial = fresh.subarray(nl + 1)
-    if (partial.length) {
-      try {
-        JSON.parse(stripBlobs(partial.toString('utf8')))
-        return await readSlice(file, kind, size, from)
-      } catch { /* incomplete: ignored as the parsers would */ }
-    }
-    const items = b.claude ? b.claude.result() : lastTurn(b, kind, kind === 'omp' ? await ompCwd(file) : '')
-    withHashes(items, b.hashes)
-    return { start: from, items, queue: items.queue || [], popped: items.popped || [], anchor: b.aligned ? b.above : '' }
+    return turns.items.concat(parse(turns.lines))
   }
 
   // ------------------------------------------------------------ API
@@ -1761,7 +1624,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     if (c && c.size === st.size && c.gen === gen) return c.reply
     const settled = await settledGen(loc.file, st, gen)
     if (kind === 'omp') await refreshOmpTemplates()
-    const r = await readRange(loc.file, st.size - PREVIEW_BYTES, st.size)
+    const r = await reads.readRange(loc.file, st.size - PREVIEW_BYTES, st.size)
     const reply = lastReplyOf(parseLines(r.text, kind, r.start, home, ompTemplates.list, kind === 'omp' ? await ompCwd(loc.file) : ''))
     previewCache.delete(key)
     if (settled && reply) previewCache.set(key, { size: st.size, gen, reply })
@@ -1856,7 +1719,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
       let w = MODEL_WINDOW
       while (end > floor && size - end < MODEL_MAX_BYTES) {
         const s0 = Math.max(floor ? floor - 1 : 0, end - w)
-        const r = await readRange(loc.file, s0, end)
+        const r = await reads.readRange(loc.file, s0, end)
         if (r.start >= end) {
           // No whole line in the window (message with images): we widen it.
           if (s0 <= Math.max(0, floor - 1) || w >= MODEL_MAX_BYTES) break
@@ -1892,7 +1755,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     if (c && c.file === loc.file && c.size === size && c.tool === tool) return c.detail
     let detail: PromptDetail | null = null
     try {
-      const r = await readRange(loc.file, Math.max(0, size - PENDING_WINDOW), size)
+      const r = await reads.readRange(loc.file, Math.max(0, size - PENDING_WINDOW), size)
       const lines = r.text.split('\n').map(stripBlobs)
       const kind = transcriptKind(loc.file) || pane.agent
       detail = kind === 'codex' ? pendingCodexTool(lines) : kind === 'omp' ? pendingOmpTool(lines, tool) : pendingClaudeTool(lines, home)
@@ -1913,7 +1776,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     const c = askCache.get(pane.id)
     if (c && c.file === loc.file && c.size === size) return c.asked
     let asked: OmpAsked[] = []
-    try { asked = pendingOmpAsk((await readRange(loc.file, Math.max(0, size - PENDING_WINDOW), size)).text.split('\n').map(stripBlobs)) }
+    try { asked = pendingOmpAsk((await reads.readRange(loc.file, Math.max(0, size - PENDING_WINDOW), size)).text.split('\n').map(stripBlobs)) }
     catch { asked = [] }
     askCache.set(pane.id, { file: loc.file, size, asked })
     return asked
@@ -1931,7 +1794,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     const c = claudeAskCache.get(pane.id)
     if (c && c.file === loc.file && c.size === size) return c.asked
     let asked: ClaudeAsked[] = []
-    try { asked = pendingClaudeAsk((await readRange(loc.file, Math.max(0, size - PENDING_WINDOW), size)).text.split('\n').map(stripBlobs)) }
+    try { asked = pendingClaudeAsk((await reads.readRange(loc.file, Math.max(0, size - PENDING_WINDOW), size)).text.split('\n').map(stripBlobs)) }
     catch { asked = [] }
     claudeAskCache.set(pane.id, { file: loc.file, size, asked })
     return asked
