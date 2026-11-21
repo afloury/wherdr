@@ -2,8 +2,8 @@
 // and choice of the replies to reveal (history vs new).
 import { describe, expect, it } from 'vitest'
 import {
-  applyReveal, CATCHUP_MS, CIPHER_GAP, cipherSegments, effectiveTypingSpeed, encryptedTextActive, finishReveal, parseTypingSettings, pickTyping, planReveal, replyId, revealedAt,
-  trailGlyphs, typeDuration, typingFronts, wordStops, TRAIL_GLYPHS, TYPE_MAX_MS, TYPE_MIN_MS,
+  applyReveal, CATCHUP_MS, CIPHER_GAP, cipherSegments, effectiveTypingSpeed, encryptedTextActive, finishReveal, parseTypingSettings, planReveal, replyId, revealedAt,
+  sortNewReplies, trailGlyphs, typeDuration, typingFronts, wordStops, TRAIL_GLYPHS, TYPE_MAX_MS, TYPE_MIN_MS,
 } from '../app/utils/typewriter'
 import type { RevealNode } from '../app/utils/typewriter'
 
@@ -203,20 +203,20 @@ describe('historique vs nouveau', () => {
   const b = replyId({ ts: '2026-09-27T10:01:00Z', text: 'Deuxième réponse' })
   const c = replyId({ ts: '2026-09-27T10:02:00Z', text: 'Troisième réponse' })
 
-  it('first load: nothing is revealed, everything becomes known', () => {
+  const sort = (known: Set<string>, ids: string[], following: boolean, baseline = true) => sortNewReplies(known, ids, { following, animate: true, baseline })
+  it('first open on this device: nothing typed nor marked, everything becomes known', () => {
     const known = new Set<string>()
-    expect(pickTyping(known, [a, b], false)).toBeNull()
+    expect(sort(known, [a, b], false, false)).toEqual({ typing: null, fresh: null })
     expect(known.has(a) && known.has(b)).toBe(true)
   })
-  it('live: only the last unknown reply is revealed', () => {
+  it('a reply already there at opening: shown at once under the New marker', () => {
     const known = new Set([a])
-    expect(pickTyping(known, [a, b, c], true)).toBe(c)
-    expect(pickTyping(known, [a, b, c], true)).toBeNull()
+    expect(sort(known, [a, b, c], false)).toEqual({ typing: null, fresh: b })
+    expect(sort(known, [a, b, c], true)).toEqual({ typing: null, fresh: null })
   })
-  it('back in the app or offline: shown all at once', () => {
-    const known = new Set([a])
-    expect(pickTyping(known, [a, b], false)).toBeNull()
-    expect(pickTyping(known, [a, b], true)).toBeNull()
+  it('a reply arriving while open: typed in, no marker (none with the typewriter off)', () => {
+    expect(sort(new Set([a]), [a, b, c], true)).toEqual({ typing: c, fresh: null })
+    expect(sortNewReplies(new Set([a]), [a, b], { following: true, animate: false, baseline: true })).toEqual({ typing: null, fresh: null })
   })
   it('stable identity whatever the position in the list', () => {
     expect(replyId({ ts: '2026-09-27T10:00:00Z', text: 'Première réponse' })).toBe(a)

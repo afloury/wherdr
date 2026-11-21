@@ -16,7 +16,7 @@ import { type PendingMessage, type WaitingOn, inputShown, pendingLabel, pendingQ
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { CHAT_READ_MS, createFlipGuard, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
-import { pickTyping, replyId } from '~/utils/typewriter'
+import { replyId, sortNewReplies } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
@@ -92,8 +92,8 @@ async function restoreChat() {
   const id = props.pane.id
   const saved = await readChat(id)
   if (!saved || synced || rendered.value || unavailable.value || id !== props.pane.id) return
-  // Its replies are known: one that arrives with the server's answer is new,
-  // and comes in as it would live (noteReplies).
+  // Its replies are known: one the server's answer adds is new to this
+  // device, shown at once under the "New" divider (noteReplies).
   for (const it of saved.items) {
     if (it.role === 'assistant') knownReplies.add(replyId(it))
     else if (it.role === 'thinking') knownThoughts.add(replyId(it))
@@ -166,6 +166,7 @@ function onUserScroll(e: Event) {
   held = false
   if (e instanceof WheelEvent && e.deltaY < 0) stick = false
   interruptThought()
+  clearFresh()
 }
 let ro: ResizeObserver | null = null
 onMounted(() => {
@@ -303,27 +304,49 @@ function interruptThought() { activeThought.value = null }
 // ------------------------------------------------------------ typewriter
 // Only a reply that arrives while following the conversation is revealed
 // (ChatMarkdown): never on first load, on return to the app or after
-// being offline, nor for older slices. Opened on the end kept on this device,
-// what the server's answer adds to it is new (restoreChat).
+// being offline, nor for older slices. Replies this device never showed,
+// found by such a read, show at once under a "New" divider for a moment
+// (`freshId`), unless nothing was known yet (first open on this device).
 const knownReplies = new Set<string>()
 const knownThoughts = new Set<string>()
 const activeThought = ref<{ id: string, at: number } | null>(null)
 const typing = ref<{ id: string, at: number } | null>(null)
+const freshId = ref<string | null>(null)
+let freshTimer: ReturnType<typeof setTimeout> | undefined
+const FRESH_MS = 6000
+// The first block of that reply, or the agent's name heading it: the divider goes above.
+const freshKey = computed(() => {
+  if (!freshId.value) return null
+  const list = blocks.value
+  const i = list.findIndex(b => b.k === 'assistant' && b.id === freshId.value)
+  if (i < 0) return null
+  return list[i - 1]?.k === 'who' ? list[i - 1]!.key : list[i]!.key
+})
+watch(() => props.pane.id, clearFresh)
+onUnmounted(() => clearTimeout(freshTimer))
+function clearFresh() { clearTimeout(freshTimer); freshId.value = null }
 let synced = false // replies known: first load from the server, or the end kept on this device
-let away = false // app in the background or offline since the last re-read
-watch(pageVisible, (v) => { if (!v) { away = true; interruptThought() } })
-watch(offlineView, (v) => { if (v) { away = true; interruptThought() } })
+// Read live from the server since opening, without going to the background or offline since.
+let followed = false
+watch(pageVisible, (v) => { if (!v) { followed = false; interruptThought() } })
+watch(offlineView, (v) => { if (v) { followed = false; interruptThought() } })
 function noteReplies(list: ChatItem[]) {
   // A server answer means the app is online, even while the home state shown
   // is still the one kept on this device (offlineView, at startup).
-  const live = synced && !away && typewriterActive.value && !searchOpen.value && !paneStale(props.pane)
-  const revealThinking = synced && !away && !searchOpen.value && !paneStale(props.pane)
-  const thought = newestThought(knownThoughts, list.filter(i => i.role === 'thinking').map(replyId), revealThinking)
+  const following = synced && followed
+  const reveal = !searchOpen.value && !paneStale(props.pane)
+  const thought = newestThought(knownThoughts, list.filter(i => i.role === 'thinking').map(replyId), following && reveal)
   if (thought) activeThought.value = { id: thought, at: Date.now() }
-  away = false
+  const r = sortNewReplies(knownReplies, list.filter(i => i.role === 'assistant').map(replyId),
+    { following, animate: reveal && typewriterActive.value && !thought, baseline: synced })
+  followed = true
   synced = true
-  const id = pickTyping(knownReplies, list.filter(i => i.role === 'assistant').map(replyId), live && !thought)
-  if (id) typing.value = { id, at: Date.now() }
+  if (r.typing) typing.value = { id: r.typing, at: Date.now() }
+  if (r.fresh) {
+    clearFresh()
+    freshId.value = r.fresh
+    freshTimer = setTimeout(clearFresh, FRESH_MS)
+  }
 }
 const typingAt = (id: string) => (typing.value && typing.value.id === id ? typing.value.at : null)
 function typingDone(id: string) { if (typing.value?.id === id) typing.value = null }
@@ -364,6 +387,7 @@ async function loadStep(current: () => boolean): Promise<boolean> {
       integration.value = r.reason === 'no_integration' ? r.integration || null : null
       // Conversation opened before its first reply: that reply is new.
       synced = true
+      followed = true
       return false
     }
     unavailable.value = null
@@ -1045,7 +1069,7 @@ provide<QuestionsHost>(QUESTIONS_HOST, {
 // The words of a question (`.q-text`) and its button share a number in their message.
 const wordsOf = (btn: HTMLElement) => btn.closest('.md-body')?.querySelectorAll<HTMLElement>(`.q-text[data-n="${btn.dataset.n}"]`) || []
 const draftText = computed(() => useDraft(props.pane.id).text)
-watch(draftText, (text) => { if (!text) held = false })
+watch(draftText, (text) => { if (!text) held = false; clearFresh() })
 watch([() => useDraft(props.pane.id).text, visibleBlocks], () => nextTick(syncQuoted), { flush: 'post' })
 const selReply = ref<{ text: string, time: string | null, id: string | null, sig: string, top: number, left: number } | null>(null)
 const selBtn = ref<HTMLElement | null>(null)
@@ -1717,6 +1741,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <template v-for="b in (skeleton ? [] : shownBlocks)" :key="b.key">
               <!-- "!" command running, with messages written after it started: above them. -->
               <ChatShellRun v-if="liveRun && b.key === liveRunAt" :tool="liveRun" :agent="agent" live />
+              <Transition name="new-sep"><div v-if="b.key === freshKey" class="day-sep new-sep" data-testid="new-sep"><span>{{ t('New') }}</span></div></Transition>
               <div v-if="b.k === 'day'" class="day-sep"><span>{{ b.label }}</span></div>
 
               <div v-else-if="b.k === 'who'" class="msg-who" :class="agent || ''">

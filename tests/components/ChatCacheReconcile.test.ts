@@ -1,6 +1,6 @@
 // The end of a conversation kept on this device shows at once, then the
 // server's answer is reconciled with it: the blocks already shown keep their
-// elements, and a reply that arrived meanwhile comes in as a live one would.
+// elements, and a reply this device never showed comes in at once, under "New".
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import ChatView from '~/components/ChatView.vue'
@@ -67,7 +67,7 @@ it('shows the kept end before the server answers, and keeps every element when t
   } finally { w.unmount() }
 })
 
-it('keeps the blocks already shown when the answer starts lower, and types the reply that arrived meanwhile', async () => {
+it('keeps the blocks already shown when the answer starts lower, and marks the reply this device never showed, without typing it', async () => {
   const w = await mount()
   try {
     await expect.poll(() => w.text()).toContain('Add a note to the changelog.')
@@ -79,8 +79,13 @@ it('keeps the blocks already shown when the answer starts lower, and types the r
     const same = [...after.keys()].filter(k => before.has(k))
     expect(same.length).toBeGreaterThanOrEqual(2)
     for (const k of same) expect(after.get(k), k).toBe(before.get(k))
-    expect(w.findAll('.md-body.typing')).toHaveLength(1)
-    expect(w.find('.md-body.typing').text()).toBe('Added under Unreleased.')
+    expect(w.find('.md-body.typing').exists()).toBe(false)
+    const sep = w.element.querySelector('[data-testid="new-sep"]')
+    expect(sep?.textContent).toBe('New')
+    // Above the new reply, below the last one this device showed.
+    const follows = (x: Element | undefined) => Boolean(x && sep!.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING)
+    expect(follows(after.get('Added under Unreleased.'))).toBe(true)
+    expect(follows(after.get('Add a note to the changelog.'))).toBe(false)
   } finally { w.unmount() }
 })
 
