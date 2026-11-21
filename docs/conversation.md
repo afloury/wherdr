@@ -125,6 +125,9 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   that failed). It shows as a muted *From the card* row, not as a message you typed: the agent may
   propose the next card, but the click is never your yes to anything else (a *Cancel* cannot end
   a step that waits for you or merge a PR). A second click on a closed card tells nothing.
+  Typed while the agent works, the note (like a wake) waits in Claude's queue as the same small
+  row, marked *sent when it finishes*, with Claude's **Send now** under it: never a bubble, never
+  a **Send now** with no message.
   While that agent does not run, nothing is typed: its next start's first message lists what you
   applied or cancelled since.
 - **Files and screenshots beside the conversation**: an agent can show you a file of its own

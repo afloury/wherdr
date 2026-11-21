@@ -1336,8 +1336,8 @@ function queuedNow() {
   const replies = blocks.value.filter(b => b.k === 'assistant')
   // Agent idle, nothing holding it: Claude's own queue is empty by now.
   const idle = waitFor.value === 'sending'
-  // A wake waiting in Claude's queue shows as its row once taken, never first as a bubble.
-  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle, input: props.pane.draft?.text }).filter(q => !wakeKindOf(q.raw) && cardNoteOf(q.raw) === null).map((q) => {
+  // A wake or card note waiting in Claude's queue is never a bubble: a small row (queuedNotes).
+  return pendingQueue({ mine, claude: chat.value.queue || [], items: items.value, screen: screen.value, memory, idle, input: props.pane.draft?.text }).map((q) => {
     const { text, files } = userMessageParts(q.raw)
     const parsed = parseReply(text)
     return {
@@ -1351,6 +1351,10 @@ function queuedNow() {
     }
   })
 }
+const queuedBubbles = computed(() => queuedList.value.filter(q => !q.note))
+// wherdr's own notes in Claude's queue (a card's outcome, a wake), tagged like
+// their row in the conversation: Claude's Send now has the message it sends (WHR-550).
+const queuedNotes = computed(() => queuedList.value.filter(q => q.note))
 // Same bubble as a message in the conversation (thumbnails inside, above the
 // text), so nothing moves when it lands.
 const pendingParts = (q: { body: string }) => [{ type: 'text' as const, text: q.body || ' ' }]
@@ -1933,7 +1937,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
           <!-- "!" command running: live output read from the screen. Messages sent meanwhile go under it. -->
           <ChatShellRun v-if="liveRun && liveRunAt === null" :tool="liveRun" :agent="agent" live />
           <!-- Already sent (visible as sent on screen), not yet in the transcript. -->
-          <div v-for="q in queuedList.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
+          <div v-for="q in queuedBubbles.filter(x => x.phase === 'sent')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
@@ -1952,7 +1956,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               <UIcon :name="queuedSending(q) ? 'i-lucide-loader-circle' : 'i-lucide-clock'" :class="{ spin: queuedSending(q) }" /><span>{{ queuedLabel(q) }}</span>
             </div>
           </div>
-          <div v-for="q in queuedList.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">
+          <div v-for="q in queuedBubbles.filter(x => x.phase === 'queued')" :key="q.id" class="msg-user-wrap">
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
@@ -1978,6 +1982,13 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             </div>
             <div v-else class="queued-tag" :role="queuedSending(q) ? 'status' : undefined">
               <UIcon :name="queuedSending(q) ? 'i-lucide-loader-circle' : 'i-lucide-clock'" :class="{ spin: queuedSending(q) }" /><span>{{ queuedLabel(q) }}</span>
+            </div>
+          </div>
+          <div v-for="q in queuedNotes" :key="q.id" class="wake card-note queued-note" data-testid="queued-note">
+            <div class="wake-row">
+              <span class="msg-wake" :data-kind="q.note!.kind">{{ q.note!.kind === 'card' ? t('From the card') : t(WAKE_LABEL[q.note!.kind]) }}</span>
+              <span class="wake-head" :title="q.note!.text">{{ q.note!.text }}</span>
+              <span class="wake-time">{{ t('sent when it finishes') }}</span>
             </div>
           </div>
           <!-- herdr-core: text left unsent in Claude's own input box, Claude's queue. -->
