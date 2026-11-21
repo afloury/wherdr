@@ -192,3 +192,11 @@ export function sortNewReplies(known: Set<string>, replies: string[], o: { follo
   if (o.following) return { typing: o.animate ? last : null, fresh: null }
   return { typing: null, fresh: o.baseline ? first : null }
 }
+
+// The kept end read after the server's answer: the first reply after the
+// last one it holds was missed by this device (null if it holds none of them).
+export function missedAfter(kept: Set<string>, replies: string[]): string | null {
+  let last = -1
+  replies.forEach((id, i) => { if (kept.has(id)) last = i })
+  return last < 0 ? null : replies[last + 1] ?? null
+}

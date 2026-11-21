@@ -16,7 +16,7 @@ import { type PendingMessage, type WaitingOn, inputShown, pendingLabel, pendingQ
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { CHAT_READ_MS, createFlipGuard, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
-import { replyId, sortNewReplies } from '~/utils/typewriter'
+import { missedAfter, replyId, sortNewReplies } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
@@ -91,7 +91,9 @@ async function restoreChat() {
   if (!mayReadOffline(readOfflineAccess())) return
   const id = props.pane.id
   const saved = await readChat(id)
-  if (!saved || synced || rendered.value || unavailable.value || id !== props.pane.id) return
+  if (!saved || unavailable.value || id !== props.pane.id) return
+  // The server answered first: the kept end still tells what this device missed.
+  if (synced || rendered.value) { markMissed(saved.items); return }
   // Its replies are known: one the server's answer adds is new to this
   // device, shown at once under the "New" divider (noteReplies).
   for (const it of saved.items) {
@@ -342,11 +344,17 @@ function noteReplies(list: ChatItem[]) {
   followed = true
   synced = true
   if (r.typing) typing.value = { id: r.typing, at: Date.now() }
-  if (r.fresh) {
-    clearFresh()
-    freshId.value = r.fresh
-    freshTimer = setTimeout(clearFresh, FRESH_MS)
-  }
+  if (r.fresh) showFresh(r.fresh)
+}
+function showFresh(id: string) {
+  clearFresh()
+  freshId.value = id
+  freshTimer = setTimeout(clearFresh, FRESH_MS)
+}
+function markMissed(kept: ChatItem[]) {
+  if (freshId.value || typing.value) return
+  const id = missedAfter(new Set(kept.filter(i => i.role === 'assistant').map(replyId)), items.value.filter(i => i.role === 'assistant').map(replyId))
+  if (id) showFresh(id)
 }
 const typingAt = (id: string) => (typing.value && typing.value.id === id ? typing.value.at : null)
 function typingDone(id: string) { if (typing.value?.id === id) typing.value = null }

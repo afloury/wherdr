@@ -17,8 +17,10 @@ const kept: ChatItem[] = [
 ]
 // A copy kept before the transcript was recorded with it has no `file`.
 let keptFile: string | undefined = 'demo.jsonl'
+// Holds the read of the kept end, to let the server answer first.
+let keptGate: Promise<void> = Promise.resolve()
 vi.mock('~/utils/offlineCache', () => ({
-  readChat: async () => ({ id: 'w1:p1', items: kept, at: Date.parse(at(3)), file: keptFile }),
+  readChat: async () => (await keptGate, { id: 'w1:p1', items: kept, at: Date.parse(at(3)), file: keptFile }),
   saveChat: vi.fn(),
   touchChat: vi.fn(),
 }))
@@ -46,6 +48,7 @@ afterEach(() => {
   herdrState.value = { ok: false, panes: [], workspaces: [] }
   setOfflineAccess(null)
   keptFile = 'demo.jsonl'
+  keptGate = Promise.resolve()
   vi.unstubAllGlobals()
 })
 
@@ -86,6 +89,23 @@ it('keeps the blocks already shown when the answer starts lower, and marks the r
     const follows = (x: Element | undefined) => Boolean(x && sep!.compareDocumentPosition(x) & Node.DOCUMENT_POSITION_FOLLOWING)
     expect(follows(after.get('Added under Unreleased.'))).toBe(true)
     expect(follows(after.get('Add a note to the changelog.'))).toBe(false)
+  } finally { w.unmount() }
+})
+
+it('still marks the missed reply when the server answers before the kept end is read', async () => {
+  let release!: () => void
+  keptGate = new Promise((ok) => { release = ok })
+  const w = await mount()
+  try {
+    answer([...kept, { role: 'assistant', text: 'Added under Unreleased.', ts: at(4) }].map(it => ({ ...it })))
+    await expect.poll(() => w.text()).toContain('Added under Unreleased.')
+    expect(w.find('[data-testid="new-sep"]').exists()).toBe(false)
+    release()
+    await expect.poll(() => w.find('[data-testid="new-sep"]').exists()).toBe(true)
+    const sep = w.element.querySelector('[data-testid="new-sep"]')!
+    const reply = [...w.element.querySelectorAll('[data-hit-key]')].find(el => el.textContent?.includes('Added under Unreleased.'))!
+    expect(sep.compareDocumentPosition(reply) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(w.find('.md-body.typing').exists()).toBe(false)
   } finally { w.unmount() }
 })
 
