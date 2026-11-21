@@ -68,6 +68,24 @@ describe('agents under a terminal', () => {
     const ps = ' 10 1 -bash\n 11 10 /usr/bin/node /x/claude --resume\n 12 11 sleep 5\n 20 1 claude\n 30 10 vim a.txt\n'
     expect(agentDescendants(ps, 10).map(p => p.pid)).toEqual([11])
   })
+
+  it('finds Command Code under every launch shape, and nothing else', () => {
+    const ps = [
+      ' 10 1 -bash',
+      ' 11 10 cmd', // the plain bin
+      ' 12 10 /usr/bin/command-code', // an alias path
+      ' 13 10 env FOO=1 BAR=2 cmd --resume', // env-wrapped
+      ' 14 10 env -i --chdir=/work cmd', // env options keep their operand
+      ' 15 10 env -- cmd', // an explicit -- ends env's own args
+      ' 16 10 node /opt/team/node_modules/command-code/dist/index.mjs --serve', // the package entrypoint
+      ' 17 10 node /opt/team/index.mjs', // another package: not Command Code
+      ' 18 10 env FOO=1 node /opt/team/command-code/bin/cmd', // env then interpreter
+      ' 19 10 env FOO=x', // env alone never names an agent
+      ' 20 10 env --unknown-flag cmd', // an unknown env option: boundary unproven
+      ' 21 10 vim cmd.txt',
+    ].join('\n')
+    expect(agentDescendants(ps, 10).map(p => `${p.pid}:${p.name}`)).toEqual(['11:cmd', '12:command-code', '13:cmd', '14:cmd', '15:cmd', '16:cmd', '18:cmd'])
+  })
 })
 
 describe('conversations of core terminals', () => {
