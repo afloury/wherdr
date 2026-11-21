@@ -5,6 +5,7 @@ import { namedAgents } from './settings'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
 import { notesStore, runNotes, type NotesStore } from './notesStore'
@@ -217,20 +218,22 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
   // Another project: only what the user's setting on this project allows (reach.ts).
   const self = projects.find(x => x.key === scope)
   const shown = (k: string) => shownKey(projects.find(x => x.key === k) ?? { key: k })
-  const reach = (k: string) => {
+  // as: the command the reach is checked for (a task's file shown is a read: show).
+  const reach = (k: string, as = cmd.name) => {
     // A workspace's coordinator runs every command on its members as on its own project, under
     // the same rules; template edit never takes --project (a member's own workflow is the user's).
-    const why = main || inScope(projects, scope, k) ? undefined : reachRefusal(self, k, cmd.name, { self: shown(scope), other: shown(k) })
+    const why = main || inScope(projects, scope, k) ? undefined : reachRefusal(self, k, as, { self: shown(scope), other: shown(k) })
     if (why) throw new HerdrError('refused', why)
   }
   if (named && projects.some(x => x.key === named)) reach(named)
   else if (!main && named && named !== scope) throw new HerdrError('refused', `Your token acts on project ${scope} only`)
-  const taskOf = async (id: string) => {
+  const taskAs = async (id: string, as: typeof cmd.name) => {
     const task = await store.task(id)
     if (!task) throw new HerdrError('not_found', 'Unknown task')
-    reach(task.project)
+    reach(task.project, as)
     return task
   }
+  const taskOf = (id: string) => taskAs(id, cmd.name)
   // The command's project: its task's, the one named, or the token's.
   const key = 'task' in cmd ? (await taskOf(cmd.task)).project : named ?? (main ? '' : scope)
   const p = projects.find(x => x.key === key)
@@ -299,7 +302,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
     }
     case 'ui targets': return uiTargetsList()
     case 'ui action': return addAction(store, { scope, turn, by: main ? ALFRED : `${shownKey(p ?? { key: scope })} coordinator`, kind: cmd.action, task: await taskOf(cmd.task) })
-    case 'ui show': return showUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope, turn, by: main ? ALFRED : `${shownKey(p ?? { key: scope })} coordinator`, ...(cmd.what === 'file' ? { what: cmd.what, path: cmd.path } : { what: cmd.what, task: await taskOf(cmd.task) }) })
+    case 'ui show': return showUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope, turn, by: main ? ALFRED : `${shownKey(p ?? { key: scope })} coordinator`, ...(cmd.what === 'file' ? { what: cmd.what, path: cmd.path, taskOf: (id: string) => taskAs(storedTaskId(projects, id) ?? id, 'show'), ...(main ? { tasksDir: path.join(os.homedir(), pmDir(), 'tasks') } : {}) } : { what: cmd.what, task: await taskOf(cmd.task) }) })
     case 'ui open': return openUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope, main, raw: cmd.link, turn, by: main ? ALFRED : `${scope} coordinator` })
     case 'notes': return runNotes(deps.notes ?? notesStore(), cmd.notes, body.input, main ? { by: ALFRED } : { by, project: needProject() }, deps.settingsFile, deps.machines())
     case 'list': {
