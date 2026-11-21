@@ -5,7 +5,7 @@
 // "unchanged" as long as the file has not grown).
 // Shown = older pages loaded on demand (`older`, up to
 // byte `olderCursor`) + bottom re-read continuously from byte `tailStart`.
-import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolView, Pane, QueuedMessage } from '#shared/types'
+import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, CommandCodeToolUpdate, OmpToolView, Pane, QueuedMessage } from '#shared/types'
 import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
@@ -15,7 +15,7 @@ import { userMessageParts } from '~/utils/userMessage'
 import { type PendingMessage, type WaitingOn, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
-import { CHAT_READ_MS, createFlipGuard, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
+import { CHAT_READ_MS, applyToolUpdates, createFlipGuard, createTailLoader, itemKeys, mergeToolUpdates, nextTail, restartsTail, retainToolUpdates, swapTail, tailQuery } from '~/utils/chatTail'
 import { pickTyping, replyId } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -82,6 +82,58 @@ const readOnly = computed(() => offlineView.value || paneStale(props.pane))
 const cachedTag = useDelayedFlag(computed(() => savedAt.value !== null && !readOnly.value && !netDown.value), 600, 0)
 // Nothing kept and the end still loading: its shapes, after 300 ms (ChatSkeleton).
 const skeleton = useDelayedFlag(computed(() => !rendered.value && !unavailable.value && !loadError.value))
+// The conversation belongs to one process identity: the same id showing
+// another agent — or another core address, Herdr session, machine, agent
+// session, process start or working directory — is another conversation.
+// A new pane object, title, status or preview alone changes none of it, so
+// the identity is compared by value (like the status/preview watcher below).
+const identityOf = (p: Pane) => JSON.stringify([
+  herdrState.value.session, p.id, p.agent, p.coreAddress, p.agentSession, p.machine, p.bornAt, p.cwd,
+])
+// Everything shown and every request in flight belongs to this generation.
+// A reset turns the old work's success, error and cleanup into no-ops, even
+// when file, start and cursor happen to coincide with the new conversation's.
+let resetGen = 0
+const staleGen = (gen: number) => gen !== resetGen
+// Command Code tool results can land after their call was already shown:
+// the newest revision per tool id waits here for the page that displays the
+// call — and dies with the conversation that produced it (resetChat).
+const pendingUpdates = new Map<string, CommandCodeToolUpdate>()
+function resetChat(reason: ChatResponse['reason'] | null = null) {
+  resetGen++
+  chat.value = fresh()
+  pendingUpdates.clear()
+  unavailable.value = reason
+  integration.value = null
+  loadError.value = null
+  misses.value = noMisses()
+  savedAt.value = null
+  rendered.value = false
+  olderBusy.value = false
+  typing.value = null
+  activeThought.value = null
+  knownReplies.clear()
+  knownThoughts.clear()
+  // An interrupted jump, search or page load was the old conversation's:
+  // its flags and marks stop with it. The typed query itself is kept.
+  jumping = false
+  search.loading = false
+  search.hits = []
+  search.cur = -1
+  clearMarks()
+  synced = false
+  // The scroll state was the old conversation's: the new one opens at its
+  // saved place (restoring re-arms the one-time restore) or at the bottom —
+  // never held mid-scroll by the previous one.
+  stick = true
+  held = false
+  lastTop = 0
+  anchor = null
+  shown.value = Infinity
+  restoring = typeof route.query.hit !== 'string'
+  keptFile = null
+  keptAnchor = false
+}
 // Commands in the agent's replies can be run in its shell mode (Run buttons,
 // utils/shellCommand.ts); the replies carry `can-run` then.
 const canRun = computed(() => canRunIn(props.pane))
@@ -89,9 +141,17 @@ const canRun = computed(() => canRunIn(props.pane))
 // shown only if it comes first.
 async function restoreChat() {
   if (!mayReadOffline(readOfflineAccess())) return
+  // Online, a kept tail cannot prove it came from the live Command Code
+  // process. The explicit offline / stale-pane read-only policy still applies.
+  if (props.pane.agent === 'cmd' && !readOnly.value) return
   const id = props.pane.id
+  const gen = resetGen
   const saved = await readChat(id)
-  if (!saved || synced || rendered.value || unavailable.value || id !== props.pane.id) return
+  // The lease that allowed the read may be revoked or expired by now.
+  if (!mayReadOffline(readOfflineAccess())) return
+  if (!saved || synced || rendered.value || unavailable.value || staleGen(gen) || id !== props.pane.id) return
+  // Offline when the read began is not enough: it must still be read-only.
+  if (props.pane.agent === 'cmd' && !readOnly.value) return
   // Its replies are known: one that arrives with the server's answer is new,
   // and comes in as it would live (noteReplies).
   for (const it of saved.items) {
@@ -102,7 +162,10 @@ async function restoreChat() {
   await apply(() => {
     chat.value = { ...fresh(), file: saved.file || null, tail: saved.items, held: true }
     savedAt.value = saved.at
+    keptFile = saved.file
   })
+  if (!mayReadOffline(readOfflineAccess()) || staleGen(gen) || id !== props.pane.id
+    || (props.pane.agent === 'cmd' && !readOnly.value)) return
   touchChat(props.pane.id)
 }
 
@@ -119,30 +182,58 @@ function scrollToEnd(force: boolean) {
     held = false
     // At once (no frame of a conversation opened at its top), and again once laid out.
     pin(b)
+    // A reading position restored before this frame wins (see apply).
     requestAnimationFrame(() => { if (stick) pin(b) })
   }
 }
+// Transcript of the kept copy shown (undefined: kept without it, see readingPosition.ts).
+let keptFile: string | null | undefined = null
+// Position restored on the kept copy: the network's first answer keeps it,
+// measured from the bottom, unless the reader has scrolled since.
+let keptAnchor = false
+// The skeleton hides every block for at least its minimum time: nothing to measure before.
+const blocksShown = () => skeleton.value
+  ? new Promise<void>((resolve) => { const stop = watch(skeleton, (v) => { if (!v) { stop(); resolve() } }) }).then(() => nextTick())
+  : Promise.resolve()
 // Updates the conversation while keeping the current reading position: stuck to the bottom if
 // we were there (or on first display), otherwise at the same place.
 async function apply(update: () => void, keepScroll = false) {
+  const gen = resetGen
   const wasNear = !held && stick
   const first = !rendered.value
+  // Same position from the bottom across the network's first answer (its end is the
+  // kept one's; the top may differ): see keptAnchor.
+  const fromBottom = keptAnchor && savedAt.value === null && !wasNear && box.value ? box.value.scrollHeight - box.value.scrollTop : null
+  const anchorFile = keptFile
+  if (savedAt.value === null) keptAnchor = false
   const before = blocks.value.length
   update()
   // Bottom first (see `shown`); what arrives below while blocks wait above stays shown.
   if (first) shown.value = FIRST_BLOCKS
   else if (shown.value !== Infinity) shown.value += Math.max(0, blocks.value.length - before)
   await nextTick()
+  // A reset crossed the tick: the new conversation owns the bookkeeping.
+  if (staleGen(gen)) return
   rendered.value = true
   if (hiddenBlocks.value) revealLater()
   // Back to a conversation already read: same position (see readingPosition.ts),
   // once its session is known; further up than what is shown: everything first.
   let restoreTop: number | null = null
-  if (restoring && chat.value.file && box.value) {
+  const kept = savedAt.value !== null // the kept copy is what this update shows
+  const file = kept ? keptFile : chat.value.file
+  if (restoring && file !== null && box.value) {
     restoring = false
-    if (hiddenBlocks.value && restoredScrollTop(props.pane.id, chat.value.file, box.value.scrollHeight) === 0) await revealAll()
-    restoreTop = restoredScrollTop(props.pane.id, chat.value.file, box.value.scrollHeight)
+    // Measure and place only once the blocks are in the DOM (see blocksShown).
+    await blocksShown()
+    if (staleGen(gen) || !box.value) return
+    if (hiddenBlocks.value && restoredScrollTop(props.pane.id, file, box.value.scrollHeight) === 0) await revealAll()
+    // The reveal may have crossed a reset: the new conversation positions itself.
+    if (staleGen(gen) || !box.value) return
+    restoreTop = restoredScrollTop(props.pane.id, file, box.value.scrollHeight)
+    keptAnchor = kept && restoreTop !== null
   }
+  else if (fromBottom !== null && (anchorFile === undefined || anchorFile === chat.value.file) && box.value
+    && box.value.scrollHeight - box.value.scrollTop !== fromBottom) restoreTop = box.value.scrollHeight - fromBottom
   if (!jumping && searchOpen.value && search.q.length >= 2) applySearchMarks(false)
   else if (restoreTop !== null && !jumping && box.value) {
     stick = false
@@ -164,6 +255,7 @@ let lastTop = 0
 let held = false
 function onUserScroll(e: Event) {
   held = false
+  keptAnchor = false
   if (e instanceof WheelEvent && e.deltaY < 0) stick = false
   interruptThought()
 }
@@ -274,10 +366,13 @@ onUnmounted(() => { unmounted = true })
 // More blocks above, the reading position kept.
 async function revealMore(n: number) {
   if (!hiddenBlocks.value) return
+  const gen = resetGen
   const b = box.value
   const fromBottom = b ? b.scrollHeight - b.scrollTop : 0
   shown.value = n === Infinity ? Infinity : blocks.value.length - hiddenBlocks.value + n
   await nextTick()
+  // An old reveal must not reposition the new conversation.
+  if (staleGen(gen)) return
   if (b) b.scrollTop = b.scrollHeight - fromBottom
 }
 const revealAll = () => revealMore(Infinity)
@@ -346,7 +441,8 @@ async function copyIntegration() {
 const chatIntent = useChatIntent()
 async function loadStep(current: () => boolean): Promise<boolean> {
   const pane = props.pane.id
-  const stale = () => !current() || pane !== props.pane.id
+  const gen = resetGen
+  const stale = () => !current() || pane !== props.pane.id || staleGen(gen)
   try {
     const ready = chat.value.tailStart === null ? await chatIntent.take(props.pane) : undefined
     if (stale()) return false
@@ -356,11 +452,15 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     if (!r.available) {
       // Any list on screen counts, the end kept on this device too: a server
       // that just restarted answers "not found" for a while (no blank list).
-      const m = onUnavailable(misses.value, items.value.length > 0)
-      misses.value = m.next
-      if (!m.clear) return false
-      chat.value = fresh()
-      unavailable.value = r.reason || 'unsupported'
+      // Command Code: the selection server is authoritative — there is no
+      // conversation to keep, not a transcript briefly missing. The missed-poll
+      // grace only exists for readers that can lose their file.
+      if (props.pane.agent !== 'cmd') {
+        const m = onUnavailable(misses.value, items.value.length > 0)
+        misses.value = m.next
+        if (!m.clear) return false
+      }
+      resetChat(r.reason || 'unsupported')
       integration.value = r.reason === 'no_integration' ? r.integration || null : null
       // Conversation opened before its first reply: that reply is new.
       synced = true
@@ -376,10 +476,16 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     savedAt.value = null
     // New session (/clear, new agent), or a bottom read from another byte:
     // we start again from the bottom (utils/chatTail.ts), keeping what is
-    // shown until that read replaces it.
+    // shown until that read replaces it. A full reset: the older request
+    // still in flight belongs to the old generation — its finally will not
+    // free our busy flag, so resetChat releases it.
     if (r.reload || restartsTail(chat.value, r)) {
-      chat.value = { ...fresh(), tail: items.value, queue: chat.value.queue, held: true }
-      synced = false
+      const kept = items.value
+      const queue = chat.value.queue
+      const wasRendered = rendered.value
+      resetChat()
+      chat.value = { ...fresh(), tail: kept, queue, held: true }
+      rendered.value = wasRendered
       return true
     }
     // Incremental reply that does not fit our list: ask for it in full.
@@ -388,6 +494,10 @@ async function loadStep(current: () => boolean): Promise<boolean> {
       chat.value = { ...chat.value, token: '' }
       return true
     }
+    // Late Command Code outcomes: pending ∪ this reply once, newest revision
+    // per id, applied immutably to the tail AND the retained older pages — a
+    // result whose call page is still in flight stays pending, not lost.
+    const updates = mergeToolUpdates(pendingUpdates, r.toolUpdates)
     await apply(() => {
       const c = { ...chat.value }
       if (c.tailStart === null) {
@@ -396,12 +506,17 @@ async function loadStep(current: () => boolean): Promise<boolean> {
       }
       c.file = r.file || null
       c.token = r.token || ''
-      c.tail = c.held ? swapTail(c.tail, tail) : tail
+      c.tail = applyToolUpdates(c.held ? swapTail(c.tail, tail) : tail, updates)
       c.held = false
+      c.older = applyToolUpdates(c.older, updates)
       c.queue = r.queue || []
       chat.value = c
       noteReplies(c.tail)
     })
+    // The tick inside apply may have crossed a reset: the items now held
+    // belong to the new conversation and must not be saved under `pane`.
+    if (stale()) return false
+    retainToolUpdates(pendingUpdates, [chat.value.tail, chat.value.older], updates)
     saveChat(pane, items.value, chat.value.file)
     // Paint the prepared tail first, then revalidate using its token and cursor.
     if (ready) return true
@@ -415,43 +530,96 @@ async function loadStep(current: () => boolean): Promise<boolean> {
 }
 const tailLoader = createTailLoader(loadStep)
 const loadChat = tailLoader.load
-watch(() => props.pane.id, () => tailLoader.invalidate())
+// Another conversation in the same spot: its end kept on this device is not a
+// copy of the one now shown, and what scroll position was saved belongs to the
+// one we are leaving. Everything reloads — including what the previous watcher
+// only invalidated (a state push itself lands here, as a pane object).
+let openPaneId = props.pane.id
+watch(() => identityOf(props.pane), () => {
+  if (box.value && rendered.value) saveReadingPosition(openPaneId, chat.value.file, box.value)
+  openPaneId = props.pane.id
+  resetChat()
+  tailLoader.invalidate()
+  if (!offlineView.value) loadChat()
+})
+// A Command Code transcript is only read while the pane is live. A stale-pane
+// or offline read ends with the lease: the view drops its kept copy and reads
+// the live selection again once the pane is live (or back online).
+watch(readOnly, (ro, was) => {
+  if (ro || !was || props.pane.agent !== 'cmd' || savedAt.value === null) return
+  resetChat()
+  tailLoader.invalidate()
+  loadChat()
+})
 
 // Older slice, keeping on screen what we were reading.
 async function loadOlder() {
   if (olderBusy.value || !(chat.value.olderCursor > 0)) return
   olderBusy.value = true
+  const gen = resetGen
   const pane = props.pane.id
   const file = chat.value.file
   const before = chat.value.olderCursor
   try {
-    const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane)}&before=${before}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
-    if (pane !== props.pane.id || r.file !== file || chat.value.olderCursor !== before) return
+    const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane)}&before=${before}${props.pane.agent === 'cmd' ? `&since=${encodeURIComponent(chat.value.token)}` : ''}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
+    if (pane !== props.pane.id || r.file !== file || chat.value.olderCursor !== before || staleGen(gen)) return
     if (r.stale) return
+    if (!r.available) {
+      // A Command Code selection gone or unreadable is not a transient miss.
+      if (props.pane.agent === 'cmd') {
+        toast(t('Conversation not found'), true)
+        resetChat('not_found')
+      }
+      return
+    }
     if (r.reload) {
       // An expired daemon cursor: read a fresh tail, keeping what is shown until then.
-      chat.value = { ...fresh(), tail: items.value, queue: chat.value.queue, held: true }
-      synced = false
+      const kept = items.value
+      const queue = chat.value.queue
+      const wasRendered = rendered.value
+      resetChat()
+      chat.value = { ...fresh(), tail: kept, queue, held: true }
+      rendered.value = wasRendered
+      await loadChat()
+      return
+    }
+    // Command Code paging is stateless by byte offset: a tool call's result may
+    // arrive on this page as a revision, and a page below `before` is not an
+    // older page. Reload rather than splice foreign items (transcripts.ts).
+    if (props.pane.agent === 'cmd' && !r.older) {
+      const kept = items.value
+      const queue = chat.value.queue
+      const wasRendered = rendered.value
+      resetChat()
+      chat.value = { ...fresh(), tail: kept, queue, held: true }
+      rendered.value = wasRendered
       await loadChat()
       return
     }
     const b = box.value
     const fromBottom = b ? b.scrollHeight - b.scrollTop : 0
+    const updates = mergeToolUpdates(pendingUpdates, r.toolUpdates)
     await apply(() => {
       shown.value = Infinity
       chat.value = {
         ...chat.value,
-        older: (r.items || []).concat(chat.value.older),
+        older: applyToolUpdates((r.items || []).concat(chat.value.older), updates),
+        tail: applyToolUpdates(chat.value.tail, updates),
         // Rewritten JSONL may return a later byte offset: stop, as before.
         olderCursor: (r.cursorKind === 'opaque' ? (r.start ?? 0) !== before : (r.start ?? 0) < before) ? (r.start ?? 0) : 0,
       }
     }, true)
+    // A reset crossed the tick inside apply: the new conversation owns scroll,
+    // busy flag and the copy kept on this device.
+    if (staleGen(gen)) return
+    retainToolUpdates(pendingUpdates, [chat.value.tail, chat.value.older], updates)
     saveChat(pane, items.value, chat.value.file)
     if (b) b.scrollTop = b.scrollHeight - fromBottom
   } catch (err) {
+    if (staleGen(gen)) return
     toast((err as Error).message, true)
   } finally {
-    olderBusy.value = false
+    if (!staleGen(gen)) olderBusy.value = false
   }
 }
 
@@ -1507,7 +1675,8 @@ function stepSearch(d: number) {
   focusHit()
 }
 async function loadAllOlder() {
-  while (chat.value.olderCursor > 0) {
+  const gen = resetGen
+  while (!staleGen(gen) && chat.value.olderCursor > 0) {
     const before = chat.value.olderCursor
     await loadOlder()
     if (chat.value.olderCursor === before) break
@@ -1525,12 +1694,16 @@ async function runSearch() {
     search.cur = -1
     return
   }
+  const gen = resetGen
   if (chat.value.olderCursor > 0 && !readOnly.value) {
     search.loading = true
     await loadAllOlder()
+    // A reset crossed the load: the new conversation owns marks and loading.
+    if (staleGen(gen)) return
     search.loading = false
   }
   await revealAll()
+  if (staleGen(gen)) return
   applySearchMarks(true)
 }
 async function jumpToResult() {
@@ -1538,18 +1711,22 @@ async function jumpToResult() {
   const q = route.query.q
   if (typeof raw !== 'string' || typeof q !== 'string' || !/^\d+$/.test(raw)) return
   const offset = Number(raw)
+  const gen = resetGen
   searchOpen.value = true
   search.q = q
   search.loading = true
   jumping = true
   try {
     // Each load goes up one slice until the one of the target message.
-    while (chat.value.olderCursor > offset && !readOnly.value) {
+    while (!staleGen(gen) && chat.value.olderCursor > offset && !readOnly.value) {
       const before = chat.value.olderCursor
       await loadOlder()
       if (chat.value.olderCursor >= before) break
     }
+    if (staleGen(gen)) return
     await revealAll()
+    // The reveal may have crossed a reset: marks and scroll target the new one.
+    if (staleGen(gen)) return
     const role = String(route.query.role || '')
     const ts = String(route.query.ts || '')
     const prefix = String(route.query.prefix || '')
@@ -1560,7 +1737,10 @@ async function jumpToResult() {
     const target = [...(listEl.value?.querySelectorAll<HTMLElement>('[data-hit-key]') || [])].find(el => el.dataset.hitKey === key)
     applySearchMarks(false, target)
     if (target && !search.hits.length) target.scrollIntoView({ block: 'center' })
-  } finally { jumping = false; search.loading = false }
+  } finally {
+    // A newer generation may have started its own jump: not ours to clear.
+    if (!staleGen(gen)) { jumping = false; search.loading = false }
+  }
 }
 watch(() => route.query.hit, () => { if (route.params.pane === props.pane.id) jumpToResult() })
 function closeSearch() {
@@ -1661,8 +1841,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
     <!-- The end kept on this device while the network is slow to answer: said, over the list (nothing moves). -->
     <span v-if="cachedTag && savedAt" class="cached-tag chat-cached" role="status">{{ tl(`Read at ${fmtTime(savedAt)}`, `Lu à ${fmtTime(savedAt)}`) }}</span>
     <div ref="box" class="chat" @scroll.passive="onScroll" @wheel.passive="onUserScroll" @touchmove.passive="onUserScroll" @click.capture="onJump">
+      <!-- No bottom pin of its own (at mount, then 100 ms later): apply() places the first paint. -->
       <UChatMessages
-        :status="working ? 'streaming' : 'ready'" :should-auto-scroll="false"
+        :status="working ? 'streaming' : 'ready'" :should-auto-scroll="false" :should-scroll-to-bottom="false"
         :auto-scroll="{ color: 'neutral', variant: 'outline' }"
         auto-scroll-icon="i-lucide-arrow-down"
         :ui="MSGS_UI"

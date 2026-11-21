@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **Command Code conversations.** A `cmd` terminal shows its Command Code icon and name, and its conversation opens on the transcript the pane's process proves under `~/.commandcode/projects` — messages, tool calls with the results that reach the file later, inline images, model and search — locally or on another machine, with bounded reads and generation-checked pages ([herdr-core › Conversations](docs/core.md#conversations)).
+
 ## [3.2.2] — 2026-11-19
 
 wherdr 3.2.2 brings back *Open in editor* on v3 (Mod+Alt+O) and fixes omp: its conversations open from herdr-core terminals, its status shows with an extension's status line, an omp coordinator keeps coordinating, and a project's default workflow runs on its coordinator's agent. Release notes: [docs/release-notes-3.2.2.md](docs/release-notes-3.2.2.md).
