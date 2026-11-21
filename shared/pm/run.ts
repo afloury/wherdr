@@ -1,7 +1,7 @@
 // Tasks and the agent runs that work on them. A run's terminal carries
 // wherdr.* labels on herdr-core, so the engine finds it again after a restart.
 import type { Project } from './project'
-import { MODEL_RE, reviewerCheck, type ContextSpec, type Prefs, type Step, type Template, type Weight } from './workflow'
+import { MODEL_RE, checkPrefs, reviewerCheck, type ContextSpec, type WorkflowError, type Prefs, type Step, type Template, type Weight } from './workflow'
 import { commandWords, resolveAgent, type AgentRef, type NamedAgent } from './namedAgents'
 import type { ContextFolder } from './context'
 import { fillBase, planSteps, type StepState } from './steps'
@@ -317,6 +317,16 @@ export function reviewerPlan(t: Template, task: Task, out?: string, named: reado
 // The named agents a task's worker and reviewer use: the machine it runs on needs them.
 export function taskAgents(t: Template, task: Task, named: readonly NamedAgent[]): string[] {
   return [workerPlan(t, task, named), reviewerPlan(t, task, undefined, named)].flatMap(p => ('agent' in p && p.agent ? [p.agent] : []))
+}
+
+// A task's own prefs (task add --agent), checked as the workflow's: an agent
+// names a program or a named agent of Settings › Agents. Empty ones dropped.
+export function taskPrefsOf(raw: unknown, named: readonly NamedAgent[]): { prefs?: Prefs } | { errors: WorkflowError[] } {
+  const errors: WorkflowError[] = []
+  const kept = raw && typeof raw === 'object' && !Array.isArray(raw) ? Object.fromEntries(Object.entries(raw).flatMap(([k, v]) => (v === '' || (typeof v === 'string' && !v.trim()) ? [] : [[k, typeof v === 'string' ? v.trim() : v]]))) : raw
+  checkPrefs(kept, 'prefs', errors, named)
+  if (errors.length) return { errors }
+  return kept && Object.keys(kept).length ? { prefs: kept as Prefs } : {}
 }
 
 // A pref of a task: the nearest level that sets it (task, task type, template).
