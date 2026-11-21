@@ -17,7 +17,7 @@ import { refusalText, sortForAgent } from '~/utils/fileDrop'
 import { uploadPhoto } from '~/utils/photoUpload'
 import { keepPreview } from '~/utils/sentPreviews'
 import { lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
-import { isLongPaste, messageBody } from '#shared/pastedText'
+import { isLongPaste, lineCount, looksLikeLog, messageBody } from '#shared/pastedText'
 import { rememberPastes } from '~/utils/sentPastes'
 import { enterSends as enterSendsFor } from '~/utils/layoutMode'
 import { kbOpen } from '~/composables/useViewport'
@@ -394,18 +394,25 @@ function clearAttachments(sent = false) {
 }
 // Large preview (same viewer as the conversation), including while
 // sending: the local URL (blob) is enough.
-// A click on the remove button is not a click on the photo.
-function viewAtt(a: Att, e?: Event) {
-  if ((e?.target as Element | null)?.closest('[data-slot="remove"]')) return
-  lightboxSrc.value = a.url
+function viewAtt(a: Att) {
+  if (a.paste) pasteOpen.value = a.paste
+  else lightboxSrc.value = a.url
 }
-// UChatAttachment (Nuxt UI): the upload's state, and a file's type and size.
-const attStatus = (a: Att) => (a.error ? 'error' : a.path ? 'idle' : 'uploading')
-function attDescription(a: Att) {
-  if (a.error) return a.error
-  if (!a.file) return undefined
-  const ext = extensionOf(a.file.label).slice(0, 6) || (a.file.kind === 'text' ? 'txt' : '')
-  return [ext.toUpperCase(), a.file.size ? formatSize(a.file.size) : ''].filter(Boolean).join(' · ')
+// The pasted text opened from its tile (PastedSheet).
+const pasteOpen = ref<string | null>(null)
+// One tile (AttachTile) for a photo, a file or pasted text: its preview, badge, name, size or lines, and upload state.
+const firstLines = (s: string) => s.split('\n').slice(0, 10).map(l => l.slice(0, 80)).join('\n')
+function tileOf(a: Att) {
+  const status = a.error ? 'error' as const : a.paste || a.path ? 'idle' as const : 'uploading' as const
+  if (a.paste) {
+    const n = lineCount(a.paste)
+    return { status, name: t('Pasted text'), badge: looksLikeLog(a.paste) ? 'LOG' : 'TXT', description: `${n} line${n > 1 ? 's' : ''}`, text: firstLines(a.paste), label: tl('Open pasted text', 'Ouvrir le texte collé') }
+  }
+  if (a.file) {
+    const ext = extensionOf(a.file.label).slice(0, 5).toUpperCase() || (a.file.kind === 'text' ? 'TXT' : 'FILE')
+    return { status, name: a.file.label, badge: ext, description: a.error || (a.file.size ? formatSize(a.file.size) : undefined), text: a.file.head, icon: attachmentIcon(a.file.label, a.file.kind) }
+  }
+  return { status, name: t('Photo'), badge: extensionOf(a.name || '').slice(0, 5).toUpperCase() || 'IMG', description: a.error, url: a.url, label: t('View image') }
 }
 function removeAtt(i: number) {
   const [a] = attachments.value.splice(i, 1)
@@ -452,6 +459,8 @@ async function uploadFile(f: File, kind: AttachKind) {
   if (useRuntimeConfig().public.core && f.size > 8 * 1024 * 1024) return toast(`${f.name} : ${t('File too large for herdr-core (8 MB max)')}`, true)
   const a = reactive<Att>({ url: '', path: null, file: { label: f.name, size: f.size, kind } })
   attachments.value.push(a)
+  // A text's first lines for its tile (kept with the draft).
+  if (kind === 'text') f.slice(0, 1024).text().then((s) => { if (a.file) a.file.head = firstLines(s) }, () => {})
   try {
     const r = await fetch(`/api/attach?pane=${encodeURIComponent(props.paneId)}&name=${encodeURIComponent(f.name)}`, {
       method: 'POST', headers: { 'content-type': 'application/octet-stream' }, body: f,
@@ -678,19 +687,10 @@ defineExpose({
       <template v-if="attachments.length" #header>
         <div class="attachments">
           <template v-for="(a, i) in attachments" :key="a.url || a.path || a.file?.label || `paste:${i}`">
-            <PastedCard v-if="a.paste" :text="a.paste" removable @remove="removeAtt(i)" />
-            <!-- Photos as thumbnails (a click opens them), files as cards; a failed upload as a card with its reason. -->
-            <UChatAttachment
-              v-else
-              :name="a.file?.label || t('Photo')" :type="a.file ? undefined : 'image/jpeg'" :url="a.file ? undefined : a.url"
-              :description="attDescription(a)" :status="attStatus(a)" :variant="a.file || a.error ? 'card' : 'thumbnail'"
-              :icon="a.file ? attachmentIcon(a.file.label, a.file.kind) : undefined" loading-icon="i-lucide-loader" error-icon="i-lucide-triangle-alert"
-              removable class="att" :class="{ photo: !a.file && !a.error }" :title="a.error || a.file?.label"
-              v-bind="a.file ? {} : { 'role': 'button', 'tabindex': 0, 'aria-label': t('View image') }"
-              @click="a.file || viewAtt(a, $event)" @keydown.enter.self="a.file || viewAtt(a)" @remove="removeAtt(i)"
-            />
+            <AttachTile v-bind="tileOf(a)" @open="viewAtt(a)" @remove="removeAtt(i)" />
           </template>
         </div>
+        <PastedSheet :open="pasteOpen !== null" :text="pasteOpen || ''" @update:open="(o: boolean) => { if (!o) pasteOpen = null }" />
       </template>
       <template #footer>
         <!-- The focused field's ring (main.css, focused field): out of the footer's flow, over

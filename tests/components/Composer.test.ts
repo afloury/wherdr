@@ -393,7 +393,7 @@ vi.mock('~/utils/photoUpload', () => ({
   uploadPhoto: () => new Promise((resolve, reject) => uploads.push({ resolve, reject })),
 }))
 
-describe('Composer attachments (UChatAttachment)', () => {
+describe('Composer attachments (AttachTile)', () => {
   it('a photo shows uploading, then idle; a failed one shows its reason; remove takes it away', async () => {
     const id = 'att-1'
     vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:demo')
@@ -404,9 +404,9 @@ describe('Composer attachments (UChatAttachment)', () => {
     vm.addImages([photo()])
     await vi.waitFor(() => expect(uploads).toHaveLength(1))
     await nextTick()
-    const att = () => w.findAll('[data-slot="root"].att')
+    const att = () => w.findAll('.att-tile')
     expect(att()[0]!.attributes('data-status')).toBe('uploading')
-    expect(att()[0]!.attributes('data-variant')).toBe('thumbnail')
+    expect(att()[0]!.find('[data-slot="image"]').attributes('src')).toBe('blob:demo')
     uploads.shift()!.resolve({ path: '/tmp/shot.jpg', name: 'shot.jpg' })
     await flushPromises()
     expect(att()[0]!.attributes('data-status')).toBe('idle')
