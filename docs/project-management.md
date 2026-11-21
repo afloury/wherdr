@@ -1098,16 +1098,14 @@ them too.
 A card opens the task's sheet. Tasks to review and a task
 link in the chat (`#/board?task=ID`) open it over the page you are on (a bottom
 sheet on a phone), with `?task=ID` added to that page's address, so it survives a
-reload and can be shared; closing it leaves the page as it was. The sheet shows its id badge by the title (a tap copies it; on a phone a long title takes two lines at most, cut with an ellipsis, a tap shows it whole, and one line once the sheet is scrolled or you type) and step, a note when it waits or was
-stopped, the time it spent in each step with the time it waited for you apart,
-its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
-waited for you 1 h · 2 review rounds · 1 CI fix*), which branch merges into
+reload and can be shared; closing it leaves the page as it was. The sheet's header holds only what matters first. Its id badge sits by the title (a tap copies it; a long title takes two lines at most, cut with an ellipsis, a tap shows it whole, the Description keeping it in full; on a phone one line once the sheet is scrolled or you type). Then which branch merges into
 which once it has one (*task/WHR-12 → develop · 3 commits*, or *task/WHR-12 will
 open a PR to v3* before its PR, with a button to copy the branch name), the
-task's PR as a badge on that line (*PR #646 ↗*, opens it in a new tab; on a phone
+task's PR as a badge on that line with its state (*PR #646 · open ↗*: *open*, *merged*, *closed*, *conflict* or *red CI*; opens it in a new tab; on a phone
 it wraps under the branches; once that line scrolls away, the badge shows in the
-sheet's header by the id, so the PR stays one tap away; nothing before a PR), and its buttons (*Start*,
-*Report a problem*, *Open the agent*, *Stop*, *Delete…*). *Open the agent* is there whatever the
+sheet's header by the id, so the PR stays one tap away; nothing before a PR; before it, a short line says where the task stands), the task's total time at the end of that line, small and muted, and only the buttons that make sense now: the step's own first (*Merge*, *Approve screenshots*…, its state said under it in To do), *Start*,
+*Open the agent*, *Stop* only while the agent holding the step runs (not at a merge step, even with the worker's conversation open), *Delete…*, and a **⋯** menu for the secondary actions, *Check on GitHub* and *Report a problem*. The time it spent in each step, with the time it waited for you apart, its review rounds and CI fixes (*work 25 min · review 9 min · merge 8 min ·
+waited for you 1 h · 2 review rounds · 1 CI fix*) open the **History** tab. *Open the agent* is there whatever the
 step: it opens the conversation of the agent holding the step if it runs, else the worker's (*Open
 the reviewer* when only the reviewer runs), so you can ask it something; with both the worker and
 the reviewer running, a small menu offers *Worker* and *Reviewer*. Once its agent ended, the button
@@ -1159,7 +1157,7 @@ The same model and pace rule; a question goes before the task TL;DRs, and it is
 written once per question, again only when the question changes. While the pace
 holds it, the full question shows alone.
 
-**Check on GitHub** shows on a task with a PR at its merge step, or archived:
+**Check on GitHub**, in the sheet's **⋯** menu, shows on a task with a PR at its merge step, or archived:
 wherdr reads the PR now, for a merge stuck after a guard refusal, a PR merged
 by hand on GitHub, or GitHub slow to see a push. Merged: the merge step ends as
 merged and the task goes on (next step or Done), out of Your turn; an archived
@@ -1335,8 +1333,8 @@ it follows you across devices like the Board's picker.
   with the new reason if the fix fails. It is your own action, not limited like
   a coordinator's wake, written to History as *asked the agent to fix: <reason>*.
 
-On a phone, the To do buttons (*Merge*, the step's button, *Open the PR*,
-*Start*, *Open the agent*) stay pinned at the bottom of the sheet while its
+On a phone, the To do buttons (*Open the PR*, *Ask the agent to fix it*,
+*Start*; the step's own button sits in the sheet's header) stay pinned at the bottom of the sheet while its
 content scrolls, so they are always in reach: flush with the sheet's bottom
 edge, the home bar's room inside the bar, with nothing scrolling under them;
 the tab's last content still scrolls up above them. While you type in a field
@@ -1349,7 +1347,7 @@ wraps on a phone shares the width, so no button sits alone on its line.
 ### Report a problem
 
 Something is wrong with a task waiting for you (the screenshots miss the asked
-feature, a part is missing, a bug)? Tap *Report a problem* in its sheet, or in
+feature, a part is missing, a bug)? Tap *Report a problem* in its sheet's **⋯** menu, or in
 its card's menu. Say what is wrong, tap the screenshots it is about, and keep
 *Block the merge until fixed* on if the merge must wait. It goes to the
 project's coordinator (started if it does not run), not to the task's agent,

@@ -222,6 +222,9 @@ export const asker = (c: Pick<Card, 'asks' | 'stopped' | 'terminal'>) => (c.asks
 // The card's one-tap link: its PR when it has one, else its first link.
 // A task the user may stop: started, not done, not stopped already.
 export const canStop = (c: Pick<Card, 'state' | 'stopped'>) => !!c.state?.started && !c.state.done && !c.stopped
+// The agent holding the task's step runs: only then is Stop of use on its sheet
+// (at a merge step no agent holds it, even while the worker's conversation stays open).
+export const agentRuns = (c: Pick<Card, 'terminal'>) => !!c.terminal
 
 // A task the user may start by hand: to do, not stopped (its sheet resumes it).
 // One that waits for others shows them instead (waitsFor).
@@ -289,6 +292,17 @@ export function prNow(pr: (PrInfo & { mergeStateStatus?: string }) | undefined, 
 
 // The checks the task's merge step waits for.
 export const requiredChecks = (plan: PlannedStep[]) => plan.flatMap(p => (p.action?.kind === 'github.merge' ? p.action.checks ?? [] : []))
+
+// Its PR's state in one word, a small badge on its link (the task sheet): merged,
+// red CI, conflict, else open; none once done without a merge of its own.
+export type PrState = 'open' | 'merged' | 'red CI' | 'conflict'
+export function prState(c: Pick<Card, 'plan' | 'state' | 'prNow' | 'queueOut'>): PrState | undefined {
+  if (c.state?.done) return mergedByStep(c.plan, c.state) ? 'merged' : undefined
+  if (c.prNow === 'merged') return 'merged'
+  if (redAtMerge(c) || c.prNow?.startsWith('checks failed')) return 'red CI'
+  if (c.prNow?.startsWith('conflict')) return 'conflict'
+  return 'open'
+}
 
 // approved: when the user approved the merge (it merges by itself), said before the text.
 export interface CardStatus { text: string, tone: 'wait' | 'bad' | 'ok', at?: number, approved?: number }
