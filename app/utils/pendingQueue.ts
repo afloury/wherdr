@@ -12,6 +12,20 @@ import type { OutboxItem } from './outbox'
 import { type QueuedPhase, queuedPhases } from '../../shared/queuedPhase'
 import { fieldHolds, photosLanded, photosOnly, uploadNames, withoutUploads } from '../../shared/queuedMatch'
 import { sameSent } from '../../shared/reference'
+import { CARD_NOTE } from '../../shared/uiActions'
+import { WAKE_LABEL, type WakeKind, wakeKindOf } from '../../shared/pm/wakes'
+
+// A note wherdr itself typed into the agent (a card's outcome, a wake): never
+// the user's bubble, a small row tagged like its row in the conversation.
+export interface WherdrNote { kind: WakeKind | 'card', text: string }
+export function wherdrNoteOf(raw: string): WherdrNote | null {
+  if (raw.startsWith(CARD_NOTE)) return { kind: 'card', text: raw.slice(CARD_NOTE.length) }
+  const kind = wakeKindOf(raw)
+  if (!kind) return null
+  // Its head line, without a <pasted_content> wrapper nor its label.
+  const head = raw.replace(/^\s*<pasted_content[^>]*>\s*/, '').trimStart().split('\n')[0]!
+  return { kind, text: head.slice(WAKE_LABEL[kind].length + 2) }
+}
 
 export interface PendingMessage {
   id: string
@@ -36,6 +50,8 @@ export interface PendingMessage {
   // Typed into Claude's input field and still there, not submitted: never
   // "sent" nor "read" (see `input` of pendingQueue).
   inInput?: boolean
+  // wherdr's own note (see wherdrNoteOf).
+  note?: WherdrNote
 }
 
 const normText = (s: string) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase()
@@ -147,6 +163,7 @@ export function pendingQueue(o: {
     // Refused by the server ('failed', not_submitted) but there all the same:
     // one bubble with the field's Send now / Clear, not "Not sent" + Retry
     // (refused while the field holds it) next to the field's own card.
+    const note = wherdrNoteOf(q.text)
     const inInput = !q.id.startsWith('cc-') && q.state !== 'sending' && fieldHolds(o.input, q.text, false, true)
     return {
       id: q.id,
@@ -163,6 +180,7 @@ export function pendingQueue(o: {
       ...(q.pasted ? { pasted: q.pasted } : {}),
       ...(inAgentQueue ? { inAgentQueue } : {}),
       ...(inInput ? { inInput } : {}),
+      ...(note ? { note } : {}),
     }
   })
 }
