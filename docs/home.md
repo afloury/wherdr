@@ -250,7 +250,7 @@ not filtered by tab; the board is, when its picker follows the machine tab.
 The magnifier (⌘K / Ctrl+K; in the header's ⋯ menu when the list is narrow) opens one palette
 for everything, full screen on a phone and a square window on a computer:
 
-- **Conversations**: the agents whose name, task or folder match, then the messages of the Claude
+- **Conversations**: the agents whose name, task or folder match; below the settings, the messages of the Claude
   Code and Codex agents of online machines, grouped by agent, the match highlighted. Choosing a
   message opens its conversation at that message.
 - **Tasks**: by id or title; opens the task's sheet.

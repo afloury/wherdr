@@ -72,10 +72,11 @@ const groups = computed<CommandPaletteGroup[]>(() => {
   if (!query.value.trim()) return [{ id: 'recent', label: tl('Recent conversations'), ignoreFilter: true, items: recent.value.map(agentItem) }, { id: 'actions', label: tl('Actions'), ignoreFilter: true, items: actions.value }]
   return [
     { id: 'conversations', label: tl('Conversations'), ignoreFilter: true, items: agentMatches.value.map(agentItem) },
-    ...hitGroups.value,
     { id: 'tasks', label: tl('Tasks'), items: (board.value?.cards ?? []).map(c => ({ id: `task:${c.id}`, label: c.title, suffix: c.shown, icon: 'i-lucide-square-check', onSelect: () => { close(); openTaskSheet(c.id) } })) },
     { id: 'projects', label: tl('Projects'), items: (board.value?.projects ?? []).map(p => ({ id: `project:${p.key}`, label: p.name, suffix: p.label || p.key, icon: 'i-lucide-kanban', onSelect: () => go(coordinatorBoardPath(p.key)) })) },
     { id: 'settings', label: t('Settings'), items: settings.value },
+    // The messages last but the actions: the short groups above stay in sight.
+    ...hitGroups.value,
     { id: 'actions', label: tl('Actions'), items: actions.value },
   ]
 })
