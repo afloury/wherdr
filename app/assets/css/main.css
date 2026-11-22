@@ -2026,6 +2026,7 @@ body.kb .composer { padding-bottom: 8px; }
   .hw-sheet.screen .hw-sheet-handle { display: none; }
   .hw-sheet.screen > [data-slot="header"] { padding: 6px 0 12px; margin: 0 -16px; padding-left: 16px; padding-right: 8px; border-bottom: 1px solid var(--line-soft) !important; } /* overflow-safe: .hw-sheet has the same side padding */
   .hw-sheet.screen > [data-slot="body"] { padding-top: 4px; }
+  .hw-sheet.screen .hw-sheet-sub { padding-right: 8px; }
   .hw-sheet.screen .hw-sheet-foot > * { margin: 0 -16px; padding: 12px 16px 0; border-top: 1px solid var(--line-soft); } /* overflow-safe: into .hw-sheet's 16px side padding (the footer has none) */
   .hw-sheet.screen .hw-sheet-foot .launch-btn { margin-top: 0; }
   /* Form actions (Cancel / Save): side by side across the width, in thumb reach. */
