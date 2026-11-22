@@ -2398,7 +2398,8 @@ body.kb .composer { padding-bottom: 8px; }
 @media (max-width: 480px) {
   .hw-seg [data-slot="item"] { padding: 6px 9px; letter-spacing: .06em; }
   .hw-seg:has(> :nth-child(4)) [data-slot="item"] { padding: 6px 7px; font-size: 10px; gap: 4px; }
-  .hw-seg [data-slot="label"] { white-space: normal; overflow-wrap: anywhere; }
+  .hw-seg [data-slot="item"] { min-width: auto; }
+  .hw-seg [data-slot="label"] { white-space: normal; overflow: visible; }
 }
 .theme-list { display: flex; flex-direction: column; gap: 18px; padding-top: 18px; }
 .theme-grid { display: grid; grid-template-columns: 1fr; border: 1px solid var(--line); }
