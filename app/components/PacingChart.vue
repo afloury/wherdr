@@ -11,8 +11,6 @@ const props = defineProps<{ series: WeekSeries }>()
 
 const DAY = 86_400_000
 const pctText = (v: number) => `${Math.round(v)} %`
-// One line per segment: a missing reading stays a gap.
-const used = computed(() => props.series.usage.flatMap((seg, i) => seg.map(p => ({ ...p, k: `used${i}` }))))
 const target = computed(() => (props.series.target ?? []).map(p => ({ ...p, k: 'target' })))
 // One tick per local midnight of the week.
 const days = computed(() => {
@@ -31,7 +29,8 @@ const definition = computed(() => defineChart({
     ruleY([0, 100], { stroke: 'var(--line)', strokeWidth: 1 }),
     ruleX([props.series.from, props.series.to], { stroke: 'var(--line)', strokeWidth: 1 }),
     ...(target.value.length ? [lineY(target.value, { x: 't', y: 'v', z: 'k', stroke: 'var(--text-2)', strokeWidth: 1.5, strokeDasharray: '4 3' })] : []),
-    ...(used.value.length ? [lineY(used.value, { x: 't', y: 'v', z: 'k', stroke: 'var(--teal)', strokeWidth: 2 })] : []),
+    // One line per segment: a missing reading stays a gap.
+    ...props.series.usage.map((seg, i) => lineY(seg, { id: `used-${i}`, x: 't', y: 'v', stroke: 'var(--teal)', strokeWidth: 2 })),
     ruleX([props.series.now], { stroke: 'var(--ochre)', strokeWidth: 1.5 }),
   ],
   scales: {
