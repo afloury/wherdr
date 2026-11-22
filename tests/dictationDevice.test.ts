@@ -210,9 +210,15 @@ describe('the on-device engine', () => {
 describe('device models', () => {
   it('match what the fetch script downloads, Parakeet v3 by default', () => {
     for (const m of DEVICE_MODELS) {
-      const [entry] = SETS[m.set]
-      expect(entry.dir).toBe(m.dir)
-      expect([...entry.members].sort()).toEqual(m.files.map(f => f.path).sort())
+      expect(SETS[m.runtime]).toBeDefined()
+      if ('url' in m.source) {
+        const [entry] = SETS[m.set]
+        expect(entry.dir).toBe(m.dir)
+        expect([...entry.members].sort()).toEqual(m.files.map(f => f.path).sort())
+      }
+      else {
+        expect(SETS[m.set]).toEqual(m.files.map(f => ({ url: m.source.base + f.path, sha256: f.sha256, to: `${m.dir}/${f.path}` })))
+      }
     }
     expect(SETS.runtime[0].to).toContain(`runtime/${DEVICE_RUNTIME}/`)
     expect(DEFAULT_SETS).toEqual(['runtime', DEVICE_MODELS[0]!.set])
@@ -221,8 +227,24 @@ describe('device models', () => {
     expect(deviceModel('gone').id).toBe('parakeet-v3')
   })
 
+  it('keeps GPU models opt-in: never the default or fallback, and honoured only with GPU features', () => {
+    const qwen = DEVICE_MODELS.find(m => m.kind === 'qwen3Q4F16')!
+    expect(qwen.requires).toEqual(['webgpu', 'shader-f16'])
+    expect(qwen.memory).toBeUndefined()
+    const gpu = ['webgpu', 'shader-f16'] as const
+    expect(deviceModel(null, null, {}, gpu).id).toBe('parakeet-v3')
+    expect(deviceModel('gone', null, {}, gpu).id).toBe('parakeet-v3')
+    expect(deviceModel('parakeet-v3', IOS_HEAP_BUDGET, {}, gpu).id).toBe('canary-180m')
+    expect(deviceModel(null, null, { 'parakeet-v3': 'oom', 'canary-180m': 'oom', 'sensevoice': 'oom' }, gpu).id).toBe('parakeet-v3')
+    expect(deviceModel(qwen.id, null, {}, gpu).id).toBe(qwen.id)
+    expect(deviceModel(qwen.id, null, { [qwen.id]: 'oom' }, gpu).id).toBe('parakeet-v3')
+    expect(deviceModel(qwen.id).id).toBe('parakeet-v3')
+    expect(deviceModel(qwen.id, null, {}, ['webgpu']).id).toBe('parakeet-v3')
+    expect(deviceModel(qwen.id, IOS_HEAP_BUDGET, {}, []).id).toBe('canary-180m')
+  })
+
   it('carry their measured memory, checked against this device\'s budget', () => {
-    for (const m of DEVICE_MODELS) expect(m.memory!.heap).toBeGreaterThan(0)
+    for (const m of DEVICE_MODELS.filter(m => !m.requires.length)) expect(m.memory!.heap).toBeGreaterThan(0)
     expect(memoryBudget(IPHONE)).toBe(IOS_HEAP_BUDGET)
     expect(memoryBudget({ userAgent: 'Mozilla/5.0 (Macintosh)', platform: 'MacIntel', maxTouchPoints: 5 })).toBe(IOS_HEAP_BUDGET) // iPad
     expect(memoryBudget({ userAgent: 'Mozilla/5.0 (Linux; Android 14)', deviceMemory: 4 })).toBe(2 ** 30)

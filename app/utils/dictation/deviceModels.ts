@@ -5,25 +5,36 @@
 // the /models/** route.
 import catalog from './models.json'
 
-// sherpa-onnx WASM runtime folder, under /models/runtime/.
+// WASM runtime folders under /models/runtime/, keyed by their fetch-script set.
 export const DEVICE_RUNTIME = 'sherpa-onnx-679ff70'
+export const ORT_RUNTIME = 'onnxruntime-web-1.23.2'
+export const DEVICE_RUNTIMES = {
+  runtime: DEVICE_RUNTIME,
+  ort: ORT_RUNTIME,
+} as const
+export type DeviceRuntime = keyof typeof DEVICE_RUNTIMES
 // Cache Storage the model files are kept in (the service worker spares wherdr-asr-*).
 export const DEVICE_CACHE = 'wherdr-asr-v1'
 
-// The families the worker knows how to build (public/workers/dictation-worker.js).
-export const DEVICE_KINDS = ['senseVoice', 'nemoTransducer', 'canary'] as const
+// The families the workers know how to build (dictation-worker.js, dictation-webgpu-worker.js).
+export const DEVICE_KINDS = ['senseVoice', 'nemoTransducer', 'canary', 'qwen3Q4F16'] as const
 export type DeviceKind = typeof DEVICE_KINDS[number]
 export type DeviceNeed = 'webgpu' | 'shader-f16'
+
+export type DeviceModelSource =
+  | { url: string, sha256: string }
+  | { base: string }
 
 export interface DeviceModel {
   id: string
   name: string
   kind: DeviceKind
+  runtime: DeviceRuntime
   requires: DeviceNeed[]
   set: string // the fetch script's set
   dir: string // under /models/
-  files: { path: string, bytes: number }[]
-  source: { url: string, sha256: string } // the fetch script's pinned archive
+  files: { path: string, bytes: number, sha256?: string }[]
+  source: DeviceModelSource // pinned archive, or loose files under source.base with per-file sha256
   languages: string[] // ISO 639-1 (639-3 when there is none: yue)
   ranked: string[] // the same languages, best first (see RANKING SOURCES)
   autoDetect?: false // the language is not detected: the device's is used (deviceLanguage)
@@ -121,12 +132,19 @@ export function memoryFit(m: DeviceModel, budget = memoryBudget(), marks = crash
   return 'ok'
 }
 
-// The model this device uses: its saved choice if still offered and not too
-// large here, else the first of the catalog that fits (never a too-large one).
-export function deviceModel(saved: string | null | undefined, budget = memoryBudget(), marks = crashedModels()): DeviceModel {
+// The model this device uses: its saved choice if offered here and not too
+// large, else the first CPU model of the catalog that fits (GPU models are
+// opt-in only: never the default and never an automatic fallback).
+export function deviceModel(
+  saved: string | null | undefined,
+  budget = memoryBudget(),
+  marks = crashedModels(),
+  have: readonly DeviceNeed[] = [],
+): DeviceModel {
   const fits = (m: DeviceModel) => memoryFit(m, budget, marks) === 'ok'
-  const own = DEVICE_MODELS.find(m => m.id === saved)
-  return (own && fits(own) ? own : DEVICE_MODELS.find(fits)) ?? own ?? DEVICE_MODELS[0]!
+  const defaults = runnableModels([])
+  const own = runnableModels(have).find(m => m.id === saved)
+  return (own && fits(own) ? own : defaults.find(fits)) ?? (own && !own.requires.length ? own : defaults[0]!)
 }
 
 // The language a model without detection is told: the first of the device's
@@ -175,6 +193,12 @@ export function qualityRating(m: DeviceModel, lang: string) {
 //   (AISHELL-1 2.96 % CER); Common Voice CER (zh, yue, ja, ko) and WER (en)
 //   are not directly comparable, so English comes before Japanese and Korean
 //   as on the card.
+// - Qwen3-ASR 0.6B: FLEURS figures of the 16 languages in the ONNX export's
+//   prompt_config.json, technical report Table A.2(b), https://arxiv.org/html/2601.21337v2
+//   (also https://huggingface.co/Qwen/Qwen3-ASR-0.6B for zh 2.88 %, en 4.39 %,
+//   yue 5.79 %): Chinese and English are its two primary languages (Table 3;
+//   CER on zh, ko, yue, ja and WER on the rest are not directly comparable, so
+//   en 4.39 % WER precedes ko 3.72 % CER), then the rest by FLEURS error rate.
 // A model with at least MULTI languages is shown as broadly multilingual.
 export const MULTI = 10
 
@@ -210,5 +234,5 @@ export async function gpuFeatures(gpu = (globalThis.navigator as Navigator & { g
 }
 
 // The models that can run here: one needing WebGPU is left out without it.
-export const runnableModels = (have: DeviceNeed[], models = DEVICE_MODELS) =>
+export const runnableModels = (have: readonly DeviceNeed[], models = DEVICE_MODELS) =>
   models.filter(m => m.requires.every(r => have.includes(r)))
