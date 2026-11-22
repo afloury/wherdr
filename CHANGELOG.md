@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **Qwen3-ASR 0.6B on-device dictation (WebGPU, opt-in).** Browsers with WebGPU and `shader-f16` offer **Qwen3-ASR 0.6B** (889 MB, 16 languages, pane terms as context) under *Settings › Conversation › Dictation › On this device*, never as the default or fallback ([Dictation](docs/dictation.md)).
+
 ### Fixed
 
 - **Credentials in workspace, tab and pane names are masked.** A workspace or terminal launched from a URL carrying `user:password@` (a proxy, an ssh target) showed the secret in the machine list, the tab bar and the pane title — it now masks `user:password@` as `…@` everywhere.

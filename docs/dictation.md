@@ -19,7 +19,7 @@ pane terms, model route, fetch script), with credit in the code.
 | `/models/**` route, fetch script with sha256, CSP, service worker | Merged |
 | On-device engine (sherpa-onnx WASM worker, CPU) | Merged: Parakeet v3 (French + English, default), Canary 180M (default on iPhone) and SenseVoice |
 | Model list in Settings (install, delete, progress, ratings) | Merged |
-| WebGPU models (Qwen3-ASR q4f16) | **Open for an outside contributor** (see [Task split](#task-split)) |
+| WebGPU models (Qwen3-ASR q4f16) | Merged (opt-in on WebGPU + `shader-f16`; measurements: pending Android) |
 
 ## Overview
 
@@ -55,7 +55,7 @@ insertion are shared; only the engine behind the interface changes.
 | `scripts/dictation-files.mjs`, `scripts/fetch-dictation-files.mjs` | Pinned downloads into `DATA_DIR/models`, checked by sha256 (the code, and its CLI) |
 | `server/utils/dictationServerFiles.ts`, `server/api/dictation/prepare.post.ts` | The server fetching a model's missing files when Install asks |
 | `public/workers/dictation-worker.js` | The sherpa-onnx worker: WASM runtime, recognizer, decode |
-| `public/workers/dictation-webgpu-worker.js` | The Qwen3-ASR ORT WebGPU worker; not selectable yet |
+| `public/workers/dictation-webgpu-worker.js` | The Qwen3-ASR ORT WebGPU worker (opt-in on WebGPU + `shader-f16`) |
 | `public/workers/qwen3/*.js` | Qwen tokenizer, prompt, log-mel (real FFT) and fp16 helpers |
 | `public/workers/model-files.js` | Model-file access shared by the dictation workers (cached slices, Range-slice streaming) |
 
@@ -294,8 +294,8 @@ read-aloud voice sets `tts-<voice>`; default `runtime parakeet`; `all`). Every e
 goes to `file.part`, resumes with `Range` after an interruption, and is moved into place only
 when its hash matches. An entry is either a single file (`{ url, sha256, to }`) or a `.tar.bz2`
 archive (`{ url, sha256, dir, members }`) from which only the listed members are extracted; a
-`.complete` stamp holding the archive's hash marks it done. A voice with no published archive
-lists its files one by one, each with its own sha256. `tests/fetchDictationFiles.test.ts`
+`.complete` stamp holding the archive's hash marks it done. A model or voice with no published
+archive lists its files one by one under `source.base`, each with its own sha256. `tests/fetchDictationFiles.test.ts`
 covers resume, mismatch and the set list; `tests/dictationServerFiles.test.ts` the server's use of
 it. The code lives in `scripts/dictation-files.mjs`, which has no CLI, since the server bundles it.
 
@@ -308,10 +308,11 @@ family is added there without code; the app needs a rebuild to ship it. An entry
 | Field | Meaning |
 | --- | --- |
 | `id`, `name` | Stable id (saved as the device's choice); short display name |
-| `kind` | The family: how the worker builds it (`senseVoice`, `nemoTransducer`, `canary`; later `moonshine`, `whisper`, `qwen3Q4F16`…). An entry of a family this build does not know is skipped, never an error |
-| `requires` | `[]`, `['webgpu']` or `['webgpu', 'shader-f16']`: Settings hides the model when the browser lacks it |
-| `set`, `source` | The fetch script's set name and its pinned archive (`url`, `sha256`) |
-| `dir`, `files` | Folder under `/models/` and its files, each with its exact `bytes` (checked against the server's on download) |
+| `kind` | The family: how the worker builds it (`senseVoice`, `nemoTransducer`, `canary`, `qwen3Q4F16`; later `moonshine`, `whisper`…). An entry of a family this build does not know is skipped, never an error |
+| `runtime` | The runtime set the model needs (`runtime` for sherpa-onnx WASM, `ort` for onnxruntime-web): `dictationServerFiles.ts` fetches that set on Install, and `device.ts` passes its `/models/runtime/<dir>/` folder to the worker |
+| `requires` | `[]`, `['webgpu']` or `['webgpu', 'shader-f16']`: Settings hides the model when the browser lacks it, and GPU models stay opt-in (never the default or fallback) |
+| `set`, `source` | The fetch script's set name and its pinned source: an archive (`{ url, sha256 }`) or loose files under a commit URL (`{ base }`) |
+| `dir`, `files` | Folder under `/models/` and its files, each with its exact `bytes` (checked against the server's on download) and, for loose files under `source.base`, its `sha256` |
 | `languages`, `punctuation` | ISO 639-1 codes (639-3 when there is none: `yue`); punctuation and capitals |
 | `ranked` | The same languages, best first, from the model's own published figures (sources in the `RANKING SOURCES` comment of `deviceModels.ts`) |
 | `autoDetect` | `false` when the model does not detect the language (Canary): the worker is given the first of the device's languages it speaks, else English |
@@ -383,15 +384,21 @@ mark, since a page can also be lost for another reason.
 
 ### Qwen WebGPU worker
 
-`dictation-webgpu-worker.js` loads the pinned Qwen3-ASR q4f16 export through the shared
-model-file loader and ORT WebGPU 1.23.2. It requires WebGPU and `shader-f16`, and uses the
-checked adapter and the same runtime-created device on all three sessions. It has no catalog entry or engine
-wiring yet: it cannot be selected in Settings or by a saved model ID.
+`dictation-webgpu-worker.js` loads the pinned Qwen3-ASR 0.6B q4f16 export (`qwen3-asr-0.6b-q4f16`,
+set `qwen3`, runtime `ort`) through the shared model-file loader and ORT WebGPU 1.23.2. It requires
+WebGPU and `shader-f16`, and uses the checked adapter and the same runtime-created device on all
+three sessions. It is **opt-in only**: Settings (**Settings › Conversation › Dictation › On this
+device**) offers it only on browsers with WebGPU and `shader-f16`, `deviceModel()` never picks a
+GPU model as the default or automatic fallback (a saved Qwen choice falls back to CPU where it
+cannot run), and `readiness()` answers `unsupported` if the required GPU features are missing.
 
-The load/decode protocol matches the CPU worker. A load checks for device loss before
-publishing `ready`; a failed load reports an error and releases its resources.
-A decode also accepts `terms` and `language`;
-its final message includes detected `language` and `truncated`. All operations are serialized.
+The load/decode protocol matches the CPU worker. `device.ts` selects `dictation-webgpu-worker.js`
+and `/models/runtime/onnxruntime-web-1.23.2/` for `qwen3Q4F16`, sets `caps.terms: true`, passes
+pane `terms` and `language` on `decode`, posts `{ t: 'cancel', id }` when `opts.signal` aborts,
+and maps `Unsupported speech device` errors to `unsupported`. A load checks for device loss before
+publishing `ready`; a failed load
+reports an error and releases its resources. A decode's final message includes detected `language`
+and `truncated`. All operations are serialized.
 `{ t: 'cancel', id }` cancels only that request, including queued work, suppresses its result,
 and stops before the next ORT call; a running GPU call must finish first. A replacement load or
 `{ t: 'dispose' }` cancels pending takes and releases sessions after the current call ends.
@@ -400,9 +407,8 @@ CPU tensors, logits, encoder outputs and GPU KV tensors are disposed on success,
 and failure. Partial loads release their successful sessions too. A failed run or lost device
 releases the model; the next decode reloads the last configuration on a fresh device. External
 weights leave the worker's own references after session creation; the embedding table remains
-for decoding. ORT heap/peak memory and full Qwen fp16 inference have not been measured here;
-there is no synthetic `heap` figure in worker messages. Activation and Android measurements
-remain F4's next part. A parent can terminate the worker to stop a stalled runtime or download.
+for decoding. There is no synthetic `heap` figure in worker messages. Measurements: pending
+Android. A parent can terminate the worker to stop a stalled runtime or download.
 
 ORT 1.23.2's custom-device path fails GPU-to-CPU downloads
 ([ORT #32257](https://github.com/microsoft/onnxruntime/issues/32257)). The worker therefore
@@ -444,30 +450,24 @@ interface above.
 | F1 | `/models/**` route, fetch script with sha256, CSP, service worker | Merged |
 | F2 | On-device engine: worker, CPU models with French (Parakeet v3) | Merged |
 | F3 | Model list in Settings: install, delete, progress, resume, storage used, WebGPU detection, ratings | Merged |
-| **F4** | **WebGPU models (Qwen3-ASR q4f16)** | **Open for an outside contributor** |
+| F4 | WebGPU models (Qwen3-ASR q4f16): worker, catalog entry, opt-in selection | Merged (measurements: pending Android) |
 
 ### F4: WebGPU models
 
 Goal: a model that runs on the GPU in the phone's browser, starting with **Qwen3-ASR 0.6B
-q4f16** (about 848 MB; French and English; uses pane terms as context).
+q4f16** (889 MB; 16 languages including French and English; uses pane terms as context).
 
-- onnxruntime-web 1.23.2 is already fetched by the `ort` set into
-  `models/runtime/onnxruntime-web-1.23.2/`; the Qwen3 files go in their own set with pinned URLs
-  and sha256.
-- A `qwen3Q4F16` family in the worker (onnxruntime-web on WebGPU, its BPE tokenizer), behind the
-  same `DictationEngine`: either a family of the device engine or its own engine registered as
-  above.
-- Catalog entry with `runtime.requires: ['webgpu', 'shader-f16']`; `readiness()` answers
-  `unsupported` when `navigator.gpu` or the `shader-f16` feature is missing. No CPU fallback is
-  needed, but the failure must be clean.
+- onnxruntime-web 1.23.2 is fetched by the `ort` set into
+  `models/runtime/onnxruntime-web-1.23.2/`; the 9 Qwen3 files live in the `qwen3` set (`source.base`
+  pinned by commit SHA and per-file `sha256` in `models.json`).
+- The `qwen3Q4F16` family runs in `dictation-webgpu-worker.js` behind the device `DictationEngine`,
+  selected opt-in when the user picks Qwen3-ASR 0.6B on a browser with WebGPU and `shader-f16`.
+- Catalog entry with `runtime: "ort"` and `requires: ['webgpu', 'shader-f16']`; `readiness()`
+  answers `unsupported` when `navigator.gpu` or `shader-f16` is missing. No CPU fallback is
+  used for a direct GPU load, while `deviceModel()` keeps CPU defaults and fallbacks everywhere else.
 - Pane terms (`opts.terms`) passed as the model's context prompt; `caps.terms: true`.
-- A debug view (decode a WAV file, show timings and the terms used) is welcome in development
-  builds only, not as a product page.
-
-Done when: the contract suite passes; unit tests cover the new family's pure logic; a French and
-an English take work on at least one Android phone with WebGPU, with load time, decode time and
-memory reported in the pull request; a device without WebGPU or `shader-f16` gets the
-`unsupported` message, not a crash. iOS Safari results are welcome but not required.
+- Measurements: pending Android (load time, decode time per take, memory, and fp16 validation on a
+  device with `shader-f16`).
 
 ## Read aloud
 
