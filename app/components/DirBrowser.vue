@@ -61,8 +61,9 @@ watch(selected, (p) => { pathInput.value = shortPath(p); pathError.value = null;
 // an error shows below the field, the sheet stays open.
 const going = ref(false)
 async function go() {
-  const raw = pathInput.value.trim()
-  const target = home.value ? normalizeDirInput(raw, home.value) : raw
+  // Before HOME is known, a typed path cannot be placed in the tree.
+  if (!home.value) return
+  const target = normalizeDirInput(pathInput.value.trim(), home.value)
   if (target === null) {
     pathError.value = tl(`This folder is outside this machine’s home folder (${shortPath(home.value)}).`, `Ce dossier est hors du dossier personnel (${shortPath(home.value)}) de cette machine.`)
     return
