@@ -17,6 +17,9 @@ import { createDevinTranscripts } from './devinTranscripts'
 import { devinSession } from './devinSessions'
 import { codexDaemonReplyKey, type CodexHistory } from './codexDaemon'
 import { clip, isNoise } from './transcriptText'
+import { createAgyTranscripts } from './agyTranscripts'
+import { agySession } from './agySessions'
+import { type HermesLoc, createHermesTranscripts, locateHermes } from './hermesTranscripts'
 
 // Backward reading by windows until there are enough messages: Claude's
 // transcripts embed images in base64, a few screenshots
@@ -36,7 +39,8 @@ export interface TranscriptPane {
   title?: string | null
 }
 
-interface Loc { file: string, session: string, guessed?: boolean }
+interface Loc { file: string, session: string, guessed?: boolean, python?: string }
+const hermesLoc = (loc: Loc): HermesLoc => ({ db: loc.file, session: loc.session, ...(loc.python ? { python: loc.python } : {}) })
 interface CodexRollout { file: string, id: string, ts: number, mtimeMs: number }
 // Window in which a Codex's conversation is created around its appearance.
 const CODEX_BIRTH_BEFORE = 5000
@@ -102,10 +106,12 @@ const stripImageTags = (t: unknown) => String(t || '').replace(/\[Image #\d+(?:,
 // real user message: we keep the text, without the tags; the long blocks
 // pasted next to typed words are also listed (`pasted`) to be shown as cards.
 // A message from another terminal (`hc send` from an agent) comes wrapped in
-// <hc from="t7">…</hc>: left out too, so a photo path right after the opening
-// tag is a line of its own again, shown as a photo.
-const PASTED = /<pasted_content(?:\s[^>]*)?>\n?|\n?<\/pasted_content(?:\s[^>]*)?>|<hc from="[^"]*">|<\/hc>/g
-export const unwrapPasted = (t: string) => (/<pasted_content|<hc from="/.test(t) ? t.replace(PASTED, '').trim() : t)
+// <hc from="t7" reach="…">…</hc> (any attributes, in any order, as long as
+// one is `from`): left out too, so a photo path right after the opening tag is
+// a line of its own again, shown as a photo.
+const HC_OPEN = /<hc\s(?=(?:[^>]*\s)?from=")[^>]*>/
+const PASTED = new RegExp(`<pasted_content(?:\\s[^>]*)?>\\n?|\\n?<\\/pasted_content(?:\\s[^>]*)?>|${HC_OPEN.source}|<\\/hc>`, 'g')
+export const unwrapPasted = (t: string) => (/<pasted_content/.test(t) || HC_OPEN.test(t) ? t.replace(PASTED, '').trim() : t)
 // Prompt of a scheduled task (CronCreate, /loop…) wrapped by Claude Code.
 const SCHEDULED = /^\s*<scheduled-task(?:\s[^>]*)?>\n?([\s\S]*?)\n?<\/scheduled-task>\s*$/
 // A background task's notification (Claude Code), as a string or a text part.
@@ -1058,6 +1064,8 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   // The machine's paths (POSIX for a remote Linux machine, even from a Windows host).
   const path = machinePath(home)
   const devin = createDevinTranscripts({ home, fs, now })
+  const agy = createAgyTranscripts({ home, fs, now })
+  const hermes = createHermesTranscripts({ fs })
   // File -> state (size, generation) and when this server first saw it, for
   // whole-second mtimes (see SETTLE_MS); `file|size|gen` -> checksum of the
   // file at first sight (null: could not be taken).
@@ -1105,11 +1113,16 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   }
 
   // ------------------------------------------------------------ localisation
+  // Antigravity's binary and core's agent label use several names.
+  const PROCESS_NAMES: Record<string, string[]> = { agy: ['agy', 'antigravity', 'antigravity-cli'], hermes: ['hermes'] }
   async function paneProcess(paneId: string, kind: string) {
     const r = await herdr('pane.process_info', { pane_id: paneId }, 4000)
     const procs: Json[] = (r.process_info && r.process_info.foreground_processes) || []
-    const match = procs.find(p => p.name === kind || path.basename((p.argv && p.argv[0]) || '') === kind)
-    return match || (kind === 'devin' ? null : procs[0]) || null
+    const names = PROCESS_NAMES[kind] || [kind]
+    // Hermes is a Python script: `python …/bin/hermes`.
+    const match = procs.find(p => names.includes(p.name) || names.includes(path.basename((p.argv && p.argv[0]) || ''))
+      || (kind === 'hermes' && names.includes(path.basename((p.argv && p.argv[1]) || ''))))
+    return match || (kind === 'devin' || kind === 'agy' || kind === 'hermes' ? null : procs[0]) || null
   }
 
   const encodeCwd = (cwd: string) => cwd.replace(/[^A-Za-z0-9]/g, '-')
@@ -1247,6 +1260,33 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     return best && { file: best.file, session: best.id, ...(best.id !== resumed ? { guessed: true } : {}) }
   }
 
+  // omp keeps a session folder per working directory: `-<path under home>` or
+  // `--<absolute path>--`, separators and drive colons as dashes. herdr-core reports no
+  // omp session, so the newest file there is the conversation, once it is no older than
+  // the terminal; `--continue` / `--resume` take up an older one.
+  const ompDirName = (cwd: string) => {
+    const rel = cwd === home || cwd.startsWith(`${home}/`) ? cwd.slice(home.length).replace(/^\/+/, '') : null
+    return rel !== null ? `-${rel.replace(/[/\\:]/g, '-')}` : `--${cwd.replace(/^\/+/, '').replace(/[/\\:]/g, '-')}--`
+  }
+  async function locateOmp(pane: TranscriptPane): Promise<Loc | null> {
+    if (!pane.cwd) return null
+    const dir = path.join(home, '.omp/agent/sessions', ompDirName(pane.cwd.replace(/\/+$/, '')))
+    const files = (await listDir(dir)).filter(n => n.endsWith('.jsonl') && !n.startsWith('.')).map(n => path.join(dir, n))
+    if (!files.length) return null
+    const stats = await fs.statMany(files)
+    const proc = await paneProcess(pane.id, 'omp').catch(() => null)
+    const argv: string[] = Array.isArray(proc?.argv) ? proc.argv : []
+    const continued = argv.some(a => a === '--continue' || a === '-c' || a === '--resume' || a === '-r' || a.startsWith('--resume='))
+    let best: { file: string, mtimeMs: number } | null = null
+    for (let i = 0; i < files.length; i++) {
+      const st = stats[i]
+      if (!st || !st.isFile) continue
+      if (!continued && pane.bornAt && st.mtimeMs < pane.bornAt - 5000) continue
+      if (!best || st.mtimeMs > best.mtimeMs) best = { file: files[i]!, mtimeMs: st.mtimeMs }
+    }
+    return best && { file: best.file, session: path.basename(best.file, '.jsonl'), guessed: true }
+  }
+
   // Codex panes of the machine (kept up to date by the state): for the claims.
   const codexPeers = new Map<string, TranscriptPane>()
   // Agents seen at work: they have a conversation (see shared/integrations.ts).
@@ -1314,6 +1354,18 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
         const id = proc ? await devinSession(fs, home, proc, fs === localFs) : pane.agentSession
         const file = id && devin.pathOf(id)
         if (file) loc = { file, session: id! }
+      } else if (pane.agent === 'agy') {
+        const proc = await paneProcess(pane.id, 'agy')
+        const guess = proc ? await agySession(fs, home, proc, fs === localFs) : null
+        const id = guess ? guess.id : pane.agentSession
+        const file = id && agy.pathOf(id)
+        if (file) loc = { file, session: id! }
+      } else if (pane.agent === 'hermes') {
+        // Never the integration's session: only what the pane shows now.
+        const proc = await paneProcess(pane.id, 'hermes')
+        const screen = async () => String((await herdr('pane.screen', { pane_id: pane.id }, 4000)).text || '')
+        const h = proc ? await locateHermes(fs, home, proc, screen) : null
+        if (h) loc = { file: h.db, session: h.session, ...(h.python ? { python: h.python } : {}) }
       } else if (pane.agent === 'codex') loc = await locateCodexPane(pane)
       else if (pane.agentSession) {
         const f = await findSessionFile(pane.agent, pane.agentSession)
@@ -1323,6 +1375,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
         const proc = await paneProcess(pane.id, 'claude')
         if (proc) loc = await locateClaude(proc)
       }
+      if (!loc && pane.agent === 'omp') loc = await locateOmp(pane)
     } catch { failed = true }
     // Failed read (SSH, timeout): we keep the last known file rather
     // than conclude "no conversation" (the view would empty for a second).
@@ -1356,9 +1409,13 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     if (known !== undefined) return known
     let cwd = ''
     try {
-      const d = JSON.parse((await readRange(file, 0, 4096)).text.split('\n')[0]!)
-      if (d && d.type === 'session' && typeof d.cwd === 'string') cwd = d.cwd.replace(/\/+$/, '')
-    } catch { /* first line longer than 4 KB or unreadable: paths stay under ~ */ }
+      // omp 19 writes a "title" entry before the "session" one.
+      for (const l of (await readRange(file, 0, 4096)).text.split('\n').slice(0, 4)) {
+        let d: Json
+        try { d = JSON.parse(l) } catch { continue }
+        if (d && d.type === 'session' && typeof d.cwd === 'string') { cwd = d.cwd.replace(/\/+$/, ''); break }
+      }
+    } catch { /* unreadable: paths stay under ~ */ }
     ompCwds.set(file, cwd)
     if (ompCwds.size > 64) ompCwds.delete(ompCwds.keys().next().value!)
     return cwd
@@ -1583,6 +1640,8 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     const loc = await locate(pane)
     if (!loc || Date.now() >= deadline) return { hits: [], limited: Date.now() >= deadline, kind: null }
     if (pane.agent === 'devin') return devin.search({ ...pane, agentSession: loc.session }, query, deadline)
+    if (pane.agent === 'agy') return agy.search({ ...pane, agentSession: loc.session }, query, deadline)
+    if (pane.agent === 'hermes') return hermes.search(hermesLoc(loc), query, deadline)
     // The transcript path tells the real kind (closed agent mislabeled).
     const kind = transcriptKind(loc.file) || pane.agent
     return { ...await searchFile(fs, loc.file, kind, home, query, deadline), kind }
@@ -1605,6 +1664,16 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     if (pane.agent === 'devin') {
       const r = await devin.chat({ ...pane, agentSession: loc.session }, opts)
       for (const item of r.items || []) if (item.role === 'assistant' && item.ref) replyKeys.set(item, `devin:${r.session}:${item.ref}`)
+      return r
+    }
+    if (pane.agent === 'agy') {
+      const r = await agy.chat({ ...pane, agentSession: loc.session }, opts)
+      for (const item of r.items || []) if (item.role === 'assistant' && item.ref) replyKeys.set(item, `agy:${r.session}:${item.ref}`)
+      return r
+    }
+    if (pane.agent === 'hermes') {
+      const r = await hermes.chat(hermesLoc(loc), opts)
+      for (const item of r.items || []) if (item.role === 'assistant' && item.ref) replyKeys.set(item, `hermes:${r.session}:${item.ref}`)
       return r
     }
     let st
@@ -1678,6 +1747,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   }
   async function tailReply(pane: TranscriptPane): Promise<{ key: string, text: string } | null> {
     if (pane.agent === 'devin') return null // ATIF is a single JSON document, not JSONL.
+    if (pane.agent === 'agy' || pane.agent === 'hermes') return null // A SQLite database, not JSONL.
     if (!hasTranscript(pane.agent)) return null
     const loc = await locate(pane)
     if (!loc) return null
@@ -1719,6 +1789,8 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     const loc = await locate(pane)
     if (!loc || path.basename(loc.file) !== fileId) return null
     if (pane.agent === 'devin') return devin.image({ ...pane, agentSession: loc.session }, fileId, ref, index)
+    if (pane.agent === 'agy') return agy.image({ ...pane, agentSession: loc.session }, fileId, ref, index)
+    if (pane.agent === 'hermes') return null
     const m = /^(\d+):(\d+)$/.exec(String(ref || ''))
     if (!m) return null
     const off = Number(m[1])
@@ -1747,6 +1819,14 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     if (pane.agent === 'devin') {
       const loc = await locate(pane)
       return loc ? devin.model({ ...pane, agentSession: loc.session }) : null
+    }
+    if (pane.agent === 'agy') {
+      const loc = await locate(pane)
+      return loc ? agy.model({ ...pane, agentSession: loc.session }) : null
+    }
+    if (pane.agent === 'hermes') {
+      const loc = await locate(pane)
+      return loc ? hermes.model(hermesLoc(loc)) : null
     }
     if (!pane.agent || !['claude', 'codex', 'omp'].includes(pane.agent)) return null
     const loc = await locate(pane)
@@ -1858,6 +1938,9 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   }
 
   function forget(paneId: string) {
+    // The conversation's kept copy leaves with the pane (agyTranscripts).
+    const last = lastLoc.get(paneId)
+    if (last) agy.forgetFile(last.file)
     locCache.delete(paneId)
     lastLoc.delete(paneId)
     modelCache.delete(paneId)

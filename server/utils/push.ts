@@ -7,7 +7,7 @@ import path from 'node:path'
 import webpush from 'web-push'
 import { DATA_DIR, appUrl, log } from './env'
 import { auth } from './http'
-import { writeJsonAtomic, writeJsonAtomicSync } from './atomicWrite'
+import { readJsonOrMissing, writeJsonAtomic, writeJsonAtomicSync } from './atomicWrite'
 import { pushConfig } from './pushConfig'
 import { type Quiet, quietActive, silenced } from '../../shared/quiet'
 import { type PushDelivery, type PushDeviceView, classifyPushError, expiredLongAgo, pushProvider } from '../../shared/pushDelivery'
@@ -94,14 +94,32 @@ function readVapid(file = VAPID_FILE): { publicKey: string, privateKey: string }
 export const pushReady = () => Boolean(vapid)
 export const vapidPublicKey = () => (vapid ? vapid.publicKey : null)
 
-export async function readSubs(): Promise<PushSub[]> {
-  try {
-    const raw = JSON.parse(await fsp.readFile(SUBS_FILE, 'utf8'))
-    return Array.isArray(raw.subs) ? raw.subs : []
-  } catch { return [] }
+// Strict: only a missing file is empty; anything else throws, so a list
+// written back never drops every device.
+async function loadSubs(): Promise<PushSub[]> {
+  const raw = await readJsonOrMissing(SUBS_FILE) as { subs?: unknown } | undefined
+  return Array.isArray(raw?.subs) ? raw.subs : []
 }
+// For reading and sending only: an unreadable file lists no device.
+export const readSubs = () => loadSubs().catch(() => [] as PushSub[])
 export async function writeSubs(subs: PushSub[]) {
   await writeJsonAtomic(SUBS_FILE, { subs })
+}
+
+// Every change to the list, one after another: devices subscribing at the same
+// time (after the lock is turned off) each keep their entry. `change` gets the
+// current list and returns the new one, or null to leave the file as it is.
+let subsQueue: Promise<unknown> = Promise.resolve()
+export function updateSubs(change: (subs: PushSub[]) => PushSub[] | null): Promise<PushSub[]> {
+  const run = subsQueue.then(async () => {
+    const subs = await loadSubs()
+    const next = change(subs)
+    if (!next) return subs
+    await writeSubs(next)
+    return next
+  })
+  subsQueue = run.catch(() => {})
+  return run
 }
 
 // `audience`: the devices a notification goes to (none given: all of them).
@@ -133,9 +151,9 @@ export const staleSub = (sub: PushSub, generation: string) => sub.gen !== undefi
 // Lock all devices / lock turned off: every subscription goes (none was saved
 // under the new generation yet). Returns how many were removed.
 export async function dropAllSubs(): Promise<number> {
-  const subs = await readSubs()
-  if (subs.length) await writeSubs([])
-  return subs.length
+  let n = 0
+  await updateSubs((subs) => { n = subs.length; return n ? [] : null })
+  return n
 }
 
 export async function pushSend(payload: PushPayload, audience?: PushAudience, force = false): Promise<number> {
@@ -145,7 +163,7 @@ export async function pushSend(payload: PushPayload, audience?: PushAudience, fo
   // Subscribed before a Lock all devices (saved in the meantime by a request
   // already under way): never sent, and removed.
   const subs = all.filter(s => !staleSub(s, generation))
-  if (subs.length < all.length) await writeSubs((await readSubs()).filter(s => !staleSub(s, generation)))
+  if (subs.length < all.length) await updateSubs(list => list.filter(s => !staleSub(s, generation)))
   const globalQuiet = force ? null : await readGlobalQuiet()
   const results = new Map<string, PushDelivery>()
   let ok = 0
@@ -172,7 +190,7 @@ export async function pushSend(payload: PushPayload, audience?: PushAudience, fo
   }
   // Re-read before writing: sending took time, and a subscription or
   // quiet setting saved in the meantime must not be overwritten by the old list.
-  if (results.size) await writeSubs(recordDeliveries(await readSubs(), results))
+  if (results.size) await updateSubs(list => recordDeliveries(list, results))
   return ok
 }
 

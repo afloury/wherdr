@@ -7,7 +7,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { dryRun, parseAlfredCommand } from '../shared/pm/alfredCli'
 import { applyProposedChange, runAlfredCommand } from '../server/utils/alfredCli'
-import { ALFRED_TOKEN_FILE, answerProposal, issueAlfredToken, userMessageTo } from '../server/utils/pmCoordinator'
+import { ALFRED_TOKEN_FILE, answerProposal, issueAlfredToken, setCoordinatorAgent, userMessageTo } from '../server/utils/pmCoordinator'
 import { MAIN } from '../shared/pm/coordinator'
 import { createPmStore } from '../server/utils/pmStore'
 import { actOnCard } from '../server/utils/uiActions'
@@ -68,7 +68,8 @@ describe('parseAlfredCommand', () => {
   it('says what is wrong', () => {
     expect(parseAlfredCommand(['project', 'add', 'WEB', '--path', '/x'])).toEqual({ error: 'usage: wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template example:<id>] [--apply]' })
     expect(parseAlfredCommand(['project', 'add', 'WEB', '--machine', '', '--path', '/x', '--force', 'y'])).toEqual({ error: 'unknown option --force' })
-    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'omp'])).toEqual({ error: '--program is claude or codex' })
+    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'omp'])).toMatchObject({ name: 'coordinator start', key: 'WEB', program: 'omp' })
+    expect(parseAlfredCommand(['coordinator', 'start', 'WEB', '--program', 'pi'])).toEqual({ error: '--program is claude, codex or omp' })
     expect(parseAlfredCommand(['setting', 'set', 'password', 'x'])).toMatchObject({ error: /^password is not a setting Alfred changes/ })
     // Only a value the app reads: no theme "light", no list setting.
     expect(parseAlfredCommand(['setting', 'set', 'theme', 'light'])).toMatchObject({ error: /^light is not a value of theme: one of wherdr-titanium, wherdr-neon/ })
@@ -118,6 +119,7 @@ describe('runAlfredCommand', () => {
     await store.setEnabled(true)
     await issueAlfredToken(store, dir)
     token = (await fs.readFile(path.join(dir, ALFRED_TOKEN_FILE), 'utf8')).trim()
+    await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind: 'user', at: Date.now() } })
     checked.length = 0
     failCheck = false
     herdrProjects = path.join(dir, 'no-herdr-projects')
@@ -129,6 +131,15 @@ describe('runAlfredCommand', () => {
     await expect(runAlfredCommand(deps(), 'f'.repeat(64), { argv: ['projects'] })).rejects.toThrow('Unknown Alfred token')
     await issueAlfredToken(store, dir) // a new start: the old token stops working
     await expect(run('projects')).rejects.toThrow('Unknown Alfred token')
+  })
+
+  // WHR-512: a wake (or a prompt injection read meanwhile) never applies a change; nor does a card's click.
+  it('refuses --apply outside a turn of the user\'s own message', async () => {
+    for (const kind of ['wake', 'card'] as const) {
+      await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind, at: Date.now() } })
+      await expect(run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--apply')).rejects.toThrow('--apply is only for a turn that comes from the user')
+    }
+    expect(await store.projects()).toEqual([])
   })
 
   it('shows a change, then makes it with --apply only', async () => {
@@ -238,6 +249,11 @@ describe('runAlfredCommand', () => {
     const write = execs.find(e => e.input)!
     expect(write.argv.slice(4)).toEqual(['/home/user/.wherdr/pm/coordinators/WEB/memory.md', expect.stringMatching(/^# Memory/)])
     expect(Buffer.from(write.input!, 'base64').toString()).toBe('- Goal from v2\'s autopilot: Ship it\n- Squash merges only\n')
+     // A member has no coordinator of its own: its workspace's gets the note.
+    const ok = async (_m: string, p: string) => p.replace(/^~/, '/home/user')
+    await store.addProject({ key: 'ws', name: 'Work', machine: '', path: '~/work', kind: 'workspace' }, ok)
+    await store.addProject({ key: 'api', machine: '', path: '~/work/api', workspace: 'ws' }, ok)
+    expect((await runAlfredCommand(withCall(), token, { argv: ['project', 'memory', 'API'], input: note })).change[0]).toBe('add to the end of the memory.md of WS\'s coordinator, on this machine:')
   })
 
   it('Alfred\'s wherdr script sends stdin with project memory (shown or applied) and theme propose', async () => {
@@ -264,8 +280,13 @@ describe('runAlfredCommand', () => {
     expect(parseAlfredCommand(['project', 'guards', 'WEB', '--merge-others', 'me'])).toEqual({ error: '--merge-protected and --merge-others are user or engine' })
     await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--template', 'example:common', '--apply')
     expect(await run('project', 'guards', 'WEB')).toEqual({ project: 'WEB', guards: common.guards ?? {} })
-    expect(await run('project', 'guards', 'WEB', '--protect', 'main,v3', '--merge-others', 'user')).toMatchObject({ dryRun: true })
-    await run('project', 'guards', 'WEB', '--protect', 'main,v3', '--merge-others', 'user', '--apply')
+    const argv = ['project', 'guards', 'WEB', '--protect', 'main,v3', '--merge-others', 'user']
+    expect(await run(...argv)).toMatchObject({ dryRun: true, next: expect.stringContaining('--propose') })
+    // WHR-512: guards change by the user's click only, never --apply, even in a user turn.
+    await expect(run(...argv, '--merge-protected', 'engine', '--apply')).rejects.toThrow('project guards is never changed by Alfred')
+    await run(...argv, '--propose')
+    const card = (await store.coordinator(MAIN))!.cards!.at(-1)!
+    await actOnCard({ store, applyChange: (a: string[], lines: string[]) => applyProposedChange(deps(), a, lines) } as never, card.id, undefined)
     expect((await store.workflow('WEB'))!.guards).toMatchObject({ protected: ['main', 'v3'], merge: { others: 'user' } })
   })
 
@@ -332,6 +353,7 @@ describe('runAlfredCommand', () => {
     await expect(propose(JSON.stringify({ ...file, light: { ...file.light, bg: 'navy' } }))).rejects.toThrow('"light.bg" is not a #rrggbb color')
     await expect(propose(JSON.stringify({ ...file, dark: { ...file.dark, ansi: [] } }))).rejects.toThrow('"dark.ansi" must be 16 #rrggbb colors')
     await expect(propose(JSON.stringify({ ...file, name: 'x'.repeat(9000) }))).rejects.toThrow('larger than 8 KB')
+    await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind: 'wake', at: Date.now() } })
     await expect(propose(JSON.stringify({ ...file, name: 'Navy Ember' }))).rejects.toThrow('never in a wake')
     await store.saveCoordinator({ ...(await store.coordinator(MAIN))!, turn: { kind: 'user', at: Date.now(), said: 'a navy theme' } })
     const out = await propose(JSON.stringify({ ...file, dark: { ...file.dark, muted: file.dark.bg } })) as { note: string, belowWcagAA: { dark: string[], light: string[] } }
@@ -375,12 +397,23 @@ describe('runAlfredCommand', () => {
   it('starts a project coordinator with the user\'s first offered agent that can run it, no model', async () => {
     await run('project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--apply')
     expect(await run('coordinator', 'start', 'WEB')).toMatchObject({ dryRun: true, change: ['start the coordinator of WEB with claude on this machine'] })
-    // Settings › Agents: OMP first (it cannot run a project coordinator), Claude unchecked.
+    // Settings › Agents: omp first (it may run a project coordinator, but never by default), Claude unchecked.
     await fs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ v: 1, settings: { agentOrder: '["omp","claude","codex"]', hiddenAgents: '["claude"]' } }))
     expect(await run('coordinator', 'start', 'WEB')).toMatchObject({ change: ['start the coordinator of WEB with codex on this machine'] })
     expect(await run('coordinators')).toMatchObject({ coordinators: [{ project: '_main' }, { project: 'WEB', agent: 'codex' }] })
     expect(await run('coordinator', 'start', 'WEB', '--program', 'claude')).toMatchObject({ change: ['start the coordinator of WEB with claude on this machine'] })
+    expect(await run('coordinator', 'start', 'WEB', '--program', 'omp')).toMatchObject({ change: ['start the coordinator of WEB with omp on this machine'] })
     await expect(run('coordinator', 'start', 'WEB', '--program', 'codex', '--model', 'gpt-6')).rejects.toThrow()
+    // An explicit omp default is kept while omp is offered.
+    await setCoordinatorAgent(store, 'WEB', { program: 'omp' })
+    expect(await run('coordinators')).toMatchObject({ coordinators: [{ project: '_main' }, { project: 'WEB', agent: 'omp' }] })
+    // Hidden, omp is no longer offered: the default moves back to a Claude or Codex.
+    await fs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ v: 1, settings: { agentOrder: '["omp","claude","codex"]', hiddenAgents: '["omp"]' } }))
+    expect(await run('coordinators')).toMatchObject({ coordinators: [{ project: '_main' }, { project: 'WEB', agent: 'claude' }] })
+    // omp is the default only when neither Claude nor Codex is offered.
+    await store.saveCoordinator({ ...(await store.coordinator('WEB'))!, agent: undefined })
+    await fs.writeFile(path.join(dir, 'settings.json'), JSON.stringify({ v: 1, settings: { agentOrder: '["omp","claude","codex"]', hiddenAgents: '["claude","codex"]' } }))
+    expect(await run('coordinator', 'start', 'WEB')).toMatchObject({ change: ['start the coordinator of WEB with omp on this machine'] })
   })
 
   // WHR-387: the tab open at the user's message, the tabs with their projects, a brief per tab or all.
@@ -427,6 +460,7 @@ describe('Alfred and a project\'s workflow and coordinator', () => {
     await store.setEnabled(true)
     await issueAlfredToken(store, dir)
     token = (await fs.readFile(path.join(dir, ALFRED_TOKEN_FILE), 'utf8')).trim()
+    await turn('user')
     await run(['project', 'add', 'WEB', '--machine', '', '--path', '/src/web', '--apply'])
     sent.length = 0
     panes = []
@@ -434,6 +468,7 @@ describe('Alfred and a project\'s workflow and coordinator', () => {
   afterEach(() => fs.rm(dir, { recursive: true, force: true }))
 
   it('proposes a workflow change only in the user\'s turn; the user accepts it in the same review', async () => {
+    await turn('wake')
     await expect(run(['project', 'workflow', 'edit', 'WEB'], '{}')).rejects.toThrow('only for a turn that comes from the user')
     // WHR-473: another project's workflow, copied onto one with only the minimal default (guards included).
     await turn('user', 'copy the company workflow')
@@ -469,7 +504,8 @@ describe('Alfred and a project\'s workflow and coordinator', () => {
     await run(['tell', 'WEB', 'From Alfred, for the user: propose a workflow'])
     const relayed = { terminal: 't-web', text: 'From Alfred, for the user: propose a workflow' }
     expect(sent).toEqual([['terminal.send', relayed], ['terminal.send', relayed]])
-    expect((await store.coordinator('WEB'))!.turn).toMatchObject({ kind: 'user', said: 'ask WEB for a workflow' })
+    // WHR-512: a relay turn (the user's words kept for the log), never the user's own turn.
+    expect((await store.coordinator('WEB'))!.turn).toMatchObject({ kind: 'relay', said: 'ask WEB for a workflow' })
     expect((await store.projectLog('WEB')).at(-1)).toMatchObject({ by: 'Alfred', text: 'told the coordinator: propose a workflow' })
     // In Alfred's wake, the coordinator's turn is a wake too.
     await turn('wake')

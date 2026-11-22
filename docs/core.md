@@ -44,7 +44,12 @@ space's `herdr.space`, a new `herdr.tab` and `herdr.seen=0`, so it also appears 
 herdr-app. Terminals made from the "New" sheet get the space whose folder holds
 their cwd, else a new one. A tab of one terminal not named in herdr-app's layout is renamed
 through that terminal's `herdr.title`; closing a tab or a space kills each of its terminals.
-Split, move and renaming a tab named in the layout stay in herdr-app.
+**Split right**, **Split down** and **Split with agent…** start the new terminal with its tab's `herdr.space` / `herdr.tab` (from the labels or
+the layout); a folder tab gets a wherdr-own `wherdr.tab` label on both terminals, which herdr-app
+ignores (a terminal's `cwd` stays its start folder, so the space holds). The split layout is
+wherdr's own: a tree per tab (leaves are core addresses) in the synced setting `tabSplits`, never
+written to herdr-app's document; a pane missing from it goes at the bottom. Move and renaming a tab
+named in the layout stay in herdr-app.
 Each pane preserves its full core address behind a stable interface identifier.
 Agent identity uses core's `agent` field when supplied, otherwise recognised
 application/template/command names. Identity does not gate status: OSC 7501
@@ -76,7 +81,7 @@ after each reply and have a three-second deadline and a 16 MiB reply limit.
 
 ## Conversations
 
-Claude Code, Codex and Devin terminals open in conversation mode, as in v2, with the same
+Claude Code, Codex, Devin and Antigravity terminals open in conversation mode, as in v2, with the same
 conversation view, search, queued messages and quotas. The conversation file is found
 the way v2 does for Herdr panes, from what core gives: `terminal.get` supplies the
 foreground process and pid (Claude Code's `~/.claude/sessions/<pid>.json` names its
@@ -121,13 +126,71 @@ older pages that held the call, so reloaded history includes its result. Only
 inline image data is shown; image paths in ATIF are never opened. Model metadata comes from that checkpoint too; model
 pickers remain v2 only.
 
+Antigravity CLI (`agy`, tested with 1.5.8) is read through its saved
+conversations at `~/.gemini/antigravity-cli/conversations/<uuid>.db` (SQLite,
+WAL mode; locally it is opened in place, read-only, only while agy holds both
+`-wal` and `-shm` sidecars — a read-only open creates them otherwise and would
+leave them in agy's folder. Otherwise the database and its `-wal` sidecar are
+copied to a snapshot before `node:sqlite` opens them, so remote machines read a
+consistent view through `machine.exec`, and 256 MiB is the snapshot limit). A remote conversation keeps
+one local base copy between reads: the main file ships over again only when
+its own identity moves, a WAL still under the same 32-byte header ships only
+its grown tail and is appended to the kept copy — but only after the last
+frame that copy holds is re-read unchanged, since a rewound savepoint can
+rewrite a spilled frame's header in place inside one generation; a restart or
+a stale kept frame rewrites the file once. A copy that ends mid-frame is cut
+back to the last whole frame (a frame's 24-byte header and its page are
+separate writes), so a partial frame is never trusted across reads — and both
+files are stat'ed fresh after the copy so a move under it retries rather than
+opening a torn pair.
+A WAL-mode checkpoint rewrites the database file, so the next read ships it
+in full again; a page-level delta would need a page-hash helper on the remote
+machine (no such primitive exists on `MachineFs` today), which is why the
+copy stays whole — bounded by the snapshot limit — until one lands. Kept
+copies live in the system temp dir under `wherdr-agy-<pid>-*` (often tmpfs, up
+to 256 MiB each): a restart removes the folders whose process no longer runs
+(so a second server on the same host keeps its own), and a pane that goes
+takes its copy with it. Step
+payloads are protobuf blobs decoded by a small bounds-checked reader
+(`server/utils/agyProtobuf.ts`).
+The session is resolved fail-closed from what the `agy` process holds open —
+`conversations/<uuid>.db`, its WAL/SHM sidecars or `presence/<uuid>.lock` —
+checked on Linux through `/proc/<pid>/fd` and elsewhere through `lsof`, then the
+exact `--conversation <uuid>` launch argument, then nothing: a descriptor set
+naming two conversations resolves to nothing rather than a wrong conversation,
+and the `conversation_summaries.db` index is never used (a relaunched `agy` in
+the same folder would show its previous conversation until the new one is
+written). Local `ANTIGRAVITY_APP_DATA_DIR` is honored; remote machines use their home and the
+default path. Checkpoints and internal system steps are not rendered; a tool
+result stored in a later step invalidates the pages that held the call, and
+model metadata comes from `gen_metadata`. `node:sqlite` needs Node 22.13 or
+later and is loaded only when an Antigravity conversation is read: on an older
+Node the pane stays in Terminal mode (Conversation unavailable), and no other
+agent loads or warns about it.
+
+Hermes Agent (`hermes`, NousResearch/hermes-agent) is read from its profile's
+`state.db` (SQLite, WAL), built from Hermes' source (v0.23.2, schema 33) and
+**not yet tested with a real Hermes**: feedback welcome on
+[issue #48](https://github.com/afloury/wherdr/issues/48). The session is the
+one the pane shows, never a guess: the TUI's active-session file (named in its
+Node process's environment, Linux only), else the session id on the classic
+CLI's bottom bar (a bar cut off by a narrow pane gives none). The profile comes
+from `-p`/`--profile`, `HERMES_HOME` or `active_profile`, as Hermes resolves
+it. Messages are read across compression and `/reset` segments, with rewound
+turns and model-only summaries hidden. The database is never written and never
+gets sidecars: it opens read-only in place only while Hermes' gateway holds
+`-wal` and `-shm`, otherwise with `immutable=1`. Locally through `node:sqlite`
+(Node 22.13 or later); on another machine the same read runs there through
+Hermes' own Python, without copying the database.
+
 Text left unsent in Claude Code's own input box (a draft or paste never submitted, or the
 prompt Claude puts back after an interrupt) shows at the end of the conversation as
 **Not sent** once it has stayed unchanged for two seconds and the colored screen (the first
 paint of a passive `terminal.attach`) confirms it is typed text, not Claude's gray suggestion, with **Send now** (Enter, pressed
 again every ~1 s while the box still holds that text alone, then a check that the box emptied and a turn started) and **Clear**. When Claude's queue offers
 "ctrl+enter to send now", the conversation offers **Send now** too (ctrl+enter, then a check
-that Claude took its queue). Each action re-reads the screen first and refuses a box that
+that Claude took its queue), under the queued message it sends: a note wherdr typed itself (a
+card's outcome, a wake) shows there as its tagged row, marked *sent when it finishes*. Each action re-reads the screen first and refuses a box that
 changed (`server/utils/coreDraft.ts`). **Send now** spins and disables the row's buttons from
 the tap until the message leaves the screen; a failure says why under it (*Not sent: … Try
 again*). One action runs at a time per terminal: the same one asked again, from a second tap
@@ -145,18 +208,28 @@ message is still there (up to ten times over about 16 seconds). A message with p
 with a lone `\` on its last line: core presses Enter right after its paste, and Claude,
 before it has turned a photo path into `[Image #N]`, would submit the path as plain text;
 `\` + Enter is a new line in Claude, so the message waits in the box for wherdr's Enter.
+Only when the box keeps the paste as it is: Claude collapses a paste of 3 line breaks or
+more, or over 800 characters (counted once it took out the photos it could read), into
+`[Pasted text #N +K lines]` (or `[Pasted text #N]`), and a `\` there would sit inside it,
+hold no Enter and reach Claude; such a message is sent without it. A stand-in counts as the
+message when its line count fits it (its text lines, plus the photos missing from its
+`[Image #N]` tags), also for a one-line text, with or without photos.
 Claude Code checks and reads a pasted photo path within one second, or keeps it as typed text
 for good (after an idle, on a loaded machine): a message whose photo shows as its path is
 cleared and pasted once more, only once its field is seen empty; a field that does not empty,
 or can no longer be read, after that clear refuses the send (**Not sent**, with Retry for the
 whole message), never submitting part of it. A multi-line message shows in the box as
 `[Pasted text #N +K lines]`, its photo paths hidden inside: a photo missing from the
-`[Image #N]` tags before it is such a path, and is pasted once more the same way.
+`[Image #N]` tags before it is such a path, and is pasted once more the same way. When the
+stand-in also hides the `\` (missed photos made a short text long enough to collapse), the
+message is pasted once more without it, at once, and goes with its paths if Claude misses
+them again.
 The 18 seconds count from the first paste, clears and the second paste included: the message
 is pasted again only with 6 seconds still left, otherwise it goes as it is at once.
 A photo still shown as its path after that, or when the wait ends, is never left there: wherdr takes the
 `\` out (Backspace, only while the box ends with it), presses Enter, and the message goes
-with its path, which the agent can still open; this leaves one line in the server log (the
+with its path, which the agent can still open (also a path wider than the box, which Claude
+draws over two lines); this leaves one line in the server log (the
 wait's duration and the sizes, never the text). A box that never holds the message alone
 when the wait ends (part of it, or other text) gets no Enter: the send is refused, so the
 message reads **Not sent** with Retry, and that text shows with **Send now** / **Clear**. The whole send (paste, wait, Enters) runs
@@ -175,13 +248,15 @@ log (terminal and Enter count; when it failed, the sizes of what the box held an
 was expected: characters, images, lines, never the text). A send in progress is noted in
 `data/submitting.json` until it ends: if wherdr restarts meanwhile (an update), it resumes
 it at startup, the same way and only on a box that holds that message alone.
-A message another terminal sent with `hc send` (wrapped in `<hc from="…">`) is shown
+A message another terminal sent with `hc send` (wrapped in `<hc from="…">`, whatever its other attributes) is shown
 without that wrapper, its photos as photos.
 A message only tells what wherdr knows: from the tap until it is in the agent's transcript,
 its bubble reads **Sending…** with a small turning loader, whatever the send answered or the
 screen shows, also on another device or after a reload (the server marks the terminal as
 sending while it submits a message, text or photos); it never claims the agent read it.
-Held in Claude's own queue, it reads **Queued by Claude · sent when it finishes**. Once in
+Held in Claude's own queue, it reads **Queued by Claude · sent when it finishes**. Waiting
+messages show in the order they were sent, the oldest on top, whether wherdr or Claude's own
+queue lists them. Once in
 the transcript, the transcript's own message replaces it. Only once the server is done
 (its Enters over) and the message is still in the box does its bubble read **Not sent yet ·
 waiting in the agent's input** (the box's **Not sent — still in Claude's input**, with

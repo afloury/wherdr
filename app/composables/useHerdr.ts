@@ -17,6 +17,7 @@ import { READY_SORTS, type ReadySort } from '#shared/spaces'
 import { DEADLINE_WARNING_MS } from '#shared/sessionLimit'
 import { effectiveTypingSpeed, encryptedTextActive, parseTypingSettings } from '~/utils/typewriter'
 import { readAgentOrder, readHiddenAgents } from '~/utils/agentChoices'
+import { readNamedAgents, type NamedAgent } from '#shared/pm/namedAgents'
 import { checkNewVersionOnWake } from './useAppVersion'
 import { onceEvery } from '~/utils/onceEvery'
 import { keepIfSame } from '~/utils/keepIfSame'
@@ -91,6 +92,8 @@ export const quotaDisplay = syncedRef<QuotaDisplay>('quotaDisplay', readQuotaDis
 export const hiddenAgents = syncedRef<string[]>('hiddenAgents', readHiddenAgents, v => JSON.stringify(v), { deep: true })
 // Settings › Agents order: the first offered agent is the default everywhere.
 export const agentOrder = syncedRef<string[]>('agentOrder', readAgentOrder, v => JSON.stringify(v), { deep: true })
+// Settings › Agents › Named agents (shared/pm/namedAgents.ts), read by the engine too.
+export const namedAgents = syncedRef<NamedAgent[]>('namedAgents', readNamedAgents, v => JSON.stringify(v), { deep: true })
 // Content width on a computer; migration of the old preference.
 export const contentWidth = ref<ContentWidth>(migrateContentWidth(ls.get('contentWidth'), ls.get('chatWidth')))
 watch(contentWidth, (v) => {
@@ -298,6 +301,22 @@ export const machineName = (key: string | null | undefined) => {
 export const paneStale = (p: Pane | null | undefined) => {
   const m = p ? machineInfo(p.machine) : undefined
   return Boolean(m && m.status !== 'online')
+}
+// "Open in editor" applies to a pane with a folder on a Mac. The core state does not
+// give a remote machine's system: unknown is offered, the server answers "not a Mac".
+export const canOpenOnMachine = (p: Pane | null | undefined) => {
+  const os = p ? machineInfo(p.machine)?.os : undefined
+  return Boolean(p?.cwd && !paneStale(p) && (!os || os === 'Darwin'))
+}
+// The agent's folder in its default editor, on the agent's machine (checked server-side).
+// Shared by the agent menu entry and the Mod+Alt+O shortcut.
+export async function openFolderOnMachine(pane: Pane) {
+  try {
+    const r = await api<{ machine: string }>('/api/open-editor', { pane_id: pane.id })
+    toast(tl(`Opened in the editor on ${r.machine}`))
+  } catch (err) {
+    toast((err as Error).message, true)
+  }
 }
 function readList(raw: string | null): string[] {
   try {

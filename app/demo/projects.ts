@@ -60,13 +60,35 @@ export function tasks(now: number): Task[] {
     }),
     task('WEB-9', 'visual', 'Empty states for the dashboard', 'Each dashboard card says what to do when it has no data yet.', { state: 'todo', after: 'WEB-7' }),
     task('WEB-6', 'simple', 'Mobile menu covers the page title', 'On a phone the open menu hides the title: push the page down instead.', {
-      state: 'working', step: at(5, min(300), { done: true }), log: [{ at: min(300), by: 'engine', text: 'Merged PR #39' }],
+      state: 'working',
+      // Its History: a send-back, the fix, then the merge (the sheet's History timeline).
+      step: at(5, min(300), {
+        done: true, proofs: { work: { report: 'The open menu now **pushes the page down**; the title stays visible.' } },
+        minor: { review: [] },
+        reviews: { review: [{ findings: [{ id: 'f1', severity: 'major', title: 'The title still hides behind the menu on landscape phones', proof: 'seen at 844x390' }] }] },
+      }),
+      workReports: [
+        { step: 'work', text: 'The open menu pushes the page down instead of covering it.' },
+        { step: 'work', text: 'Fixed the landscape case: the menu height is measured, not fixed. The title stays visible.' },
+      ],
+      log: [
+        { at: min(420), by: 'user', text: 'started the task' },
+        { at: min(419), by: 'engine', text: 'work: sent to the worker' },
+        { at: min(380), by: 'worker claude opus', text: 'work: done' },
+        { at: min(379), by: 'engine', text: 'pr: opened PR #39' },
+        { at: min(378), by: 'engine', text: 'review: sent to the reviewer' },
+        { at: min(360), by: 'reviewer codex gpt-5', text: 'review: verdict, 1 finding(s)' },
+        { at: min(340), by: 'worker claude opus', text: 'work: done' },
+        { at: min(320), by: 'reviewer codex gpt-5', text: 'review: verdict, 0 finding(s)' },
+        { at: min(310), by: 'engine', text: 'merge: checks failed (lint): the worker is asked to fix them' },
+        { at: min(300), by: 'engine', text: 'merge: merged PR #39 into main' },
+      ],
     }),
     task('API-12', 'simple', 'Per-key rate limits on the public API', 'A token bucket per API key, 429 with Retry-After, limits from the customer plan. Tests included.', {
       step: at(1, min(30)), branch: 'task/API-12', log: [{ at: min(31), by: 'Ada', text: 'Created for the 2.3 release' }],
     }),
     task('API-13', 'simple', 'Fix the flaky CSV export test', 'export.spec.ts fails about one run in ten in CI. Find out why and make it deterministic.', {
-      step: at(1, min(25)), branch: 'task/API-13', tags: ['ci'],
+      step: at(1, min(25)), branch: 'task/API-13', tags: ['ci'], log: [{ at: min(25), by: 'user', text: 'started the task' }],
     }),
     task('API-10', 'simple', 'Webhook retries with backoff', 'Retry failed webhook deliveries 5 times, doubling the wait, then mark them failed.', {
       step: at(3, min(6)), branch: 'task/API-10',
@@ -81,5 +103,5 @@ export function tasks(now: number): Task[] {
 export const runs = (now: number): Run[] => {
   const run = (task: string, role: Run['role'], program: string, terminal: string, ago: number): Run =>
     ({ id: `r-${task}-${role}`, task, role, program, model: '', machine: '', worktree: `${HOME}/.wherdr/worktrees/${task}`, branch: `task/${task}`, instructions: '', terminal, attempt: 1, state: 'running', startedAt: now - ago * 60_000 })
-  return [run('WEB-7', 'worker', 'claude', WEB_AT, 95), run('API-12', 'worker', 'codex', CODEX_AT, 30), run('API-13', 'worker', 'omp', OMP_AT, 25)]
+  return [run('WEB-7', 'worker', 'claude', WEB_AT, 95), run('API-12', 'worker', 'codex', CODEX_AT, 30), { ...run('API-13', 'worker', 'omp', OMP_AT, 25), agent: 'omp-sub' }] // omp-sub: a named agent (Settings › Agents)
 }

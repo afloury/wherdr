@@ -32,6 +32,8 @@ describe('alfredFiles', () => {
     expect(a).toContain('This wherdr answers at http://127.0.0.1:7684 on its machine.')
     expect(alfredFiles({ ...ctx, address: { local: 'http://127.0.0.1:7684', remote: 'https://wherdr.example.ts.net' } }, [])['AGENTS.md']).toContain('and at https://wherdr.example.ts.net from the user\'s other devices')
     expect(a).toContain('never in a shell block (its *Run* button would run it here)')
+    // WHR-514: the update page's update.sh is run during an update, never forbidden by the next line.
+    expect(a).toMatch(/follow that page step by step[^\n]*\n'?Outside an update, commands for the wherdr server itself/)
     expect(a).toContain('only after the user\'s yes')
     expect(a).toContain('`wherdr alfred project add <KEY> --machine <key> --path <folder> [--name <name>] [--template example:<id>] [--apply|--propose]`')
     expect(a).toContain('with `--apply` only after their yes in this chat')

@@ -5,7 +5,7 @@
 // lightbox, dividers) stay with that component.
 
 export type ShortcutId = 'search-all' | 'search-chat' | 'toggle-term' | 'stop' | 'prev-agent' | 'next-agent'
-  | 'new-space' | 'new-tab' | 'close-pane' | 'open-editor' | 'settings' | 'notes' | 'help'
+  | 'new-space' | 'new-tab' | 'close-pane' | 'split-right' | 'split-down' | 'open-editor' | 'settings' | 'notes' | 'help'
 
 export type Mod = 'mod' | 'ctrl' | 'alt' | 'shift'
 
@@ -50,6 +50,10 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'new-space', mods: ['mod', 'alt'], key: 'n', fields: 'any', terminal: true, capture: true, kbds: ['meta', 'alt', 'N'] },
   { id: 'new-tab', mods: ['mod', 'alt'], key: 't', fields: 'any', terminal: true, capture: true, kbds: ['meta', 'alt', 'T'] },
   { id: 'close-pane', mods: ['mod', 'alt'], key: 'w', fields: 'any', terminal: true, capture: true, kbds: ['meta', 'alt', 'W'] },
+  // Split the current pane (S for split): a shell to the right, or below with Shift. Caught
+  // before the terminal as N, T and W. Not ⌥⌘D: macOS shows or hides the Dock with it.
+  { id: 'split-right', mods: ['mod', 'alt'], key: 's', fields: 'any', terminal: true, capture: true, kbds: ['meta', 'alt', 'S'] },
+  { id: 'split-down', mods: ['mod', 'alt', 'shift'], key: 's', fields: 'any', terminal: true, capture: true, kbds: ['meta', 'alt', 'shift', 'S'] },
   // Current agent folder in its default editor: like the other machine actions, Mod+Alt
   // (chromium.org never lets pages see Mod+N, T or W). O, not E: Firefox and Zen bind
   // ⌘⌥E to the Network Monitor on macOS (Ctrl+Shift+E elsewhere), Zen also uses
@@ -140,6 +144,9 @@ export function findConflict(table: readonly Shortcut[], id: ShortcutId, kbds: s
 }
 
 // `keyCode` 229: the key that ends an IME composition in Safari (isComposing already false).
+// Every Enter that sends or submits checks this first.
+export const imeComposing = (e: { isComposing?: boolean, keyCode?: number }) => Boolean(e.isComposing || e.keyCode === 229)
+
 export interface KeyInput { key?: string, code?: string, keyCode?: number, ctrlKey?: boolean, metaKey?: boolean, altKey?: boolean, shiftKey?: boolean, isComposing?: boolean, defaultPrevented?: boolean, repeat?: boolean }
 
 export interface ShortcutFocus {
@@ -182,7 +189,7 @@ function keysMatch(s: Shortcut, e: KeyInput, key: string, c: ShortcutContext): b
 }
 
 export function matchShortcut(e: KeyInput, f: ShortcutFocus, c: ShortcutContext, table: readonly Shortcut[] = SHORTCUTS): ShortcutId | null {
-  if (typeof e.key !== 'string' || e.isComposing || e.keyCode === 229 || (c.phase === 'bubble' && e.defaultPrevented)) return null
+  if (typeof e.key !== 'string' || imeComposing(e) || (c.phase === 'bubble' && e.defaultPrevented)) return null
   const key = e.key.toLowerCase()
   const s = table.find(x => Boolean(x.capture) === (c.phase === 'capture') && keysMatch(x, e, key, c))
   if (!s) return null

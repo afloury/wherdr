@@ -6,7 +6,7 @@
 // every 30 s, the coordinators' wake queue ticks (pmWakes.ts), and every
 // minute the engine makes its mechanical moves (pmMechanic.ts), its step actions
 // started outside the tick (pmBoard.ts startAction). Every 30 s,
-// one grouped push for new Decisions (pmDecisions.ts), and the projects'
+// one grouped push for what newly waits for the user (pmDecisions.ts), and the projects'
 // automations fire (pmAutomations.ts). Every minute, one task's TL;DR is
 // written again after a significant change (pmSummary.ts). At start and every
 // 5 minutes, the processes left in the worktrees of tasks with no live agent
@@ -55,9 +55,11 @@ export default defineNitroPlugin((nitroApp) => {
   // A project's On state change command, in the background (pmOnState.ts).
   pmStore().onStateChanges((t, states) => { void runOnState({ ...coreAdminDeps(), store: pmStore() }, t, states).catch(() => {}) })
   void repairDoneTasks(pmStore()).catch(() => {})
+  // Every 10 s for 5 min, then once a minute until herdr-core answers (said once in the log).
   let tries = 0
   const timer = setInterval(() => {
-    if (++tries > 30) return clearInterval(timer)
+    if (++tries === 31) console.warn('[pm] herdr-core has not answered for 5 min: runs are reconciled (merges resumed, worktrees swept) once it does, tried once a minute')
+    if (tries > 30 && tries % 6) return
     reconcileRuns({ ...coreAdminDeps(), store: pmStore() }).then(() => {
       clearInterval(timer)
       void sweepWorktrees({ ...coreAdminDeps(), store: pmStore() }).catch(() => {})

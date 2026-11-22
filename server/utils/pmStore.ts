@@ -10,6 +10,7 @@
 // maps/<WS>.json (a workspace's map: shared/pm/workspaceMap.ts).
 // Atomic writes (temp file + rename), one at a time. Switched off, every
 // write is refused except turning it back on.
+import { namedAgents } from './settings'
 import fs from 'node:fs/promises'
 import path from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -17,9 +18,10 @@ import type { UiCard } from '../../shared/uiActions'
 import { cleanProjectInput, isBranch, isGitBranch, machinesOf, isTemplateId, KEY_RE, type PmOverview, type Project, type ProjectUpdate, type TemplateInfo } from '../../shared/pm/project'
 import { defaultColor, keyClash, projectOf, renamed, showIds, shownKey, storedTaskId } from '../../shared/pm/projectKey'
 import type { RepoVisibility } from '../../shared/pm/visibility'
-import { WEIGHTS, defaultWorkflow, isWeight, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
+import { WEIGHTS, defaultWorkflow, isContextError, isWeight, readContext, startOverFrom, validateTemplate, type Template } from '../../shared/pm/workflow'
+import { checkTaskContext } from '../../shared/pm/context'
 import { templateChanges, type LogEntry } from '../../shared/pm/templateText'
-import { publicTask, taskPlan, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
+import { publicTask, taskPlan, taskPrefsOf, type Run, type Task, type TaskLogEntry } from '../../shared/pm/run'
 import { replan } from '../../shared/pm/steps'
 import { afterIds } from '../../shared/pm/advance'
 import { parseFiles } from '../../shared/pm/files'
@@ -28,7 +30,7 @@ import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { withMark } from '../../shared/pm/times'
 import { HerdrError } from './herdr'
 import type { FolderOptions } from '../../shared/pm/newProject'
-import { MAIN, type CoordinatorAgent, type Proposal, type ProposalAnswer } from '../../shared/pm/coordinator'
+import { MAIN, type CoordinatorAgent, type NotedTurn, type Proposal, type ProposalAnswer } from '../../shared/pm/coordinator'
 import type { Incident } from '../../shared/pm/incident'
 import { NEW_AUTOPILOT, type Autopilot, type DayCount, type LastWake, type TaskStatus } from '../../shared/pm/autopilot'
 import { readQueue, sinceYesterday, type Wake, type WakeSkip } from '../../shared/pm/wakes'
@@ -36,8 +38,9 @@ import type { HealthSent } from '../../shared/pm/health'
 import type { Automation, AutomationProposal, Mark } from '../../shared/pm/automations'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { afterRefusal, subTasks } from '../../shared/pm/feature'
+import { parseRefs } from '../../shared/pm/planRefs'
 import { eventOf, stateChanges, type TaskStateName } from '../../shared/pm/onState'
-import { cleanWorkspaceFields, effectiveProjects, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, workspaceErrors, workspaceOf, workspaceTaskError } from '../../shared/pm/workspace'
+import { SHARED_FIELDS, backToWorkspace, effectiveProject, followShared, isSharedField, cleanWorkspaceFields, effectiveProjects, liftShared, needsSink, sinkShared, isWorkspace, memberOverrides, ownWorkflow, workflowOverrides, effectiveWorkflow, sharedSetup, workspaceErrors, workspaceOf, workspaceTaskError, removeRefusal } from '../../shared/pm/workspace'
 import type { MapFile } from '../../shared/pm/workspaceMap'
 import { DATA_DIR } from './env'
 import { writeFileAtomic, writeJsonAtomic } from './atomicWrite'
@@ -48,7 +51,7 @@ import { writeFileAtomic, writeJsonAtomic } from './atomicWrite'
 // change waiting for the user.
 export interface CoordinatorRecord {
   // cliHash: Alfred's `wherdr alfred` token (the main coordinator's record only).
-  project: string, tokenHash: string, cliHash?: string, terminal?: string, turn?: { kind: 'user' | 'wake', at: number, said?: string, look?: true }
+  project: string, tokenHash: string, cliHash?: string, terminal?: string, turn?: { kind: NotedTurn, at: number, said?: string, look?: true }
   // answers: the last answers to its proposals, oldest first (answered: the one
   // kept before there were several).
   agent?: CoordinatorAgent, ran?: CoordinatorAgent, proposal?: Proposal, answers?: ProposalAnswer[], answered?: ProposalAnswer
@@ -88,7 +91,7 @@ async function readJson<T>(file: string): Promise<T | null> {
   }
 }
 
-const writeJson = (file: string, data: unknown) => writeJsonAtomic(file, data, { dirMode: 0o700 })
+const writeJsonStored = (file: string, data: unknown) => writeJsonAtomic(file, data, { dirMode: 0o700 })
 
 // A line of a project's log: a task removed (task), or a contributor's PR
 // merged on the user's yes (pr, said: the user's own message), by whom and why.
@@ -122,28 +125,41 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     const names = (await fs.readdir(folder).catch(() => [] as string[])).filter(n => n.endsWith('.json')).sort()
     return (await Promise.all(names.map(n => readJson<T>(path.join(folder, n)).catch(() => null)))).filter((x): x is Awaited<T> & {} => !!x)
   }
-  // The runs, kept in memory: clients and ticks ask for them all the time, and
-  // finished runs pile up. Every save is a rename into the folder, which
-  // changes the folder's mtime: while it stays the same, nothing is read; when
-  // it changes, only the files whose mtime or size changed are read again.
-  let runCache: { at: number, files: Map<string, { mtime: number, size: number, run: Run | null }>, list: Run[] } | null = null
-  const runs = async (): Promise<Run[]> => {
-    const at = (await fs.stat(files.runs).catch(() => null))?.mtimeMs
-    if (at === undefined) return []
-    if (runCache?.at === at) return [...runCache.list]
-    const names = (await fs.readdir(files.runs).catch(() => [] as string[])).filter(n => n.endsWith('.json')).sort()
-    const old = runCache?.files, next = new Map<string, { mtime: number, size: number, run: Run | null }>()
-    await Promise.all(names.map(async (n) => {
-      const file = path.join(files.runs, n), s = await fs.stat(file).catch(() => null)
-      if (!s) return
-      const was = old?.get(n)
-      const run = was && was.mtime === s.mtimeMs && was.size === s.size ? was.run : await readJson<Run>(file).catch(() => null)
-      next.set(n, { mtime: s.mtimeMs, size: s.size, run })
-    }))
-    runCache = { at, files: next, list: names.flatMap(n => next.get(n)?.run ?? []) }
-    return [...runCache.list]
+  // The runs and the tasks, kept in memory: clients and ticks ask for them all
+  // the time, and finished runs and archived tasks pile up (hundreds of tasks
+  // parsed again on every tick kept a small host's CPU busy and its memory high).
+  // Every save is a rename into the folder, which changes the folder's mtime:
+  // while it stays the same, nothing is read; when it changes, only the files
+  // whose mtime, size or inode changed are read again. Our own writes also mark
+  // the folder stale (a rename within the clock's tick may leave its mtime as is).
+  // A write during a read leaves that read untrusted. The objects are shared
+  // between callers: never change one in place.
+  const folders = new Map<string, () => void>()
+  function cachedFolder<T>(folder: string) {
+    let cache: { at: number, files: Map<string, { mtime: number, size: number, ino: number, value: T | null }>, list: T[] } | null = null
+    let gen = 0
+    folders.set(folder, () => { gen++; if (cache) cache.at = -1 })
+    return async (): Promise<T[]> => {
+      const g = gen, at = (await fs.stat(folder).catch(() => null))?.mtimeMs
+      if (at === undefined) return []
+      if (cache?.at === at) return [...cache.list]
+      const names = (await fs.readdir(folder).catch(() => [] as string[])).filter(n => n.endsWith('.json')).sort()
+      const old = cache?.files, next = new Map<string, { mtime: number, size: number, ino: number, value: T | null }>()
+      await Promise.all(names.map(async (n) => {
+        const file = path.join(folder, n), s = await fs.stat(file).catch(() => null)
+        if (!s) return
+        const was = old?.get(n)
+        const value = was && was.mtime === s.mtimeMs && was.size === s.size && was.ino === s.ino ? was.value : await readJson<T>(file).catch(() => null)
+        next.set(n, { mtime: s.mtimeMs, size: s.size, ino: s.ino, value })
+      }))
+      cache = { at: g === gen ? at : -1, files: next, list: names.flatMap(n => next.get(n)?.value ?? []) }
+      return [...cache.list]
+    }
   }
-  const tasks = () => readAll<Task>(files.tasks)
+  const stale = (file: string) => folders.get(path.dirname(file))?.()
+  const writeJson = async (file: string, data: unknown) => { try { await writeJsonStored(file, data) } finally { stale(file) } }
+  const runs = cachedFolder<Run>(files.runs)
+  const tasks = cachedFolder<Task>(files.tasks)
   // The project's log: the tasks removed, by whom and why.
   const projectLog = async (key: string) =>
     (TASK_ID_RE.test(`${key}-1`) ? (await readJson<{ entries?: ProjectLogEntry[] }>(path.join(files.projectLog, `${key}.json`)))?.entries : null) ?? []
@@ -206,12 +222,21 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     for (const p of list) out.push(p.color ? p : { ...p, color: defaultColor([...out, ...list.filter(x => x.color)]) })
     await saveProjects(out)
   }
+  // A workspace that kept its working branch (branch name, placement, archive
+  // delay, branch kept) on itself: they go into `shared`, where its members read them. Idempotent.
+  async function migrateShared() {
+    const list = await readProjects()
+    const moved = list.filter(needsSink)
+    if (!moved.length) return
+    await saveProjects(list.map(p => (needsSink(p) ? sinkShared(p) : p)))
+    console.warn(`[pm] workspace settings moved into shared, for their members: ${moved.map(p => p.key).join(', ')}`)
+  }
   let migrated: Promise<void> | null = null
   // A migration that fails (a workspace error in saveProjects, say) is logged and
   // skipped: the board keeps serving the projects as stored, and tries it again at the next start.
   const tryMigrate = (name: string, run: () => Promise<void>) => run().catch((e) => { console.warn(`[pm] ${name} migration skipped: ${e instanceof Error ? e.message : e}`) })
   // As stored: what writes change. Readers get effective ones (shown below).
-  const projects = async () => { await (migrated ??= tryMigrate('workflow', migrate).then(() => tryMigrate('color', migrateColors))); return readProjects() }
+  const projects = async () => { await (migrated ??= tryMigrate('workflow', migrate).then(() => tryMigrate('color', migrateColors)).then(() => tryMigrate('workspace', migrateShared))); return readProjects() }
   async function templates(): Promise<TemplateInfo[]> {
     const names = await fs.readdir(files.templates).catch(() => [] as string[])
     const out: TemplateInfo[] = []
@@ -248,6 +273,13 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
   // (replan), said in its log. Within the workflow's write.
   // A new task from addTask's input, checked, not saved; pending: those of
   // the same write, not saved yet.
+  // A task's own prefs (task add --agent), checked as the workflow's: an agent
+  // names a program or a named agent of Settings › Agents. Empty ones dropped.
+  async function taskPrefs(raw: unknown): Promise<Task['prefs']> {
+    const r = taskPrefsOf(raw, await namedAgents())
+    if ('errors' in r) throw badInput(r.errors)
+    return r.prefs
+  }
   async function newTask(raw: unknown, pending: Task[] = []): Promise<Task> {
     const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>
     const str = (k: string) => (typeof o[k] === 'string' ? (o[k] as string).trim() : '')
@@ -275,8 +307,17 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     if (fromBranch && !isGitBranch(fromBranch)) throw badInput([{ path: 'fromBranch', message: 'a branch name' }])
     if (o.weight !== undefined && o.weight !== '' && !isWeight(o.weight)) throw badInput([{ path: 'weight', message: `one of ${WEIGHTS.join(', ')}` }])
     const weight = isWeight(o.weight) ? o.weight : undefined
+    // Context folders: only a member's task, naming other members of its workspace.
+    const asked = readContext(o.context)
+    if (isContextError(asked)) throw badInput([{ path: 'context', message: asked.error }])
+    const checked = asked && checkTaskContext(asked, p, list)
+    if (checked && 'error' in checked) throw badInput([{ path: 'context', message: checked.error }])
     const origin = (['coordinator', 'automation', 'mission'] as const).find(x => x === o.origin) ?? 'user'
-    return { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(isWorkspace(p) ? { kind: 'feature' as const } : {}), ...(feature ? { feature } : {}), ...(after ? { after } : {}), ...(mergeAfter ? { mergeAfter } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}), ...(fromBranch ? { fromBranch } : {}) }
+    const refs = parseRefs(o.refs)
+    if ('error' in refs) throw badInput([{ path: 'refs', message: refs.error }])
+    if (refs.length && !feature) throw badInput([{ path: 'refs', message: 'plan lines of a feature: the task needs a feature' }])
+    const prefs = await taskPrefs(o.prefs)
+    return { id: `${p.key}-${n}`, project: p.key, title, description: str('description').slice(0, 20000), type, state: 'todo', origin, createdAt: Date.now(), ...(isWorkspace(p) ? { kind: 'feature' as const } : {}), ...(feature ? { feature } : {}), ...(refs.length ? { refs } : {}), ...(after ? { after } : {}), ...(mergeAfter ? { mergeAfter } : {}), ...(auto ? { auto } : {}), ...(addedBy ? { addedBy } : {}), ...(weight ? { weight } : {}), ...(planned.length ? { files: planned } : {}), ...(fromBranch ? { fromBranch } : {}), ...(checked ? { context: checked.context } : {}), ...(prefs ? { prefs } : {}) }
   }
 
   async function replanTasks(key: string, before: Template, after: Template) {
@@ -344,7 +385,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     workflow: async (key: string) => {
       if (!KEY_RE.test(key)) return null
       const list = await projects(), p = list.find(x => x.key === key), ws = p && workspaceOf(p, list)
-      return effectiveWorkflow(key, await readJson<Template>(workflowFile(key)), p, ws, ws ? await readJson<Template>(workflowFile(ws.key)) : null)
+      const saved = await readJson<Template>(workflowFile(key)), shared = ws ? await readJson<Template>(workflowFile(ws.key)) : null
+      // With no accepted workflow (its own or its workspace's), the tasks run on the coordinator's own
+      // agent: a member's is its workspace's.
+      const c = saved || shared ? null : await readJson<CoordinatorRecord>(path.join(files.coordinators, `${ws?.key ?? key}.json`))
+      return effectiveWorkflow(key, saved, p, ws, shared, c?.ran ?? c?.agent)
     },
     savedWorkflow: (key: string) => (KEY_RE.test(key) ? readJson<Template>(workflowFile(key)) : Promise.resolve(null)),
     workflowLog: (key: string) => (KEY_RE.test(key) ? readLog(workflowLogFile(key)) : Promise.resolve([])),
@@ -353,12 +398,12 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     saveWorkflow: (key: string, raw: unknown, { by = 'user', said = '' } = {}) => write(async () => {
       const { list, i } = await findProject(key)
       const t = raw && typeof raw === 'object' && !Array.isArray(raw) ? ownWorkflow(raw as Template) : raw
-      const errors = validateTemplate(t)
+      const errors = validateTemplate(t, await namedAgents())
       if (errors.length) throw badInput(errors)
       const old = await readJson<Template>(workflowFile(key)), ws = workspaceOf(list[i]!, list)
       const shared = ws ? await readJson<Template>(workflowFile(ws.key)) : null
       const version = await saveVersioned(workflowFile(key), workflowLogFile(key), { ...(t as Template), id: key.toLowerCase() }, old, by, said)
-      await keepOverrides(i, p => workflowOverrides(p, ws, t as Template), list)
+      await keepOverrides(i, p => workflowOverrides(p, ws, t as Template, shared), list)
       // Before the first one, the tasks followed the workspace's or the default workflow.
       await replanTasks(key, old ?? (shared && { ...shared, id: key.toLowerCase() }) ?? defaultWorkflow(key), t as Template)
       // A workspace's: the tasks of its members without their own follow it too.
@@ -389,11 +434,12 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     // A change made on the task as it is on disk, in one write (with a log line
     // when given): a caller's older copy never undoes what another wrote since
     // (an engine action that ended meanwhile). null: no such task, or the
-    // change gave null (nothing to write on the task as it is now).
-    updateTask: (id: string, change: (t: Task) => Task | null, log?: { by: string, text: string }) => write(async () => {
+    // change gave null (nothing to write on the task as it is now). all: every
+    // task as it is now, for a check that must hold at the write (a cycle in after).
+    updateTask: (id: string, change: (t: Task, all: () => Promise<Task[]>) => Task | null | Promise<Task | null>, log?: { by: string, text: string }) => write(async () => {
       const task = TASK_ID_RE.test(id) ? await readJson<Task>(path.join(files.tasks, `${id}.json`)) : null
       if (!task) return null
-      const next = change(task)
+      const next = await change(task, tasks)
       if (!next) return null
       return writeTask(log ? { ...next, log: [...(next.log ?? []), { at: Date.now(), by: log.by, text: showIds(await readProjects(), log.text) }].slice(-200) } : next)
     }),
@@ -407,7 +453,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const logFile = path.join(files.projectLog, `${t.project}.json`)
       const entries = await projectLog(t.project)
       await writeJson(logFile, { v: 1, entries: [...entries, { at: Date.now(), by, text: showIds(await readProjects(), text), task: t.id }].slice(-500) })
-      await fs.rm(path.join(files.tasks, `${t.id}.json`), { force: true })
+      const file = path.join(files.tasks, `${t.id}.json`)
+      await fs.rm(file, { force: true }).finally(() => stale(file))
     }),
     projectLog,
     logProject: (key: string, entry: Omit<ProjectLogEntry, 'at'>) => write(async () => {
@@ -482,11 +529,12 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       await writeJson(file, next)
       return next
     }),
-    saveRun: (r: Run) => write(async () => { await writeJson(path.join(files.runs, `${r.id}.json`), r); if (runCache) runCache.at = -1 }),
+    saveRun: (r: Run) => write(() => writeJson(path.join(files.runs, `${r.id}.json`), r)),
     receipt: (id: string) => readJson<Receipt>(path.join(files.receipts, `${id}.json`)),
     saveReceipt: (r: Receipt) => write(() => writeJson(path.join(files.receipts, `${r.id}.json`), r)),
 
-    // { project, title, description?, type, after?, mergeAfter?, feature?, auto?, origin?, addedBy? }: a new task, to do (origin: 'user' when unset).
+    taskPrefs,
+    // { project, title, description?, type, after?, mergeAfter?, feature?, auto?, origin?, addedBy?, prefs? }: a new task, to do (origin: 'user' when unset).
     addTask: (raw: unknown) => write(async () => {
       const task = await newTask(raw)
       await writeJson(path.join(files.tasks, `${task.id}.json`), task)
@@ -495,7 +543,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     // A feature's sub-tasks (feature.ts), all added or none: each raw is
     // addTask's, afterIndex naming earlier ones of the same split,
     // mergeAfterIndex any other one; the feature keeps the plan's order.
-    splitFeature: (id: string, raws: (Record<string, unknown> & { afterIndex: number[], mergeAfterIndex?: number[] })[], order: string, by: string) => write(async () => {
+    splitFeature: (id: string, raws: (Record<string, unknown> & { afterIndex: number[], mergeAfterIndex?: number[] })[], order: string, by: string, file?: string) => write(async () => {
       const all = await tasks(), feature = all.find(t => t.id === id)
       if (feature?.kind !== 'feature' || feature.closed) throw new HerdrError('refused', `${id} is not an open feature`)
       if (subTasks(feature, all).length) throw new HerdrError('refused', `${id} is already split: add a sub-task with task add --feature ${id}`)
@@ -509,9 +557,16 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
         const mergeAfter = [t.mergeAfter, ...(raws[i]!.mergeAfterIndex ?? []).map(j => added[j]!.id)].filter(Boolean).join(',')
         if (mergeAfter) added[i] = { ...t, mergeAfter, log: [...t.log!, { at, by, text: `merges after ${mergeAfter}` }] }
       }
-      for (const t of added) await writeJson(path.join(files.tasks, `${t.id}.json`), t)
-      const split = { ...feature, plan: { order }, log: [...(feature.log ?? []), { at, by, text: `split into ${added.map(t => t.id).join(', ')}: ${order}` }].slice(-200) }
-      await writeJson(path.join(files.tasks, `${id}.json`), split)
+      const split = { ...feature, plan: { order, ...(file ? { file } : {}) }, log: [...(feature.log ?? []), { at, by, text: `split into ${added.map(t => t.id).join(', ')}: ${order}${file ? ` (plan file ${file})` : ''}` }].slice(-200) }
+      // A write that fails removes the sub-tasks written before it.
+      const written: string[] = []
+      try {
+        for (const t of added) { const f = path.join(files.tasks, `${t.id}.json`); await writeJson(f, t); written.push(f) }
+        await writeJson(path.join(files.tasks, `${id}.json`), split)
+      } catch (e) {
+        await Promise.all(written.map(f => fs.rm(f, { force: true }).catch(() => {}).finally(() => stale(f))))
+        throw e
+      }
       return { feature: split, tasks: added }
     }),
 
@@ -532,7 +587,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       // A removed project's workflow and log under the same key are not the new one's.
       await Promise.all([workflowFile(fields.key), workflowLogFile(fields.key)].map(f => fs.rm(f, { force: true })))
       let added: Project = ws.fields.workspace
-        ? { key: fields.key, name: fields.name, color: fields.color ?? defaultColor(list), machine: fields.machine, path: folder, workspace: ws.fields.workspace, addedAt: Date.now() }
+        ? { key: fields.key, name: fields.name, color: fields.color ?? defaultColor(list, ws.fields.workspace), machine: fields.machine, path: folder, workspace: ws.fields.workspace, addedAt: Date.now() }
         : { ...fields, ...ws.fields, color: fields.color ?? defaultColor(list), path: folder, ...(git && !ws.fields.kind ? {} : { git: false as const }), addedAt: Date.now() }
       if (source) added = { ...added, from: (await copyTemplate(added.key, source, 'user')).from }
       await saveProjects([...list, added])
@@ -555,8 +610,48 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const { from: _old, ...rest } = list[i]!
       // No workflow yet: nothing to keep, the template's guards come with it.
       if (source && keepGuards) source = startOverFrom(source, await readJson<Template>(workflowFile(rest.key)))
+      const ws = workspaceOf(rest, list), old = !source && ws ? await readJson<Template>(workflowFile(rest.key)) : null
       if (source) list[i] = { ...rest, from: (await copyTemplate(rest.key, source, by)).from }
-      else { await fs.rm(workflowFile(rest.key), { force: true }); list[i] = rest }
+      else { await fs.rm(workflowFile(rest.key), { force: true }); list[i] = ws ? backToWorkspace(rest) : rest }
+      await saveProjects(list)
+      // A member without its own: it follows its workspace's again, said in its log.
+      if (old && ws) {
+        await replanTasks(rest.key, old, effectiveWorkflow(rest.key, null, list[i], ws, await readJson<Template>(workflowFile(ws.key))))
+        await writeJson(path.join(files.projectLog, `${rest.key}.json`), { v: 1, entries: [...await projectLog(rest.key), { at: Date.now(), by, text: `its own workflow removed: it follows workspace ${ws.key}'s again` }].slice(-500) })
+      }
+      return list[i]!
+    }),
+
+    // A member back on its workspace's value for one field (followShared); its
+    // agents or worktree setup only while it runs the workspace's workflow.
+    followWorkspace: (key: unknown, field: unknown) => write(async () => {
+      const { list, i } = await findProject(key)
+      const ws = workspaceOf(list[i]!, list)
+      if (!ws) throw new HerdrError('refused', 'Only a workspace\'s project follows its workspace\'s settings')
+      if (!isSharedField(field)) throw badInput([{ path: 'follow', message: 'a shared setting' }])
+      if ((field === 'prefs' || field === 'worktree') && await readJson<Template>(workflowFile(list[i]!.key))) throw new HerdrError('refused', `${list[i]!.key} runs its own workflow: follow workspace ${ws.key}'s workflow in its Workflow tab`)
+      list[i] = followShared(list[i]!, field)
+      await saveProjects(list)
+      return effectiveProject(list[i]!, ws)
+    }),
+
+    // A member's own agents (prefs) or worktree setup, from its General tab,
+    // without a workflow of its own: kept on the member, never a workflow copy.
+    // The same as its workspace's (or none): back to the workspace's.
+    setMemberSetup: (key: unknown, setup: Pick<Project, 'prefs' | 'worktree'>) => write(async () => {
+      const { list, i } = await findProject(key)
+      const p = list[i]!, ws = workspaceOf(p, list)
+      const own = new Set(p.overrides ?? []), next = { ...p } as Project
+      // The workspace's value as its members get it: its shared field, else its workflow's.
+      const theirs = sharedSetup(ws, ws ? await readJson<Template>(workflowFile(ws.key)) : null)
+      for (const f of ['prefs', 'worktree'] as const) {
+        if (!(f in setup)) continue
+        const v = setup[f], same = v === undefined || !Object.keys(v).length || JSON.stringify(v) === JSON.stringify(theirs[f])
+        if (same) { own.delete(f); delete next[f] }
+        else { own.add(f); Object.assign(next, { [f]: v }) }
+      }
+      delete next.overrides
+      list[i] = { ...next, ...(own.size ? { overrides: SHARED_FIELDS.filter(x => own.has(x)) } : {}) }
       await saveProjects(list)
       return list[i]!
     }),
@@ -565,6 +660,8 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     // A new key: a key no other project has (any case, former keys too); the old one stays an alias.
     updateProject: (key: unknown, update: ProjectUpdate) => write(async () => {
       const { list, i } = await findProject(key)
+      // A workspace's shared fields are worked on as its own, then go back into `shared` (sinkShared).
+      list[i] = liftShared(list[i]!)
       const { base: _base, label: _label, aliases: _aliases, branchName: _bn, commitMessage: _cm, onStateChange: _os, deleteBranch: _db, coordinatorName: _cn, reach: _r, ...rest } = list[i]!
       const keepBranch = (update.deleteBranch ?? list[i]!.deleteBranch) === false
       const base = update.base ?? list[i]!.base
@@ -600,6 +697,12 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       if (allowed.errors.length) throw badInput(allowed.errors)
       const overrides = memberOverrides(list[i]!, update)
       list[i] = { ...kept, ...overrides, ...renamed(list[i]!, next), ...(update.name ? { name: update.name } : {}), ...ownName, ...(base ? { base } : {}), ...(branchName ? { branchName } : {}), ...ownMessage, ...(update.color ? { color: update.color } : {}), ...(allowed.machines ? { machines: allowed.machines, clones: allowed.clones } : {}), ...(allowed.paused ? { paused: allowed.paused } : {}), ...(placement && placement !== 'strongest' ? { placement } : {}), ...(update.archiveAfter !== undefined ? { archiveAfter: update.archiveAfter } : {}), ...(keepBranch ? { deleteBranch: false as const } : {}), ...(reach.length ? { reach } : {}), ...instr, ...sharedMessage }
+      // A workspace's root skills: only None is kept (rootSkills: false).
+      if (isWorkspace(rest) && update.rootSkills !== undefined) {
+        const { rootSkills: _rs, ...others } = list[i]!.shared ?? {}
+        list[i] = { ...list[i]!, shared: { ...others, ...(update.rootSkills ? {} : { rootSkills: false as const }) } }
+      }
+      list[i] = sinkShared(list[i]!)
       await saveProjects(list)
       return list[i]!
     }),
@@ -619,14 +722,17 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       const b = typeof base === 'string' ? base.trim() : ''
       if (b && !isBranch(b)) throw badInput([{ path: 'base', message: 'invalid branch name' }])
       const { list, i } = await findProject(key)
-      const { base: _old, overrides: _o, ...rest } = list[i]!
-      list[i] = { ...rest, ...(b ? { base: b } : {}), ...memberOverrides(list[i]!, { base: b }) }
+      const { base: _old, overrides: _o, ...rest } = liftShared(list[i]!)
+      list[i] = sinkShared({ ...rest, ...(b ? { base: b } : {}), ...memberOverrides(list[i]!, { base: b }) })
       await saveProjects(list)
       return list[i]!
     }),
 
+    // Refused while it has members or open tasks (removeRefusal).
     removeProject: (key: unknown) => write(async () => {
       const { list, i } = await findProject(key)
+      const why = removeRefusal(list[i]!.key, list, await tasks())
+      if (why) throw new HerdrError('refused', why)
       list.splice(i, 1)
       await saveProjects(list)
     }),

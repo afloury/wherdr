@@ -4,6 +4,7 @@
 // in POSIX sh + BSD (macOS) or GNU (Linux) stat.
 import fs from 'node:fs'
 import { createHash } from 'node:crypto'
+import { execFile } from 'node:child_process'
 
 const fsp = fs.promises
 
@@ -13,7 +14,10 @@ export interface FsStat { size: number, mtimeMs: number, isFile: boolean, isDir:
 export interface PidLock { name: string, pid: number, stat: FsStat }
 
 export interface MachineFs {
-  stat: (p: string) => Promise<FsStat> // rejette si absent
+  // `fresh` bypasses any stat cache: for the checks that verify a copy
+  // against the file's state *now*, never for plain reads (the cache is
+  // what keeps per-second polls cheap). Rejects when missing.
+  stat: (p: string, opts?: { fresh?: boolean }) => Promise<FsStat>
   statMany: (ps: string[]) => Promise<(FsStat | null)[]>
   readdir: (p: string) => Promise<string[]>
   readFile: (p: string) => Promise<string>
@@ -24,6 +28,12 @@ export interface MachineFs {
   digest?: (p: string, len: number) => Promise<string>
   // All PID locks in one remote round trip; null means an incomplete scan.
   readPidLocks?: (dir: string) => Promise<PidLock[] | null>
+  // Paths a process holds open (/proc/<pid>/fd targets, `lsof -Fn` output);
+  // null means the scan could not run, never "no files".
+  readProcessFiles?: (pid: number) => Promise<string[] | null>
+  // Remote machines only: runs `script` (sh) there and returns its output;
+  // rejects like the other operations when it fails.
+  run?: (script: string, args: string[], opts?: { input?: Buffer, timeoutMs?: number, maxBytes?: number }) => Promise<Buffer>
 }
 
 // ---------------------------------------------------------------- disque local
@@ -62,6 +72,22 @@ export const localFs: MachineFs = {
     const h = createHash('sha1')
     if (len > 0) for await (const b of fs.createReadStream(p, { start: 0, end: len - 1 })) h.update(b as Buffer)
     return h.digest('hex')
+  },
+  async readProcessFiles(pid) {
+    if (process.platform === 'linux') {
+      const dir = `/proc/${pid}/fd`
+      const names = await fsp.readdir(dir).catch(() => null)
+      if (!names) return null
+      const out = await Promise.all(names.map(n => fsp.readlink(`${dir}/${n}`).catch(() => null)))
+      return out.filter((p): p is string => p !== null)
+    }
+    // macOS and other lsof systems: `n` lines hold the paths.
+    return await new Promise<string[] | null>(resolve => {
+      execFile('lsof', ['-Fn', '-p', String(pid)], { timeout: 10000 }, (e, stdout) => {
+        if (e && !stdout) return resolve(null)
+        resolve(stdout.split('\n').filter(l => l.startsWith('n/')).map(l => l.slice(1)))
+      })
+    })
   },
 }
 
@@ -132,6 +158,25 @@ for f; do
   printf '%s\\0%s\\0%s\\0' "\${f#./}" "$line" "$pid"
 done`
 
+// Open files of a process: /proc/<pid>/fd targets on Linux, `lsof -Fn` on
+// macOS (its `n` lines hold the paths). `!` alone when neither can be read: an
+// unavailable scan must never pass for "no files".
+const PROCESS_FILES_SCRIPT = `if [ -d "/proc/$1/fd" ]; then
+  # An unlistable fd folder (another user, hidepid, a process that just exited)
+  # cannot answer "no files": say the scan is unknown.
+  ls -1A "/proc/$1/fd" >/dev/null 2>&1 || { echo '!'; exit 0; }
+  for f in "/proc/$1/fd"/*; do
+    [ -e "$f" ] || continue
+    readlink "$f" 2>/dev/null || true
+  done
+elif command -v lsof >/dev/null 2>&1; then
+  # lsof exits non-zero when it could not inspect the pid.
+  out=$(lsof -Fn -p "$1" 2>/dev/null) || { echo '!'; exit 0; }
+  echo "$out" | sed -n 's/^n//p' | sed -n '/^\\//p'
+else
+  echo '!'
+fi`
+
 export function parseStatLine(line: string): FsStat | null {
   // The inode is optional: "size mtime type" from an older script still parses.
   const m = /^(\d+) (\d+(?:\.\d+)?) (?:(\d+) )?(\D.*)$/.exec(String(line || '').trim())
@@ -191,7 +236,8 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number, readC
   }
 
   return {
-    async stat(p) {
+    async stat(p, o) {
+      if (o?.fresh) statCache.delete(p)
       const [s] = await statMany([p])
       if (!s) throw new FsError('ENOENT', `not found: ${p}`)
       return s
@@ -215,6 +261,12 @@ export function createShellFs(exec: ShellExec, opts: { statTtlMs?: number, readC
       const b = await run(REQUIRE_PATH + 'cd "$1" && ls -1A', [p])
       return b.toString('utf8').split('\n').filter(Boolean)
     },
+    async readProcessFiles(pid) {
+      const raw = (await run(PROCESS_FILES_SCRIPT, [String(pid)], 10000)).toString('utf8')
+      if (raw.trim() === '!') return null
+      return raw.split('\n').filter(l => l.startsWith('/'))
+    },
+    run: (script, args, opts = {}) => run(script, args, opts.timeoutMs, opts.input, opts.maxBytes),
     async readFile(p) {
       return (await run(REQUIRE_PATH + 'cat "$1"', [p])).toString('utf8')
     },

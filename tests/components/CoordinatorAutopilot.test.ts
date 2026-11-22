@@ -8,7 +8,7 @@ import type { Wake } from '#shared/pm/wakes'
 const posts: Record<string, unknown>[] = []
 registerEndpoint('/api/pm/coordinators', () => [])
 let refuse = ''
-// Registered when this file runs: another file's mock of the same URL (DecisionsView) is not used.
+// Registered when this file runs: another file's mock of the same URL (another component's test) is not used.
 beforeAll(() => registerEndpoint('/api/pm/autopilot', { method: 'POST', handler: async (e) => {
   const body = await readBody(e)
   posts.push(body)
@@ -42,6 +42,18 @@ it('shows today\'s counters against the limits, and the switch saves the autopil
   expect(b.find('.ap-events').text()).toContain('Task doneStart what follows, tell you, update the notes.')
   await b.find('[data-testid="autopilot-on"]').trigger('click')
   await vi.waitFor(() => expect(posts).toEqual([{ project: 'CO', autopilot: { ...autopilot, on: true } }]))
+})
+
+it('puts the switch above both tabs, and explains Wake now, Every and the optional goal', async () => {
+  const b = await mount()
+  for (const panel of ['autopilot-settings', 'autopilot-activity']) expect(b.find(`[data-testid="${panel}"] [data-testid="autopilot-on"]`).exists()).toBe(false)
+  expect(b.find('[data-testid="coordinator-autopilot"] > .ap-head [data-testid="autopilot-on"]').exists()).toBe(true)
+  expect(b.find('[data-testid="autopilot-run-now"]').text()).toBe('Wake now')
+  expect(b.find('[data-testid="autopilot-run-now-hint"]').text()).toContain('Wakes the coordinator now with its goal')
+  expect(b.find('[data-testid="autopilot-settings"] legend').text()).toBe('Goal (optional)')
+  expect(b.find('[data-testid="autopilot-goal-hint"]').text()).toContain('no goal is set')
+  const every = b.find('[data-testid="autopilot-every-hint"]').text()
+  for (const part of ['Empty: no timed wake, only the events below.', 'skipped while nothing is new (at least one every 12 h), unless Look for new work is on']) expect(every).toContain(part)
 })
 
 it('saves the goal, interval, events and limits edited', async () => {

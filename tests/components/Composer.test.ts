@@ -127,6 +127,20 @@ describe('Composer send', () => {
     w.unmount()
   })
 
+  // Safari (iPhone) reports the Enter that confirms an IME candidate with isComposing false.
+  it('the Enter that confirms an IME candidate (keyCode 229) does not send; the next Enter does', async () => {
+    prompts.length = 0
+    const { w, field } = await mount('w1:ime')
+    await field.trigger('keydown', { key: 'Enter', keyCode: 229 })
+    await flushPromises()
+    expect(outboxFor('w1:ime')).toHaveLength(0)
+    await field.trigger('keydown', { key: 'Enter' })
+    await releaseNext()
+    await flushPromises()
+    expect(prompts).toEqual(['Fix the cache'])
+    w.unmount()
+  })
+
   it('keeps paragraph spacing in the outgoing message', async () => {
     const { w, field } = await mount('w1:p3')
     const text = 'First paragraph.\n\nSecond paragraph.\n\n\nThird paragraph.'
@@ -370,5 +384,45 @@ describe('Composer paste event handling', () => {
     el.dispatchEvent(new InputEvent('beforeinput', { inputType: 'insertFromPaste', data: 'Native edit', bubbles: true, cancelable: false }))
     expect(el.value).toBe('Input words') // The browser owns non-cancellable edits.
     w.unmount()
+  })
+})
+
+// Upload in the test's hands: each call waits for its resolve() or reject().
+const uploads: { resolve: (r: { path: string, name: string }) => void, reject: (e: Error) => void }[] = []
+vi.mock('~/utils/photoUpload', () => ({
+  uploadPhoto: () => new Promise((resolve, reject) => uploads.push({ resolve, reject })),
+}))
+
+describe('Composer attachments (AttachTile)', () => {
+  it('a photo shows uploading, then idle; a failed one shows its reason; remove takes it away', async () => {
+    const id = 'att-1'
+    vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:demo')
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {})
+    const w = await mountSuspended(Composer, { props: { pane: pane(id), paneId: id, sendKeys: async () => {} } })
+    const vm = w.vm as unknown as { addImages: (f: File[]) => Promise<void> }
+    const photo = () => new File([new Uint8Array([1])], 'shot.png', { type: 'image/png' })
+    vm.addImages([photo()])
+    await vi.waitFor(() => expect(uploads).toHaveLength(1))
+    await nextTick()
+    const att = () => w.findAll('.att-tile')
+    expect(att()[0]!.attributes('data-status')).toBe('uploading')
+    expect(att()[0]!.find('[data-slot="image"]').attributes('src')).toBe('blob:demo')
+    expect(att()[0]!.find('.att-tile-badge').text()).toBe('PNG')
+    expect(att()[0]!.find('[data-slot="name"]').text()).toBe('shot.png')
+    uploads.shift()!.resolve({ path: '/tmp/shot.jpg', name: 'shot.jpg' })
+    await flushPromises()
+    expect(att()[0]!.attributes('data-status')).toBe('idle')
+
+    vm.addImages([photo()])
+    await vi.waitFor(() => expect(uploads).toHaveLength(1))
+    uploads.shift()!.reject(new Error('Disk full'))
+    await flushPromises()
+    expect(att()[1]!.attributes('data-status')).toBe('error')
+    expect(att()[1]!.find('[data-slot="description"]').text()).toContain('Disk full')
+
+    await att()[0]!.find('[data-slot="remove"]').trigger('click')
+    await att()[0]!.find('[data-slot="remove"]').trigger('click')
+    expect(att()).toHaveLength(0)
+    vi.restoreAllMocks()
   })
 })

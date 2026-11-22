@@ -8,7 +8,7 @@ import { advanceTick } from '../server/utils/pmAdvance'
 import { resumeParked } from '../server/utils/pmPark'
 import { pauseForRoom } from '../server/utils/pmStop'
 import { placeFor } from '../server/utils/pmPlace'
-import { parkOf, parseBlockedOn, resumeText } from '../shared/pm/park'
+import { parkOf, parseBlockedOn, resumeText, roomPauseRefusal } from '../shared/pm/park'
 import { cardOf, toHandle } from '../shared/pm/board'
 import { decisionsOf } from '../shared/pm/decisions'
 import { parseCommand } from '../shared/pm/coordinator'
@@ -44,7 +44,7 @@ describe('a blocked report', () => {
     expect('park' in repo && repo.wake).toContain('Add a task there')
     const cycle = parkOf(task(), 'WH-2', 'the schema', [task(), { ...other, after: 'WH-1' }], projects, 9)
     expect(cycle).toMatchObject({ refused: expect.stringContaining('already waits for this task'), key: 'cycle:WH-2' })
-    expect('refused' in cycle && cycle.wake).toMatch(/Decision: .*pull the shared contract .* or merge the two tasks into one\..*Decisions/)
+    expect('refused' in cycle && cycle.wake).toMatch(/Decision: .*pull the shared contract .* or merge the two tasks into one\..*tell the user both options/)
   })
 
   it('a parked task never stalls nor needs an agent, and resumes once what it waits for is done', () => {
@@ -193,5 +193,35 @@ describe('parking on the server', () => {
     expect(line).toContain('There is room again')
     expect((await store.task('WH-1'))!.parked).toBeUndefined()
     expect(await placeFor(deps, fresh)).toMatchObject({ hold: expect.not.stringContaining('paused for room') })
+  })
+
+  it('paused for room, its start failing for another reason: the pause ends at the third try, the real reason shown, its coordinator woken', async () => {
+    const { store, env, deps } = await setup()
+    await pauseForRoom(deps, 'WH-1', 'machine over its cap', 'coordinator WH')
+    env.fail = true // the room is there, but the worker cannot start (its files cannot be written)
+    const fresh = await store.addTask({ project: 'WH', title: 'Next', type: 'simple' })
+    for (const at of [0, 10 * 60_000]) {
+      await resumeParked(deps, at)
+      expect((await store.task('WH-1'))!).toMatchObject({ state: 'working', parked: { room: 'm1' } })
+    }
+    await resumeParked(deps, 20 * 60_000)
+    const t = (await store.task('WH-1'))!
+    expect(t.parked).toBeUndefined()
+    expect(t).toMatchObject({ state: 'waiting', waiting: expect.not.stringContaining('room') })
+    expect(woken).toEqual([expect.stringContaining('its worker could not start again')])
+    // The machine no longer waits for it.
+    env.fail = false
+    expect(await placeFor(deps, fresh)).not.toHaveProperty('hold')
+  })
+})
+
+describe('pausing a task for room', () => {
+  const started = { id: 'WEB-1', project: 'WEB', title: 't', description: '', type: 'feature', state: 'working', createdAt: 0, step: { at: 1, started: true, proofs: {}, rounds: {} } } as unknown as Task
+  it('only a Claude worker with its session is taken up again later: an omp worker is refused with that text, never a crash', () => {
+    expect(roomPauseRefusal(started, 'worker', [{ role: 'worker', program: 'claude', session: 's1' }])).toBeUndefined()
+    const text = "WEB-1's worker conversation cannot be taken up again later (only a Claude worker's can): stop it instead, or let it finish"
+    expect(roomPauseRefusal(started, 'worker', [{ role: 'worker', program: 'omp', session: 's1' }])).toBe(text)
+    expect(roomPauseRefusal(started, 'worker', [{ role: 'worker', program: 'omp' }])).toBe(text)
+    expect(roomPauseRefusal(started, 'worker', [{ role: 'worker', program: 'codex' }])).toBe(text)
   })
 })

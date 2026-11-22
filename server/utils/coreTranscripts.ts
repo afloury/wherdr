@@ -33,13 +33,19 @@ export function processInfo(d: CoreDetail) {
   return { process_info: { foreground_processes: procs } }
 }
 
-const AGENT_PROGRAMS = new Set(['claude', 'codex', 'omp', 'devin'])
+const AGENT_PROGRAMS = new Set(['claude', 'codex', 'omp', 'devin', 'agy', 'antigravity', 'antigravity-cli', 'hermes'])
 const baseName = (s: string | undefined) => (s || '').split('/').pop() || ''
 // Programs under the terminal's process, from `ps -e -o pid=,ppid=,args=`: an agent started by a
 // shell, or hosted by a helper, is not the foreground process of the terminal.
+const psRows = (ps: string) => ps.split('\n').map(l => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(l)).filter(Boolean)
+  .map(m => ({ pid: Number(m![1]), ppid: Number(m![2]), argv: m![3]!.split(/\s+/) }))
+const agentRow = (r: { pid: number, argv: string[] }): CoreProcess | null => {
+  const name = [baseName(r.argv[0]), baseName(r.argv[1])].find(n => AGENT_PROGRAMS.has(n)) || ''
+  return name ? { pid: r.pid, name, argv: r.argv, argvExact: false } : null
+}
+
 export function agentDescendants(ps: string, root: number): CoreProcess[] {
-  const rows = ps.split('\n').map(l => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(l)).filter(Boolean)
-    .map(m => ({ pid: Number(m![1]), ppid: Number(m![2]), argv: m![3]!.split(/\s+/) }))
+  const rows = psRows(ps)
   const seen = new Set([root])
   const out: CoreProcess[] = []
   for (let grew = true; grew;) {
@@ -48,12 +54,16 @@ export function agentDescendants(ps: string, root: number): CoreProcess[] {
       if (seen.has(r.pid) || !seen.has(r.ppid)) continue
       seen.add(r.pid)
       grew = true
-      const name = [baseName(r.argv[0]), baseName(r.argv[1])].find(n => AGENT_PROGRAMS.has(n)) || ''
-      if (name) out.push({ pid: r.pid, name, argv: r.argv, argvExact: false })
+      const agent = agentRow(r)
+      if (agent) out.push(agent)
     }
   }
   return out
 }
+
+// Agent processes whose parent is `root` itself, one level only.
+export const agentChildren = (ps: string, root: number): CoreProcess[] =>
+  psRows(ps).filter(r => r.ppid === root && r.pid !== root).map(agentRow).filter((p): p is CoreProcess => p !== null)
 
 // "herdr-core: <kind>" for a failed core call (the last stderr line becomes the FsError reason).
 export const coreFailure = (e: unknown) => `herdr-core: ${e instanceof CoreError && /^[a-z_]{1,40}$/.test(e.kind) ? e.kind : 'unreachable'}`
@@ -92,6 +102,7 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
   }
   const herdr = async (method: string, params: Record<string, unknown> = {}) => {
     const address = deps.pane(String(params.pane_id || ''))?.coreAddress
+    if (method === 'pane.screen' && address) return { text: String((await deps.call<{ text?: string }>('terminal.read', { terminal: address, lines: 0 }, 4000)).text || '') }
     if (method !== 'pane.process_info' || !address) throw new CoreError('unsupported', 'unsupported')
     const d = await detail(address)
     const info = processInfo(d)
@@ -107,21 +118,25 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
     const isDevin = (p: CoreProcess) => [baseName(p.name), ...(p.argv?.slice(0, 2).map(baseName) || [])].includes('devin')
     const devin = procs.filter(p => isDevin(p) && Number.isSafeInteger(p.pid) && p.pid! > 0)
     // Devin 3000.12 runs a launcher (the foreground) and its engine `devin acp`
-    // as a child; the session lock names the engine, so a launcher carries the
-    // PIDs of the Devin processes under it.
+    // as a direct child; the session lock names the engine, so a launcher
+    // carries the PIDs of its direct Devin children. A Devin started further
+    // down (from the engine's shell) holds its own lock and must not count.
     for (const p of devin) {
-      const kids = agentDescendants(await psTable(), p.pid!).filter(isDevin).map(k => k.pid!)
+      const kids = agentChildren(await psTable(), p.pid!).filter(isDevin).map(k => k.pid!)
       if (kids.length) p.childPids = kids
     }
-    if (devin.length) {
-      // Exact argv and a conservative birth bound, read together on the agent's machine.
+    const snapshotNames = new Set(['devin', 'agy', 'antigravity', 'antigravity-cli'])
+    const snapshotted = procs.filter(p => [baseName(p.name), ...(p.argv?.slice(0, 2).map(baseName) || [])].some(n => snapshotNames.has(n)) && Number.isSafeInteger(p.pid) && p.pid! > 0)
+    if (snapshotted.length) {
+      // Exact argv and a conservative birth bound for Devin and Antigravity
+      // processes, read together on the agent's machine.
       const on = machineOfAddress(address)
       const r = await deps.call<{ stdout?: string }>('machine.exec', {
-        argv: ['sh', '-c', DEVIN_PROCESS_SCRIPT, 'sh', ...devin.map(p => String(p.pid))],
+        argv: ['sh', '-c', DEVIN_PROCESS_SCRIPT, 'sh', ...snapshotted.map(p => String(p.pid))],
         ...(on ? { on } : {}), timeout: 5,
       }, 8000).catch(() => null)
       const snapshot = devinProcesses(Buffer.from(r?.stdout || '', 'base64').toString('utf8'))
-      for (const p of devin) Object.assign(p, snapshot.get(p.pid!))
+      for (const p of snapshotted) Object.assign(p, snapshot.get(p.pid!))
     }
     return info
   }
@@ -185,7 +200,7 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
       const by = new Map<string, TranscriptPane[]>()
       for (const p of panes) {
         const m = machineOfAddress(p.coreAddress)
-        const tp = p.agent === 'codex' ? await withBirth({ id: p.id, agent: p.agent, cwd: p.cwd, status: p.status }).catch(() => p) : p
+        const tp = p.agent === 'codex' || p.agent === 'agy' ? await withBirth({ id: p.id, agent: p.agent, cwd: p.cwd, status: p.status }).catch(() => p) : p
         by.set(m, [...(by.get(m) || []), tp as TranscriptPane])
       }
       // A machine whose agents all ended is observed too (with none): its caches empty.

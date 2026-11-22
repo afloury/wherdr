@@ -38,11 +38,12 @@ const BASE = [
   'auth/status', 'auth/lock', 'auth/lock-all', 'auth/disable', 'auth/max-session',
   'auth/login/options', 'auth/login/verify', 'auth/register/options', 'auth/register/verify',
   'core', 'core/terminals', 'client-plugins', 'client-plugins/:id/:file',
+  'client-plugins/preview', 'client-plugins/install', 'client-plugins/check', 'client-plugins/remove',
   'state', 'config', 'settings', 'health', 'search',
   'chat', 'chat/image', 'prompt', 'input', 'interrupt', 'close', 'agents', 'codex-restart',
   'dirs', 'isgit', 'quotas', 'claude-statusline', 'claude-setup',
   'machine/add', 'machine/connect', 'machine/core', 'machine/core-rename', 'machine/core-forget',
-  'upload', 'attach', 'file', 'keep',
+  'upload', 'attach', 'file', 'keep', 'open-editor',
   'dictation/status', 'dictation/key', 'dictation/transcribe', 'dictation/prepare', 'GET dictation/models',
   'dictation/rewrite', 'GET dictation/text-models',
   // Action buttons an agent puts in its reply (shared/uiActions.ts).

@@ -4,6 +4,8 @@
 // first round); an engine action the task entered starts (outside the tick); a done task's agents
 // stop. All of it is read again from the task's state, so a restart loses
 // nothing (shared/pm/advance.ts holds the rules).
+import { namedAgents } from './settings'
+import { agentsMissing } from '../../shared/pm/namedAgents'
 import { randomUUID } from 'node:crypto'
 import { DONE_CMD, READ_SEP, appendLine, dueText, parseRead, reviewFile, runFiles, runsNow, signalEvent, signalKept } from '../../shared/pm/advance'
 import { onEvent, type PlannedStep } from '../../shared/pm/steps'
@@ -17,10 +19,12 @@ import { reviewAccount, reviewCap, reviewTurn, reviewerOut, runningReviews } fro
 import { policyIn, readPolicies } from './pacingPolicies'
 import { showIds } from '../../shared/pm/projectKey'
 import { PATH_SETUP, launchFailure } from './coreCreate'
-import { WRITE_SCRIPT, exec, oneStart, prepareTmp, runOn, workspaceFiles, type PmLaunchDeps } from './pmLaunch'
+import { WRITE_SCRIPT, contextFolders, exec, linkSkills, oneStart, prepareTmp, runOn, unconfirmed, workspaceFiles, type PmLaunchDeps } from './pmLaunch'
+import { contextSection } from '../../shared/pm/context'
 import { HerdrError } from './herdr'
 import { startAction } from './pmBoard'
 import { cleanTask } from './pmCleanup'
+import { tickPlanFile } from './pmPlan'
 import { readLeakCheck } from './pmVisibility'
 import { isPublic, leakText, scanDiff } from '../../shared/pm/visibility'
 import type { Project } from '../../shared/pm/project'
@@ -208,6 +212,8 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
     }
     // Its agents ended: its worktree (and, merged, its local branch) goes, once tried.
     if (!task.cleanup) void cleanTask(deps, id).catch(() => {})
+    // Done with its whole workflow: its plan lines are ticked, once (pmPlan.ts).
+    if (task.refs?.length && !s.abandoned && !task.planTick) void tickPlanFile(deps, id).catch(() => {})
     return
   }
   // Stopped on a failure: it waits for the user, nothing is tried again alone.
@@ -218,7 +224,7 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
   // The review agent hit its account limit during the review (it ended on it, or
   // sits idle on Codex's usage-limit message): with a fallback set, the fallback
   // takes the review over from the start, at once.
-  const rv = latest(runs, id, 'reviewer'), main = reviewerPlan(c.t, task)
+  const rv = latest(runs, id, 'reviewer'), main = reviewerPlan(c.t, task, undefined, await namedAgents())
   const hit = rv && (limited.has(rv.id) || (!alive(rv) && why.get(rv.id)?.cause === 'limit'))
   if (plan[s.at]?.holder === 'reviewer' && s.told === s.since && rv && rv.state !== 'ended' && hit
     && prefOf(c.t, task, 'reviewFallbackAgent') && 'program' in main && main.program === rv.program && main.model === rv.model) {
@@ -265,7 +271,8 @@ async function advance(deps: PmLaunchDeps, id: string, alive: (r?: Run) => Label
 async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: string, live: Run | undefined | false, out?: string) {
   const { store } = deps
   const worker = latest(await store.runs(), task.id, 'worker')
-  const main = reviewerPlan(t, task), now = Date.now(), q = await readAccounts(deps)
+  const named = await namedAgents()
+  const main = reviewerPlan(t, task, undefined, named), now = Date.now(), q = await readAccounts(deps)
   let handover = !!out
   const fallback = !!prefOf(t, task, 'reviewFallbackAgent'), policies = fallback ? await readPolicies() : {}
   // The review agent's account at its limit, near it, or held by its pace: why, for the fallback.
@@ -287,8 +294,10 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
     task = await store.logTask(task, 'engine', `review: ${programName(main.program)} has quota again, the fallback reviewer (${live.program} ${live.model}) ends`)
     live = false
   }
-  const plan = out ? reviewerPlan(t, task, out) : main
+  const plan = out ? reviewerPlan(t, task, out, named) : main
   if (!worker || 'reason' in plan) return void (task.state !== 'waiting' && await waitFor(deps, task.id, worker ? (plan as { reason: string }).reason : 'No worktree: the task never started'))
+  const lacking = plan.agent ? agentsMissing([plan.agent], named, worker.machine) : undefined
+  if (lacking) return void (task.state !== 'waiting' && await waitFor(deps, task.id, `The reviewer cannot start on the worker's machine: ${lacking}`))
   // A new review (not a hand-over) waits its turn in its account's queue, oldest first.
   if (!live && !handover) {
     const acc = reviewAccount(q, plan.program, worker.machine), tasks = await store.tasks()
@@ -304,8 +313,11 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
   task = { ...task, held: undefined, reviewWait: undefined }
   const ws = await workspaceFiles(deps, task, p)
   task = ws.task
+  // A new reviewer reads the commits its worker read; a running one keeps its own (its folders were allowed at its start).
+  const ctx = live ? { task, folders: live.context ?? [], lines: contextSection(live.context ?? []) } : await contextFolders(deps, task, p, t, worker.machine, worker.context)
+  task = ctx.task
   const files = runFiles(worker.instructions)
-  if ((await exec(deps, on, `rm -f "$2" && ${WRITE_SCRIPT}`, [files.review, files.verdict], showIds([p], reviewFile(task, worker, text, files.verdict, isPublic(p), ws.lines)))).code !== 0)
+  if ((await exec(deps, on, `rm -f "$2" && ${WRITE_SCRIPT}`, [files.review, files.verdict], showIds([p], reviewFile(task, worker, text, files.verdict, isPublic(p), [...ws.lines, ...ctx.lines])))).code !== 0)
     return void await waitFor(deps, task.id, 'Could not write the review file')
   const told = { ...task.step!, told: task.step!.since }
   if (live) {
@@ -315,8 +327,11 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
   }
   const tmpWhy = await prepareTmp(deps, on, worker.worktree)
   if (tmpWhy) return void await waitFor(deps, task.id, `The reviewer was not started: ${tmpWhy}`)
-  const { switched, ...who } = plan
-  let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'reviewer', ...who, machine: worker.machine, worktree: worker.worktree, branch: worker.branch, instructions: files.review, attempt: 1, state: 'starting', startedAt: Date.now() }
+  // Skills added at the workspace's root since the worker started are linked too (the worker's start logged them).
+  const skills = await linkSkills(deps, store, on, p, worker.machine, worker.worktree)
+  if (skills.includes('could not')) task = await store.logTask(task, 'engine', skills)
+  const { switched, command: _command, ...who } = plan
+  let run: Run = { id: randomUUID().replace(/-/g, '').slice(0, 12), task: task.id, role: 'reviewer', ...who, machine: worker.machine, worktree: worker.worktree, branch: worker.branch, instructions: files.review, attempt: 1, state: 'starting', startedAt: Date.now(), ...(ctx.folders.length ? { context: ctx.folders } : {}) }
   // The receipt first: an unconfirmed start is found again by its labels, never started twice.
   await store.saveRun(run)
   const again = wasReleased(latest(await store.runs(), task.id, 'reviewer')) ? ' again in its worktree' : ''
@@ -324,10 +339,18 @@ async function reviewer(deps: PmLaunchDeps, { task, p, t, on }: Ctx, text: strin
   const said = task.recovery?.say ? loginRestartText('reviewer') : undefined
   await store.logTask({ ...task, step: told, run: run.id, ...(said ? { recovery: { ...task.recovery!, say: undefined } } : {}) }, 'engine',
     (switched ? `review: ${switched}, reviewed by ${plan.program} ${plan.model}` : `review: started the reviewer${again} (${plan.program} ${plan.model})`) + (said ? `; told it: ${said}` : ''))
-  const { address } = await deps.call<{ address: string }>('terminal.run', {
-    cwd: worker.worktree, ...(on ? { on } : {}), no_parent: true, wait: false, env: agentEnv(worker.worktree),
-    labels: runLabels(await store.install(), run), line: `${PATH_SETUP}; ${agentLine(plan.program, plan.model, files.review, undefined, said)}`,
-  }, 30000)
+  let address: string
+  try {
+    address = (await deps.call<{ address: string }>('terminal.run', {
+      cwd: worker.worktree, ...(on ? { on } : {}), no_parent: true, wait: false, env: agentEnv(worker.worktree),
+      labels: runLabels(await store.install(), run), line: `${PATH_SETUP}; ${agentLine(plan, plan.model, files.review, undefined, said, ctx.folders.map(f => f.dir))}`,
+    }, 30000)).address
+  } catch (e) {
+    // Unconfirmed: it may run anyway; the watchdog finds it by its labels, or ends the run (staleStarts).
+    if (unconfirmed(e)) return
+    await store.saveRun({ ...run, state: 'ended', endedBy: 'exit' })
+    return void await waitFor(deps, task.id, `herdr-core refused to start the reviewer (${plan.program}): ${(e as Error).message}`)
+  }
   run = { ...run, terminal: address, state: 'running', startedAt: Date.now() }
   await store.saveRun(run)
   const failed = await launchFailure(deps, address, deps.launchWatchMs ?? 5000)

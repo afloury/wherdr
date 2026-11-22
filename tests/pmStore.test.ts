@@ -94,6 +94,40 @@ describe('pm store', () => {
     expect(await store.savedWorkflow('WEB')).toBeNull()
     expect(await store.workflowLog('WEB')).toEqual([])
   })
+
+  it('runs the default workflow with the agent of the coordinator, until a workflow is accepted', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await store.addProject({ ...input, template: '' }, okFolder)
+    // No coordinator started yet, or Claude's: the Claude default.
+    expect((await store.workflow('WEB'))!.prefs).toEqual({ agent: 'claude', model: 'sonnet' })
+    // omp: its own agent for the worker, its model pinned (the engine always pins one), and a reviewer of the same model.
+    await store.saveCoordinator({ ...(await store.coordinator('WEB'))!, ran: { program: 'omp', model: 'anthropic/claude-opus-5-5' } })
+    expect((await store.workflow('WEB'))!.prefs).toEqual({ agent: 'omp', model: 'anthropic/claude-opus-5-5', reviewModel: 'same' })
+    await store.saveCoordinator({ ...(await store.coordinator('WEB'))!, ran: { program: 'omp' } })
+    expect((await store.workflow('WEB'))!.prefs).toMatchObject({ agent: 'omp', model: expect.stringMatching(/^\S+$/), reviewModel: 'same' })
+    // An accepted workflow keeps its own agents.
+    await store.saveWorkflow('WEB', { ...defaultWorkflow('WEB'), prefs: { agent: 'claude', model: 'opus' } })
+    expect((await store.workflow('WEB'))!.prefs).toEqual({ agent: 'claude', model: 'opus' })
+  })
+})
+
+describe('removing a project (WHR-513)', () => {
+  it('is refused while a workspace has members or a project has open tasks', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [
+      { key: 'WS', name: 'Work', machine: '', path: '/src/work', kind: 'workspace', git: false, addedAt: 1 },
+      { key: 'API', name: 'Api', machine: '', path: '/src/work/api', workspace: 'WS', addedAt: 1 },
+    ] }))
+    await expect(store.removeProject('WS')).rejects.toMatchObject({ code: 'refused', message: 'Workspace WS still has projects API: remove them first' })
+    const t = await store.addTask({ project: 'API', title: 'Running', type: 'simple' })
+    await expect(store.removeProject('API')).rejects.toMatchObject({ code: 'refused', message: `API has open tasks (${t.id}): finish, abandon or close them first` })
+    await store.saveTask({ ...t, step: { ...initialState(), started: true, done: true, abandoned: true } })
+    await store.removeProject('API')
+    await store.removeProject('WS')
+    expect(await store.projects()).toEqual([])
+  })
 })
 
 describe('runs', () => {
@@ -111,6 +145,29 @@ describe('runs', () => {
       await store.saveRun(run('b', 'ended'))
       expect((await store.runs()).map(r => r.state)).toEqual(['ended', 'ended'])
       expect(reads.mock.calls.filter(c => String(c[0]).includes('runs')).map(c => path.basename(String(c[0])))).toEqual(['b.json'])
+    } finally { reads.mockRestore() }
+  })
+
+  it('reads a task file again only when it changed, even replaced at the same size and mtime', async () => {
+    const store = createPmStore(dir)
+    await fs.mkdir(store.files.tasks, { recursive: true })
+    const file = (id: string) => path.join(store.files.tasks, `${id}.json`)
+    const task = (id: string, title: string) => JSON.stringify({ id, project: 'WEB', title, description: '', type: 'simple', state: 'todo' })
+    await fs.writeFile(file('WEB-1'), task('WEB-1', 'one'))
+    await fs.writeFile(file('WEB-2'), task('WEB-2', 'two'))
+    expect((await store.tasks()).map(t => t.title)).toEqual(['one', 'two'])
+    const reads = vi.spyOn(fs, 'readFile')
+    try {
+      await store.tasks()
+      expect(reads).not.toHaveBeenCalled()
+      // Another file in its place (a save is a rename), same size and times: its inode tells.
+      const { mtime } = await fs.stat(file('WEB-2'))
+      await fs.writeFile(`${file('WEB-2')}.tmp`, task('WEB-2', 'TWO'))
+      await fs.utimes(`${file('WEB-2')}.tmp`, mtime, mtime)
+      await fs.rename(`${file('WEB-2')}.tmp`, file('WEB-2'))
+      await fs.utimes(store.files.tasks, mtime, new Date(mtime.getTime() + 5000))
+      expect((await store.tasks()).map(t => t.title)).toEqual(['one', 'TWO'])
+      expect(reads.mock.calls.map(c => path.basename(String(c[0])))).toEqual(['WEB-2.json'])
     } finally { reads.mockRestore() }
   })
 })
@@ -157,6 +214,25 @@ describe('workflows migration', () => {
   })
 })
 
+describe('workspace settings migration', () => {
+  it('moves a workspace\'s working branch and the like kept on itself into shared, once', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [
+      { key: 'WS', name: 'Work', machine: '', path: '/w', addedAt: 1, color: 'red', kind: 'workspace', git: false, base: 'develop', placement: 'balance', shared: { commitMessage: '{title}' } },
+      { key: 'PAY', name: 'Pay', machine: '', path: '/w/pay', addedAt: 1, color: 'red', workspace: 'WS' },
+    ] }))
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    try {
+      expect(await store.project('PAY')).toMatchObject({ base: 'develop', placement: 'balance' })
+      const raw = JSON.parse(await fs.readFile(store.files.projects, 'utf8')).projects[0]
+      expect(raw).not.toHaveProperty('base')
+      expect(raw.shared).toEqual({ commitMessage: '{title}', base: 'develop', placement: 'balance' })
+      expect(warn.mock.calls.map(c => String(c[0]))).toEqual(['[pm] workspace settings moved into shared, for their members: WS'])
+    } finally { warn.mockRestore() }
+  })
+})
+
 describe('workspace members', () => {
   it('stores a member\'s own fields only, serves it with its workspace\'s settings, and refuses what breaks a workspace', async () => {
     const store = createPmStore(dir)
@@ -191,7 +267,9 @@ describe('workspace members', () => {
     await store.saveWorkflow('PAY', { ...defaultWorkflow('PAY'), prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] }, workspaceGuards: { protected: ['x'] } })
     expect(await store.savedWorkflow('PAY')).not.toHaveProperty('workspaceGuards')
     await store.saveWorkflow('PAY', { ...defaultWorkflow('PAY'), prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] } })
-    expect(await store.workflow('PAY')).toMatchObject({ prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] } })
+    expect(await store.workflow('PAY')).toMatchObject({ prefs: { agent: 'claude' }, worktree: { copy: ['config.json'] } })    // Agents set back to the workspace's workflow's: no override of its own.
+    await store.addProject({ key: 'tax', machine: '', path: '~/work/tax', workspace: 'ws' }, okFolder)
+    expect(await store.setMemberSetup('TAX', { prefs: { agent: 'claude', model: 'sonnet' } })).not.toHaveProperty('overrides')
   })
 })
 
@@ -201,5 +279,21 @@ describe('cleanProjectInput', () => {
       .toEqual({ key: 'WHR', name: 'WHR', machine: 'mac', path: '/w', base: 'v3' })
     const { errors } = cleanProjectInput({ key: '1x', machine: 3, path: 'rel', base: 'a..b', template: 'Bad Id' })
     expect(errors.map(e => e.path)).toEqual(['key', 'machine', 'path', 'base', 'template'])
+  })
+})
+
+describe('workspace members and the coordinator\'s agent', () => {
+  it('runs a member with no workflow of its own on its workspace coordinator\'s agent', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await store.addProject({ key: 'ws', name: 'Work', machine: '', path: '~/work', kind: 'workspace', group: 'g1' }, okFolder)
+    await store.addProject({ key: 'pay', machine: '', path: '~/work/payroll-api', workspace: 'ws' }, okFolder)
+    expect((await store.workflow('PAY'))!.prefs).toEqual({ agent: 'claude', model: 'sonnet' })
+    await store.saveCoordinator({ ...(await store.coordinator('WS'))!, ran: { program: 'omp', model: 'anthropic/claude-opus-5-5' } })
+    expect((await store.workflow('PAY'))!.prefs).toEqual({ agent: 'omp', model: 'anthropic/claude-opus-5-5', reviewModel: 'same' })
+    expect((await store.workflow('WS'))!.prefs).toEqual({ agent: 'omp', model: 'anthropic/claude-opus-5-5', reviewModel: 'same' })
+    // The workspace's accepted workflow wins over the coordinator's agent.
+    await store.saveWorkflow('WS', { ...defaultWorkflow('WS'), prefs: { agent: 'claude', model: 'opus' } })
+    expect((await store.workflow('PAY'))!.prefs).toEqual({ agent: 'claude', model: 'opus' })
   })
 })

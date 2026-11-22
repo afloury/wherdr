@@ -24,7 +24,7 @@
   `/var/folders`) or **Home only**. With no choice saved: everything while wherdr answers only
   this computer and your tailnet; home and temporary folders once it is reachable from the
   Internet (Tailscale Funnel, `WHERDR_TRUSTED_NETWORKS=any`), where choosing everything shows a
-  warning. wherdr reads as your user, so Unix permissions still apply; a symlink is followed on
+  warning. While `settings.json` cannot be read, only the home folder opens. wherdr reads as your user, so Unix permissions still apply; a symlink is followed on
   the machine and must land in an allowed folder; the size limits are the same.
 - **How a written path is found**: an absolute or `~/…` path is that file. A relative path
   (`plans/x.md`, `app/components/X.vue`) is looked for, in order, in the agent's folder (its home
@@ -32,6 +32,8 @@
   project's clone, a workspace's root then each member's clone) and the notes (`plans/…`). The
   chip's menu shows and copies the absolute path found; in two of these folders, it offers both,
   labelled **Agent folder**, **Repository** or **Notes** (a notes file opens in the Notes panel).
+  A bare file name (`report.md`) not found is then looked for in the folders quoted before it in
+  the same message (`~/project/tasks/ABC-24/`, nearest first), and opens from there.
   A path found nowhere is drawn muted: "Not found in the agent's folder, the repository or the
   notes". The check runs on the machine (symlinks resolved), one request for the new paths of a
   message, kept for the conversation; a folder outside the setting above is skipped and

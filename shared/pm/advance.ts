@@ -46,7 +46,7 @@ export const doneSection = (note: string) => [
 ]
 
 // The reviewer's instructions file: the task, what to review, the workspace's
-// instructions files (ws, wsFilesSection), how to answer.
+// instructions files and the context folders (ws: wsFilesSection, contextSection), how to answer.
 export function reviewFile(task: Pick<Task, 'id' | 'title' | 'description' | 'specNotes'>, run: Pick<Run, 'worktree' | 'branch'>, text: string, verdict: string, publicRepo = false, ws: string[] = []) {
   return [
     `# Review of ${task.id}: ${task.title}`, '', specText(task), '',
@@ -147,14 +147,16 @@ export const CHAIN_WAIT = 'which this task starts after'
 // Where a chained task stands: 'go' once all its tasks are done (merged, or
 // their report finished); a reason to wait for the user when one failed or
 // stopped; resumes: one the engine resumes after an incident (recovery.ts),
-// waited for quietly; undefined while they still run.
-export function chainState(task: Task, tasks: Task[]): 'go' | { wait: string } | { resumes: string } | undefined {
+// waited for quietly; undefined while they still run. projects: the keys that
+// exist; an open task of a project removed since waits for the user too.
+export function chainState(task: Task, tasks: Task[], projects?: { key: string }[]): 'go' | { wait: string } | { resumes: string } | undefined {
   let open = false, resumes: string | undefined
   for (const id of afterIds(task)) {
     const t = tasks.find(x => x.id === id)
     if (!t) return { wait: `${id}, ${CHAIN_WAIT}, does not exist` }
     if (t.step?.abandoned) return { wait: `${id}, ${CHAIN_WAIT}, was abandoned` }
     if (t.step?.done) continue
+    if (projects && !projects.some(p => p.key === t.project)) return { wait: `${id}, ${CHAIN_WAIT}, belongs to project ${t.project}, which was removed` }
     if (recovering(t)) { resumes ??= id; continue }
     // Stopped: waiting, not on an agent's question but on a failure.
     if (t.state === 'waiting' && !t.waitKind) return { wait: `${id}, ${CHAIN_WAIT}, stopped: ${t.waiting?.split('\n')[0] ?? ''}` }

@@ -3,7 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { createPmStore, type PmStore } from '../server/utils/pmStore'
-import { FETCH_BRANCH_SCRIPT, WORKTREE_SCRIPT, reconcileRuns, startTask, wherdrBase, type PmLaunchDeps } from '../server/utils/pmLaunch'
+import { FETCH_BRANCH_SCRIPT, START_BRANCH_SCRIPT, WORKTREE_SCRIPT, reconcileRuns, startTask, wherdrBase, type PmLaunchDeps } from '../server/utils/pmLaunch'
 import { uploadShot } from '../server/utils/pmBoard'
 import { agentLine, duplicateAgents, publicTask, reconcile, workerPlan, type Run, type Task } from '../shared/pm/run'
 import type { Template } from '../shared/pm/workflow'
@@ -34,12 +34,20 @@ describe('worker plan and command line', () => {
     expect(workerPlan(template, task({ prefs: { model: 'haiku' } }))).toEqual({ program: 'claude', model: 'haiku' })
     expect(workerPlan(template, task({ type: 'talk' }))).toEqual({ reason: 'Task type "talk" has no worker step' })
     expect(workerPlan({ ...template, prefs: { agent: 'claude' } }, task())).toMatchObject({ reason: expect.stringMatching(/^No model set/) })
-    expect(workerPlan(template, task({ prefs: { agent: 'pi' } }))).toMatchObject({ reason: expect.stringContaining('"pi"') })
+    expect(workerPlan(template, task({ prefs: { agent: 'pi' } }))).toEqual({ reason: 'The engine cannot start "pi": claude, codex, omp or a named agent of Settings › Agents' })
+    // omp starts with a pinned model too (a provider/model name is a valid model).
+    expect(workerPlan(template, task({ prefs: { agent: 'omp', model: 'anthropic/claude-sonnet-5-5' } }))).toEqual({ program: 'omp', model: 'anthropic/claude-sonnet-5-5' })
     expect(workerPlan(template, task({ prefs: { model: 'x; rm -rf ~' } }))).toMatchObject({ reason: expect.stringMatching(/^Invalid model/) })
   })
 
   it('quotes everything after the program', () => {
+    // omp: the model and the first message only; no session flag, so its conversation is never taken up again.
+    expect(agentLine('omp', 'anthropic/claude-sonnet-5-5', "/h/it's.md")).toBe(`exec omp '--model' 'anthropic/claude-sonnet-5-5' 'Read /h/it'\\''s.md and follow it.'`)
+    expect(agentLine('omp', 'sonnet', '/h/i.md', { id: 's1' }, 'Then stop.')).toBe(`exec omp '--model' 'sonnet' 'Read /h/i.md and follow it. Then stop.'`)
     expect(agentLine('codex', 'gpt-5', "/h/it's.md")).toBe(`exec codex '-c' 'check_for_update_on_startup=false' '--model' 'gpt-5' 'Read /h/it'\\''s.md and follow it.'`)
+    // A released worker reopened: its conversation taken up again with no first message (no model turn).
+    expect(agentLine('claude', 'opus', '/h/i.md', { id: 's1', resume: true })).toBe(`exec claude '--model' 'opus' '--resume' 's1'`)
+    expect(agentLine('codex', 'gpt-5', '/h/i.md', { id: 's1', resume: true })).toBe(`exec codex '-c' 'check_for_update_on_startup=false' '--model' 'gpt-5' 'resume' 's1'`)
   })
 })
 
@@ -209,6 +217,18 @@ describe('startTask', () => {
     }
   })
 
+  it.each([0, 2])('a type that starts from develop: its worktree starts there at the first start; develop missing on the remote waits (exit %s)', async (code) => {
+    const promote = { ...template, taskTypes: { ...template.taskTypes, simple: { ...template.taskTypes.simple!, start: 'develop' } } }
+    const { deps, execs } = await setup({ template: promote, fails: s => code && s === START_BRANCH_SCRIPT ? code : undefined, exec: s => s === START_BRANCH_SCRIPT ? 'refs/remotes/origin/develop' : undefined })
+    const t = await startTask(deps, 'WEB-1')
+    expect(execs.find(e => e.script === START_BRANCH_SCRIPT)!.args).toEqual(['/home/u/web', 'develop'])
+    const wt = execs.find(e => e.script === WORKTREE_SCRIPT)
+    if (code) {
+      expect(t).toMatchObject({ state: 'waiting', waiting: expect.stringMatching(/^Branch `develop`, which this task type starts from, is not on the remote/) })
+      expect(wt).toBeUndefined()
+    } else expect(wt!.args.slice(2, 4)).toEqual([t.branch, 'refs/remotes/origin/develop'])
+  })
+
   it('a task whose branch to continue cannot be fetched (remote unreachable) waits, without a worktree', async () => {
     const { store, deps, execs } = await setup({ fails: s => s === FETCH_BRANCH_SCRIPT ? 1 : undefined })
     await store.addTask({ project: 'WEB', title: 'Dark mode', type: 'simple', fromBranch: 'feature/c++' })
@@ -331,6 +351,18 @@ describe('startTask', () => {
     const said = loginRestartText('worker')
     for (const r of runs.slice(2)) expect(r.line).toMatch(new RegExp(`'--resume' '[^']+' '${said}'$`))
     expect((await store.task('WEB-2'))!.log!.at(-1)!.text).toMatch(new RegExp(`^resumed after incident ${i!.id} \\(login\\).*; told it: ${said}$`))
+  })
+
+  it('an omp agent on a login prompt opens no login incident (no credentials file whose renewal could be seen): the task waits like for any prompt', async () => {
+    const { store, deps } = await setup({ installed: ['omp'], template: { ...template, prefs: { agent: 'omp', model: 'sonnet' } }, screen: 'Please run /login' })
+    const { syncWaits } = await import('../server/utils/pmMechanic')
+    await startTask(deps, 'WEB-1')
+    const call = deps.call
+    deps.call = (async (m: string, p: Record<string, unknown>) => (m === 'terminal.list' ? { terminals: (await store.runs()).map(r => ({ address: r.terminal, status: { state: 'blocked' } })) } : call(m, p))) as never
+    await syncWaits(deps)
+    expect(await store.incidents()).toEqual([])
+    expect(await store.task('WEB-1')).toMatchObject({ state: 'waiting', waitKind: 'permission' })
+    expect((await store.task('WEB-1'))!.recovery).toBeUndefined()
   })
 
   it('a start once its files are free, its machine out of reach midway (herdr-core answers unreachable): held, started by the next tick once it is back', async () => {

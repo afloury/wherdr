@@ -1,10 +1,10 @@
 <script setup lang="ts">
-// Attached file (PDF, text, code…): icon by type, name, size. In the input
-// field it can be removed; in a sent message a click opens the path menu.
+// Attached file (PDF, text, code…) in a sent message: icon by type, name,
+// size; a click opens the path menu. In the input field: AttachTile.
 import { attachmentIcon, extensionOf, formatSize, type AttachKind } from '#shared/attachments'
 
-const props = defineProps<{ name: string, size?: number, kind?: AttachKind, uploading?: boolean, removable?: boolean, clickable?: boolean }>()
-const emit = defineEmits<{ remove: [], open: [el: HTMLElement] }>()
+const props = defineProps<{ name: string, size?: number, kind?: AttachKind, clickable?: boolean }>()
+const emit = defineEmits<{ open: [el: HTMLElement] }>()
 const icon = computed(() => attachmentIcon(props.name, props.kind))
 const ext = computed(() => extensionOf(props.name).slice(0, 6) || (props.kind === 'text' ? 'txt' : ''))
 function open(e: Event) {
@@ -15,18 +15,14 @@ function open(e: Event) {
 <template>
   <component
     :is="clickable ? 'button' : 'div'" :type="clickable ? 'button' : undefined" class="file-chip"
-    :class="{ up: uploading, clickable }" :title="name" @click="open"
+    :class="{ clickable }" :title="name" @click="open"
   >
     <span class="file-chip-icon">
-      <span v-if="uploading" class="spinner" />
-      <UIcon v-else :name="icon" />
+      <UIcon :name="icon" />
     </span>
     <span class="file-chip-body">
       <span class="file-chip-name">{{ name }}</span>
       <span class="file-chip-meta">{{ [ext, size ? formatSize(size) : ''].filter(Boolean).join(' · ') }}</span>
     </span>
-    <button v-if="removable" type="button" class="file-chip-x" :aria-label="t('Remove')" @click.stop="emit('remove')">
-      <UIcon name="i-lucide-x" />
-    </button>
   </component>
 </template>

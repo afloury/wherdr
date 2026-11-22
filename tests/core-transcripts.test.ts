@@ -1,9 +1,9 @@
 import { execFile } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { agentDescendants, coreFailureKind, coreShell, createCoreTranscripts, machineOfAddress, processInfo } from '../server/utils/coreTranscripts'
+import { agentChildren, agentDescendants, coreFailureKind, coreShell, createCoreTranscripts, machineOfAddress, processInfo } from '../server/utils/coreTranscripts'
 import { createShellFs } from '../server/utils/fsx'
 import { DEVIN_PROCESS_SCRIPT } from '../server/utils/devinProcesses'
 import { CoreError } from '../server/utils/core'
@@ -153,6 +153,67 @@ describe('remote shell', () => {
   })
 })
 
+describe('omp core transcripts', () => {
+  // herdr-core has no integration that reports omp's session: the conversation is
+  // found in the folder omp keeps for its working directory.
+  // omp 19 writes its title before the session entry.
+  const session = (cwd: string, text: string) => [
+    { type: 'title', v: 1, title: 'Demo', source: 'auto', updatedAt: '2026-01-01T10:00:00.000Z' },
+    { type: 'session', version: 3, id: 'x', timestamp: '2026-01-01T10:00:00.000Z', cwd },
+    { type: 'message', id: 'u1', timestamp: '2026-01-01T10:00:01.000Z', message: { role: 'user', content: [{ type: 'text', text }], attribution: 'user' } },
+    { type: 'message', id: 'a1', timestamp: '2026-01-01T10:00:02.000Z', message: { role: 'assistant', content: [{ type: 'text', text: `Reply to ${text}` }], stopReason: 'stop' } },
+  ].map(d => JSON.stringify(d)).join('\n') + '\n'
+  function homeWithOmp(cwd: string, dirName: string, born: number) {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-core-omp-'))
+    const real = cwd.replace('~', home)
+    const dir = path.join(home, '.omp/agent/sessions', dirName)
+    mkdirSync(dir, { recursive: true })
+    const old = path.join(dir, '2026-01-01T09-00-00-000Z_old.jsonl')
+    const now = path.join(dir, '2026-01-01T10-00-00-000Z_new.jsonl')
+    writeFileSync(old, session(real, 'earlier question'))
+    writeFileSync(now, session(real, 'current question'))
+    utimesSync(old, new Date(born - 3600_000), new Date(born - 3600_000))
+    utimesSync(now, new Date(born + 1000), new Date(born + 1000))
+    // Another folder's conversation, written later, is never taken.
+    const other = path.join(home, '.omp/agent/sessions', '-elsewhere')
+    mkdirSync(other, { recursive: true })
+    writeFileSync(path.join(other, '2026-01-01T11-00-00-000Z_other.jsonl'), session(path.join(home, 'elsewhere'), 'other folder'))
+    return { home, cwd: real }
+  }
+  const omp = (cwd: string, born: number, argv = ['omp']) => fakeCore({ t5: { pid: 77, argv, created_ms: born, foreground: { pid: 77, name: 'omp', argv, cwd } } })
+  const texts = (items: { role: string, text?: string }[] | undefined) => (items || []).filter(i => i.role === 'user').map(i => i.text)
+
+  it('opens the conversation an omp terminal writes, in a folder under home', async () => {
+    const born = Date.now() - 60_000
+    const { home, cwd } = homeWithOmp('~/work/omp', '-work-omp', born)
+    const p = pane('o1', 't5', 'omp', cwd)
+    const t = createCoreTranscripts({ call: omp(cwd, born).call, pane: () => p, localHome: home })
+    const r = await t.chat({ id: 'o1', agent: 'omp', cwd }, {})
+    expect(r.available).toBe(true)
+    expect(r.file).toBe('2026-01-01T10-00-00-000Z_new.jsonl')
+    expect(texts(r.items)).toEqual(['current question'])
+  })
+
+  it('opens it for a folder outside home', async () => {
+    const born = Date.now() - 60_000
+    const cwd = `/srv/omp-${process.pid}`
+    const { home } = homeWithOmp(cwd, `--srv-omp-${process.pid}--`, born)
+    const p = pane('o2', 't5', 'omp', cwd)
+    const t = createCoreTranscripts({ call: omp(cwd, born).call, pane: () => p, localHome: home })
+    expect(texts((await t.chat({ id: 'o2', agent: 'omp', cwd }, {})).items)).toEqual(['current question'])
+  })
+
+  it('shows no earlier conversation for an omp started after it, unless omp continues it', async () => {
+    const born = Date.now() + 60_000 // both files were written before this omp started
+    const { home, cwd } = homeWithOmp('~/work/omp', '-work-omp', Date.now() - 60_000)
+    const p = pane('o3', 't5', 'omp', cwd)
+    const fresh = createCoreTranscripts({ call: omp(cwd, born).call, pane: () => p, localHome: home })
+    expect(await fresh.chat({ id: 'o3', agent: 'omp', cwd }, {})).toEqual({ available: false, reason: 'not_found' })
+    const resumed = createCoreTranscripts({ call: omp(cwd, born, ['omp', '--continue']).call, pane: () => p, localHome: home })
+    expect(texts((await resumed.chat({ id: 'o3', agent: 'omp', cwd }, {})).items)).toEqual(['current question'])
+  })
+})
+
 describe('Devin core transcripts', () => {
   it('resolves a fresh remote PID lock using machine.exec and the remote home', async () => {
     const home = mkdtempSync(path.join(tmpdir(), 'hw-remote-devin-'))
@@ -206,6 +267,35 @@ describe('Devin core transcripts', () => {
     expect(r.items?.at(-1)?.text).toContain('all 12 tests pass')
   })
 
+  it('matches the engine child only, not a Devin started below it', async () => {
+    // A second Devin under the engine (started from its shell) holds its own
+    // lock; only the launcher's direct Devin child names this session.
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-remote-devin-nested-'))
+    const root = path.join(home, '.local/share/devin/cli')
+    mkdirSync(path.join(root, 'session_locks'), { recursive: true })
+    mkdirSync(path.join(root, 'transcripts'))
+    const doc = JSON.parse(fx('devin-atif-v1.7-real.json'))
+    writeFileSync(path.join(root, 'session_locks', `${doc.session_id}.lock`), '51\n')
+    writeFileSync(path.join(root, 'transcripts', `${doc.session_id}.json`), JSON.stringify(doc))
+    writeFileSync(path.join(root, 'session_locks', 'nested-session.lock'), '54\n')
+    writeFileSync(path.join(root, 'transcripts', 'nested-session.json'), JSON.stringify({ ...doc, session_id: 'nested-session' }))
+    const core = fakeCore({ 'host-a/t1': { pid: 10, argv: ['sh'], foreground: { pid: 50, name: 'devin', argv: ['devin', '--prompt-file', 'brief.md'] } } })
+    const snap = (pid: string, argv: string[]) => `${pid} 100 100 1767225600 100.00 1767225700.001 ${Buffer.from(argv.join('\0') + '\0').toString('base64')}`
+    const ps = '10 1 sh\n50 10 devin --prompt-file brief.md\n51 50 /opt/devin acp\n53 51 zsh\n54 53 devin -r nested-session\n'
+    const call = vi.fn(async (method: string, params: any): Promise<any> => {
+      if (params.argv?.[0] === 'ps') return { stdout: Buffer.from(ps).toString('base64') }
+      if (params.argv?.[2] === DEVIN_PROCESS_SCRIPT) {
+        const lines = params.argv.slice(4).map((pid: string) => snap(pid, ['devin', '--prompt-file', 'brief.md']))
+        return { stdout: Buffer.from(lines.join('\n') + '\n').toString('base64') }
+      }
+      if (params.argv?.[2] === 'printf %s "$HOME"') return { code: 0, stdout: Buffer.from(home).toString('base64') }
+      return core.call(method, params)
+    })
+    const p = pane('devin', 'host-a/t1', 'devin', '/work/proj')
+    const t = createCoreTranscripts({ call, pane: () => p, localHome: '/unrelated' })
+    expect((await t.chat(p)).session).toBe(doc.session_id)
+  })
+
   it('reads a resumed Devin transcript from the foreground process without hooks', async () => {
     const home = mkdtempSync(path.join(tmpdir(), 'hw-core-devin-'))
     const dir = path.join(home, '.local/share/devin/cli/transcripts')
@@ -226,6 +316,11 @@ describe('Devin core transcripts', () => {
 
   it('finds Devin under a shell and ignores unrelated processes', () => {
     expect(agentDescendants('10 1 sh\n12 10 /opt/devin -r example\n20 1 devin\n', 10).map(p => p.pid)).toEqual([12])
+  })
+
+  it('lists only the direct agent children of a process', () => {
+    const ps = '50 10 devin\n51 50 /opt/devin acp\n52 51 zsh\n53 52 devin -r other\n54 50 sh\n'
+    expect(agentChildren(ps, 50).map(p => p.pid)).toEqual([51])
   })
 })
 

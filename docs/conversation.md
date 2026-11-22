@@ -2,11 +2,11 @@
 
 [Documentation](README.md) · [Project](../README.md)
 
-Claude Code, Codex and Devin terminals open in conversation mode; any other terminal shows only its
+Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conversation mode; any other terminal shows only its
 [terminal](terminal.md). How wherdr finds the conversation file on herdr-core is described in
 [herdr-core › Conversations](core.md#conversations).
 
-- **Conversation view**: the agent's real transcript (Claude Code, Codex and Devin), rendered as
+- **Conversation view**: the agent's real transcript (Claude Code, Codex, Devin, Antigravity and Hermes Agent), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan),
   timestamps, search and infinite scroll back to the first message. Every message shows its time,
   muted and always on the right: under your messages, at the end of the agent reply's action
@@ -28,6 +28,11 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the
   **↓** button; content above that changes height (images, folding) does not move it. A
   conversation still opens at its last message.
+- **Typewriter and *New***: only a reply that arrives while you watch the open conversation is
+  typed in (**Settings › Conversation › Typewriter**). A reply already there when you open the
+  conversation, or when the app comes back from the background or offline, shows at once; if
+  this device never showed it, a thin *New* divider sits above the first such reply for a few
+  seconds, gone sooner once you scroll or write. None on a conversation's first open on a device.
 - **Message field focus**: the focused message field's border takes the agent's color, a
   second color glides slowly around it, with a faint glow around the field (omp's running
   actions get the same moving border, without the glow). It is frozen when the system asks for
@@ -57,7 +62,7 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   Settings › Projects › KEY › Guards*, *Open Task KEY-12*, *Open Board › KEY › ui*). A tap opens
   the place in the app, on a computer and a phone,
   without reloading; Back returns to the conversation. Other links open in a new tab, other
-  inline code stays plain. The addresses: `#/`, `#/decisions`, `#/board` (with `?project=KEY`,
+  inline code stays plain. The addresses: `#/`, `#/review` (Tasks to review; the former `#/decisions` opens it too), `#/board` (with `?project=KEY`,
   `?tag=TAG` or `?task=ID`), `#/settings?section=<section>`, a tab of Settings › Conversation
   `#/settings?section=conversation&tab=<tab>` (`display`, `dictation`, `read-aloud`) and a
   project's sheet `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in
@@ -122,14 +127,21 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   button), or answer a workflow or automation change, wherdr tells the agent that proposed it in
   its conversation, so it goes on by itself (Alfred moves to the next project): *Applied:
   Project WEB › Guards*, *Cancelled: …*, or *Not applied: …* with why (changed since, a check
-  that failed). It shows as a muted *From the card* row, not as a message you typed, and counts as
-  your turn (the agent may propose the next card). A second click on a closed card tells nothing.
+  that failed). It shows as a muted *From the card* row, not as a message you typed: the agent may
+  propose the next card, but the click is never your yes to anything else (a *Cancel* cannot end
+  a step that waits for you or merge a PR). A second click on a closed card tells nothing.
+  Typed while the agent works, the note (like a wake) waits in Claude's queue as the same small
+  row, marked *sent when it finishes*, with Claude's **Send now** under it: never a bubble, never
+  a **Send now** with no message.
   While that agent does not run, nothing is typed: its next start's first message lists what you
   applied or cancelled since.
 - **Files and screenshots beside the conversation**: an agent can show you a file of its own
   folder (`wherdr pm ui show file docs/plan.md`, a path relative to its folder: never `~`, `..`
-  or a path outside it) or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task
-  has some). On a wide computer they open in the side panel, in place of Settings: the file
+  or a path outside it), a coordinator also a file of one of its project's tasks' folders (its
+  report, screenshots, mockups: `ui show file ABC-24/mockups/page.html`, or the absolute path under
+  the pm tasks folder; another project's task only within its reach), or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task
+  has some). On a wide computer they open in the side panel, in place of Settings (drag its left
+  edge, or the arrow keys on it, to resize; double-click: default width; kept on the device): the file
   read-only as in Files (an HTML page runs as a page: see [Files](files.md)), the screenshots by step, before and after side by side, with a button
   to open the task. On a phone a card shows above the message field, and a tap opens a sheet
   (before and after toggled). A tap on a shown image (the file, an image of a shown Markdown
@@ -153,6 +165,13 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   answers. wherdr reads the screen again right before answering and refuses the answer if the
   question changed meanwhile. A free answer selects its option, waits for the field, then types
   the text. Unrecognized blocking screens offer the real terminal.
+- **While the agent works**: the line under the conversation shows what it is doing, read from
+  its screen: Claude Code's own verb with its spinning star (*✻ Orbiting…*, orange), omp's running
+  step and the turn's time; other agents, or a Claude conversation that is not open, show
+  *… is working…*. The line goes once the turn ends.
+- **Background jobs**: when Claude Code's turn is over but jobs it started still run (its footer
+  counts them, *· 1 shell*), the line says so with a still dot, *1 shell running in the
+  background*, instead of *Claude is working…*; the composer is at rest, messages go at once.
 - **Composer**: send messages while the agent works (queued: the agent's own queue when it takes
   them, else held by wherdr and sent when the turn ends; never sent twice; a message sent while
   wherdr types a wake or another of its own messages into the agent waits for it, then goes;
@@ -160,18 +179,29 @@ Claude Code, Codex and Devin terminals open in conversation mode; any other term
   and comes back into the field if Codex exits instead, see [Codex updates](quotas.md#codex-updates)), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), up to **8 MB per file** (core's `terminal.put`).
+  Above the field, every attachment is the same square tile (about 96 px on the phone, 120 px on
+  a computer), on one row that scrolls sideways (swipe, trackpad, Shift+wheel) and fades out at
+  the right edge while more tiles follow: a badge with the extension (*JPG*, *PNG*, *PDF*, *MD*,
+  *LOG*, *TXT*) and the remove cross on top, a preview (the photo cropped to fill, the first lines
+  of pasted text or a text file in small mono type, an icon for a PDF or another file), then the
+  file's name and its size or the line count. A tap opens a photo, or the whole pasted text with
+  *Copy*. While it uploads, the preview is dimmed under a spinner and the name shimmers; a refused
+  upload stays with the reason in red until you remove it, and Send waits for it to go (*Remove
+  the attachment that failed*), as it waits for an upload still running (*Photo is uploading…*).
   A photo sent from this device shows in the message at once, from its own copy; an image that
   fails to load is tried again once, then shows *Tap to reload*.
   A sent file shows as a chip (icon and original name) in the message and its history, also in
   conversations from v2; a tap opens or downloads it. A photo stays a picture in the message,
   never its file path, also when the message was sent again (**Send now**, **Retry**) or waited
   in the agent's queue.
-  Slash commands typed in the field (`/compact`, `/clear`…) are sent as text. **Stop** (or `Esc`
+  Slash commands typed in the field (`/compact`, `/clear`…) are sent as text; **+** also lists
+  the common ones of Claude Code, Codex, omp and Antigravity. A command that opens a panel or a
+  picker (`/context`, `/model`…) shows the interactive terminal over the conversation. **Stop** (or `Esc`
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
   inside the field on its right, on a phone. A long pasted text (log, output) becomes a
-  "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
-  conversation, where it opens in full with Copy; long typed messages fold with Show more. The
+  tile in the field (*N lines*), sent to the agent as it is and shown as a "Pasted text · N lines"
+  card in the conversation; both open in full with Copy; long typed messages fold with Show more. The
   draft (text, quotes, attachments) is kept per agent, across reloads.
 - **omp context**: in the header, after the state, a small gauge with the percentage of omp's
   context window and the estimated tokens (`68% · 136K`); select it for the window, the exact
@@ -270,9 +300,9 @@ choices "Rate limits" | "CSV export" | "Both"
 ````
 
 A tap sends that option at once as your reply, quoted to the last question written before the
-block (to the whole message when there is none), the same as typing it. Only the choices of the
-agent's last message are live; once a sent message answers them, and in older messages, they are
-greyed, the answer given marked. A `wherdr` block with a line wherdr does not understand (a
+block (to the whole message when there is none), the same as typing it. The buttons stay live
+until a sent message answers them, even when the agent wrote another message below (a wake, a
+report); then they are greyed, the answer given marked. A `wherdr` block with a line wherdr does not understand (a
 missing quote, no option or more than four, an unknown kind) shows as ordinary code.
 
 **Several questions in one card.** When an agent has several questions at once (a plan to
@@ -295,8 +325,9 @@ answer. On a computer, with the focus in the card, a digit goes to that question
 (`a` to `d`) picks that option and moves to the next one. **Send** sends all the answers as one
 reply, quoted to the message, one line per question: `1A Postgres`, then `2B No, remove it`: the
 number, the option's letter and its text, or your own words, exactly as typed, after the number. Send needs one answer at least; a question left
-unanswered is sent as `skip`, and the card says how many will be. Like choice buttons, only the
-card of the agent's last message is live; once answered it is greyed with the answers given. In
+unanswered is sent as `skip`, and the card says how many will be. Like choice buttons, the card stays
+live until you answer it, even under a later agent message; once answered it is greyed with the
+answers given. In
 Tasks to review, the card in the agent's question answers it the same way.
 
 Above the field, **N questions unanswered** counts the questions of the agent's last message

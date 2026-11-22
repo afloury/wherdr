@@ -253,6 +253,9 @@ describe('working branch', () => {
     expect(startBase(wf({ kind: 'git.verify-merged', target: 'next' }), { type: 'task', base: '' }, { base: 'v3' })).toEqual({ base: 'next', fromWorkflow: true })
     expect(startBase(wf({ kind: 'github.pr' }), { type: 'task' }, {})).toEqual({})
     expect(startBase(null, { type: 'task' })).toEqual({})
+    // {base} unresolved is never a base: the repository's current branch.
+    expect(startBase(wf({ kind: 'github.pr', base: '{base}' }), { type: 'task' }, {})).toEqual({})
+    expect(startBase(null, { type: 'task', base: '{base}' }, { base: 'v3' })).toEqual({})
   })
 })
 
@@ -307,6 +310,14 @@ describe('step engine, study and feature split', () => {
       expect(held.yourTurn).toBeUndefined()
       expect(onEvent(plan, held, { kind: 'tick' }, 9 * H).state.yourTurn).toBeUndefined()
       expect(held.since).toBe(0)
+    })
+
+    it('a 5 h wait for the user\'s answer does not count, and the clock runs again from the answer', () => {
+      const asks = (t: number) => t > H && t <= 6 * H
+      const at = (t: number) => clockStops(asks(t) ? { state: 'waiting', waitKind: 'question' } : { state: 'working' }, false)
+      expect(run(6 * H, at).yourTurn).toBeUndefined()
+      expect(run(7.5 * H, at).yourTurn).toBeUndefined()
+      expect(run(8 * H, at).yourTurn).toEqual({ reason: 'timeout', badge: 'Check work: over 3h' })
     })
 
     it('normal work still times out after 3 h', () => {

@@ -60,9 +60,22 @@ export function paneBadge(p?: Pane | null): { text: string, color?: string, coor
   if (c) return c.main ? null : { text: c.label ?? c.project, color: c.color, coordinator: true }
   const i = p?.task?.lastIndexOf('-') ?? -1
   if (!p?.task || i < 1) return null
-  const pc = projectCoordinators.value.find(x => x.project === p.task!.slice(0, i))
+  const pc = projectBadges.value.get(p.task.slice(0, i))
   return { text: `${pc?.label ?? p.task.slice(0, i)}${p.task.slice(i)}`, color: pc?.color }
 }
+// Each project's shown key and color, by its key: the coordinators', then their
+// workspaces' members (no coordinator of their own).
+const projectBadges = computed(() => new Map<string, { label?: string, color?: CoordinatorView['color'], member?: true }>(projectCoordinators.value.flatMap(c => [
+  [c.project, { label: c.label, color: c.color }] as const,
+  ...(c.workspace?.members ?? []).map(m => [m.key, { label: m.label, color: m.color, member: true as const }] as const),
+])))
+// A project's badge by any key it shows (its stored or shown key), or undefined.
+export function projectBadgeOf(key: string) {
+  for (const [k, v] of projectBadges.value) if (k === key || v.label === key) return v
+  return undefined
+}
+// Is a badge's text (WD, WD-5) a workspace member's key or task id? Its badge has a dashed border.
+export const isMemberBadge = (text?: string) => Boolean(text && projectBadgeOf(text.replace(/-\d+$/, ''))?.member)
 // A coordinator's pane (Alfred's included, projects on or off) is titled by its name; '' for any other pane.
 export function paneCoordinatorName(p?: Pane | null) {
   if (p?.coreAddress && p.coreAddress === alfred.value?.terminal) return alfred.value.name || 'Alfred'
@@ -82,6 +95,25 @@ export function coordinatorNameOf(project: string) {
   if (project === MAIN) return alfred.value?.name || coordinators.value.find(c => c.main)?.name || 'Alfred'
   const c = coordinators.value.find(x => x.project === project)
   return c ? coordinatorName(c) : ''
+}
+// A project's or workspace's coordinator: its board, its settings sheet (Project or
+// Workspace settings) and its Autopilot tab with its On/Off. The sidebar row's menu
+// and its conversation header's ⋯ menu both start with these.
+export const coordinatorBoardPath = (project: string) => `/board?project=${encodeURIComponent(project)}`
+const coordinatorSettingsPath = (project: string, tab: string) => `/settings?section=projects&project=${encodeURIComponent(project)}&tab=${tab}`
+export function coordinatorPlaceItems(c: CoordinatorView): MenuItem[] {
+  const pilot = !!c.autopilot?.on
+  return [
+    { label: t('Open the board'), icon: 'i-lucide-kanban', run: () => navigateTo(coordinatorBoardPath(c.project)) },
+    { label: c.workspace ? t('Workspace settings') : t('Project settings'), icon: 'i-lucide-settings-2', run: () => navigateTo(coordinatorSettingsPath(c.project, 'general')) },
+    { label: t('Autopilot'), icon: pilot ? 'i-lucide-check' : 'i-lucide-plane', desc: pilot ? t('On') : t('Off'), run: () => navigateTo(coordinatorSettingsPath(c.project, 'autopilot')) },
+  ]
+}
+// The same items for a pane that is a project's or workspace's coordinator, then a
+// separator; none for Alfred or any other pane.
+export function paneCoordinatorItems(p?: Pane | null): MenuItem[] {
+  const c = coordinatorOf(p)
+  return c && !c.main ? [...coordinatorPlaceItems(c), { kind: 'separator' }] : []
 }
 // The pane of a coordinator's kept conversation, while it runs.
 export const coordinatorPane = (c: CoordinatorView) => (c.terminal ? herdrState.value?.panes.find(p => p.coreAddress === c.terminal) : undefined)

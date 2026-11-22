@@ -7,6 +7,7 @@
 import type { Quota, Quotas } from './types'
 import { hoursAgo, limitState } from './quotaLimit'
 import type { MachineCapacity } from './pm/capacity'
+import { gb } from './pm/memory'
 import { cardStatus, prLink, type Card } from './pm/board'
 import { actionLabel } from './pm/describe'
 
@@ -45,7 +46,6 @@ export interface StatusView {
   task?: string // the task to open on a tap
 }
 
-const gb = (bytes: number) => `${(bytes / 2 ** 30).toFixed(bytes < 10 * 2 ** 30 ? 1 : 0)} GB`
 export interface MachineRow { key: string, label: string, mem: MachineCapacity | null, agents: number }
 export function machineView(rows: MachineRow[] | null, arg: string): StatusView | null {
   const a = arg.toLowerCase()

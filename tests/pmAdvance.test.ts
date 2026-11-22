@@ -192,6 +192,9 @@ describe('chained tasks', () => {
     expect(chainState(next, [finished('CO-1'), task('CO-2', { state: 'waiting', waiting: 'git worktree failed\nmore' }), next]))
       .toEqual({ wait: 'CO-2, which this task starts after, stopped: git worktree failed' })
     expect(chainState(next, [finished('CO-1'), next])).toEqual({ wait: 'CO-2, which this task starts after, does not exist' })
+    // Its project removed since (WHR-513): waits for the user, never forever with no word.
+    expect(chainState(next, [finished('CO-1'), task('CO-2', { project: 'API', state: 'working' }), next], [{ key: 'CO' }]))
+      .toEqual({ wait: 'CO-2, which this task starts after, belongs to project API, which was removed' })
   })
 })
 

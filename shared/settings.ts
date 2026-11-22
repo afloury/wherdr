@@ -18,6 +18,8 @@ export const SYNCED_SETTINGS = [
   'homeGrouping', 'individualAgentList', 'collapsedMachines', 'collapsedRepos',
   'showCounters', 'showQuotas', 'quotaDisplay',
   'autoReorderReady', 'readySort', 'hiddenAgents', 'agentOrder',
+  // Named agents: a name for a command per machine (shared/pm/namedAgents.ts), read by the engine
+  'namedAgents',
   // Coordinators section: their order and Hidden group (shared/pm/coordinatorOrder.ts)
   'coordinatorOrder', 'coordinatorsHidden',
   // Conversation
@@ -34,6 +36,10 @@ export const SYNCED_SETTINGS = [
   'chatFilesLevel', 'chatFilesProtected',
   // Keyboard shortcuts changed by the user (app/utils/shortcuts.ts)
   'shortcutBindings',
+  // Community plugins: '1' lets the wherdr plugins load (shared/clientPlugins.ts)
+  'communityPlugins',
+  // wherdr's own split layout of each tab (shared/splitTree.ts)
+  'tabSplits',
 ] as const
 
 export type SyncedSetting = typeof SYNCED_SETTINGS[number]

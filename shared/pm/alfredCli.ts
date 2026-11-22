@@ -58,7 +58,7 @@ export type AlfredCommand =
   // Lines added to the end of the project coordinator's memory.md (the text comes as
   // the call's input, so no card: the parser refuses --propose).
   | { name: 'project memory', apply: boolean, propose?: true, key: string }
-  | { name: 'coordinator start', apply: boolean, propose?: true, key: string, program?: 'claude' | 'codex', resume?: true }
+  | { name: 'coordinator start', apply: boolean, propose?: true, key: string, program?: 'claude' | 'codex' | 'omp', resume?: true }
   // Every v2 project not made yet, in one change: only: the keys to add (none: all); start: their coordinators too.
   | { name: 'v2 import', apply: boolean, propose?: true, only?: string[], start: boolean }
   // No change given: the project's guards are shown.
@@ -90,13 +90,13 @@ export const ALFRED_COMMANDS: { usage: string, does: string }[] = [
   { usage: 'settings', does: 'the synced settings, their values, and the values each one Alfred may change accepts (1 = on, 0 = off)' },
   { usage: 'project add <KEY> --machine <key> --path <folder> [--name <name>] [--template example:<id>]', does: 'add a project: a git folder on a machine' },
   { usage: 'workspace add <KEY> --root <folder,folder> [--machine <key,key>] [--name <name>] [--group <tab group>]', does: 'add a workspace (docs/workspaces.md): a project with no git whose coordinator runs the repositories cloned under its root folder (~/work); --machine and --root pair up, the first machine its home (none: this machine); --group: the tab group (id or name) it shows in. Once applied, its coordinator starts and offers to build the map' },
-  { usage: 'project template <KEY> <example:id|none>', does: 'replace the project\'s workflow with a copy of a built-in example (its guards come with it), or none. To reuse another project\'s workflow: read it (wherdr pm template show --project <KEY>), then project workflow edit' },
+  { usage: 'project template <KEY> <example:id|none>', does: 'replace the project\'s workflow with a copy of a built-in example (its guards come with it), or none (a workspace\'s project with its own workflow then follows its workspace\'s again). To reuse another project\'s workflow: read it (wherdr pm template show --project <KEY>), then project workflow edit' },
   { usage: 'project workflow edit <KEY> < workflow.json', does: 'propose a new workflow for the project (the whole JSON on stdin, guards unchanged): the user accepts or refuses it in wherdr, like a coordinator\'s proposal. Only in a turn that comes from the user' },
   { usage: 'project memory <KEY> < note.md', does: 'add the lines on stdin (at most 30, blank ones left out) to the end of the project coordinator\'s memory.md, on its machine; it is created when missing. For what the user wants it to know (a v2 handover note, a goal)' },
-  { usage: 'project guards <KEY> [--protect <branch,branch|none>] [--merge-protected user|engine] [--merge-others user|engine] [--contributor-prs off|others|all]', does: 'the project\'s guards: protected branches, who merges into them and into the others (user: the user, engine: wherdr), and whether its coordinator may merge an outside contributor\'s PR after the user\'s yes (others: not into a branch reserved for the user; all: into any); without an option, shown only. A project coordinator never changes them' },
+  { usage: 'project guards <KEY> [--protect <branch,branch|none>] [--merge-protected user|engine] [--merge-others user|engine] [--contributor-prs off|others|all]', does: 'the project\'s guards: protected branches, who merges into them and into the others (user: the user, engine: wherdr), and whether its coordinator may merge an outside contributor\'s PR after the user\'s yes (others: not into a branch reserved for the user; all: into any); without an option, shown only; a change only with --propose, as a card the user applies (never --apply). A project coordinator never changes them' },
   { usage: 'project machine add <KEY> <machine> --clone <folder>', does: 'let the project\'s tasks run on another machine (its key or label), in its clone of the repo there; once applied, the machine\'s readiness check runs and its result is in the answer' },
   { usage: 'project machine remove <KEY> <machine>', does: 'the project\'s tasks no longer start on that machine (tasks already there stay)' },
-  { usage: 'coordinator start <KEY> [--program claude|codex] [--resume]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one); --resume takes up its last conversation again, with the agent that ran it' },
+  { usage: 'coordinator start <KEY> [--program claude|codex|omp] [--resume]', does: 'start the project\'s coordinator, with its harness\'s default model (a new conversation replaces a running one); --resume takes up its last conversation again, with the agent that ran it' },
   { usage: '<change> --propose', does: 'instead of --apply, any change above (project add, workspace add, template, guards, machine, coordinator start, v2 import): a card in your reply (the change, Show me, Cancel, Apply) the user applies with one click. Only in a turn that comes from the user' },
   { usage: 'setting set <key> <value> [--propose]', does: 'propose a setting change, to one of the values `settings` lists for it: without --propose it only shows the change; with it, a card in your reply (before → after, Show me, Cancel, Apply) the user applies. Only in a turn that comes from the user; you never apply it yourself' },
   { usage: 'theme propose < theme.json', does: 'propose a custom theme the user described: the theme file on stdin, the format of an imported one ({ "wherdr": "theme", "version": 1, "name", "dark": { bg, bg2, surface, line, text, muted, dim, accent, green, coral, ochre, rose, blue, teal, "ansi": [16 colors] }, "light": { the same colors, no ansi } }, every color #rrggbb, 8 KB at most). A refused file says why: fix it and run again. Accepted: a card in your reply (name, preview, contrast check, Apply, Edit in editor, Cancel); the answer lists the colors below WCAG AA in each mode, to fix first when you can. Only in a turn that comes from the user; you never save or apply a theme yourself' },
@@ -116,7 +116,11 @@ const FLAGS: Record<string, string[]> = {
 }
 
 export const CHANGES = ['project add', 'workspace add', 'project template', 'project memory', 'project guards', 'project machine', 'coordinator start', 'v2 import']
-const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMANDS.filter(c => c.usage.startsWith(verb)).map(c => c.usage).join(' | ')}${CHANGES.some(v => verb.startsWith(v)) ? ' [--apply]' : ''}` })
+// Changes Alfred never applies itself, only proposes as a card (who merges into
+// protected branches is the user's click alone).
+export const CARD_ONLY = ['project guards']
+const flagsOf = (usage: string, all: string) => CARD_ONLY.some(v => usage.startsWith(v)) ? ' [--propose]' : CHANGES.some(v => usage.startsWith(v)) ? all : ''
+const usage = (verb: string) => ({ error: `usage: wherdr alfred ${ALFRED_COMMANDS.filter(c => c.usage.startsWith(verb)).map(c => c.usage).join(' | ')}${flagsOf(verb, ' [--apply]')}` })
 
 // argv after `wherdr alfred` → a command, or the reason it is not one.
 // --apply (no value) makes a change; without it, the change is only shown;
@@ -153,6 +157,7 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
   const extra = Object.keys(flags).find(f => !(FLAGS[verb] ?? []).includes(f))
   if (extra) return { error: `unknown option --${extra}` }
   if (apply && verb === 'setting set') return { error: 'A setting is never changed by Alfred: setting set --propose puts a card the user applies' }
+  if (apply && CARD_ONLY.includes(verb)) return { error: `${verb} is never changed by Alfred: ${verb} --propose puts a card the user applies` }
   if (apply && !CHANGES.includes(verb)) return { error: '--apply is for a change only' }
   if (propose && verb !== 'setting set' && !CHANGES.includes(verb)) return { error: `--propose is for setting set and the changes (${CHANGES.join(', ')}) only` }
   if (propose && verb === 'project memory') return { error: 'project memory has no card: show its lines, then --apply after the user\'s yes' }
@@ -222,9 +227,9 @@ function parseWords(argv: unknown): AlfredCommand | { error: string } {
     // --program: a program only, run with its harness's default model; none: the project's default agent and model.
     const { program } = flags
     if (!key(w2) || w3) return usage(verb)
-    if (program !== undefined && program !== 'claude' && program !== 'codex') return { error: '--program is claude or codex' }
+    if (program !== undefined && program !== 'claude' && program !== 'codex' && program !== 'omp') return { error: '--program is claude, codex or omp' }
     if (program && resume) return { error: '--resume takes up the conversation with the agent that ran it: no --program' }
-    return { name: verb, apply, key: key(w2), ...(program ? { program: program as 'claude' | 'codex' } : {}), ...(resume ? { resume: true as const } : {}) }
+    return { name: verb, apply, key: key(w2), ...(program ? { program: program as 'claude' | 'codex' | 'omp' } : {}), ...(resume ? { resume: true as const } : {}) }
   }
   if (verb === 'v2 import') {
     const { only, start } = flags
@@ -260,12 +265,14 @@ export function dryRun(argv: string[], plan: AlfredPlan) {
   return {
     dryRun: true, change: plan.change,
     ...(plan.remote ? { remote: `This reaches machine ${plan.remote}: make it only if the user asked for it` } : {}),
-    next: `Show this to the user; only after their yes, run: wherdr alfred ${[...argv.filter(a => a !== '--apply'), '--apply'].map(quoteWord).join(' ')}`,
+    next: CARD_ONLY.includes(argv.slice(0, 2).join(' '))
+      ? `To propose it, run the same command with --propose: the user applies it from the card in your reply`
+      : `Show this to the user; only after their yes, run: wherdr alfred ${[...argv.filter(a => a !== '--apply'), '--apply'].map(quoteWord).join(' ')}`,
   }
 }
 const quoteWord = (w: string) => (/^[\w@%+=:,./-]+$/.test(w) ? w : `'${w.replace(/'/g, `'\\''`)}'`)
 
-export const alfredCommandList = () => [...ALFRED_COMMANDS.map(c => `- \`wherdr alfred ${c.usage}${CHANGES.some(v => c.usage.startsWith(v)) ? ' [--apply|--propose]' : ''}\`: ${c.does}`),
+export const alfredCommandList = () => [...ALFRED_COMMANDS.map(c => `- \`wherdr alfred ${c.usage}${flagsOf(c.usage, ' [--apply|--propose]')}\`: ${c.does}`),
   ...NOTES_COMMANDS.map(c => `- \`wherdr alfred ${c.usage}\`: ${c.does}`), `- ${NOTES_RULE}`]
 
 // Why Alfred may not propose `next` as project `key`'s workflow.

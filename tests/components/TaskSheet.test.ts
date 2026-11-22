@@ -1,6 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
 import TaskSheet from '~/components/TaskSheet.vue'
+import { menuState } from '~/composables/useUi'
 import { initialState, planSteps, type StepState } from '#shared/pm/steps'
 import { company, wherdr } from '#shared/pm/examples'
 import { readBody } from 'h3'
@@ -57,7 +58,7 @@ const cases: [string, Card, string, string[]][] = [
   ['a stopped task', waiting({ yourTurn: 'Stopped by the user: wrong way', stopped: { by: 'the user', why: 'wrong way', at: 1 }, state: at(1) }), 'stopped', []],
   ['a step the user ends', waiting({ yourTurn: 'Deploy it', userLabel: 'Deployed', state: at(4, { yourTurn: { reason: 'user', badge: 'Deploy it' } }) }), 'step', ['step-user']],
   ['an agent question', waiting({ yourTurn: 'Which port?', asks: { kind: 'question', text: 'Which port?' }, state: at(1) }), 'ask', []],
-  ['a refused merge', waiting({ yourTurn: 'Merge: merge: 2 check(s) failed', state: at(4, { yourTurn: { reason: 'action', badge: 'Merge: merge: 2 check(s) failed' } }) }), 'refused', ['task-retry', 'task-report-start']],
+  ['a refused merge', waiting({ yourTurn: 'Merge: merge: 2 check(s) failed', state: at(4, { yourTurn: { reason: 'action', badge: 'Merge: merge: 2 check(s) failed' } }) }), 'refused', ['task-retry', 'task-more']],
   ['a blocked task', waiting({ yourTurn: 'WHR-2, which this task starts after, failed', phase: 'todo', state: undefined }), 'blocked', ['task-start']],
 ]
 
@@ -100,12 +101,21 @@ it('a link proof that is a PR shows Open the PR at the merge step and on the car
 })
 
 let sentBack: unknown
-registerEndpoint('/api/pm/step-back', { method: 'POST', handler: async (e) => { sentBack = await readBody(e); return { task: {} } } })
-it('a visual merge is sent back with a note', async () => {
+let backGo: () => void = () => {}
+registerEndpoint('/api/pm/step-back', { method: 'POST', handler: async (e) => { sentBack = await readBody(e); await new Promise<void>((r) => { backGo = r }); return { task: {} } } })
+it('a visual merge is sent back with a note: Send back alone loads until the server answered, then says Sent back', async () => {
   const w = await mountSuspended(TaskSheet, { props: { card: cases[0]![1] }, global: { stubs } })
   await w.get('textarea[data-testid="todo-back-note"]').setValue('The button is cut on the phone')
   await w.get('[data-testid="todo-back"]').trigger('submit')
+  const send = () => w.get('[data-testid="todo-back-send"]')
+  // At once, before the server answered: loading and disabled; the step's button disabled, not loading.
+  expect([send().html().includes('animate-spin'), send().attributes('disabled')]).toEqual([true, ''])
+  expect([w.get('[data-testid="step-user"]').html().includes('animate-spin'), w.get('[data-testid="step-user"]').attributes('disabled')]).toEqual([false, ''])
   await vi.waitFor(() => expect(sentBack).toEqual({ id: 'WHR-1', note: 'The button is cut on the phone' }))
+  backGo()
+  await vi.waitFor(() => expect(send().text()).toBe('Sent back'))
+  expect([send().classes().includes('confirmed'), send().html().includes('animate-spin')]).toEqual([true, false])
+  await vi.waitFor(() => expect(send().text()).toBe('Send back'))
   w.unmount()
 })
 
@@ -137,7 +147,7 @@ it('a coordinator-held step past its limit says what waits and asks the coordina
   expect(w.get('[data-testid="task-todo"]').attributes('data-todo')).toBe('coordinator')
   expect(w.get('[data-testid="task-badge"]').text()).toBe('Waiting for the coordinator to check the deploy')
   expect(w.get('[data-testid="todo-coordinator-wait"]').text()).toBe('At this step for 1 h 40 min')
-  expect(w.find('[data-testid="task-report-start"]').exists()).toBe(true)
+  expect(w.find('[data-testid="task-more"]').exists()).toBe(true)
   await w.get('[data-testid="todo-ask-coordinator"]').trigger('click')
   await vi.waitFor(() => expect(asked).toEqual({ id: 'WHR-1' }))
   // The task read again: asked, off Your turn.
@@ -303,13 +313,14 @@ it('To do shows the TL;DR, the screenshots under it, then a link to Comments (th
   expect(w.get('[role="tab"][aria-selected="true"]').attributes('data-tab')).toBe('comments')
   const comments = w.get('[data-testid="task-comments"]')
   // Every report as it arrived, the first one too.
-  expect(comments.findAll(':scope > li').map(li => li.attributes('data-label'))).toEqual(['Done', 'Sent back', 'Fixed', 'Passed'])
-  expect(comments.findAll(':scope > li')[0]!.find('em').text()).toBe('try')
-  expect(comments.findAll(':scope > li')[2]!.find('strong').text()).toBe('it')
+  const said = comments.findAll('[data-kind]')
+  expect(said.map(li => li.attributes('data-label'))).toEqual(['Done', 'Sent back', 'Fixed', 'Passed'])
+  expect(said[0]!.find('em').text()).toBe('try')
+  expect(said[2]!.find('strong').text()).toBe('it')
   await w.get('[data-tab="history"]').trigger('click')
   const history = w.get('[data-testid="task-history"]')
-  expect(history.findAll(':scope > li').map(li => li.attributes('data-label') ?? 'line')).toEqual(['Done', 'line', 'Sent back', 'Fixed', 'Passed'])
-  expect(history.get('li.routine').text()).toContain('review: sent to the reviewer')
+  expect(history.findAll('[data-kind]').map(li => li.attributes('data-label') ?? 'line')).toEqual(['Done', 'line', 'Sent back', 'Fixed', 'Passed'])
+  expect(history.get('.routine').text()).toContain('review: sent to the reviewer')
   expect(w.find('[data-testid="task-summary"]').exists()).toBe(false)
   w.unmount()
   // A new TL;DR waiting for the pace: the notes, with a word.
@@ -328,7 +339,7 @@ it('shows the PR as a badge on the branch line, in the header once that line scr
   const withLead = { AppSheet: { template: '<section><header><slot name="lead" /></header><slot /></section>' } }
   const w = await mountSuspended(TaskSheet, { props: { card: c }, global: { stubs: withLead } })
   const badge = w.get('[data-testid="task-branch-row"] [data-testid="task-pr"]')
-  expect([badge.attributes('href'), badge.attributes('target'), badge.text()]).toEqual([url, '_blank', 'PR #646'])
+  expect([badge.attributes('href'), badge.attributes('target'), badge.text()]).toEqual([url, '_blank', 'PR #646open'])
   expect(w.find('header [data-testid="task-pr-head"]').exists()).toBe(false)
   seen([{ isIntersecting: false }])
   await nextTick()
@@ -339,4 +350,25 @@ it('shows the PR as a badge on the branch line, in the header once that line scr
   expect(none.find('[data-testid="task-pr"]').exists()).toBe(false)
   none.unmount()
   vi.unstubAllGlobals()
+})
+
+it('the header: the step\'s button first, Stop only while the step\'s agent runs, Check on GitHub and Report a problem in the ⋯ menu', async () => {
+  const merge = waiting({
+    yourTurn: 'Look at the screenshots, then merge', userLabel: 'Merge', links: [{ label: 'pr', url: 'https://github.com/o/r/pull/7' }],
+    state: at(4, { yourTurn: { reason: 'user', badge: 'Look at the screenshots, then merge' }, proofs: { pr: { link: 'https://github.com/o/r/pull/7' } } }),
+  })
+  const w = await mountSuspended(TaskSheet, { props: { card: merge }, global: { stubs } })
+  expect(w.get('.task-sheet-actions').element.firstElementChild!.getAttribute('data-testid')).toBe('step-user')
+  expect(w.get('[data-testid="task-todo"]').find('[data-testid="step-user"]').exists()).toBe(false)
+  expect(w.get('[data-testid="task-pr-state"]').text()).toBe('open')
+  expect(w.find('[data-testid="task-stop"]').exists()).toBe(false)
+  expect(w.find('[data-testid="task-times"]').exists()).toBe(false)
+  await w.get('[data-testid="task-more"] button').trigger('click')
+  expect(menuState.items.map(i => i.label)).toEqual(['Check on GitHub', 'Report a problem'])
+  // The worker's conversation still open at the merge step: no Stop; an agent holding the step: Stop.
+  await w.setProps({ card: { ...merge, agents: { worker: 'core-1' } } })
+  expect(w.find('[data-testid="task-stop"]').exists()).toBe(false)
+  await w.setProps({ card: { ...merge, terminal: 'core-1' } })
+  expect(w.find('[data-testid="task-stop"]').exists()).toBe(true)
+  w.unmount()
 })

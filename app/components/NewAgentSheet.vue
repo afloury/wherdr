@@ -6,12 +6,14 @@
 // sheet's machine checked first.
 // Several machines: choice of the machine, its folders and recent ones.
 // "New tab" (`newTabSpace`): a new terminal labelled for that space, on its
-// machine.
+// machine. "Split with agent…" (`splitAgentPane`): the new agent goes to the right of that
+// pane in its tab, on its machine, in its folder by default.
 // On the phone it opens full screen, Launch pinned at the bottom.
 import type { MachineConfig, Pane, QueuedMessage } from '#shared/types'
 import { shortHome, type ProjectDraft } from '#shared/pm/newProject'
 import { machineOf } from '#shared/ids'
 import { selectedAgentKind, visibleAgentKinds } from '~/utils/agentChoices'
+import type { SplitResult } from '~/composables/useSpaces'
 
 const open = newAgentOpen
 const kind = ref<string>('')
@@ -32,7 +34,8 @@ const draft = ref<ProjectDraft | null>(null)
 const workspace = ref(false)
 const ws = reactive({ busy: false, error: '', browsing: false })
 const wsSide = computed(() => coordinator.value && workspace.value)
-const canCoordinate = computed(() => !newTabSpace.value && coordinators.value.length > 0)
+const splitFrom = splitAgentPane
+const canCoordinate = computed(() => !newTabSpace.value && !splitFrom.value && coordinators.value.length > 0)
 watch(canCoordinate, (can) => { if (!can && !newProjectOpen.value) coordinator.value = false })
 
 // Settings › Agents: the offered agents of this machine, in the user's order (the first is the default).
@@ -42,12 +45,12 @@ const canResume = computed(() => kind.value === 'claude' || kind.value === 'code
 
 // ------------------------------------------------------------ tab to create
 const targetWs = computed(() => (newTabSpace.value ? herdrState.value.workspaces.find(w => w.id === newTabSpace.value) : undefined))
-// Tab to create: machine imposed.
-const fixedMachine = computed(() => newTabSpace.value)
+// Tab to create or pane to split: machine imposed.
+const fixedMachine = computed(() => newTabSpace.value || splitFrom.value?.workspace || null)
 // Folder suggested for the new tab: that of a pane of its space.
 const spaceCwd = (ws: string) => herdrState.value.panes.find(p => p.workspace === ws && p.cwd)?.cwd || null
 watch(newAgentOpen, (o) => {
-  if (!o) { newTabSpace.value = null; newAgentMachine.value = null; newProjectOpen.value = false }
+  if (!o) { newTabSpace.value = null; splitFrom.value = null; newAgentMachine.value = null; newProjectOpen.value = false }
 })
 
 // ------------------------------------------------------------ machine
@@ -86,7 +89,7 @@ watch(newAgentOpen, async (open) => {
   if (!open) return
   if (fixedMachine.value) {
     machine.value = machineOf(fixedMachine.value)
-    dir.value = (newTabSpace.value ? spaceCwd(newTabSpace.value) : null) || dir.value
+    dir.value = splitFrom.value?.cwd || (newTabSpace.value ? spaceCwd(newTabSpace.value) : null) || dir.value
   }
   error.value = null
   browsing.value = false
@@ -97,7 +100,7 @@ watch(newAgentOpen, async (open) => {
   // Each opening starts on the user's first agent, or on a new project.
   kind.value = ''
   if (newProjectOpen.value) coordinator.value = true
-  if (!newTabSpace.value) loadCoordinators()
+  if (!newTabSpace.value && !splitFrom.value) loadCoordinators()
   syncKind()
   await loadConfig()
   // Opened from a machine's "…" menu: that machine, once its config (home) is in.
@@ -154,6 +157,8 @@ function afterFirstMessage(r: { pane_id: string, first_message?: string | null, 
   else if (r.queued) outboxAdd(r.pane_id, r.queued)
   else if (r.first_message === 'queued') {
     toast(tl('The first message will be sent once you have answered the prompt.', 'Le premier message partira dès que tu auras répondu à la question.'))
+  } else if (r.first_message === 'uncertain') {
+    toast(t('herdr-core did not confirm the first message was typed: check the conversation before sending it again.'), true)
   } else if (r.first_message === 'skipped') {
     toast(tl('The first message was not sent: answer the prompt in the terminal, then send it again.', 'Le premier message n’est pas parti : réponds à la question dans le terminal, puis renvoie-le.'), true)
   }
@@ -165,12 +170,14 @@ async function launch() {
   try {
     // A new tab is a new terminal labelled for its space (no layout call).
     const sent = prompt.value
-    const r = await api<{ pane_id: string, first_message?: string | null, queued?: QueuedMessage }>('/api/agents', {
+    const beside = splitFrom.value
+    const r = await api<SplitResult & { first_message?: string | null, queued?: QueuedMessage }>('/api/agents', {
       ...(machine.value ? { machine: machine.value } : {}),
       kind: kind.value,
       cwd: dir.value,
       name: name.value.trim(),
       ...(newTabSpace.value ? { workspace: newTabSpace.value } : {}),
+      ...(beside ? { beside: beside.id } : {}),
       prompt: prompt.value,
       resume: resume.value && canResume.value,
     })
@@ -178,7 +185,8 @@ async function launch() {
     resetForm()
     newAgentOpen.value = false
     haptic()
-    navigateTo(panePath(r.pane_id))
+    if (beside) splitDone(beside, r, 'right')
+    else navigateTo(panePath(r.pane_id))
     loadConfig()
   } catch (err) {
     error.value = (err as Error).message
@@ -189,7 +197,7 @@ async function launch() {
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="newTabSpace ? t('Start in a new tab') : coordinator ? tl('Project', 'Projet') : t(shell ? 'New terminal' : 'New agent')" tall screen>
+  <AppSheet v-model:open="open" :title="newTabSpace ? t('Start in a new tab') : splitFrom ? t('Split with agent') : coordinator ? tl('Project', 'Projet') : t(shell ? 'New terminal' : 'New agent')" tall screen>
     <!-- Kept mounted while browsing: the project form then sees the chosen folder. -->
     <div v-show="!browsing && !ws.browsing" class="sheet-form">
       <div v-if="newTabSpace" class="into-pane">
@@ -197,6 +205,13 @@ async function launch() {
         <span>
           <b>{{ t('New tab') }}</b>
           <small>{{ [targetWs?.label, machineList ? machineName(machine) : null].filter(Boolean).join(' · ') }}</small>
+        </span>
+      </div>
+      <div v-else-if="splitFrom" class="into-pane">
+        <span class="tabmap" aria-hidden="true"><i style="inset: 0 50% 0 0" /><i class="cur" style="inset: 0 0 0 50%" /></span>
+        <span>
+          <b>{{ t('Right of this pane') }}</b>
+          <small>{{ [paneTitle(splitFrom), machineList ? machineName(machine) : null].filter(Boolean).join(' · ') }}</small>
         </span>
       </div>
       <template v-else-if="machineList && !coordinator">

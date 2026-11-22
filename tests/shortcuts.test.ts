@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { type KeyInput, type ShortcutContext, type ShortcutFocus, SHORTCUTS, applyBindings, bindingFromEvent, findConflict, matchShortcut, parseBindings, reservedReason, tableKbds } from '../app/utils/shortcuts'
+import { type KeyInput, type ShortcutContext, type ShortcutFocus, SHORTCUTS, applyBindings, bindingFromEvent, findConflict, imeComposing, matchShortcut, parseBindings, reservedReason, tableKbds } from '../app/utils/shortcuts'
 
 const body: ShortcutFocus = { editable: false, empty: true, overlay: false, terminal: false }
 const field = (text: string): ShortcutFocus => ({ ...body, editable: true, empty: !text })
@@ -7,6 +7,14 @@ const term: ShortcutFocus = { ...body, editable: true, empty: true, terminal: tr
 const mac: ShortcutContext = { mac: true, phase: 'bubble', desk: true }
 const linux: ShortcutContext = { ...mac, mac: false }
 const match = (e: KeyInput, f = body, c = mac) => matchShortcut(e, f, c)
+
+describe('imeComposing', () => {
+  it('holds while composing and for Safari\'s keyCode 229 Enter', () => {
+    expect(imeComposing({ isComposing: true, keyCode: 13 })).toBe(true)
+    expect(imeComposing({ isComposing: false, keyCode: 229 })).toBe(true)
+    expect(imeComposing({ isComposing: false, keyCode: 13 })).toBe(false)
+  })
+})
 
 describe('matchShortcut', () => {
   it('Mod is ⌘ on macOS and Ctrl elsewhere, never the other one', () => {
@@ -54,6 +62,16 @@ describe('matchShortcut', () => {
     expect(match(e, term, { ...linux, phase: 'capture' })).toBe('close-pane')
     expect(match(e, term, linux)).toBeNull()
     expect(match({ key: 'f', metaKey: true }, body, { ...mac, phase: 'capture' })).toBeNull()
+  })
+
+  it('Mod+Alt+S splits right, with Shift down, from the terminal on Linux and macOS', () => {
+    const cap = { phase: 'capture' as const }
+    expect(match({ key: 's', code: 'KeyS', ctrlKey: true, altKey: true }, term, { ...linux, ...cap })).toBe('split-right')
+    expect(match({ key: 'S', code: 'KeyS', ctrlKey: true, altKey: true, shiftKey: true }, term, { ...linux, ...cap })).toBe('split-down')
+    // ⌥ types ß / Í on a Mac: by position.
+    expect(match({ key: 'ß', code: 'KeyS', metaKey: true, altKey: true }, term, { ...mac, ...cap })).toBe('split-right')
+    expect(match({ key: 'Í', code: 'KeyS', metaKey: true, altKey: true, shiftKey: true }, term, { ...mac, ...cap })).toBe('split-down')
+    expect(applyBindings({ 'split-down': { mods: ['mod', 'alt'], key: 'd' } }).find(s => s.id === 'split-down')).toMatchObject({ key: 'd', capture: true, kbds: ['meta', 'alt', 'D'] })
   })
 
   it('Ctrl+` by position, from the terminal too, with Ctrl on macOS', () => {

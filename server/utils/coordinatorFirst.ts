@@ -37,11 +37,12 @@ async function left(deps: FirstDeps, key: string, address: string, texts: string
 // What a record's start would still type: queued, not given up.
 export const queuedFirst = (texts: string[], at = Date.now()): Undelivered => ({ texts, why: 'not typed yet', at, queued: true })
 
+const UNSURE = 'herdr-core did not confirm it was typed: check the conversation before sending it again'
 const WHY = { dialog: 'a dialog waits for an answer', installing: 'it is installing an update', skipped: 'not ready yet', unreachable: 'its machine does not answer' }
 const statusOf = (t: { status?: string | { state?: string } | null }) => (typeof t.status === 'string' ? t.status : t.status?.state)
 
 // up: called once with the first outcome (the session is up, or gone).
-// inArgv: the messages went on its command line (a fresh Claude or Codex): only watched
+// inArgv: the messages went on its command line (a fresh Claude, Codex or omp): only watched
 // until its session is up (idle or working), so that a start that never comes up says so.
 // A terminal.get that fails (a timeout, the machine briefly unreachable) is retried.
 export async function deliverFirst(deps: FirstDeps, key: string, address: string, texts: string[], up: () => void = () => {}, inArgv = false): Promise<'sent' | 'failed'> {
@@ -57,8 +58,11 @@ export async function deliverFirst(deps: FirstDeps, key: string, address: string
         if (s === 'idle' || s === 'working') break
         r = s === 'blocked' ? 'dialog' : 'skipped'
       } else {
-        r = await sendFirstMessage(deps, address, texts[i]!).catch(() => 'skipped' as const)
-        if (r === 'sent') { i++; up(); if (i < texts.length) await left(deps, key, address, texts.slice(i)); continue }
+        const sent = await sendFirstMessage(deps, address, texts[i]!).catch(() => 'skipped' as const)
+        if (sent === 'sent') { i++; up(); if (i < texts.length) await left(deps, key, address, texts.slice(i)); continue }
+        // Maybe typed (core did not answer in time): never typed again here, left to Send again.
+        if (sent === 'uncertain') { why = UNSURE; break }
+        r = sent
       }
     }
     if (Date.now() >= end) { why = `it was not ready after ${Math.round(limit / 60_000)} min`; break }

@@ -50,7 +50,7 @@ const picked = computed(() => machines.value.filter(m => on.value.includes(m.key
 // The coordinator's agent, as the Project form offers it.
 const choices = computed(() => offerCoordinators(undefined, 'NEW'))
 const agent = ref('')
-watch(choices, (c) => { if (!(c as readonly string[]).includes(agent.value)) agent.value = c[0] ?? '' }, { immediate: true })
+watch(choices, (c) => { if (!(c as readonly string[]).includes(agent.value)) agent.value = defaultProjectChoice(c) }, { immediate: true })
 
 // Browse: DirBrowser on that machine, from the typed folder when it exists,
 // else the machine's home; the form stays mounted (hidden) meanwhile.

@@ -4,7 +4,7 @@
 // after the user's yes. Nothing here removes data.
 import path from 'node:path'
 import { CHANGES, SETTING_TARGETS, SETTING_VALUES, alfredCommandList, dryRun, memoryLines, parseAlfredCommand, workflowEditRefusal, type AlfredPlan } from '../../shared/pm/alfredCli'
-import { GUARDED_PROGRAMS, MAIN, templateDiff, type CoordinatorAgent } from '../../shared/pm/coordinator'
+import { GUARDED_PROGRAMS, MAIN, TOOL_GUARDED_PROGRAMS, defaultProjectProgram, templateDiff, type CoordinatorAgent } from '../../shared/pm/coordinator'
 import { validateTemplate, type Template } from '../../shared/pm/workflow'
 import { templateChanges } from '../../shared/pm/templateText'
 import { ALFRED } from '../../shared/pm/alfred'
@@ -18,14 +18,14 @@ import type { CoreAdminDeps } from './coreCreate'
 import { resendFirst } from './coordinatorFirst'
 import { lastWords } from './pmRead'
 import type { FolderCheck, PmStore } from './pmStore'
-import { readSettings } from './settings'
+import { namedAgents, readSettings } from './settings'
 import { addChangeCard, addSettingCard, addThemeCard } from './uiActions'
 import { importThemeText, themeFile } from '../../app/utils/customThemes'
 import { contrastIssues } from '../../app/utils/themes'
 import { CHANGE_PLACES, choiceArgv, type CardChoice } from '../../shared/uiActions'
 import { UI_TARGETS } from '../../shared/uiTargets'
 import { saveProjectGuards } from './pmProject'
-import { workspaceInput } from '../../shared/pm/workspace'
+import { coordinatorKey, workspaceInput } from '../../shared/pm/workspace'
 import { checkMachine } from './pmReady'
 import { projectPlace } from '../../shared/pm/places'
 import { EXAMPLES } from '../../shared/pm/examples'
@@ -79,19 +79,22 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
     if (!p) throw new HerdrError('not_found', `Unknown project ${key}: ${projects.map(shownKey).join(', ') || 'none yet'}`)
     return p
   }
+  // A member's coordinator is its workspace's: it has none of its own.
+  const coordinatorOf = (key: string) => projectOf(coordinatorKey(projectOf(key).key, projects))
   const machineName = (key: string) => (key ? machines.find(m => m.key === key)?.label ?? key : 'this machine')
   const remoteOf = (key: string) => (key && !machines.find(m => m.key === key)?.local ? machineName(key) : undefined)
   const needPm = async () => { if (!(await store.enabled())) throw new HerdrError('pm_off', `Projects are off: the user switches them on in ${projectPlace(undefined, 'general', true)}`) }
   const knownTemplate = async (id: string) => {
     if (id && !EXAMPLES.some(e => `example:${e.id}` === id)) throw new HerdrError('not_found', `No example ${id} (see wherdr alfred examples)`)
   }
-  // A project coordinator's agent: its default while the user offers it, else
-  // their first offered agent that can run it (Settings › Agents), else Claude.
+  // A project coordinator's agent: its default while the user offers it (omp
+  // too: choosing it is the opt-in), else their first offered agent that can run
+  // it (Settings › Agents), a Claude or Codex before omp, else Claude.
   const projectAgent = async (key: string): Promise<CoordinatorAgent> => {
     const s = await readSettings(deps.settingsFile)
-    const offered = offeredAgents(GUARDED_PROGRAMS, readHiddenAgents(s.hiddenAgents ?? null), readAgentOrder(s.agentOrder ?? null)) as CoordinatorAgent['program'][]
+    const offered = offeredAgents([...GUARDED_PROGRAMS, ...TOOL_GUARDED_PROGRAMS], readHiddenAgents(s.hiddenAgents ?? null), readAgentOrder(s.agentOrder ?? null)) as CoordinatorAgent['program'][]
     const own = (await coordinatorsView(store)).find(x => x.project === key)?.agent
-    return own && offered.includes(own.program) ? own : { program: offered[0] ?? 'claude' }
+    return own && offered.includes(own.program) ? own : { program: defaultProjectProgram(offered) ?? 'claude' }
   }
   // Its conversation runs: its terminal is a live pane. stopped: it ended (its
   // machine restarted, say), and `coordinator start --resume` takes it up again.
@@ -112,7 +115,11 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
   // gives --only and --start again, so the card's argv leaves them out.
   const change = async (plan: AlfredPlan & { picks?: (string | null)[], on?: string[], start?: boolean, pm?: true }, make: () => Promise<unknown>) => {
     if (card) return plan.change.join('\n') === card.join('\n') ? { applied: true, change: plan.change, result: await make() } : { stale: true }
-    if ('apply' in cmd && cmd.apply) return { applied: true, change: plan.change, result: await make() }
+    // Only in a turn of the user's own message: never a wake, a card's click, or text read meanwhile.
+    if ('apply' in cmd && cmd.apply) {
+      if ((await alfredTurn())?.kind !== 'user') throw new HerdrError('refused', '--apply is only for a turn that comes from the user, never a wake: show the change and wait for their yes')
+      return { applied: true, change: plan.change, result: await make() }
+    }
     if (!('propose' in cmd && cmd.propose)) return dryRun(argv as string[], plan)
     const key = 'input' in cmd ? cmd.input.key : 'key' in cmd ? cmd.key : '', place = CHANGE_PLACES[cmd.name]!, turn = await alfredTurn()
     const target = cmd.name === 'project add' || cmd.name === 'workspace add' ? undefined : place.target
@@ -176,7 +183,8 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       return { ...await resendFirst(deps, k, async () => startCoordinator(deps, k, await projectAgent(k), deps.urls)), next: `wherdr alfred coordinators says whether it got it` }
     }
     case 'coordinator open': {
-      const c = (await coordinatorsView(store)).find(x => x.project === (findProject(projects, cmd.key)?.key ?? cmd.key))
+      const k = findProject(projects, cmd.key) ? coordinatorOf(cmd.key).key : cmd.key
+      const c = (await coordinatorsView(store)).find(x => x.project === k)
       const pane = c?.terminal ? deps.panes().find(p => p.coreAddress === c.terminal) : undefined
       if (!pane) throw new HerdrError('not_found', `The coordinator of ${cmd.key} is not running: start it with wherdr alfred coordinator start ${cmd.key}`)
       return { link: `${deps.urls.remote ?? deps.urls.local}/#/a/${encodeURIComponent(pane.id)}`, note: 'Give the user this link; the sidebar shows it too' }
@@ -259,12 +267,14 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       await needPm()
       const p = projectOf(cmd.key)
       await knownTemplate(cmd.template)
-      if (!cmd.template && !p.from) return { unchanged: true, project: p.key, template: 'none' }
-      return change({ change: [`project ${p.key} template: ${p.from?.template ?? 'none'} → ${cmd.template || 'none'}`] }, () => store.setTemplate(p.key, cmd.template))
+      // none on a workspace's project with its own workflow: it follows the workspace's again.
+      const own = !cmd.template && p.workspace && !!(await store.savedWorkflow(p.key))
+      if (!cmd.template && !p.from && !own) return { unchanged: true, project: p.key, template: 'none' }
+      return change({ change: [own ? `project ${p.key}: remove its own workflow, follow workspace ${p.workspace}'s again` : `project ${p.key} template: ${p.from?.template ?? 'none'} → ${cmd.template || 'none'}`] }, () => store.setTemplate(p.key, cmd.template))
     }
     case 'project memory': {
       await needPm()
-      const p = projectOf(cmd.key)
+      const p = coordinatorOf(cmd.key)
       const lines = memoryLines(input)
       if ('error' in lines) throw new HerdrError('bad_input', lines.error)
       return change({ change: [`add to the end of the memory.md of ${p.key}'s coordinator, on ${machineName(p.machine)}:`, ...lines], remote: remoteOf(p.machine) }, () => appendCoordinatorMemory(deps, p.key, lines))
@@ -281,7 +291,7 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
       const turn = await alfredTurn()
       const why = workflowEditRefusal(old, next, turn?.kind ?? 'none', p.key)
       if (why) throw new HerdrError('refused', why)
-      const errors = validateTemplate(next)
+      const errors = validateTemplate(next, await namedAgents())
       if (errors.length) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
       // Saved where the coordinator's proposal waits: the user answers it in the same review.
       const rec = await store.coordinator(p.key)
@@ -295,22 +305,23 @@ async function alfredCommand(deps: Deps, argv: unknown, input: unknown, card?: s
     }
     case 'tell': {
       await needPm()
-      const p = projectOf(cmd.key)
+      const p = coordinatorOf(cmd.key)
       const pane = await coordinatorPane(p.key)
       const started = !pane
-      // The coordinator's turn is the user's when Alfred relays the user's message; a wake's otherwise.
+      // Alfred relaying the user's message: a relay turn, never the user's own (the
+      // user's yes to Alfred is no yes to the coordinator); a wake's otherwise.
       const turn = await alfredTurn()
       const said = tellText(cmd.text)
       const text = `From ${ALFRED}${turn?.kind === 'user' ? ', for the user' : ''}: ${said}`
       // Not running: started with the message, typed once it is ready (coordinatorFirst.ts).
       const terminal = pane?.coreAddress ?? (await startCoordinator(deps, p.key, await projectAgent(p.key), deps.urls, [text])).terminal
-      await noteTurn(store, p.key, turn?.kind === 'user' ? 'user' : 'wake', turn?.said)
+      await noteTurn(store, p.key, turn?.kind === 'user' ? 'relay' : 'wake', turn?.said)
       if (!started) await deps.call('terminal.send', { terminal, text }, 30000)
       await store.logProject(p.key, { by: ALFRED, text: `told the coordinator: ${said.slice(0, 300)}`, ...(turn?.said ? { said: turn.said } : {}) })
       return { told: p.key, ...(started ? { started: `its coordinator was not running: started on ${machineName(p.machine)}, the message goes once it is ready` } : {}), next: `Read its answer later with wherdr alfred last ${p.key}` }
     }
     case 'last': {
-      const p = projectOf(cmd.key)
+      const p = coordinatorOf(cmd.key)
       const pane = await coordinatorPane(p.key)
       if (!pane) throw new HerdrError('not_found', `The coordinator of ${p.key} is not running: wherdr alfred tell ${p.key} "<text>" starts it`)
       const said = await lastWords(deps, pane.coreAddress!)

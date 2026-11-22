@@ -157,6 +157,8 @@ const ctl = createTerminal(props.paneId, {
   hasBanner: () => Boolean(banner.value),
   fill: () => Boolean(props.cell),
   input: () => live.value,
+  // Claude Code accelerates wheel reports: see createWheelPacer.
+  wheelAccel: () => pane.value?.agent === 'claude',
 })
 const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void, focusSearch: () => void, gotoUnanswered: () => void } | null>(null)
 // Questions of the agent's last message the draft does not answer yet (ChatView): the composer's reminder.
@@ -411,6 +413,10 @@ function coreMenuItems(p: Pane | undefined): MenuItem[] {
     rename: (id) => { renameTarget.value = id },
     reconnect: () => { banner.value = null; viewMode.value = 'term'; nextTick(() => { ctl.reset(); ctl.connect(false) }) },
     browseFiles: () => { filesOpen.value = true },
+    split: p ? splitItems(p) : [],
+    editor: p && canOpenOnMachine(p)
+      ? { label: t('Open in editor'), icon: 'i-lucide-square-code', kbds: desk.value && live.value ? shortcutKbds('open-editor') : undefined, run: () => openFolderOnMachine(p) }
+      : undefined,
     settings: props.cell ? [] : settingsMenuItems(),
     close: p && !compactPhone.value ? closePaneItem(p, live.value ? shortcutKbds('close-pane') : undefined) : undefined,
   })
@@ -430,7 +436,8 @@ watch(headerEl, (el, old) => {
 onBeforeUnmount(() => headerObserver?.disconnect())
 const notesInHeader = computed(() => !compactPhone.value && (!headerWidth.value || headerWidth.value >= NOTES_HEADER_MIN))
 const notesItem = computed<MenuItem>(() => ({ label: t('Notes'), icon: 'i-lucide-sticky-note', kbds: desk.value ? shortcutKbds('notes') : undefined, run: toggleNotes }))
-const agentMenu = computed<MenuItem[]>(() => [...(notesInHeader.value ? [] : [notesItem.value]), ...coreMenuItems(pane.value)])
+// A project's or workspace's coordinator: its board, settings and autopilot first, as on its sidebar row.
+const agentMenu = computed<MenuItem[]>(() => [...paneCoordinatorItems(pane.value), ...(notesInHeader.value ? [] : [notesItem.value]), ...coreMenuItems(pane.value)])
 const dropdownItems = computed(() => toDropdown(agentMenu.value))
 function openAgentMenu() { openMenu(agentMenu.value) }
 

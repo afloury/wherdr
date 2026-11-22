@@ -1,17 +1,19 @@
 // A project coordinator on the server: its token (one per project, scoped to
 // it), where its current turn comes from, the `wherdr pm` commands it runs,
 // and its role files, written in its own folder on the project's machine.
+import { namedAgents } from './settings'
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto'
 import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
+import os from 'node:os'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
 import { notesStore, runNotes, type NotesStore } from './notesStore'
-import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, ROOT_RULE_FILES, isPlainFolder, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepBackRefusal, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, PROPOSAL_ANSWERS, workspaceView } from '../../shared/pm/coordinator'
+import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, ROOT_RULE_FILES, isPlainFolder, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepBackRefusal, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, type NotedTurn, PROPOSAL_ANSWERS, workspaceView } from '../../shared/pm/coordinator'
 import { FEATURE, WORKSPACE_FIRST, coordinatorKey, handledBy, isWorkspace, membersOf, ownWorkflow } from '../../shared/pm/workspace'
 import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
-import { changeSummary, workflowChanges } from '../../shared/pm/workflowChanges'
+import { changeSummary, changeTitle, workflowChanges } from '../../shared/pm/workflowChanges'
 import { MODEL_RE, isDefaultWorkflow, validateTemplate } from '../../shared/pm/workflow'
 import { weightOf, weightText, weightsLine } from '../../shared/pm/weight'
 import { EXAMPLES } from '../../shared/pm/examples'
@@ -26,6 +28,7 @@ import { projectOf, showIds, shownKey, shownTaskId, storedTaskId } from '../../s
 import { taskPlan, trustKeys, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { cardNotesMessage, tellCardOutcome } from './cardOutcome'
+import { cardNoteOf } from '../../shared/uiActions'
 import { answeredTask, clearQuestion } from './pmAnswer'
 import { PATH_SETUP, homeOf, machineOn, type CoreAdminDeps } from './coreCreate'
 import { deliverFirst, queuedFirst, startTurn } from './coordinatorFirst'
@@ -43,6 +46,7 @@ import { reviveWorker } from './pmRelease'
 import { restartReview } from './pmWatchdog'
 import { handFix } from '../../shared/pm/release'
 import { CHAIN_WAIT, DONE_CMD, afterIds, mergeAfterIds } from '../../shared/pm/advance'
+import { checkTaskContext } from '../../shared/pm/context'
 import { READ_LINES, lastWords } from './pmRead'
 import { READ_COMMANDS, reachRefusal } from '../../shared/pm/reach'
 import { resumeRefusal } from '../../shared/pm/stop'
@@ -67,6 +71,8 @@ import { addAction } from './uiActions'
 import { runMap } from './pmMap'
 import { adoptRepo } from './pmAdopt'
 import { splitFeature } from './pmFeature'
+import { readPlanFile } from './pmPlan'
+import { openLines, planCloseRefusal } from '../../shared/pm/planRefs'
 import { afterRefusal, closeRefusal, featureState } from '../../shared/pm/feature'
 import { pmDir } from './pmHome'
 
@@ -125,19 +131,24 @@ export async function alfredTokenOk(store: PmStore, token: unknown) {
 }
 
 // Called by whatever delivers a message to the coordinator: the user's
-// message from the interface (with its text) or an engine wake.
+// message from the interface (with its text) or an engine wake; relay and
+// card (shared/pm/coordinator.ts Turn) are refused by every user-only gate.
 // look: a look-for-new-work wake, whose turn counts the tasks it adds.
-// The user's message is kept whole (a long one too) for the proposal it may lead to.
+// The user's message is kept whole (a long one too) for the proposal it may lead to;
+// a relay's or a card's, for the log only.
 const SAID_MAX = 8000
 // tab: the home tab the user has open (Alfred's `groups` and `brief` read it).
-export async function noteTurn(store: PmStore, key: string, kind: 'user' | 'wake', said?: string, look = false, tab?: string) {
+export async function noteTurn(store: PmStore, key: string, kind: NotedTurn, said?: string, look = false, tab?: string) {
   const c = await store.coordinator(key)
   if (!c) throw new HerdrError('not_found', 'No coordinator for this project')
   const at = Date.now()
-  await store.saveCoordinator({ ...c, turn: { kind, at, ...(kind === 'user' && said ? { said: said.slice(0, SAID_MAX) } : {}), ...(kind === 'wake' && look ? { look: true as const } : {}) }, ...(kind === 'user' ? { userAt: at } : {}), ...(tab ? { openTab: tab } : {}) })
+  await store.saveCoordinator({ ...c, turn: { kind, at, ...(kind !== 'wake' && said ? { said: said.slice(0, SAID_MAX) } : {}), ...(kind === 'wake' && look ? { look: true as const } : {}) }, ...(kind !== 'wake' ? { userAt: at } : {}), ...(tab ? { openTab: tab } : {}) })
 }
 
 const TURN_MS = 3_600_000
+
+// The task as it is, unless a check made at its write refused the change.
+const noCycle = (why: string | undefined, t: Task) => { if (why) throw new HerdrError('refused', why); return t }
 
 // The user's message sent from the interface to a terminal: when that
 // terminal is a coordinator, its turn now comes from the user. Alfred's too
@@ -154,7 +165,7 @@ const workingBranch = (p?: Project) => p?.base || 'not set: tasks start from the
 const planOf = (t: Template, task: Task, p?: Project) => taskPlan(t, task, p)
 const summary = (t: Template | null, task: Task, p?: Project) => {
   const step = t ? currentStep(planOf(t, task, p), task.step ?? initialState()) : undefined
-  return { id: p ? shownTaskId([p], task.id) : task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.stopped ? 'stopped' : task.state, ...(task.stopped ? { stopped: task.stopped } : {}), step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}), ...(task.parked ? { parked: { on: task.parked.on, need: task.parked.need } } : {}), ...(task.mergeAfter ? { mergeAfter: task.mergeAfter } : {}), ...(task.files ? { files: task.files } : {}), ...(task.sameFiles ? { sameFiles: task.sameFiles } : {}) }
+  return { id: p ? shownTaskId([p], task.id) : task.id, title: task.title, type: task.type, state: task.step?.abandoned ? 'abandoned' : task.step?.done ? 'done' : task.stopped ? 'stopped' : task.state, ...(task.stopped ? { stopped: task.stopped } : {}), step: step?.id, holder: step?.holder, yourTurn: task.step?.yourTurn?.badge, tags: task.tags, links: task.links, ...(task.after ? { after: task.after } : {}), ...(task.parked ? { parked: { on: task.parked.on, need: task.parked.need } } : {}), ...(task.mergeAfter ? { mergeAfter: task.mergeAfter } : {}), ...(task.files ? { files: task.files } : {}), ...(task.sameFiles ? { sameFiles: task.sameFiles } : {}), ...(task.plan?.file ? { planFile: task.plan.file } : {}), ...(task.refs ? { refs: task.refs } : {}), ...(task.planTick ? { planTick: task.planTick } : {}) }
 }
 
 // The machine a task runs on, by its name; before its first start, none yet.
@@ -185,8 +196,8 @@ export async function runCommand(deps: Deps, token: unknown, body: CliBody) {
   }
 }
 
-// A token's own scope: its project and, for a workspace, each member, at the
-// Act level of reach.ts (members have no coordinator of their own).
+// A token's own scope: its project and, for a workspace, each member (members
+// have no coordinator of their own: the workspace's runs every command on them).
 export const inScope = (projects: Project[], scope: string, project: string) =>
   project === scope || membersOf(scope, projects).some(m => m.key === project)
 
@@ -207,20 +218,22 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
   // Another project: only what the user's setting on this project allows (reach.ts).
   const self = projects.find(x => x.key === scope)
   const shown = (k: string) => shownKey(projects.find(x => x.key === k) ?? { key: k })
-  const reach = (k: string) => {
-    const level = inScope(projects, scope, k) ? { key: scope, reach: [{ project: k, level: 'act' as const }] } : self
-    // A workspace's coordinator reads its members' workflow too (only the user changes a member's own).
-    const why = main || k === scope || (cmd.name === 'template show' && inScope(projects, scope, k)) ? undefined : reachRefusal(level, k, cmd.name, { self: shown(scope), other: shown(k) })
+  // as: the command the reach is checked for (a task's file shown is a read: show).
+  const reach = (k: string, as = cmd.name) => {
+    // A workspace's coordinator runs every command on its members as on its own project, under
+    // the same rules; template edit never takes --project (a member's own workflow is the user's).
+    const why = main || inScope(projects, scope, k) ? undefined : reachRefusal(self, k, as, { self: shown(scope), other: shown(k) })
     if (why) throw new HerdrError('refused', why)
   }
   if (named && projects.some(x => x.key === named)) reach(named)
   else if (!main && named && named !== scope) throw new HerdrError('refused', `Your token acts on project ${scope} only`)
-  const taskOf = async (id: string) => {
+  const taskAs = async (id: string, as: typeof cmd.name) => {
     const task = await store.task(id)
     if (!task) throw new HerdrError('not_found', 'Unknown task')
-    reach(task.project)
+    reach(task.project, as)
     return task
   }
+  const taskOf = (id: string) => taskAs(id, cmd.name)
   // The command's project: its task's, the one named, or the token's.
   const key = 'task' in cmd ? (await taskOf(cmd.task)).project : named ?? (main ? '' : scope)
   const p = projects.find(x => x.key === key)
@@ -229,6 +242,8 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
   const rec = await store.coordinator(scope)
   // A turn the server saw start over an hour ago is not trusted any more.
   const turn: Turn = rec?.turn && Date.now() - rec.turn.at < TURN_MS ? rec.turn.kind : 'none'
+  // A task the user asked for, from wherdr or relayed by Alfred: added as theirs.
+  const asked = turn === 'user' || turn === 'relay'
   const by = coordinatorBy(scope)
   if (!main && key && !inScope(projects, scope, key) && !READ_COMMANDS.includes(cmd.name)) Object.assign(visit, { on: key, by, what: [cmd.name, 'task' in cmd ? cmd.task : 'title' in cmd ? `"${cmd.title}"` : ''].join(' ').trim() })
   const needProject = () => { if (!p) throw new HerdrError('bad_input', `Name the project: --project <KEY> (${projects.map(shownKey).join(', ')})`); return p }
@@ -257,16 +272,16 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
     case 'feature add': {
       const ws = projects.find(x => x.key === pk)
       if (!isWorkspace(ws)) throw new HerdrError('bad_input', 'A feature is a workspace\'s: run it from a workspace\'s coordinator, or name one with --project <KEY>')
-      const why = addRefusal(pilot, turn !== 'user')
+      const why = addRefusal(pilot, !asked)
       if (why) throw new HerdrError('refused', why)
-      const added = await store.addTask({ project: ws!.key, title: cmd.title, type: FEATURE, description: cmd.description ?? '', origin: turn === 'user' ? 'user' : 'coordinator', addedBy: scope })
+      const added = await store.addTask({ project: ws!.key, title: cmd.title, type: FEATURE, description: cmd.description ?? '', origin: asked ? 'user' : 'coordinator', addedBy: scope })
       return { task: await store.logTask(added, by, 'added the feature'), next: `Split it into sub-tasks of its repositories: wherdr pm feature split ${added.id} < plan.json` }
     }
     case 'feature split': {
       const why = addRefusal(pilot, turn !== 'user')
       if (why) throw new HerdrError('refused', why)
       const wake = turn !== 'user'
-      const split = await splitFeature(deps, p, await taskOf(cmd.task), body.input, { by, origin: wake ? 'coordinator' : 'user' }, async (t) => {
+      const split = await splitFeature(deps, p, await taskOf(cmd.task), body.input, { by, origin: wake ? 'coordinator' : 'user', ...(cmd.from ? { from: cmd.from } : {}) }, async (t) => {
         const refused = wake ? coordinatorStartRefusal(pilot, t, await mineOf(), await store.runs(), Date.now(), true, { holds: await slotsOf(store, held) }) : undefined
         if (refused) throw new Error(refused)
         await store.logTask(await startTask(deps, t.id, { by }), by, 'started the task')
@@ -275,14 +290,19 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       return split
     }
     case 'feature close': {
-      const all = await store.tasks(), feature = await taskOf(cmd.task)
-      const why = feature.kind === 'feature' ? closeRefusal(feature, all) : `${feature.id} is not a feature`
+      const all = await store.tasks(), feature = await taskOf(cmd.task), file = feature.plan?.file
+      let why = feature.kind === 'feature' ? closeRefusal(feature, all) : `${feature.id} is not a feature`
+      // Lines of its plan file still unticked: the user decides (--anyway).
+      if (!why && file && !cmd.anyway && p) {
+        const read = await readPlanFile(deps, p, file)
+        why = 'text' in read ? planCloseRefusal(file, openLines(read.text)) : undefined
+      }
       if (why) throw new HerdrError('refused', why)
-      return { task: await store.updateTask(feature.id, x => ({ ...x, closed: { at: Date.now(), by, ...(cmd.reason ? { reason: cmd.reason } : {}) } }), { by, text: `closed the feature${cmd.reason ? `: ${cmd.reason}` : ''}` }) }
+      return { task: await store.updateTask(feature.id, x => ({ ...x, closed: { at: Date.now(), by, ...(cmd.reason ? { reason: cmd.reason } : {}) } }), { by, text: `closed the feature${cmd.reason ? `: ${cmd.reason}` : ''}${cmd.anyway && file ? ` (--anyway: plan lines of ${file} may be unticked)` : ''}` }) }
     }
     case 'ui targets': return uiTargetsList()
     case 'ui action': return addAction(store, { scope, turn, by: main ? ALFRED : `${shownKey(p ?? { key: scope })} coordinator`, kind: cmd.action, task: await taskOf(cmd.task) })
-    case 'ui show': return showUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope, turn, by: main ? ALFRED : `${shownKey(p ?? { key: scope })} coordinator`, ...(cmd.what === 'file' ? { what: cmd.what, path: cmd.path } : { what: cmd.what, task: await taskOf(cmd.task) }) })
+    case 'ui show': return showUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope, turn, by: main ? ALFRED : `${shownKey(p ?? { key: scope })} coordinator`, ...(cmd.what === 'file' ? { what: cmd.what, path: cmd.path, taskOf: (id: string) => taskAs(storedTaskId(projects, id) ?? id, 'show'), ...(main ? { tasksDir: path.join(os.homedir(), pmDir(), 'tasks') } : {}) } : { what: cmd.what, task: await taskOf(cmd.task) }) })
     case 'ui open': return openUi({ ...deps, clients: deps.clients ?? (() => []) }, { scope, main, raw: cmd.link, turn, by: main ? ALFRED : `${scope} coordinator` })
     case 'notes': return runNotes(deps.notes ?? notesStore(), cmd.notes, body.input, main ? { by: ALFRED } : { by, project: needProject() }, deps.settingsFile, deps.machines())
     case 'list': {
@@ -309,7 +329,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       // Always the project's own workflow, whatever id the JSON names.
       if (t && next && typeof next === 'object') next = { ...next, id: t.id }
       editRefusal(t, next, turn, key)
-      const errors = validateTemplate(next)
+      const errors = validateTemplate(next, await namedAgents())
       if (errors.length) throw new HerdrError('bad_input', errors.map(e => `${e.path}: ${e.message}`).join('; '))
       // The user accepts or refuses it in the interface; nothing is saved yet.
       // by: who proposed it; said, saidAt: the user's message it follows.
@@ -400,7 +420,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
         // Wakes not sent, newest first: what and why.
         skippedWakes: [...(pilotRec?.skips ?? [])].slice(-20).reverse().map(x => ({ at: new Date(x.at).toISOString(), what: x.what, why: x.why })),
         today: { ...limitsLeft(ap, mine, await store.runs(), now, await slotsOf(store, held)), skippedWakes: today(pilotRec?.skipped, now), ...(ap.lookForWork ? { newWorkAdded: today(pilotRec?.lookAdded, now), newWorkPerDay: ap.lookPerDay ?? LOOK_PER_DAY } : {}) },
-        note: 'Only the user changes these, in wherdr. routines: at each one\'s time (when), a wake Routine: <its goal>, with the health lines, within the hours and the pace (off: none). keepBusy: with it on, the engine itself starts the next to-do task in board order (oldest first) while a machine has room, within the limits, hours and pace; next says which, or why none. With nothing to do and lookForWork off, scheduled wakes are skipped, and so are they while nothing you could act on changed since your last wake (no task startable now, no new block, no answer); unless its health lines say something new (or 12 h passed since they were sent); a question you already answered with tell, and an engine wake for a block that is only an offline or paused machine (the incident covers it; the engine resumes the task itself and wakes you if that fails) are skipped too. skippedWakes lists the last ones, what and why; today.skippedWakes counts today\'s skipped scheduled wakes. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines by its placement strategy (Heavy to the strongest: heavy work on the strongest, light and standard work at home when it fits; Balance the load: each task on the machine with most room; Home first: home until it is full; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. perDay, atOnce and hours hold automatic work only: a start the user asks for goes past them, and still counts in them. perDay null: no daily limit; atOnce null is Auto: as many tasks as the machines take (both the defaults of a new project). Whatever the counts, pacing and machine room still hold automatic work. machines: each allowed machine, its agents at work by weight, its available hours (automatic starts skip it outside them, heavy work in its last 2 hours) and the heaviest weight it takes now (or why none: offline, away, full…); weights: what placement counts per weight (learned from the measured peaks of the project after 3 runs of that weight, else the default), and the weight each task type gets. lastOpenIncident: the last time agents were gone and why, from facts (wherdr pm incidents lists them all); null when none is open. reviews: each reviewer account with reviews running or waiting, its 5-hour and weekly use, and how many it runs at once; the others wait their turn, oldest first',
+        note: 'Only the user changes these, in wherdr. routines: at each one\'s time (when), a wake Routine: <its goal>, with the health lines, within the hours and the pace (off: none). keepBusy: with it on, the engine itself starts the next to-do task in board order (oldest first) while a machine has room, within the limits, hours and pace; next says which, or why none. With nothing to do and lookForWork off, scheduled wakes are skipped, and so are they while nothing you could act on changed since your last wake (no task startable now, no new block, no answer); unless its health lines say something new (or 12 h passed since they were sent); a question you already answered with tell, and an engine wake for a block that is only an offline or paused machine (the incident covers it; the engine resumes the task itself and wakes you if that fails) are skipped too. skippedWakes lists the last ones, what and why; today.skippedWakes counts today\'s skipped scheduled wakes. Pacing holds automatic work only (wakes, tasks added in wakes, automations): scheduled wakes are skipped and such starts refused while it waits; the user\'s own starts never are. The engine places each start on one of the project\'s allowed machines by its placement strategy (Heavy to the strongest: heavy work on the strongest, light and standard work at home when it fits; Balance the load: each task on the machine with most room; Home first: home until it is full; --on picks one); automatic starts wait while no machine has room (memory, cores, its cap of agents, all projects together) and start by themselves once one has. perDay, atOnce and hours hold automatic work only: a start the user asks for goes past them, and still counts in them. perDay null: no daily limit; atOnce null is Auto: as many tasks as the machines take (both the defaults of a new project). Whatever the counts, pacing and machine room still hold automatic work. machines: each allowed machine, its agents at work by weight and by agent name (a named agent of Settings › Agents, else its program), its available hours (automatic starts skip it outside them, heavy work in its last 2 hours) and the heaviest weight it takes now (or why none: offline, away, full…); weights: what placement counts per weight (learned from the measured peaks of the project after 3 runs of that weight, else the default), and the weight each task type gets. lastOpenIncident: the last time agents were gone and why, from facts (wherdr pm incidents lists them all); null when none is open. reviews: each reviewer account with reviews running or waiting, its 5-hour and weekly use, and how many it runs at once; the others wait their turn, oldest first',
       }
     }
     case 'incidents': {
@@ -524,15 +544,36 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
         const why = (task.step?.started || task.state === 'working') && !task.parked ? `${task.id} has started: after orders only tasks not started yet (or a parked one)` : afterRefusal(task.project, ids, await store.tasks(), projects, task.id)
         if (why) throw new HerdrError('refused', why)
         // No longer held by its chain: to do again, where the engine looks at it.
-        const saved = await store.updateTask(task.id, x => ({ ...x, after: ids.join(',') || undefined, ...(x.state === 'waiting' && x.waiting?.includes(CHAIN_WAIT) ? { state: 'todo' as const, waiting: undefined } : {}) }), { by, text: `starts after ${ids.join(', ') || 'no task'} (${cmd.reason})` })
-        if (cmd.title === undefined && cmd.description === undefined && cmd.mergeAfter === undefined) return { task: saved }
+        // Checked again at the write: another edit may have closed a cycle meanwhile.
+        const saved = await store.updateTask(task.id, async (x, all) => ({ ...noCycle(afterRefusal(x.project, ids, await all(), projects, x.id), x), after: ids.join(',') || undefined, ...(x.state === 'waiting' && x.waiting?.includes(CHAIN_WAIT) ? { state: 'todo' as const, waiting: undefined } : {}) }), { by, text: `starts after ${ids.join(', ') || 'no task'} (${cmd.reason})` })
+        if (cmd.title === undefined && cmd.description === undefined && cmd.mergeAfter === undefined && cmd.context === undefined && !cmd.prefs) return { task: saved }
       }
       if (cmd.name === 'task edit' && cmd.mergeAfter !== undefined) {
         const task = await taskOf(cmd.task), ids = mergeAfterIds({ mergeAfter: cmd.mergeAfter }).map(a => storedTaskId(projects, a) ?? a)
         if (turn !== 'user' && !pilot?.on) throw new HerdrError('refused', 'In a wake, merge after is changed only with the autopilot on')
         const why = task.step?.done ? `${task.id} is done` : afterRefusal(task.project, ids, await store.tasks(), projects, task.id, 'mergeAfter')
         if (why) throw new HerdrError('refused', why)
-        const saved = await store.updateTask(task.id, x => ({ ...x, mergeAfter: ids.join(',') || undefined }), { by, text: `merges after ${ids.join(', ') || 'no task'} (${cmd.reason})` })
+        const saved = await store.updateTask(task.id, async (x, all) => ({ ...noCycle(afterRefusal(x.project, ids, await all(), projects, x.id, 'mergeAfter'), x), mergeAfter: ids.join(',') || undefined }), { by, text: `merges after ${ids.join(', ') || 'no task'} (${cmd.reason})` })
+        if (cmd.title === undefined && cmd.description === undefined && cmd.context === undefined && !cmd.prefs) return { task: saved }
+      }
+      if (cmd.name === 'task edit' && cmd.context !== undefined) {
+        const task = await taskOf(cmd.task)
+        if (turn !== 'user' && !pilot?.on) throw new HerdrError('refused', 'In a wake, context folders are changed only with the autopilot on')
+        if (task.step?.done) throw new HerdrError('refused', `${task.id} is done`)
+        const checked = cmd.context === null ? { context: undefined } : checkTaskContext(cmd.context, projects.find(x => x.key === task.project)!, projects)
+        if ('error' in checked) throw new HerdrError('refused', checked.error)
+        const said = checked.context === undefined ? 'its task type\'s' : checked.context === 'all' ? 'all other members' : checked.context.join(', ') || 'none'
+        const saved = await store.updateTask(task.id, x => ({ ...x, context: checked.context }), { by, text: `context folders: ${said}, from its next start (${cmd.reason})` })
+        if (cmd.title === undefined && cmd.description === undefined && !cmd.prefs) return { task: saved }
+      }
+      if (cmd.name === 'task edit' && cmd.prefs) {
+        const task = await taskOf(cmd.task), asked = cmd.prefs
+        if (turn !== 'user' && !pilot?.on) throw new HerdrError('refused', 'In a wake, the agents are changed only with the autopilot on')
+        if (task.step?.started || task.state === 'working' || task.run) throw new HerdrError('refused', `${task.id} has started: its agents change only before its first start`)
+        // Checked as task add's; "" puts back the workflow's.
+        const prefs = await store.taskPrefs({ ...task.prefs, ...asked })
+        const said = Object.entries(asked).map(([k, v]) => `${k === 'agent' ? 'worker' : 'reviewer'}: ${v || 'the workflow\'s'}`).join(', ')
+        const saved = await store.updateTask(task.id, x => ({ ...x, prefs }), { by, text: `agents: ${said} (${cmd.reason})` })
         if (cmd.title === undefined && cmd.description === undefined) return { task: saved }
       }
       const why = specChangeRefusal(turn)
@@ -578,12 +619,13 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       const look = turn === 'wake' && !!rec?.turn?.look
       // Another project's: its own new-work limit and count hold too, beside the acting coordinator's.
       const cross = !main && pk !== scope && pilotRec ? pilotRec : undefined
-      const why = addRefusal(pilot, turn !== 'user') ?? (look ? lookAddRefusal(pilot, today((cross ?? rec)?.lookAdded, Date.now())) ?? (cross ? lookAddRefusal(rec?.autopilot, today(rec?.lookAdded, Date.now())) : undefined) : undefined)
+      const why = addRefusal(pilot, !asked) ?? (look ? lookAddRefusal(pilot, today((cross ?? rec)?.lookAdded, Date.now())) ?? (cross ? lookAddRefusal(rec?.autopilot, today(rec?.lookAdded, Date.now())) : undefined) : undefined)
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
-      // Added in the user's turn: their request, never held by the pace.
-      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.mergeAfter ? { mergeAfter: cmd.mergeAfter } : {}), files: cmd.files ?? [], ...(cmd.feature ? { feature: cmd.feature } : {}), ...(cmd.weight ? { weight: cmd.weight } : {}), ...(cmd.fromBranch ? { fromBranch: cmd.fromBranch } : {}), origin: turn === 'user' ? 'user' : 'coordinator', addedBy: scope })
-      const task = turn !== 'user' ? { ...added, autopilot: true as const } : added
+      // Added in the user's turn (or relayed by Alfred): their request, never held by the pace.
+      if (cmd.refs?.length && !(await store.task(storedTaskId(projects, cmd.feature!) ?? cmd.feature!))?.plan?.file) throw new HerdrError('bad_input', `--refs: ${cmd.feature} has no plan file: name it when the feature is split ("plan": "<the path of its tasks.md>")`)
+      const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.mergeAfter ? { mergeAfter: cmd.mergeAfter } : {}), files: cmd.files ?? [], ...(cmd.feature ? { feature: cmd.feature } : {}), ...(cmd.refs?.length ? { refs: cmd.refs } : {}), ...(cmd.weight ? { weight: cmd.weight } : {}), ...(cmd.fromBranch ? { fromBranch: cmd.fromBranch } : {}), ...(cmd.context ? { context: cmd.context } : {}), ...(cmd.prefs ? { prefs: cmd.prefs } : {}), origin: asked ? 'user' : 'coordinator', addedBy: scope })
+      const task = !asked ? { ...added, autopilot: true as const } : added
       if (look) await store.saveCoordinator({ ...rec!, lookAdded: bump(rec!.lookAdded, Date.now()) })
       if (look && cross) { const c = (await store.coordinator(cross.project))!; await store.saveCoordinator({ ...c, lookAdded: bump(c.lookAdded, Date.now()) }) }
       return { task: await store.logTask(task, by, `added the task${cmd.after ? `, after ${cmd.after}` : ''}${cmd.mergeAfter ? `, merging after ${cmd.mergeAfter}` : ''}`) }
@@ -625,7 +667,7 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       const r = onEvent(plan, state, { kind: 'decide', by: 'coordinator', choice: cmd.choice, note: cmd.reason, ...(cited ? { spec: true as const } : {}) }, now)
       if (r.refused) throw new HerdrError('refused', r.refused)
       const line = r.effects.flatMap(e => (e.kind === 'log' ? [e.text] : [])).join('; ')
-      const next = { ...task, step: r.state, ...(cited ? { specPass: { at: now, step, reason: cmd.reason } } : {}) }
+      const next = { ...task, step: r.state }
       return { task: await store.logTask(next, by, line), effects: r.effects.filter(e => e.kind !== 'log'),
         ...(cited ? { tellUser: `In your next message, tell the user you passed ${step} of ${task.id} on the spec change of ${new Date(cited.at).toISOString().slice(0, 10)}: ${cmd.reason}` } : {}) }
     }
@@ -641,8 +683,10 @@ function editRefusal(t: Template | null, next: Template, turn: Turn, key?: strin
 
 // What became of a proposal; summary: its own changes (an older proposal,
 // without them, against the workflow as it is now).
-const answerOf = (p: Proposal, outcome: ProposalOutcome, by: string, t?: Template | null): ProposalAnswer =>
-  ({ outcome, at: Date.now(), by, proposedAt: p.at, summary: changeSummary(p.changes ?? workflowChanges(t ?? null, p.template)) })
+function answerOf(p: Proposal, outcome: ProposalOutcome, by: string, t?: Template | null): ProposalAnswer {
+  const c = p.changes ?? workflowChanges(t ?? null, p.template)
+  return { outcome, at: Date.now(), by, proposedAt: p.at, summary: changeSummary(c), title: changeTitle(c) }
+}
 const answersOf = (rec?: CoordinatorRecord | null) => rec?.answers ?? (rec?.answered ? [rec.answered] : [])
 // The record with one more answer, the oldest dropped past PROPOSAL_ANSWERS.
 function withAnswer<R extends CoordinatorRecord>(rec: R, a?: ProposalAnswer | false): R {
@@ -665,7 +709,7 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
   const done = async (outcome: ProposalOutcome) => {
     const a = answerOf(proposal, outcome, 'user', t)
     await store.saveCoordinator(withAnswer(rest, a))
-    const what = `Workflow change${a.summary?.length ? ` (${a.summary.join('; ')})` : ''}`
+    const what = `${a.title}${a.summary?.length ? ` (${a.summary.join('; ')})` : ''}`
     const said = outcome === 'accepted' ? 'Applied' : outcome === 'refused' ? 'Cancelled' : 'Not applied'
     await tellCardOutcome(deps, proposal.by === 'main' ? MAIN : rec.project, `${said}: ${what}${said === 'Not applied' ? `: ${outcome}` : ''}`).catch(() => {})
   }
@@ -685,12 +729,12 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
   return { accepted: true }
 }
 
-// A program, and its model when one is given (Claude and Codex take one).
+// A program, and its model when one is given (Claude, Codex and omp take one).
 const agentOf = (v: { program?: unknown, model?: unknown }): CoordinatorAgent | null => (isCoordinatorProgram(v.program)
-  ? { program: v.program, ...(typeof v.model === 'string' && MODEL_RE.test(v.model) && (v.program === 'claude' || v.program === 'codex') ? { model: v.model } : {}) }
+  ? { program: v.program, ...(typeof v.model === 'string' && MODEL_RE.test(v.model) && (v.program === 'claude' || v.program === 'codex' || v.program === 'omp') ? { model: v.model } : {}) }
   : null)
 const BAD_AGENT = 'program: an agent that can coordinate (claude, codex, omp…)'
-const BAD_PROJECT_AGENT = 'program: claude or codex (a project coordinator needs one wherdr can keep out of the repository)'
+const BAD_PROJECT_AGENT = 'program: claude, codex or omp (a project coordinator needs one that is kept out of the repository: by wherdr for Claude and Codex, by its tool list for omp)'
 // No agent chosen yet: Claude, as before (the client sends the user's first agent).
 const FALLBACK: CoordinatorAgent = { program: 'claude' }
 
@@ -928,7 +972,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   if (!a) throw new HerdrError('bad_input', BAD_AGENT)
   if (!canRunCoordinator(a.program, key)) throw new HerdrError('bad_input', BAD_PROJECT_AGENT)
   const { program } = a
-  if (resume && !canResume(program)) throw new HerdrError('bad_input', 'Only a Claude or Codex conversation can be resumed: start a new one')
+  if (resume && !canResume(program, key)) throw new HerdrError('bad_input', 'Only a Claude, Codex or omp conversation can be resumed: start a new one')
   const c = await prepareCoordinator(deps, key, program, urls, resume, a.model)
   // What the user applied on its cards while it did not run, said once (a resume too).
   const notes = cardNotesMessage(before)
@@ -943,7 +987,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const pending = c.prompt.length ? [] : (before?.undelivered?.texts ?? []).filter(x => !c.prompt.includes(x) && !first.includes(x) && !proposes.includes(x))
   const prompt = [...c.prompt, ...first, ...proposes, ...pending, ...notes]
   // A resumed Codex reads a word after `resume --last` as a session: its messages are typed.
-  const asArg = promptAsArg(program) && !resume
+  const asArg = promptAsArg(program, key) && !resume
   // Codex takes one [PROMPT] argument: its messages go as one.
   const argv = [...c.argv, ...(asArg && prompt.length ? [prompt.join('\n\n')] : [])]
   const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
@@ -965,13 +1009,17 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   const { told: _told, cardNotes: _said, undelivered: _lost, ...rec } = (await deps.store.coordinator(key))!
   await deps.store.saveCoordinator({ ...rec, terminal: address, ran: a, version: wherdrVersion(), ...(key === MAIN ? { agent: a } : {}), ...(!asArg && prompt.length ? { undelivered: queuedFirst(prompt) } : {}) })
   // Its turn follows the user's clicks (issueToken cleared it): it may propose the next card.
-  // Its first reply's workflow proposal follows the user's start.
+  // Its first reply's workflow proposal follows the user's start. A replayed message
+  // keeps no more than it can show it came with (WHR-512): the start's own proposal,
+  // the user's; card notes, a card's; anything else (a relay, a report), a relay's.
   const said = [...proposes, ...pending, ...notes]
-  if (said.length) await noteTurn(deps.store, key, 'user', said.join('\n\n'))
+  const startProposal = (x: string) => x === FIRST_REPLY || x === WORKSPACE_FIRST
+  const kind = [...proposes, ...pending].some(startProposal) ? 'user' : pending.every(x => cardNoteOf(x) !== null) ? 'card' : 'relay'
+  if (said.length) await noteTurn(deps.store, key, kind, said.join('\n\n'))
   // Typed one after another once the program is ready (in the background: it may wait
   // on a dialog), each outcome logged; saved first, so that a failure stays on its record.
   // The start queue (startTurn) moves on once its session is up.
-  // A fresh Claude or Codex has them on its command line: watched until its session is up.
+  // A fresh Claude, Codex or omp has them on its command line: watched until its session is up.
   void deliverFirst(deps, key, address, prompt, up, asArg).catch(() => up())
   // This conversation replaces the one before (another agent's, or ended).
   if (before?.terminal && before.terminal !== address) await deps.call('terminal.kill', { terminal: before.terminal }, 15000).catch(() => {})
