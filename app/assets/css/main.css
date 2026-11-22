@@ -901,8 +901,22 @@ body.short-bottom { --safe-bottom: 0px; }
 .files-md img[src] { cursor: zoom-in; }
 /* A Markdown file, formatted: the conversation's Markdown styles on a framed
    page, headings ruled as a document, light syntax colours in code blocks. */
-.files-md-mode { max-width: 280px; margin: 10px 0 0; }
-.files-md-mode button { padding: 9px 6px 8px; }
+/* Rendered | Source (Preview | Source): the compact segmented control, with the actions. */
+.files-actions { align-items: center; }
+/* One file (FilesView `file`): a document under its window's header. Folder ·
+   size, Back and the controls sit under the title (AppSheet `sub`, the side
+   panel's head), the actions as icons; the text has the window's width and a
+   readable line length, with no frame around it. */
+.files-located { min-width: 0; color: var(--muted); font: 11px/1.4 var(--mono); overflow-wrap: anywhere; }
+.files-bar:has(.files-located) { align-items: center; margin: 0; }
+.files-bar:has(.files-located) .files-label { display: none; }
+.files-bar:has(.files-located) .files-actions { gap: 6px; }
+.hw-sheet-head:has(> .hw-sheet-sub) { flex-wrap: wrap; }
+.hw-sheet-sub { flex: 1 0 100%; min-width: 0; margin-top: 8px; }
+.ui-show-sub { margin-top: 4px; }
+.ui-show-sub:empty, .hw-sheet-sub:has(> :empty:only-child) { display: none; }
+.files-view.single .changes-inner { max-width: none; padding-top: 22px; }
+.files-view.single .files-md { max-width: 70ch; margin: 0 auto; padding: 0; border: 0; background: none; font-size: 15px; }
 .files-md { margin: 12px 0 0; padding: 20px 22px 24px; border: 1px solid var(--line); background: var(--surface); min-width: 0; }
 .md-body.files-md h1 { font: 700 26px/1.2 var(--display); letter-spacing: -.02em; }
 .md-body.files-md h2 { font: 650 20px/1.25 var(--display); letter-spacing: -.015em; }
@@ -920,7 +934,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .md-body.files-md .hl-n { color: var(--teal); }
 .md-body.files-md .hl-k { color: var(--mauve); }
 .md-body.files-md .hl-t { color: var(--blue); }
-@media (max-width: 520px) { .files-md { padding: 14px 13px 18px; } .files-md-mode { max-width: none; } }
+@media (max-width: 520px) { .files-md { padding: 14px 13px 18px; } }
 /* The browser's PDF viewer: its own toolbar and scrolling, framed in a 1 px line. */
 .files-pdf { width: 100%; min-width: 0; }
 .pdf-page { width: 100%; background: white; margin-bottom: 12px; overflow: hidden; }

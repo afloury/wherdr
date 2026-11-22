@@ -16,6 +16,12 @@
 - **Markdown** files show formatted (**Rendered**) or as their source with line numbers
   (**Source**). A link to another file of the folder opens its preview, at the heading it names;
   **Back** returns to the previous file. A link that leads outside the folder is refused.
+  Inline code reads as text there: no glyph, chip or menu on it; a code block keeps **Copy**.
+- <a id="one-file"></a>**One file shown alone** (a path clicked in a conversation, or a file an
+  agent shows beside it) reads as a document under one header: the window's title is the file's
+  name, with its folder and size under it next to compact controls (Rendered | Source, Open,
+  Download, Refresh as icons, Back after a link). The text takes the window's width with a
+  readable line length and no frame; a wide table scrolls inside itself.
 - <a id="html-pages"></a>**HTML pages** (`.html`, `.htm`, up to 256 KB: an agent's mockup or demo)
   run as a page (**Preview**, the default) or show their source (**Source**). The page runs in a
   sandboxed frame with its own origin, apart from wherdr: it cannot read wherdr's cookies or

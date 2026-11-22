@@ -1322,9 +1322,11 @@ function openPathMenu(el: HTMLElement, path?: string) {
   const p = path || el.dataset.path || (el.textContent || '').trim()
   if (p) openCodeMenu(el, pathMenuItems(p), fileName(p))
 }
-const filePeek = reactive({ open: false, path: '' })
+const filePeek = reactive({ open: false, path: '', name: '' })
+// Where the file's folder · size and controls go: under the window's title.
+const filePeekHead = `file-head-${useId()}`
 function previewFile(p: string) {
-  Object.assign(filePeek, { open: true, path: p })
+  Object.assign(filePeek, { open: true, path: p, name: '' })
 }
 async function downloadFile(p: string) {
   try { await saveFile(`/api/files/download?pane=${encodeURIComponent(props.pane.id)}&path=${encodeURIComponent(p)}&from=chat`, fileName(stripPosition(p))) }
@@ -2034,8 +2036,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
     <UDropdownMenu v-if="!sheetMenus" v-model:open="codeMenu.open" :items="codeMenuDropdown" :content="{ align: 'start', side: 'bottom', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
       <span class="path-anchor" :style="{ left: `${codeMenu.x}px`, top: `${codeMenu.y}px`, width: `${codeMenu.w}px`, height: `${codeMenu.h}px` }" aria-hidden="true" />
     </UDropdownMenu>
-    <AppSheet v-model:open="filePeek.open" :title="fileName(stripPosition(filePeek.path))" wide full screen>
-      <FilesView v-if="filePeek.open" :key="filePeek.path" :pane-id="paneId" :file="filePeek.path" />
+    <AppSheet v-model:open="filePeek.open" :title="filePeek.name || fileName(stripPosition(filePeek.path))" wide full screen>
+      <template #sub><div :id="filePeekHead" /></template>
+      <FilesView v-if="filePeek.open" :key="filePeek.path" :pane-id="paneId" :file="filePeek.path" :head="filePeekHead" @name="filePeek.name = $event" />
     </AppSheet>
   </div>
 </template>
