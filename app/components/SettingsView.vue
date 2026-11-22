@@ -3,7 +3,7 @@
 // notifications, security (passkey), shortcuts, about.
 import type { ThemeDef, ThemeGroup, ThemeMode } from '~/utils/themes'
 import type { TypingSpeed } from '~/utils/typewriter'
-import { SETTINGS_ALIASES, SETTINGS_SECTIONS, settingsBack } from '~/utils/settingsNav'
+import { SETTINGS_ALIASES, SETTINGS_SECTIONS, settingsBack, settingsSectionIcons, settingsSectionLabels } from '~/utils/settingsNav'
 import { CONVERSATION_TABS, conversationTab, type ConversationTab } from '#shared/appLinks'
 import type { SettingsSection } from '~/utils/settingsNav'
 import { type QuietDuration, type QuietScope, quietUntil } from '#shared/quiet'
@@ -34,17 +34,9 @@ watch(() => [route.path, route.query.section], () => {
 }, { immediate: true })
 const alias = computed(() => SETTINGS_ALIASES[String(route.query.section)] ?? null)
 const section = computed<SettingsSection | null>(() => alias.value?.section ?? ((SETTINGS_SECTIONS as readonly string[]).includes(String(route.query.section)) ? route.query.section as SettingsSection : null))
-const sectionIcons: Record<SettingsSection, string> = {
-  appearance: 'i-lucide-palette', conversation: 'i-lucide-message-square', terminal: 'i-lucide-square-terminal',
-  agents: 'i-lucide-bot', machines: 'i-lucide-server', projects: 'i-lucide-kanban', plugins: 'i-lucide-puzzle', phone: 'i-lucide-smartphone', notifications: 'i-lucide-bell', security: 'i-lucide-lock', shortcuts: 'i-lucide-keyboard', about: 'i-lucide-info',
-}
-const sectionLabels: Record<SettingsSection, string> = {
-  appearance: 'Appearance', conversation: 'Conversation', terminal: 'Terminal', agents: 'Agents', machines: 'Machines', projects: 'Projects',
-  plugins: 'Plugins', phone: 'Phone', notifications: 'Notifications', security: 'Security', shortcuts: 'Shortcuts', about: 'About',
-}
 const sections = computed(() => SETTINGS_SECTIONS
   .filter(id => id !== 'shortcuts' || (desk.value && !coarse.value))
-  .map(id => ({ id, label: t(sectionLabels[id]), icon: sectionIcons[id] })))
+  .map(id => ({ id, label: t(settingsSectionLabels[id]), icon: settingsSectionIcons[id] })))
 const activeSection = computed<SettingsSection | null>(() => {
   if (section.value && sections.value.some(s => s.id === section.value)) return section.value
   return desk.value ? 'appearance' : null
