@@ -23,6 +23,7 @@ export function photoTile(src: string, name?: string) {
     try { base = attachmentDisplayName(decodeURIComponent(new URL(src, 'http://local').pathname)) } catch { /* not a URL */ }
     if (!extensionOf(base)) base = ''
   }
-  const shown = base || t('Photo')
-  return { name: shown, badge: badgeOf(shown, 'IMG'), label: t('View image') }
+  // A photo stored without its own name (herdr-core) is just "Photo".
+  const own = base.replace(/^\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z-[0-9a-f]{6}(?=\.\w+$)/, '')
+  return { name: own.startsWith('.') || !own ? t('Photo') : own, badge: badgeOf(base, 'IMG'), label: t('View image') }
 }

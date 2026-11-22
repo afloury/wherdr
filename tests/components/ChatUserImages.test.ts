@@ -24,13 +24,13 @@ it('shows a message\'s PDF and two photos as tiles, a tap opens the viewer', asy
   try {
     await expect.poll(() => w.findAll('.msg-user-wrap').length).toBe(1)
     const bubble = w.find('.msg-user-wrap .msg-bubble')
-    // The photos above the text, as tiles without a remove cross.
+    // Photos then the file above the text, as tiles without a remove cross.
     expect(bubble.element.firstElementChild!.classList.contains('msg-media')).toBe(true)
-    const photos = bubble.findAll('.msg-media .att-tile')
+    const photos = bubble.findAll('.msg-media .att-tile.has-photo')
     expect(photos).toHaveLength(2)
     expect(bubble.find('[data-slot="remove"]').exists()).toBe(false)
     // The file: its tile, original name, PDF badge; its path line is gone.
-    const file = bubble.find('.msg-file-chips .att-tile')
+    const file = bubble.find('.msg-media .att-tile:not(.has-photo)')
     expect(file.find('[data-slot="name"]').text()).toBe('report.pdf')
     expect(file.find('.att-tile-badge').text()).toBe('PDF')
     expect(bubble.find('.msg-fold').text()).toBe('Here on my phone:')

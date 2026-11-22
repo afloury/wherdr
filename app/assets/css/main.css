@@ -1054,9 +1054,11 @@ body.short-bottom { --safe-bottom: 0px; }
 /* User message: square block on the right. */
 .msg-user-wrap { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; margin-top: 6px; container-type: inline-size; }
 .msg-user .msg-c { max-width: 88%; }
-/* Images in the bubble, above the text. Images only: the same frame, even padding. */
+/* Attachments in the bubble, above the text. Attachments only: the same frame, even padding. */
 .msg-media { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 8px; white-space: normal; }
 .msg-media:last-child { margin-bottom: 2px; }
+/* Photos then files, the message field's tiles on the same wrapping rows; a file's tap opens the path menu. */
+.msg-media > .thumbs { display: contents; }
 .msg-no-text .msg-bubble { padding: 8px; }
 .msg-no-text .msg-media { margin: 0; }
 .msg-bubble {
@@ -1882,9 +1884,6 @@ body.kb .composer { padding-bottom: 8px; }
 }
 .att-tile[data-status='error'] .att-tile-badge { display: none; }
 
-/* Files attached to a sent message: the message field's tiles (.att-tile); a tap opens the path menu. */
-.msg-file-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 8px; white-space: normal; }
-.msg-file-chips:last-child { margin-bottom: 2px; }
 
 /* ================================================================
    Windows (UModal): bottom sheet on the phone, centered on a computer

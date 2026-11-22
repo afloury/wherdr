@@ -1815,7 +1815,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   :ui="userUi(userRoot(b))"
                 >
                   <template #content>
-                    <span v-if="b.srcs.length" class="msg-media"><MsgThumbs :srcs="b.srcs" :offline="readOnly" /></span><span v-if="b.files.length" class="msg-file-chips">
+                    <span v-if="b.srcs.length || b.files.length" class="msg-media"><MsgThumbs v-if="b.srcs.length" :srcs="b.srcs" :offline="readOnly" />
                       <AttachTile v-for="f in b.files" :key="f.path" v-bind="fileTile(f.name)" :label="f.name" sent @open="el => openPathMenu(el, f.path)" />
                     </span><UserText :text="b.text" :pasted="b.pasted" />
                   </template>
@@ -1981,7 +1981,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               :ui="pendingUi(`msg msg-user msg-pending sent${q.body || q.files.length ? '' : ' msg-no-text'}`)"
             >
               <template #content>
-                <span v-if="q.srcs.length || q.missing" class="msg-media"><MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="att-tile thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span></span><span v-if="q.files.length" class="msg-file-chips">
+                <span v-if="q.srcs.length || q.missing || q.files.length" class="msg-media"><MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="att-tile thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span>
                   <AttachTile v-for="f in q.files" :key="f.path" v-bind="fileTile(f.name)" :label="f.name" sent @open="el => openPathMenu(el, f.path)" />
                 </span><UserText :text="q.body" :pasted="q.pasted" />
               </template>
@@ -2000,7 +2000,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
               :ui="pendingUi(`msg msg-user msg-pending queued${q.body || q.files.length ? '' : ' msg-no-text'}`)"
             >
               <template #content>
-                <span v-if="q.srcs.length || q.missing" class="msg-media"><MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="att-tile thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span></span><span v-if="q.files.length" class="msg-file-chips">
+                <span v-if="q.srcs.length || q.missing || q.files.length" class="msg-media"><MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="att-tile thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span>
                   <AttachTile v-for="f in q.files" :key="f.path" v-bind="fileTile(f.name)" :label="f.name" sent @open="el => openPathMenu(el, f.path)" />
                 </span><UserText :text="q.body" :pasted="q.pasted" />
               </template>
