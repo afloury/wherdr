@@ -1000,8 +1000,10 @@ click, long press, or ••• when it has more than *Open*) offers:
 - **Continue**, **Take it as it is** or **Archive**, on a stopped task;
 - **Check on GitHub**, on a task at its merge step or archived with a PR: its
   sheet opens with what wherdr found (see [Task sheet](#task-sheet));
-- **Delete…**, on a task never started (no agent, worktree or branch). A task
-  other tasks wait for cannot be deleted; its number is never given again.
+- **Delete…**, on a task never started (no agent, worktree or branch), also one
+  whose start failed before its worktree was made (its error stays on the card
+  until you delete it or start it again). A task other tasks wait for cannot be
+  deleted; its number is never given again.
 
 **Add task** opens a sheet: the project, a title, the task type (with its steps
 in one line), its weight, a Markdown description, the tasks it waits for, and
