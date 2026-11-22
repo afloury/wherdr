@@ -2246,7 +2246,7 @@ body.kb .composer { padding-bottom: 8px; }
   border-bottom: 1px solid var(--line-soft); cursor: pointer;
 }
 .folder-tree .tree-row::before { border-radius: 0; }
-.folder-tree .tree-row:hover:not(:disabled) { background: var(--code-bg); }
+@media (hover: hover) { .folder-tree .tree-row:hover:not(:disabled) { background: var(--code-bg); } }
 .folder-tree .tree-row[data-selected] { background: var(--surface-2); color: var(--text-strong); box-shadow: inset 2px 0 var(--accent); }
 .folder-tree .tree-row:disabled { cursor: default; }
 .folder-tree .tree-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
