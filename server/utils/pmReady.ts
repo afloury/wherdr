@@ -34,8 +34,8 @@ async function runCheck(deps: PmLaunchDeps, p: Project, t: Template | null, task
   const programs = t && as ? [...new Set([workerPlan(t, as, named), reviewerPlan(t, as, undefined, named)].flatMap(x => ('program' in x ? [x.program] : [])))] : []
   const gh = !!t && !!as && taskPlan(t, as, p).some(s => s.action?.kind.startsWith('github.'))
   const base = as ? taskBase(as, p) ?? '' : p.base ?? ''
-import { prefOf, reviewerPlan, shotStep, taskBase, taskPlan, workerPlan, type Task } from '../../shared/pm/run'
-import { namedAgents } from './settings'
+  const args = [clone, base, visual ? wherdrBase(machine, deps.origin) : '', gh ? '1' : '0', visual ? '1' : '0', as && t && prefOf(t, as, 'browser') === 'relay' ? '1' : '0', ...programs]
+  const r = await exec(deps, on, `${PATH_SETUP}\nWHERDR_PM_DIR=${shq(pmDir())}\n${READY_SCRIPT}`, args, undefined, 90).catch(() => ({ out: '' }))
   const ready = readyOf(r.out, origin.out.trim())
   const refused = readyRefusal(ready)
   last.set(`${p.key}|${machine}|${visual ? 1 : 0}`, { ...ready, ...(refused ? { refused } : {}) })
