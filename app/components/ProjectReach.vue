@@ -31,7 +31,7 @@ function add(key: string) { set(key, 'read'); open.value = false }
       <li v-for="x in reached" :key="x.key" class="reach-row" data-testid="pm-reach-row">
         <span class="reach-name"><ProjectBadge :text="shownKey(x)" :color="x.color" /><span class="truncate">{{ x.name }}</span></span>
         <span class="reach-actions">
-          <USelect :model-value="model[x.key]" :items="items" size="lg" class="w-24 shrink-0" :aria-label="`${tl('Level on')} ${x.name}`" :data-testid="`pm-reach-${x.key}`" @update:model-value="(v: string) => set(x.key, v)" />
+          <SettingsChoice :model-value="model[x.key]" :items="items" class="reach-level" :label="`${tl('Level on')} ${x.name}`" :data-testid="`pm-reach-${x.key}`" @update:model-value="v => v && set(x.key, v)" />
           <UButton color="neutral" variant="ghost" size="lg" icon="i-lucide-trash-2" class="icon-btn" :aria-label="`${tl('Remove')} ${x.name}`" :data-testid="`pm-reach-remove-${x.key}`" @click="set(x.key)" />
         </span>
       </li>
@@ -62,6 +62,8 @@ function add(key: string) { set(key, 'read'); open.value = false }
 .reach-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 6px 0; border-bottom: 1px solid var(--line-soft); }
 .reach-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .reach-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+.reach-level { width: 10rem; }
+.reach-level :deep([data-slot="item"]) { min-height: 44px; padding: 6px; }
 .reach-none { margin: 0; }
 .reach-pick { display: grid; gap: 6px; width: min(320px, calc(100vw - 32px)); padding: 6px; }
 .reach-pick-list { display: grid; max-height: min(50vh, 360px); margin: 0; padding: 0; overflow-y: auto; list-style: none; }

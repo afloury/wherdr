@@ -359,9 +359,9 @@ const chatFiles = computed({
   set: (v: ChatFilesLevel) => { chatFilesSaved.value = v === chatFilesLevel(null, publicExposure.value) ? null : v },
 })
 const chatFilesItems = computed(() => [
-  { label: t('Everything my user can read'), description: publicExposure.value ? t('Not recommended: wherdr is reachable from the Internet.') : t('Default while wherdr answers only this computer and your tailnet.'), value: 'all' },
-  { label: t('Home and the agents’ temporary folders'), description: publicExposure.value ? t('Default while wherdr is reachable from the Internet.') : t('Your home folder, /tmp, /var/tmp and /var/folders.'), value: 'temp' },
-  { label: t('Home only'), description: t('Only files in your home folder.'), value: 'home' },
+  { label: t('Everything'), icon: 'i-lucide-hard-drive', description: `${t('Everything my user can read.')} ${publicExposure.value ? t('Not recommended: wherdr is reachable from the Internet.') : t('Default while wherdr answers only this computer and your tailnet.')}`, value: 'all' as ChatFilesLevel },
+  { label: t('Home + temp'), icon: 'i-lucide-folder-clock', description: `${t('Home and the agents’ temporary folders.')} ${publicExposure.value ? t('Default while wherdr is reachable from the Internet.') : t('Your home folder, /tmp, /var/tmp and /var/folders.')}`, value: 'temp' as ChatFilesLevel },
+  { label: t('Home only'), icon: 'i-lucide-house', description: t('Only files in your home folder.'), value: 'home' as ChatFilesLevel },
 ])
 const chatFilesProtected = syncedRef('chatFilesProtected', flag.read(false), flag.write)
 
@@ -643,7 +643,7 @@ onMounted(() => {
           </div>
           <div class="settings-group">
             <h3>{{ t('Files shown from conversations') }}</h3>
-            <URadioGroup v-model="chatFiles" :items="chatFilesItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <SettingsChoice v-model="chatFiles" :items="chatFilesItems" :label="t('Files shown from conversations')" />
             <p v-if="chatFiles === 'all' && publicExposure" class="settings-hint settings-warning" role="alert">{{ t('wherdr is reachable from the Internet: anyone who gets in can open every file your user can read.') }}</p>
             <p class="muted settings-hint">{{ t('Previews and downloads of a path an agent writes in a conversation. wherdr runs as your user: files it cannot read stay closed, and a symlink counts where it leads.') }}</p>
             <label class="settings-toggle">

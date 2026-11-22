@@ -93,9 +93,11 @@ cells under 1 px rules, uppercase mono labels (with a Lucide icon where one
 helps), the chosen cell raised with the accent bar on top, four cells 2 × 2 on a
 phone. The chosen option's description shows under it, and tapping it again keeps
 it. Examples: Appearance › Theme (Dark, Light, System), the Typewriter, a Pace
-account's mode, a notification level. Five options or more stay a `USelect` (or
-radio rows when each needs its own explanation, as *Files shown from
-conversations*); on/off stays a switch.
+account's mode, a notification level, *Files shown from conversations*, and in a
+project's sheet its placement, repository visibility and workspace instructions.
+Five options or more stay a `USelect`: a list that can grow (Settings › Projects'
+tab filter) passes through `SettingsChoice` anyway, which turns into a select
+past 4. On/off stays a switch.
 
 Every touch target must be at least **44 × 44 px**. The drawn control can be
 smaller if its actual hit area reaches that minimum. Example: `.prompt-send` is
