@@ -53,8 +53,8 @@ colors to impose on other themes.
 ## Loading states
 
 Never show a default as if it were the value: while a section's data loads, an
-off switch or an empty list would read as real. Show skeletons instead, with
-[SettingsSkeleton.vue](../app/components/SettingsSkeleton.vue): muted square
+off switch or an empty list would read as real. Show skeletons instead, built from Nuxt UI's `USkeleton`
+blocks, with [SettingsSkeleton.vue](../app/components/SettingsSkeleton.vue): muted square
 blocks at the size of what comes (rows of a settings card, a switch), a gentle
 pulse that stops under `prefers-reduced-motion`, and the buttons that need the
 data disabled. A failed load shows its error and *Try again*, never the
@@ -62,7 +62,10 @@ defaults. Example: [ProjectsSettings.vue](../app/components/ProjectsSettings.vue
 A view built from several reads waits for all of them before its first paint
 (skeletons until then, never the sections that happen to be in), then keeps its
 last data on later refreshes: [HomeSkeleton.vue](../app/components/HomeSkeleton.vue).
-The `.skel` block itself lives in `main.css`.
+The conversation's ([ChatSkeleton.vue](../app/components/ChatSkeleton.vue)) stays
+static. Never draw a loading block by hand: use `USkeleton`, which `app.config.ts`
+maps to the square, muted, pulsing `.skel` class of `main.css` (never Nuxt UI's
+rounded default).
 
 ## Icons and buttons
 
