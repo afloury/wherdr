@@ -120,10 +120,9 @@ function scrollToEnd(force: boolean) {
   if (force || (!held && stick)) {
     stick = true
     held = false
-    // At once (no frame of a conversation opened at its top). Content that
-    // only lays out after this (images, blocks) re-pins from the list's
-    // ResizeObserver, which fires on its growth while stick holds.
+    // At once (no frame of a conversation opened at its top), and again once laid out.
     pin(b)
+    requestAnimationFrame(() => { if (!unmounted && stick && !held && box.value === b) pin(b) })
   }
 }
 // Updates the conversation while keeping the current reading position: stuck to the bottom if
@@ -166,15 +165,34 @@ let lastTop = 0
 // scroll events that follow nor a status change, until the reader scrolls
 // or the draft is sent or emptied.
 let held = false
-// The last scroll gesture on the box (wheel, touch drag, key, pointer — see
-// the handlers on .chat): a scroll away from the bottom is the reader's intent
-// only right after one. The composer's autoresize pass collapses the field to
-// one row and back on every keystroke, which truncates the box's scrollTop
-// without moving the reader — a scroll event with no gesture behind it, undone
-// below before it paints.
-let gestureAt = 0
+// The last scroll gesture (wheel, touch drag, pointer on the box, or scroll
+// keys on the document outside editable fields): a scroll away from the bottom
+// is the reader's intent only right after one (or while the pointer stays held
+// down on the box, e.g. dragging the scrollbar). The composer's autoresize pass
+// collapses the field to one row and back on every keystroke, which truncates
+// the box's scrollTop without moving the reader — a scroll event with no
+// gesture behind it, undone below before it paints.
+let gestureUntil = 0
+let pointerHeld = false
 const GESTURE_MS = 400
-function onGesture() { gestureAt = Date.now() }
+const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End', ' '])
+function onGesture() { gestureUntil = Date.now() + GESTURE_MS }
+function hasGesture(now = Date.now()) { return pointerHeld || now <= gestureUntil }
+function onPointerDown() {
+  pointerHeld = true
+  onGesture()
+}
+function onPointerEnd() { pointerHeld = false }
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  if ((target as HTMLElement).isContentEditable) return true
+  return Boolean(target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), .composer, .xterm'))
+}
+function onDocumentKey(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.altKey || !SCROLL_KEYS.has(e.key)) return
+  if (isEditableTarget(e.target) || isEditableTarget(document.activeElement)) return
+  onGesture()
+}
 // A jump of the app's own (a quote's original, a search hit, an unanswered
 // question) leaves the bottom on purpose: its smooth scroll starts at the end,
 // so the animation's first frames still read "at the end" — re-arming the
@@ -189,7 +207,7 @@ function leaveEnd() {
   jumpedAt = Date.now()
 }
 function onUserScroll(e: Event) {
-  gestureAt = Date.now()
+  onGesture()
   held = false
   if (e instanceof WheelEvent && e.deltaY < 0) stick = false
   interruptThought()
@@ -205,13 +223,24 @@ onMounted(() => {
   if (box.value) ro.observe(box.value)
   // Content that grows afterwards (images loaded, blocks expanded).
   if (listEl.value) ro.observe(listEl.value)
+  document.addEventListener('keydown', onDocumentKey)
+  window.addEventListener('pointerup', onPointerEnd, true)
+  window.addEventListener('pointercancel', onPointerEnd, true)
+  window.addEventListener('blur', onPointerEnd)
 })
 onBeforeUnmount(() => {
   if (box.value && rendered.value) saveReadingPosition(props.pane.id, chat.value.file, box.value)
   // Leaving the pane stops the reply it was reading aloud.
   stopSpeaking(`${props.pane.id}:`)
 })
-onUnmounted(() => ro?.disconnect())
+onUnmounted(() => {
+  ro?.disconnect()
+  pointerHeld = false
+  document.removeEventListener('keydown', onDocumentKey)
+  window.removeEventListener('pointerup', onPointerEnd, true)
+  window.removeEventListener('pointercancel', onPointerEnd, true)
+  window.removeEventListener('blur', onPointerEnd)
+})
 function onScroll() {
   const b = box.value
   if (!b) return
@@ -220,7 +249,7 @@ function onScroll() {
   if (!held && Date.now() - jumpedAt >= JUMP_MS) {
     if (atEnd(b)) stick = true
     else if (b.scrollTop < lastTop - 1) {
-      if (Date.now() - gestureAt < GESTURE_MS) stick = false
+      if (hasGesture()) stick = false
       // Not a gesture (the composer's collapse, an anchor correction): put the
       // view back. The scroll event dispatches before paint, so the undo is
       // never seen.
@@ -1736,7 +1765,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
     <OfflineNote v-else-if="isStale(misses)" :label="t('Conversation not up to date — reconnecting…')" />
     <!-- The end kept on this device while the network is slow to answer: said, over the list (nothing moves). -->
     <span v-if="cachedTag && savedAt" class="cached-tag chat-cached" role="status">{{ tl(`Read at ${fmtTime(savedAt)}`, `Lu à ${fmtTime(savedAt)}`) }}</span>
-    <div ref="box" class="chat" @scroll.passive="onScroll" @wheel.passive="onUserScroll" @touchmove.passive="onUserScroll" @pointerdown="onGesture" @keydown="onGesture" @click.capture="onJump">
+    <div ref="box" class="chat" @scroll.passive="onScroll" @wheel.passive="onUserScroll" @touchmove.passive="onUserScroll" @pointerdown="onPointerDown" @click.capture="onJump">
       <UChatMessages
         :status="working ? 'streaming' : 'ready'" :should-auto-scroll="false"
         :auto-scroll="{ color: 'neutral', variant: 'outline' }"

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import postcss from 'postcss'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { type DOMWrapper, flushPromises } from '@vue/test-utils'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
@@ -183,6 +185,22 @@ describe('Composer field sizing', () => {
     const u = await mountSuspended(Composer, { props: { pane: pane('w1:f2'), paneId: 'w1:f2', sendKeys: async () => {} } })
     expect(u.find('.prompt').classes()).not.toContain('sized-content')
     u.unmount()
+  })
+
+  it('caps sized-content at 7 rows on desktop and keeps the touch cap on coarse pointers', () => {
+    const css = readFileSync('app/assets/css/main.css', 'utf8')
+    let baseMaxHeight = ''
+    let coarseMaxHeight = ''
+    postcss.parse(css).walkRules((rule) => {
+      const media = rule.parent?.type === 'atrule' ? (rule.parent as postcss.AtRule).params : ''
+      if (!rule.selectors.includes('.prompt.sized-content .prompt-input')) return
+      rule.walkDecls('max-height', (d) => {
+        if (!media) baseMaxHeight = d.value
+        else if (media.includes('pointer: coarse')) coarseMaxHeight = d.value
+      })
+    })
+    expect(baseMaxHeight).toBe('min(40vh, calc(7lh + 12px))')
+    expect(coarseMaxHeight).toBe('min(176px, calc(var(--vv-h, 100dvh) * .3))')
   })
 })
 

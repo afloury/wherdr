@@ -10,8 +10,8 @@ All notable changes to this project are documented here. The format follows
 
 - **Sideways scroll in a menu sheet.** A label that is one unbreakable string (a tab name, a path) wraps like a description now, instead of pushing its row past the sheet's edge and scrolling the whole list off to the left.
 - **Tabs of this space.** A tab's terminal title shows under its label in the sheet's rows only when it differs from the label: a repeated title made every row look like a duplicated entry, worse on a phone where long labels also wrapped.
-- **Credentials in workspace, tab and pane names are masked.** A workspace or terminal launched from a URL carrying `user:password@` (a proxy, an ssh target) showed the secret in the machine list, the tab bar and the pane title — it now masks `user:password@` as `…@` everywhere.
 - **Typing keeps the conversation at its end.** Every keystroke in the message field ran the field's resize pass, which collapses the field to one row and reads its height back; the browser chopped the conversation's scroll position while the field was down, and nothing moved it back — one letter of a pinyin candidate and the view sat above the end. A scroll event with no gesture behind it (wheel, touch, key, pointer on the conversation) is now undone at once — scroll events dispatch before paint, so the undo is never seen — while the jumps that leave the end on purpose (a quoted message's original, a search hit, an unanswered question) release the following themselves first. Where the browser sizes the field to its content itself (field-sizing, Chrome 123+), the JS pass is off and the CSS property does the work.
+- **Credentials in workspace, tab and pane names are masked.** A workspace or terminal launched from a URL carrying `user:password@` (a proxy, an ssh target) showed the secret in the machine list, the tab bar and the pane title — it now masks `user:password@` as `…@` everywhere.
 
 ## [3.2.2] — 2026-11-19
 
