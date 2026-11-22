@@ -3,8 +3,8 @@
 // fetch script, which must put the same files where the engine looks.
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { runDictationEngineContract } from './dictationEngineContract'
-import { createDeviceEngine } from '../app/utils/dictation/device'
-import { DEVICE_CACHE, DEVICE_MODELS, DEVICE_RUNTIME, IOS_HEAP_BUDGET, deviceLanguage, deviceModel, memoryBudget, memoryFit, sentenceCase } from '../app/utils/dictation/deviceModels'
+import { createDeviceEngine, openDeviceEngine, WEBGPU_WORKER_URL, WORKER_URL } from '../app/utils/dictation/device'
+import { DEVICE_CACHE, DEVICE_MODELS, DEVICE_RUNTIME, IOS_HEAP_BUDGET, ORT_RUNTIME, deviceLanguage, deviceModel, memoryBudget, memoryFit, sentenceCase } from '../app/utils/dictation/deviceModels'
 import { TAKE_RATE, isAbortError } from '../app/utils/dictation/engine'
 import { CHUNK } from '../app/utils/dictation/modelStore'
 import { fakeCaches, rangeServer } from './fakeModelCache'
@@ -18,10 +18,11 @@ class FakeWorker {
   onerror: ((e: { message: string, preventDefault?: () => void }) => void) | null = null
   got: { t: string, [k: string]: unknown }[] = []
   terminated = false
-  constructor(private o: { loadError?: string, text?: string, dies?: boolean } = {}) { FakeWorker.made.push(this) }
+  constructor(private o: { loadError?: string, decodeError?: string, text?: string, dies?: boolean, holdDecode?: boolean, truncated?: boolean, language?: string } = {}, public url = '') { FakeWorker.made.push(this) }
   private send(data: unknown) { setTimeout(() => !this.terminated && this.onmessage?.({ data }), 1) }
   postMessage(m: { t: string, id?: number, pcm?: ArrayBuffer, files?: string[] }) {
     this.got.push(m)
+    if (m.t === 'cancel' || m.t === 'dispose') return
     if (m.t === 'load') {
       if (this.o.loadError) return this.send({ t: 'error', error: this.o.loadError })
       this.send({ t: 'phase', phase: 'fetch' })
@@ -30,13 +31,16 @@ class FakeWorker {
       this.send({ t: 'dl', file: 'tokens.txt', got: 5, total: 10 })
       this.send({ t: 'ready', ms: 3, heap: 1 })
     }
-    else this.send({ t: 'final', id: m.id, text: this.o.text ?? 'bonjour', ms: 7, heap: 1 })
+    else if (this.o.decodeError) this.send({ t: 'error', id: m.id, error: this.o.decodeError })
+    else if (!this.o.holdDecode) {
+      this.send({ t: 'final', id: m.id, text: this.o.text ?? 'bonjour', ms: 7, heap: 1, ...(this.o.language ? { language: this.o.language } : {}), ...(this.o.truncated !== undefined ? { truncated: this.o.truncated } : {}) })
+    }
   }
   terminate() { this.terminated = true }
 }
 
 const make = (o: ConstructorParameters<typeof FakeWorker>[0] = {}, m = model) =>
-  createDeviceEngine({ model: m, caches: null, worker: () => new FakeWorker(o) as unknown as Worker })
+  createDeviceEngine({ model: m, caches: null, worker: url => new FakeWorker(o, url) as unknown as Worker })
 
 // localStorage for the Node tests.
 function memoryStorage() {
@@ -204,6 +208,77 @@ describe('the on-device engine', () => {
       vi.stubGlobal('Worker', undefined)
       expect(await createDeviceEngine({ model, caches: null }).readiness()).toEqual({ ready: false, reason: 'unsupported' })
     })
+
+    it('is unsupported for Qwen without WebGPU or without shader-f16', async () => {
+      const qwen = DEVICE_MODELS.find(m => m.kind === 'qwen3Q4F16')!
+      vi.stubGlobal('Worker', FakeWorker)
+      vi.stubGlobal('navigator', {})
+      const noGpu = await createDeviceEngine({ model: qwen, caches: null, fetch: head(200) }).readiness()
+      expect(noGpu).toMatchObject({ ready: false, reason: 'unsupported' })
+      expect((noGpu as { detail?: string }).detail).toContain('webgpu')
+      vi.stubGlobal('navigator', { gpu: { requestAdapter: async () => ({ features: new Set() }) } })
+      const noF16 = await createDeviceEngine({ model: qwen, caches: null, fetch: head(200) }).readiness()
+      expect(noF16).toMatchObject({ ready: false, reason: 'unsupported' })
+      expect((noF16 as { detail?: string }).detail).toContain('shader-f16')
+      vi.stubGlobal('navigator', { gpu: { requestAdapter: async () => ({ features: new Set(['shader-f16']) }) } })
+      expect(await createDeviceEngine({ model: qwen, caches: null, fetch: head(200) }).readiness()).toEqual({ ready: true })
+    })
+  })
+
+  it('wires Qwen to the WebGPU worker and ort runtime, passes terms and language, and cancels by id', async () => {
+    const qwen = { ...DEVICE_MODELS.find(m => m.kind === 'qwen3Q4F16')!, files: model.files }
+    for (const m of DEVICE_MODELS) {
+      expect(createDeviceEngine({ model: m, caches: null }).caps.terms).toBe(m.kind === 'qwen3Q4F16')
+    }
+    const cpu = make()
+    await cpu.prepare()
+    expect(FakeWorker.made[0]!.url).toBe(WORKER_URL)
+
+    const engine = make({ text: 'salut wherdr', language: 'fr', truncated: true }, qwen)
+    await engine.prepare()
+    const w = FakeWorker.made[1]!
+    expect(w.url).toBe(WEBGPU_WORKER_URL)
+    expect(w.got[0]).toMatchObject({
+      t: 'load', kind: 'qwen3Q4F16', base: `/models/${qwen.dir}`, runtime: `/models/runtime/${ORT_RUNTIME}/`,
+    })
+
+    const res = await engine.transcribe(take(), { terms: ['wherdr', 'qwen3'], language: 'fr', signal: new AbortController().signal })
+    expect(res).toEqual({ text: 'salut wherdr', ms: 7 })
+    expect(w.got[1]).toMatchObject({ t: 'decode', id: 1, terms: ['wherdr', 'qwen3'], language: 'fr' })
+
+    // Aborting an in-flight decode posts cancel with that request's id.
+    const held = make({ holdDecode: true }, qwen)
+    await held.prepare()
+    const abort = new AbortController()
+    const running = held.transcribe(take(), { terms: ['pane'], signal: abort.signal })
+    await vi.waitFor(() => expect(FakeWorker.made[2]!.got.some(m => m.t === 'decode')).toBe(true))
+    abort.abort()
+    expect(isAbortError(await running.catch(e => e))).toBe(true)
+    expect(FakeWorker.made[2]!.got.at(-1)).toEqual({ t: 'cancel', id: 1 })
+  })
+
+  it('maps Unsupported speech device and GPU loss cleanly, and probes WebGPU only when a GPU model is saved', async () => {
+    const qwen = { ...DEVICE_MODELS.find(m => m.kind === 'qwen3Q4F16')!, files: model.files }
+    const unsupportedLoad = await make({ loadError: 'Unsupported speech device: WebGPU and shader-f16 required' }, qwen).prepare().catch(e => e)
+    expect(unsupportedLoad.name).toBe('DeviceUnsupported')
+    const lost = make({ decodeError: 'Speech GPU device lost' }, qwen)
+    await expect(lost.transcribe(take(), { terms: [], signal: new AbortController().signal })).rejects.toThrow('Speech GPU device lost')
+
+    vi.stubGlobal('localStorage', memoryStorage())
+    const requestAdapter = vi.fn(async () => ({ features: new Set<string>() }))
+    vi.stubGlobal('navigator', { gpu: { requestAdapter } })
+    // Default and CPU choices never request a WebGPU adapter on open.
+    expect((await openDeviceEngine()).caps.terms).toBe(false)
+    localStorage.setItem('dictationDeviceModel', 'sensevoice')
+    expect((await openDeviceEngine()).caps.terms).toBe(false)
+    expect(requestAdapter).not.toHaveBeenCalled()
+
+    localStorage.setItem('dictationDeviceModel', qwen.id)
+    expect((await openDeviceEngine()).caps.terms).toBe(false)
+    expect(requestAdapter).toHaveBeenCalledTimes(1)
+    requestAdapter.mockResolvedValueOnce({ features: new Set(['shader-f16']) })
+    expect((await openDeviceEngine()).caps.terms).toBe(true)
+    expect(requestAdapter).toHaveBeenCalledTimes(2)
   })
 })
 

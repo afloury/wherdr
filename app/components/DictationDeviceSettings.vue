@@ -14,10 +14,11 @@ import { disposeEngines } from '~/utils/dictation/registry'
 checkCrash() // a page killed while loading a model marks it too large first
 const gpu = ref<DeviceNeed[]>([])
 const models = computed(() => runnableModels(gpu.value))
-const chosen = ref(deviceModel(readSaved()).id)
 // Models over this device's memory budget (iPhone, iPad, small Android) or
 // that got the page killed: shown, never chosen.
 const budget = memoryBudget()
+const chosen = ref(deviceModel(readSaved(), budget, undefined, gpu.value).id)
+let picked = false
 const fit = reactive<Record<string, ReturnType<typeof memoryFit>>>(Object.fromEntries(DEVICE_MODELS.map(m => [m.id, memoryFit(m, budget)])))
 const have = reactive<Record<string, number>>({})
 const progress = reactive<Record<string, Progress | null>>({})
@@ -34,6 +35,7 @@ function readSaved() {
 
 function choose(id: string) {
   if (id === chosen.value || fit[id] !== 'ok') return
+  picked = true
   chosen.value = id
   try { localStorage.setItem(DEVICE_MODEL_KEY, id) }
   catch { /* private mode: this page only */ }
@@ -76,7 +78,7 @@ function install(m: DeviceModel) {
 function retry(m: DeviceModel) {
   forgetCrash(m.id)
   fit[m.id] = memoryFit(m, budget)
-  chosen.value = deviceModel(readSaved()).id
+  chosen.value = deviceModel(readSaved(), budget, undefined, gpu.value).id
   disposeEngines()
 }
 
@@ -90,6 +92,7 @@ async function remove(m: DeviceModel) {
 
 onMounted(async () => {
   gpu.value = await gpuFeatures()
+  if (!picked) chosen.value = deviceModel(readSaved(), budget, undefined, gpu.value).id
   await Promise.all(DEVICE_MODELS.map(refresh))
   // A download started by the mic (or before this page was opened) shows here too.
   for (const m of DEVICE_MODELS) {
@@ -122,6 +125,7 @@ function quality(m: DeviceModel, lang: string) {
             <b>{{ m.name }}</b>
             <small class="dictation-model-meta" :title="m.languages.join(', ')">{{ languageLine(m) }} · {{ fmtBytes(modelBytes(m)) }}</small>
             <small v-if="m.autoDetect === false" data-testid="model-language">{{ tl(`No language detection: writes ${deviceLanguage(m).toUpperCase()}, this device’s language`, `Sans détection de langue : écrit en ${deviceLanguage(m).toUpperCase()}, la langue de cet appareil`) }}</small>
+            <small v-if="m.requires.includes('webgpu')" data-testid="model-gpu">{{ t('Uses the GPU') }}</small>
             <small class="dictation-model-rating">
               <span>{{ tl('Quality', 'Qualité') }}</span>
               <template v-for="l in ratedLanguages(m).langs" :key="l">
