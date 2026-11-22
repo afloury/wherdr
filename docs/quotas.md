@@ -110,8 +110,8 @@ Under the bar, a **weekly chart** shows the account's week, from the last weekly
 next one: the weekly % used (solid), taken from the readings wherdr kept (the pacing log, 8 days),
 the mode's target line or, in **Free with reserve**, the reserve's limit (dashed), and **now**
 (a vertical rule). **Free** has no line: usage only. Usage starts at the week's first reading
-and ends at the latest one: a part of the week without readings stays empty, never a guessed
-value (**No reading this week yet** before the first). Each machine's
+and ends at the latest one; a reading without a weekly value breaks the line until the next one:
+a part of the week without readings stays empty, never a guessed value (**No reading this week yet** before the first). Each machine's
 memory state shows below ([Machines](machines.md#manage-machines)).
 
 **End-of-week burn** (under **Mode settings**, per account, in every mode but Free): one switch. On, from now until the

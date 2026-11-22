@@ -18,11 +18,13 @@ it('draws this week\'s readings as steps from the first one, up to the latest re
   ]
   const s = weekSeries(log, 'claude:a1', workdays, R, at(11), { at: at(11, 11), used: 30 })
   expect(s.from).toBe(R - 7 * 86_400_000)
-  expect(s.usage).toEqual([{ t: at(9, 10), v: 10 }, { t: at(10, 9), v: 10 }, { t: at(10, 9), v: 30 }, { t: at(11, 11), v: 30 }])
+  expect(s.usage).toEqual([[{ t: at(9, 10), v: 10 }, { t: at(10, 9), v: 10 }, { t: at(10, 9), v: 30 }, { t: at(11, 11), v: 30 }]])
 })
 
-it('no reading this week: no usage at all, never a made-up 0', () => {
+it('no reading this week: no usage at all, never a made-up 0; a reading without a weekly value leaves a gap', () => {
   expect(weekSeries([], 'claude:a1', workdays, R, at(11)).usage).toEqual([])
+  const gap = [entry(at(9), 10), { ...entry(at(10), 0), week: null }, entry(at(12), 40)]
+  expect(weekSeries(gap, 'claude:a1', workdays, R, at(13)).usage).toEqual([[{ t: at(9), v: 10 }], [{ t: at(12), v: 40 }]])
 })
 
 it('the target line steps at each midnight up to the cap; free with reserve steps a day before the reset; Free has none', () => {

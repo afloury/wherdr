@@ -7,7 +7,7 @@ const DAY = 86_400_000
 const to = Date.now() + 3 * DAY
 const series = (more: Partial<WeekSeries> = {}): WeekSeries => ({
   from: to - 7 * DAY, to, now: Date.now(), label: 'line',
-  usage: [{ t: to - 6 * DAY, v: 12 }, { t: to - 4 * DAY, v: 12 }, { t: to - 4 * DAY, v: 40 }],
+  usage: [[{ t: to - 6 * DAY, v: 12 }], [{ t: to - 4 * DAY, v: 40 }]],
   target: [{ t: to - 7 * DAY, v: 0 }, { t: to, v: 90 }], ...more,
 })
 

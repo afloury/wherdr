@@ -11,7 +11,8 @@ const props = defineProps<{ series: WeekSeries }>()
 
 const DAY = 86_400_000
 const pctText = (v: number) => `${Math.round(v)} %`
-const used = computed(() => props.series.usage.map(p => ({ ...p, k: 'used' })))
+// One line per segment: a missing reading stays a gap.
+const used = computed(() => props.series.usage.flatMap((seg, i) => seg.map(p => ({ ...p, k: `used${i}` }))))
 const target = computed(() => (props.series.target ?? []).map(p => ({ ...p, k: 'target' })))
 // One tick per local midnight of the week.
 const days = computed(() => {
@@ -40,7 +41,7 @@ const definition = computed(() => defineChart({
   svgAnimation: false,
 }))
 const label = computed(() => {
-  const last = props.series.usage[props.series.usage.length - 1]
+  const last = props.series.usage[props.series.usage.length - 1]?.at(-1)
   const tgt = props.series.target?.filter(p => p.t <= props.series.now).pop()
   return [
     tl('Weekly quota this week'),

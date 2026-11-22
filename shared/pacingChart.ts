@@ -3,7 +3,8 @@
 // the mode's target line, or the reserve's limit in 'free'. Pure.
 //
 // Usage starts at the first reading of the week: before it there is nothing
-// to draw (a gap, never a made-up 0). Lines are only logged on change, so a
+// to draw (a gap, never a made-up 0), and a reading without a weekly value
+// breaks the line until the next one. Lines are only logged on change, so a
 // value holds until the next line, and the latest reading carries it to the
 // time it was read, not further.
 import type { PacingEntry } from './pacingLog'
@@ -14,7 +15,7 @@ export interface WeekSeries {
   from: number // the last weekly reset (resetsAt - 7 days)
   to: number // the next one
   now: number
-  usage: ChartPoint[] // steps: two points at each change
+  usage: ChartPoint[][] // segments, split where a reading has no weekly value; steps: two points at each change
   target: ChartPoint[] | null // null: 'unlimited' (shown as 'Free'), no line
   label: 'line' | 'reserve'
 }
@@ -55,14 +56,17 @@ export function weekSeries(entries: PacingEntry[], account: string, policy: Pace
   const from = resetsAt - 7 * DAY
   const end = Math.min(now, resetsAt)
   const inWeek = (e: PacingEntry) => e.reset === null || Math.abs(e.reset - resetsAt) <= SAME_WINDOW
-  const points = entries
-    .filter(e => e.account === account && e.week !== null && e.at >= from && e.at <= end && inWeek(e))
-    .sort((a, b) => a.at - b.at)
-    .map(e => ({ t: e.at, v: e.week! }))
-  const last = points[points.length - 1]
-  if (reading && reading.at >= from && reading.at <= end && (!last || reading.at > last.t)) points.push({ t: reading.at, v: reading.used })
+  // A line without a weekly value ends the segment: the next reading starts a new one.
+  const segments: ChartPoint[][] = [[]]
+  for (const e of entries.filter(e => e.account === account && e.at >= from && e.at <= end && inWeek(e)).sort((a, b) => a.at - b.at)) {
+    if (e.week !== null) segments[segments.length - 1]!.push({ t: e.at, v: e.week })
+    else if (segments[segments.length - 1]!.length) segments.push([])
+  }
+  const lastSeg = segments[segments.length - 1]!
+  const lastAt = Math.max(-Infinity, ...entries.filter(e => e.account === account && e.at <= end && inWeek(e)).map(e => e.at))
+  if (reading && reading.at >= from && reading.at <= end && reading.at > lastAt) lastSeg.push({ t: reading.at, v: reading.used })
   const target = policy.mode === 'unlimited'
     ? null
     : steps([...targetTimes(policy, from, resetsAt).map(t => ({ t, v: targetAt(policy, resetsAt, t) })), { t: resetsAt, v: targetAt(policy, resetsAt, resetsAt - 1) }])
-  return { from, to: resetsAt, now, usage: steps(points), target, label: policy.mode === 'free' ? 'reserve' : 'line' }
+  return { from, to: resetsAt, now, usage: segments.filter(seg => seg.length).map(steps), target, label: policy.mode === 'free' ? 'reserve' : 'line' }
 }
