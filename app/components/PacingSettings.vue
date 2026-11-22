@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // Settings › Agents › Pace: one row per quota account. The weekly bar with the target
-// line (or the reserve's limit), today's use, the 5-hour window, the mode and
+// line (or the reserve's limit), the week on a chart (PacingChart.vue), today's use, the 5-hour window, the mode and
 // its settings ('Free' has none: no line, no reserve, no burn), the end-of-week burn, the account's name, and whether automatic
 // work may start now.
 // A program with no reading at all shows 'Quota unknown'.
@@ -154,6 +154,7 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
             <span class="pace-bar"><i :style="barStyle(r.week.used)" /><b v-if="r.week.label !== 'burn'" :style="tickStyle(r.week.limit)" /></span>
             <span class="pace-num" data-testid="pace-week">{{ amount(r.week.used) }} · {{ r.week.label === 'burn' ? t('no pace limit') : `${limitLabel(r)} ${amount(r.week.limit)}` }}</span>
           </div>
+          <PacingChart v-if="r.series" :series="r.series" />
           <div v-if="r.five" class="pace-line">
             <span class="mono-label">5 h</span>
             <span class="pace-bar"><i :style="barStyle(r.five.used)" /><b v-if="!burnOn(r)" :style="tickStyle(unlimited(r) ? 100 : 100 - r.policy.reserve5h)" /></span>

@@ -120,12 +120,16 @@ padding that unnecessarily increases the bar height. These selectors are the
 integration points, not evidence that every current header already meets this rule.
 
 Reuse [AppSheet.vue](../app/components/AppSheet.vue) for drawers and sheets:
-outside tap and downward swipe close a phone sheet; the handle also supports tap,
-and Escape closes the modal. On open, focus goes to the sheet itself (no outline),
-not to its handle or first button; Tab reaches the buttons, which keep their
-keyboard focus ring. **Do not add a cross close button to sheets.**
-The gesture implementation is `dragStart` / `dragMove` / `dragEnd`, with the
-`.hw-sheet-handle` target. Current implementation gap: `AppSheet` still renders
+it is Nuxt UI's `UDrawer` on the phone and `UModal` on a computer (same props and
+slots, `PHONE_QUERY` decides), restyled by `.hw-sheet` / `.hw-scrim` (square, no
+library rounding). Outside tap and downward swipe close a phone sheet (the
+drawer's own drag, from the handle, the header or the content scrolled to its
+top); the handle also supports tap, and Escape closes either. On open, focus goes
+to the sheet itself (no outline), not to its handle or first button; Tab reaches
+the buttons, which keep their keyboard focus ring; the focus stays inside while
+it is open and returns where it was on close. **Do not add a cross close button
+to sheets.** The handle is AppSheet's own `.hw-sheet-handle` (36 × 4 px bar in a
+44 px target), not the drawer's. Current implementation gap: `AppSheet` still renders
 `.hw-sheet-close` with `i-lucide-x`; this is not a pattern to copy. Full-screen
 `screen` views disable sheet dragging, so retain an explicit navigation action
 when using that mode.

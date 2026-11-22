@@ -5,6 +5,12 @@
 - **Browse files** (agent's **…** menu): a read-only browser of the agent's folder, confined to
   the Git root that holds it (or the folder itself). Every resolved path, symbolic links
   included, must stay under that root; nothing is ever written.
+- The folder shows as a **tree** of folders and files with type icons: a folder's content is read
+  the first time it opens (a loading row, then an error or **Empty folder.** row when there is
+  nothing to list); a big tree draws only its visible rows. **Show hidden files** shows or hides
+  dotfiles (kept on the device). Clicking a file shows its preview, beside the tree when the panel
+  is wide enough (760 px), else in its place with **Back**; the breadcrumb above the preview opens
+  a folder of its path in the tree. **Refresh** reads the open folders and the file again.
 - **Preview** text and code (first 256 KB), images (up to 2 MB), PDFs and videos, and
   **download** any file up to 50 MB. **Open** shows a PDF or a video in a new tab.
 - **Markdown** files show formatted (**Rendered**) or as their source with line numbers
