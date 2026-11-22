@@ -136,9 +136,9 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
               :aria-label="tl('Account name', 'Nom du compte')" data-testid="pace-name"
               @blur="rename(r)" @keydown.enter="!imeComposing($event) && ($event.target as HTMLInputElement).blur()"
             >
-            <USelect
-              :model-value="r.policy.mode" :items="modeItems" size="lg" class="pace-mode" :disabled="busy !== ''" :aria-label="tl('Mode', 'Mode')"
-              data-testid="pace-mode" @update:model-value="v => change(r.account!.key, { mode: v as PaceMode })"
+            <SettingsChoice
+              :model-value="r.policy.mode" :items="modeItems" class="pace-mode" :disabled="busy !== ''" :label="tl('Mode', 'Mode')"
+              data-testid="pace-mode" @update:model-value="v => v && change(r.account!.key, { mode: v })"
             />
           </div>
           <small class="mono-label">{{ r.program }} · {{ r.account.machines.map(machineName).join(', ') }}</small>
@@ -218,7 +218,7 @@ const unknown = (r: PaceRow) => !r.account || (r.verdict.go && r.verdict.unknown
 .pace-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .pace-name { flex: 1 1 180px; min-width: 0; min-height: 44px; padding: 8px; border: 1px solid transparent; border-radius: 0; background: transparent; color: var(--text); font: 700 16px var(--font-display, inherit); text-transform: uppercase; letter-spacing: .02em; }
 .pace-name:focus { border-color: var(--line); background: var(--bg); outline: none; }
-.pace-head :deep(.pace-mode) { flex: 0 1 auto; min-width: 0; }
+.pace-head :deep(.pace-mode) { flex: 1 1 100%; min-width: 0; }
 .pace-line { display: grid; grid-template-columns: 64px 1fr auto; gap: 10px; align-items: center; }
 .pace-bar { position: relative; height: 6px; background: var(--line); }
 .pace-bar i { display: block; height: 100%; background: var(--teal); }

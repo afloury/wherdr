@@ -89,6 +89,22 @@ Switches (`USwitch`) are green when on, in every theme: `app/app.config.ts` make
 `success` their default color, so give them no `color`. Size `xl` in Settings
 rows, `lg` in windows.
 
+A choice among **2 to 4 options** in Settings is a segmented control, never radio
+rows or a select: [SettingsChoice.vue](../app/components/SettingsChoice.vue), a
+single-choice `UToggleGroup` drawn by `.hw-seg` as a compact segmented button, not
+tabs: as wide as its options (never full width), always one row, about a normal
+button's height, square cells under 1 px rules, uppercase mono labels with a small
+Lucide icon left of the label where one helps. The chosen option is filled (accent
+background, `--on-accent` text), with no bar on top. On a narrow phone the cells
+and letters tighten and a long label wraps inside its cell, never into a grid.
+The chosen option's description shows under it, and tapping it again keeps
+it. Examples: Appearance › Theme (Dark, Light, System), the Typewriter, a Pace
+account's mode, a notification level, *Files shown from conversations*, and in a
+project's sheet its placement, repository visibility and workspace instructions.
+Five options or more stay a `USelect`: a list that can grow (Settings › Projects'
+tab filter) passes through `SettingsChoice` anyway, which turns into a select
+past 4. On/off stays a switch.
+
 Every touch target must be at least **44 × 44 px**. The drawn control can be
 smaller if its actual hit area reaches that minimum. Example: `.prompt-send` is
 32 px with `::after { inset: -8px }`, producing a 48 px hit area. Reserve space

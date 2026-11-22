@@ -97,7 +97,7 @@ Needs: [Claude and Codex quotas](#claude-and-codex-quotas).
 
 **Settings › Agents › Pace** (also from a project's Autopilot tab) has one row per quota account:
 its weekly use against a target line, today's use, the 5-hour window, its name, and whether
-automatic work may start now. Its **mode** sets the line: **Free** (the default for a new
+automatic work may start now. Its **mode** (a segmented control under the account's name) sets the line: **Free** (the default for a new
 account: no line and no reserve, automatic work stops only when the account hits its own 5-hour
 or weekly limit; no mode settings), **Free with reserve** (no line: it keeps a weekly reserve
 per day left and a 5-hour reserve), **Every day**, or **Working days** (the days you pick). Automatic

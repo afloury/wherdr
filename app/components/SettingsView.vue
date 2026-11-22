@@ -166,12 +166,12 @@ const agentClipboardOn = agentClipboard
 // Dictation: Off, then the engines this build has (utils/dictation/registry.ts). Per device.
 const dictationChoice = dictationEngine
 const dictationItems = computed(() => {
-  const engines: Record<string, { label: string, description: string }> = {
-    device: { label: tl('On this device', 'Sur cet appareil'), description: tl('Nothing leaves the device; the model is downloaded once.', 'Rien ne quitte l’appareil ; le modèle est téléchargé une fois.') },
-    cloud: { label: tl('Online (OpenRouter)', 'En ligne (OpenRouter)'), description: tl('The audio goes through the wherdr server to OpenRouter.', 'L’audio passe par le serveur wherdr vers OpenRouter.') },
+  const engines: Record<string, { label: string, description: string, icon: string }> = {
+    device: { label: tl('On this device', 'Sur cet appareil'), description: tl('Nothing leaves the device; the model is downloaded once.', 'Rien ne quitte l’appareil ; le modèle est téléchargé une fois.'), icon: 'i-lucide-smartphone' },
+    cloud: { label: tl('Online (OpenRouter)', 'En ligne (OpenRouter)'), description: tl('The audio goes through the wherdr server to OpenRouter.', 'L’audio passe par le serveur wherdr vers OpenRouter.'), icon: 'i-lucide-cloud' },
   }
   return [
-    { label: tl('Off', 'Désactivée'), description: tl('No mic in the message field. Default.', 'Pas de micro dans le champ de message. Par défaut.'), value: 'off' },
+    { label: tl('Off', 'Désactivée'), description: tl('No mic in the message field. Default.', 'Pas de micro dans le champ de message. Par défaut.'), value: 'off', icon: 'i-lucide-mic-off' },
     ...Object.keys(ENGINES).map(id => ({ ...engines[id]!, value: id })),
   ]
 })
@@ -194,8 +194,8 @@ const widthItems = computed(() => [
 // What an agent pane opens on: the Conversation, or the Terminal.
 const defaultPane = defaultViewMode
 const defaultPaneItems = [
-  { label: t('Conversation'), description: t('Read the transcript first.'), value: 'chat' },
-  { label: t('Terminal'), description: t('Type straight into the pane.'), value: 'term' },
+  { label: t('Conversation'), description: t('Read the transcript first.'), value: 'chat', icon: 'i-lucide-message-square' },
+  { label: t('Terminal'), description: t('Type straight into the pane.'), value: 'term', icon: 'i-lucide-square-terminal' },
 ]
 const quotaMode = quotaDisplay
 const quotaItems = computed(() => [
@@ -212,13 +212,13 @@ const refreshPush = refreshPushOn
 const quietScope = ref<QuietScope>('all')
 const quietDuration = ref<QuietDuration>('manual')
 const quietScopeItems = computed(() => [
-  { label: tl('This device', 'Cet appareil'), value: 'device', disabled: !subscribed.value },
-  { label: tl('All devices', 'Tous les appareils'), value: 'all' },
+  { label: tl('This device', 'Cet appareil'), value: 'device' as QuietScope, disabled: !subscribed.value, icon: 'i-lucide-smartphone' },
+  { label: tl('All devices', 'Tous les appareils'), value: 'all' as QuietScope, icon: 'i-lucide-monitor-smartphone' },
 ])
 const quietDurationItems = [
-  { label: tl('1 hour', '1 heure'), value: 'hour' },
-  { label: tl('Until tomorrow morning (8 am)', 'Jusqu’à demain matin (8 h)'), value: 'morning' },
-  { label: tl('Until turned back on', 'Jusqu’à réactivation'), value: 'manual' },
+  { label: tl('1 hour', '1 heure'), value: 'hour' as QuietDuration, icon: 'i-lucide-timer' },
+  { label: tl('Until tomorrow morning (8 am)', 'Jusqu’à demain matin (8 h)'), value: 'morning' as QuietDuration, icon: 'i-lucide-sunrise' },
+  { label: tl('Until turned back on', 'Jusqu’à réactivation'), value: 'manual' as QuietDuration, icon: 'i-lucide-infinity' },
 ]
 watch(quietCurrent, (cur) => {
   if (!cur) return
@@ -351,17 +351,17 @@ const chatFiles = computed({
   set: (v: ChatFilesLevel) => { chatFilesSaved.value = v === chatFilesLevel(null, publicExposure.value) ? null : v },
 })
 const chatFilesItems = computed(() => [
-  { label: t('Everything my user can read'), description: publicExposure.value ? t('Not recommended: wherdr is reachable from the Internet.') : t('Default while wherdr answers only this computer and your tailnet.'), value: 'all' },
-  { label: t('Home and the agents’ temporary folders'), description: publicExposure.value ? t('Default while wherdr is reachable from the Internet.') : t('Your home folder, /tmp, /var/tmp and /var/folders.'), value: 'temp' },
-  { label: t('Home only'), description: t('Only files in your home folder.'), value: 'home' },
+  { label: t('Everything'), icon: 'i-lucide-hard-drive', description: `${t('Everything my user can read.')} ${publicExposure.value ? t('Not recommended: wherdr is reachable from the Internet.') : t('Default while wherdr answers only this computer and your tailnet.')}`, value: 'all' as ChatFilesLevel },
+  { label: t('Home + temp'), icon: 'i-lucide-folder-clock', description: `${t('Home and the agents’ temporary folders.')} ${publicExposure.value ? t('Default while wherdr is reachable from the Internet.') : t('Your home folder, /tmp, /var/tmp and /var/folders.')}`, value: 'temp' as ChatFilesLevel },
+  { label: t('Home only'), icon: 'i-lucide-house', description: t('Only files in your home folder.'), value: 'home' as ChatFilesLevel },
 ])
 const chatFilesProtected = syncedRef('chatFilesProtected', flag.read(false), flag.write)
 
 // How this device opens the app (shared/appStart.ts): kept where the service
 // worker reads it, nothing on the server.
 const appStartItems = [
-  { label: t('Up to date'), description: t('Network first: always the current version, the saved copy only past 3 s without an answer. Default.'), value: 'network' },
-  { label: t('Instant'), description: t('Saved copy first: opens at once, even on a weak network; a Reload banner announces a newer version.'), value: 'cache' },
+  { label: t('Up to date'), description: t('Network first: always the current version, the saved copy only past 3 s without an answer. Default.'), value: 'network' as AppStart, icon: 'i-lucide-refresh-cw' },
+  { label: t('Instant'), description: t('Saved copy first: opens at once, even on a weak network; a Reload banner announces a newer version.'), value: 'cache' as AppStart, icon: 'i-lucide-zap' },
 ]
 const appStartChoice = ref<AppStart>(APP_START_DEFAULT)
 const appStart = computed({
@@ -418,11 +418,7 @@ onMounted(() => {
         <div v-show="activeSection === 'appearance'" class="settings-section">
           <div data-ui-target="appearance.theme" class="settings-group">
             <h3>{{ t('Theme') }}</h3>
-            <div class="segmented theme-mode" role="radiogroup" :aria-label="t('Mode')" style="--segment-count: 3">
-              <button v-for="m in modeItems" :key="m.value" type="button" role="radio" :class="{ on: themeMode === m.value }" :aria-checked="themeMode === m.value" @click="pickMode(m.value)">
-                <UIcon :name="m.icon" /><span>{{ m.label }}</span>
-              </button>
-            </div>
+            <SettingsChoice :model-value="themeMode" :items="modeItems" :label="t('Mode')" class="theme-mode" @update:model-value="v => v && pickMode(v)" />
             <!-- Collapsed by default: the current theme shows, a tap expands the list. -->
             <button type="button" class="theme-opt theme-current" :aria-expanded="themesOpen" @click="themesOpen = !themesOpen">
               <span class="theme-sw"><i v-for="(c, i) in currentTheme ? swatches(currentTheme) : []" :key="i" :style="{ background: c }" /></span>
@@ -487,7 +483,7 @@ onMounted(() => {
 
           <div data-ui-target="appearance.quotas" class="settings-group">
             <h3>{{ t('Quotas') }}</h3>
-            <URadioGroup v-model="quotaMode" :items="quotaItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <SettingsChoice v-model="quotaMode" :items="quotaItems" :label="t('Quotas')" />
             <p class="muted settings-hint">{{ t('The color always flags a nearly exhausted quota. Follows you on every device.') }}</p>
           </div>
 
@@ -496,7 +492,7 @@ onMounted(() => {
             <div class="eyebrow settings-subhead"><span>{{ t('Desktop') }}</span></div>
             <div class="settings-group settings-width">
               <h3>{{ t('Content width') }}</h3>
-              <URadioGroup v-model="width" :items="widthItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+              <SettingsChoice v-model="width" :items="widthItems" :label="t('Content width')" />
               <p class="muted settings-hint">{{ t('Conversation, terminal, settings and other content. Saved on this device.') }}</p>
             </div>
           </template>
@@ -511,12 +507,12 @@ onMounted(() => {
           <div v-show="convTab === 'display'" id="conversation-panel-display" role="tabpanel" aria-labelledby="conversation-tab-display">
             <div data-ui-target="conversation.default-pane" class="settings-group">
               <h3>{{ t('Default pane view') }}</h3>
-              <URadioGroup v-model="defaultPane" :items="defaultPaneItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+              <SettingsChoice v-model="defaultPane" :items="defaultPaneItems" :label="t('Default pane view')" />
               <p class="muted settings-hint">{{ t('What an agent pane opens on. A pane you switched to Terminal stays there. Follows you on every device.') }}</p>
             </div>
             <div data-ui-target="conversation.typewriter" class="settings-group settings-typing">
               <h3>{{ t('Typewriter') }}</h3>
-              <URadioGroup v-model="typewriter" :items="typingItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" :disabled="reducedMotion" />
+              <SettingsChoice v-model="typewriter" :items="typingItems" :label="t('Typewriter')" :disabled="reducedMotion" />
               <p class="muted settings-hint">{{ t(reducedMotion ? 'Off: the system asks for reduced motion.' : 'Only new replies are animated; history appears at once. Tap a reply while it types to show it in full. Follows you on every device.') }}</p>
               <label class="settings-toggle encrypted-toggle" :class="{ 'is-disabled': !typewriterActive }">
                 <span><b>{{ t('Encrypted text') }}</b><small>{{ t('Writing advances in glyphs, then the text decrypts behind it.') }}</small></span>
@@ -530,7 +526,7 @@ onMounted(() => {
           <div v-show="convTab === 'dictation'" id="conversation-panel-dictation" role="tabpanel" aria-labelledby="conversation-tab-dictation" class="settings-group" data-testid="dictation-settings" data-ui-target="conversation.dictation">
             <h3>{{ tl('Dictation', 'Dictée') }}</h3>
             <p class="muted settings-lead">{{ tl('A mic next to +: hold it and talk, or tap it to start and again to stop. The text goes into the field; nothing is sent on its own.', 'Un micro à côté de + : maintiens-le et parle, ou touche-le pour démarrer puis encore pour arrêter. Le texte va dans le champ ; rien n’est envoyé tout seul.') }}</p>
-            <URadioGroup v-model="dictationChoice" :items="dictationItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <SettingsChoice v-model="dictationChoice" :items="dictationItems" :label="tl('Dictation', 'Dictée')" />
             <DictationDeviceSettings v-if="dictationChoice === 'device'" />
             <DictationCloudSettings v-if="dictationChoice === 'cloud'" />
             <DictationRewriteSettings v-if="dictationChoice !== 'off'" />
@@ -571,7 +567,7 @@ onMounted(() => {
           </div>
           <div data-ui-target="terminal.rendering" class="settings-group settings-renderer">
             <h3>{{ t('Terminal rendering') }}</h3>
-            <URadioGroup v-model="renderer" :items="rendererItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <SettingsChoice v-model="renderer" :items="rendererItems" :label="t('Terminal rendering')" />
             <p class="muted settings-hint">{{ t('Rendering is saved on this device.') }}</p>
             <p class="settings-renderer-status" role="status">{{ rendererStatus }}</p>
           </div>
@@ -599,10 +595,10 @@ onMounted(() => {
               <USwitch v-model="quietOn" size="xl" />
             </label>
             <p class="notify-caption">{{ tl('Silence on', 'Couper pour') }}</p>
-            <URadioGroup :model-value="quietScope" :items="quietScopeItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" @update:model-value="v => pickQuietScope(v as QuietScope)" />
+            <SettingsChoice :model-value="quietScope" :items="quietScopeItems" :label="tl('Silence on', 'Couper pour')" @update:model-value="v => v && pickQuietScope(v)" />
             <p v-if="!subscribed" class="muted notify-hint">{{ tl('“This device” needs notifications turned on below.', '« Cet appareil » demande d’activer les notifications ci-dessous.') }}</p>
             <p class="notify-caption">{{ tl('Duration', 'Durée') }}</p>
-            <URadioGroup :model-value="quietDuration" :items="quietDurationItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" @update:model-value="v => pickQuietDuration(v as QuietDuration)" />
+            <SettingsChoice :model-value="quietDuration" :items="quietDurationItems" :label="tl('Duration', 'Durée')" @update:model-value="v => v && pickQuietDuration(v)" />
             <p class="muted notify-hint" :class="{ 'quiet-end': quietOn }">{{ quietEnd || tl('Notifications come back on by themselves at the end.', 'Retour automatique à la normale à la fin de la durée choisie.') }}</p>
           </div>
           <NotificationRules />
@@ -625,7 +621,7 @@ onMounted(() => {
           <PhoneSetup data-ui-target="phone.setup" :active="activeSection === 'phone'" />
           <div data-ui-target="phone.app-start" class="settings-group">
             <h3>{{ t('App start') }}</h3>
-            <URadioGroup v-model="appStart" :items="appStartItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <SettingsChoice v-model="appStart" :items="appStartItems" :label="t('App start')" />
             <p class="muted settings-hint">{{ t('On this device only.') }}</p>
           </div>
         </div>
@@ -639,7 +635,7 @@ onMounted(() => {
           </div>
           <div class="settings-group">
             <h3>{{ t('Files shown from conversations') }}</h3>
-            <URadioGroup v-model="chatFiles" :items="chatFilesItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
+            <SettingsChoice v-model="chatFiles" :items="chatFilesItems" :label="t('Files shown from conversations')" />
             <p v-if="chatFiles === 'all' && publicExposure" class="settings-hint settings-warning" role="alert">{{ t('wherdr is reachable from the Internet: anyone who gets in can open every file your user can read.') }}</p>
             <p class="muted settings-hint">{{ t('Previews and downloads of a path an agent writes in a conversation. wherdr runs as your user: files it cannot read stay closed, and a symlink counts where it leads.') }}</p>
             <label class="settings-toggle">
