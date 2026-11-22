@@ -62,8 +62,6 @@ function add(key: string) { set(key, 'read'); open.value = false }
 .reach-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; padding: 6px 0; border-bottom: 1px solid var(--line-soft); }
 .reach-name { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .reach-actions { display: flex; align-items: center; gap: 4px; flex: none; }
-.reach-level { width: 10rem; }
-.reach-level :deep([data-slot="item"]) { min-height: 44px; padding: 6px; }
 .reach-none { margin: 0; }
 .reach-pick { display: grid; gap: 6px; width: min(320px, calc(100vw - 32px)); padding: 6px; }
 .reach-pick-list { display: grid; max-height: min(50vh, 360px); margin: 0; padding: 0; overflow-y: auto; list-style: none; }
