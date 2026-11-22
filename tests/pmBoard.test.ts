@@ -119,7 +119,7 @@ it('a card\'s texts read each task id with its project\'s shown key, stored befo
 
 // The wherdr project's simple task (todo, work, pr, review, merge, done) at pr,
 // its worker's worktree on this machine; git answers through `git`.
-async function atPr(git: (script: string, args: string[]) => { code: number, out: string }) {
+async function atPr(git: (script: string, args: string[]) => { code: number, out: string }, ends: 'action' | 'user' = 'action') {
   dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-board-'))
   const store = createPmStore(dir)
   await store.setEnabled(true)
@@ -139,7 +139,7 @@ async function atPr(git: (script: string, args: string[]) => { code: number, out
   const deps = { store, call, machines: () => [{ key: '', label: 'here', local: true }] } as unknown as CoreAdminDeps & { store: typeof store }
   // The new workflow: pr and merge replaced by a landing on develop, now open to the engine.
   const t = (await store.workflow('WH'))!
-  const land = { id: 'land', column: 'Merging', ends: 'action', action: { kind: 'git.land', target: 'develop' } } as const
+  const land = { id: 'land', column: 'Merging', ends, action: { kind: 'git.land', target: 'develop' } } as const
   const next: Template = { ...t, guards: { protected: ['main'], merge: { protected: 'user', others: 'engine' } },
     taskTypes: { ...t.taskTypes, simple: { steps: [{ id: 'todo' }, 'work', land, { id: 'done' }] } } }
   await store.saveWorkflow('WH', next, { by: 'user' })
@@ -155,6 +155,15 @@ it('a workflow change that replaces pr and merge with a landing moves the task o
   const after = await stepAction(deps, id, 'engine')
   expect(scripts[0]).toEqual(['/w', 'develop', ''])
   expect(after.step).toMatchObject({ done: true, proofs: { land: { commit: 'abc123' } } })
+})
+
+it('a landing the user pressed leaves a line saying so', async () => {
+  const { store, deps, id } = await atPr(script => (script.includes(SCRIPT.land) ? { code: 0, out: 'abc1234def' } : { code: 1, out: '' }), 'user')
+  const waiting = (await store.task(id))!
+  expect(waiting.step).toMatchObject({ at: 2, yourTurn: expect.anything() })
+  const after = await userStep(deps, id)
+  expect(after.step).toMatchObject({ done: true })
+  expect(after.log!.map(l => `${l.by}: ${l.text}`)).toContain('user: land: landed abc1234 on develop, by you')
 })
 
 it('a refused push leaves why in the task\'s log', async () => {

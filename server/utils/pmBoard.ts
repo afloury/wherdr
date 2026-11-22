@@ -252,6 +252,10 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     const saved = log?.kind === 'log' ? await store.logTask({ ...(await fresh()), step: state }, 'engine', log.text)
       : said ? await store.logTask({ ...(await fresh()), step: state }, 'engine', said.startsWith(`${act.step}: `) ? said : `${act.step}: ${said}`)
         : await store.saveTask({ ...(await fresh()), step: state })
+    // A press that worked leaves a line of its own, so the log shows who did it (a retry already said so above).
+    const pressed = by === 'user' && result.ok && cur.yourTurn?.reason !== 'action'
+      ? await store.logTask({ ...(await fresh()), step: state }, 'user', `${act.step}: ${act.action.kind === 'git.land' ? 'landed' : 'done'}${result.commit ? ` ${result.commit.slice(0, 7)}` : ''}${result.base ?? act.action.target ? ` on ${result.base ?? act.action.target}` : ''}, by you`)
+      : saved
     // Merged (by the engine, or on the Git host and confirmed): the task's remote branch goes, when safe.
     const merged = result.ok && run && endsMerged(act.action.kind)
     const gone = merged && await dropMergedBranch(actionShell(deps, runOn(deps, run)), {
@@ -259,7 +263,7 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     }).catch((e: Error) => `kept the remote branch ${run.branch}: ${e.message}`)
     // The approval dropped: the worker says why, with new screenshots.
     if (result.unapproved && state.lookAgain) await askWhy(deps, p, task.id, askWhyText(state.lookAgain.why)).catch(() => {})
-    return gone ? store.logTask(saved, 'engine', gone) : saved
+    return gone ? store.logTask(pressed, 'engine', gone) : pressed
   }
   return store.saveTask({ ...(await fresh()), step: state })
 }
