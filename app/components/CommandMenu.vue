@@ -11,7 +11,7 @@ import type { Board } from '#shared/pm/board'
 import { machineOf } from '#shared/ids'
 import { highlightParts } from '#shared/searchText'
 import { SETTINGS_SECTIONS } from '#shared/appLinks'
-import { UI_TARGETS, projectTarget, uiTargetLink, type UiTargetId } from '#shared/uiTargets'
+import { UI_TARGETS, projectTarget, uiTargetLink, uiTargetName, type UiTargetId } from '#shared/uiTargets'
 import { settingsSectionIcons, settingsSectionLabels } from '~/utils/settingsNav'
 import { shortcutKbds, shortcutsOpen } from '~/composables/useShortcuts'
 
@@ -64,9 +64,12 @@ const actions = computed<Item[]>(() => [
   { id: 'notes', label: tl('Notes'), icon: 'i-lucide-notebook-pen', kbds: shortcutKbds('notes'), onSelect: () => { close(); openNotes() } },
   { id: 'shortcuts', label: tl('Keyboard shortcuts'), icon: 'i-lucide-keyboard', kbds: shortcutKbds('help'), onSelect: () => { close(); shortcutsOpen.value = true } },
 ])
+const targetIds = Object.keys(UI_TARGETS) as UiTargetId[]
 const settings = computed<Item[]>(() => [
   ...SETTINGS_SECTIONS.filter(s => s !== 'shortcuts' || desk.value).map(s => ({ id: `section:${s}`, label: t(settingsSectionLabels[s]), icon: settingsSectionIcons[s], onSelect: () => go(`/settings?section=${s}`) })),
-  ...(Object.keys(UI_TARGETS) as UiTargetId[]).filter(id => !projectTarget(id)).map(id => ({ id: `target:${id}`, label: UI_TARGETS[id].label, icon: settingsSectionIcons[id.split('.')[0] as keyof typeof settingsSectionIcons], onSelect: () => go(uiTargetLink(id).slice(1)) })),
+  ...targetIds.filter(id => !projectTarget(id)).map(id => ({ id: `target:${id}`, label: UI_TARGETS[id].label, icon: settingsSectionIcons[id.split('.')[0] as keyof typeof settingsSectionIcons], onSelect: () => go(uiTargetLink(id).slice(1)) })),
+  // A project's settings, once per loaded project: "Demo app › Workflow".
+  ...(board.value?.projects ?? []).flatMap(p => targetIds.filter(projectTarget).map(id => ({ id: `target:${id}:${p.key}`, label: `${p.name} › ${uiTargetName(id)}`, suffix: p.label || p.key, icon: settingsSectionIcons.projects, onSelect: () => go(uiTargetLink(id, p.key).slice(1)) }))),
 ])
 const groups = computed<CommandPaletteGroup[]>(() => {
   if (!query.value.trim()) return [{ id: 'recent', label: tl('Recent conversations'), ignoreFilter: true, items: recent.value.map(agentItem) }, { id: 'actions', label: tl('Actions'), ignoreFilter: true, items: actions.value }]

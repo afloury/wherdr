@@ -255,7 +255,7 @@ for everything, full screen on a phone and a square window on a computer:
   message opens its conversation at that message.
 - **Tasks**: by id or title; opens the task's sheet.
 - **Projects**: opens the project's board.
-- **Settings**: each section and each setting an agent can point at (`ui targets`); a setting opens
+- **Settings**: each section and each setting an agent can point at (`ui targets`), a project's settings once per project; a setting opens
   its section with the setting highlighted.
 - **Actions**: New agent, New task, Tasks to review, Notes and Keyboard shortcuts.
 

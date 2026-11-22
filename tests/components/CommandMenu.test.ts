@@ -45,5 +45,7 @@ it('finds a task by its title and a setting by its name', async () => {
   expect(w.text()).toContain('DEMO-7')
   await typed(w, 'typewriter')
   expect(w.text()).toContain('Conversation › Typewriter')
+  await typed(w, 'autopilot')
+  expect(w.text()).toContain('Demo app › Autopilot')
   w.unmount()
 })
