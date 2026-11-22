@@ -2395,8 +2395,31 @@ body.kb .composer { padding-bottom: 8px; }
    its shape); a tap opens Settings › Notifications. */
 /* Themes: color swatches, selection marked by the accent. */
 /* Mode (Dark, Light, System) above the theme. */
-.segmented.theme-mode { margin-bottom: 12px; }
-.segmented.theme-mode .iconify { width: 16px; height: 16px; }
+.theme-mode { margin-bottom: 12px; }
+/* Settings: one choice among 2 to 4 (SettingsChoice.vue, a UToggleGroup), drawn as
+   `.segmented`: square cells under 1 px rules, uppercase mono labels, the chosen
+   one raised with the accent bar on top. Four choices go 2 × 2 on a phone. */
+.hw-seg { display: grid; grid-template-columns: repeat(var(--segment-count), minmax(0, 1fr)); align-items: stretch; gap: 0; border: 1px solid var(--line); background: var(--bg-2); }
+.hw-seg [data-slot="item"] {
+  position: relative; min-width: 0; min-height: 52px; padding: 10px 6px; border-radius: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+  background: transparent; color: var(--muted); box-shadow: none;
+  font: 500 11px/1.35 var(--mono); letter-spacing: .1em; text-transform: uppercase; text-align: center;
+}
+.hw-seg [data-slot="item"] + [data-slot="item"] { border-left: 1px solid var(--line); }
+.hw-seg [data-slot="item"]:hover:not(:disabled) { background: var(--surface); color: var(--text-2); }
+.hw-seg [data-slot="item"][data-state="on"] { background: var(--surface-2); color: var(--text); }
+.hw-seg [data-slot="item"][data-state="on"]::after { content: ''; position: absolute; left: -1px; right: -1px; top: -1px; height: 2px; background: var(--mauve); }
+.hw-seg [data-slot="item"]:focus-visible { outline: 1px solid var(--mauve); outline-offset: -2px; }
+.hw-seg [data-slot="item"]:disabled { opacity: .4; cursor: not-allowed; }
+.hw-seg [data-slot="label"] { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.hw-seg [data-slot="leadingIcon"] { width: 16px; height: 16px; flex: none; }
+.hw-seg-desc { display: block; margin: 8px 2px 0; color: var(--muted); font-size: 13.5px; line-height: 1.45; }
+@media (max-width: 480px) {
+  .hw-seg:has(> :nth-child(4)) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hw-seg:has(> :nth-child(4)) > :nth-child(odd) { border-left: 0; }
+  .hw-seg:has(> :nth-child(4)) > :nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+}
 .theme-list { display: flex; flex-direction: column; gap: 18px; padding-top: 18px; }
 .theme-grid { display: grid; grid-template-columns: 1fr; border: 1px solid var(--line); }
 .theme-opt {
