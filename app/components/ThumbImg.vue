@@ -1,13 +1,15 @@
 <script setup lang="ts">
-// One thumbnail of a message. A photo just sent from this device shows its
+// One photo of a message, as the message field's square tile (AttachTile). A photo just sent from this device shows its
 // local preview until the uploaded copy has loaded (utils/sentPreviews.ts).
 // A failed load is retried once after a short delay, or at once when the page
 // comes back to the front; still failing: a placeholder that reloads it.
 import { dropPreview, previewFor } from '~/utils/sentPreviews'
+import { photoTile } from '~/utils/attachTiles'
 
 const props = defineProps<{ src: string }>()
 const emit = defineEmits<{ open: [] }>()
 const RETRY_MS = 1500
+const tile = computed(() => photoTile(props.src))
 
 const attempt = ref(0)
 const state = ref<'loading' | 'ok' | 'retry' | 'broken'>('loading')
@@ -52,14 +54,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <button v-if="state === 'broken'" type="button" class="thumb-missing thumb-reload" @click="retry">
+  <button v-if="state === 'broken'" type="button" class="att-tile thumb-missing thumb-reload" @click="retry">
     <UIcon name="i-lucide-image-off" /><span>{{ t('Tap to reload') }}</span>
   </button>
-  <img
-    v-else-if="preview" class="msg-img" :src="preview" alt="" decoding="async" @click="emit('open')"
-  >
-  <img
-    v-else class="msg-img" :class="{ 'thumb-wait': state === 'retry' }" :src="url" alt="" loading="lazy" decoding="async"
-    @load="loaded" @error="failed" @click="emit('open')"
-  >
+  <AttachTile
+    v-else v-bind="tile" sent :url="preview || url" :class="{ 'thumb-wait': !preview && state === 'retry' }"
+    @open="emit('open')" @load="!preview && loaded()" @error="!preview && failed()"
+  />
 </template>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-// Thumbnails of a message: wrapping grid, "+N" tile past the cap; a tap opens
+// Photos of a message as square tiles (ThumbImg, the message field's look):
+// wrapping grid, "+N" tile past the cap; a tap opens
 // the viewer on the whole set of the message. `dupes`: images already shown
 // higher up (see shared/imageDupes.ts), reduced to a small link.
 const props = defineProps<{ srcs: string[], offline?: boolean, max?: number, dupes?: ReadonlySet<string> }>()
@@ -10,12 +11,12 @@ function open(i: number) { openLightbox(props.srcs, i) }
 </script>
 
 <template>
-  <span class="thumbs" :class="{ one: fresh.length === 1 }">
-    <span v-for="x in fresh.slice(0, layout.shown)" :key="x.src">
-      <span v-if="offline" class="offline-image">{{ t('Image unavailable offline') }}</span>
+  <span class="thumbs">
+    <template v-for="x in fresh.slice(0, layout.shown)" :key="x.src">
+      <span v-if="offline" class="att-tile offline-image">{{ t('Image unavailable offline') }}</span>
       <ThumbImg v-else :src="x.src" @open="open(x.i)" />
-    </span>
-    <button v-if="layout.more" type="button" class="thumb-more" :aria-label="tl(`Show all ${fresh.length} images`, `Voir les ${fresh.length} images`)" @click="open(fresh[layout.shown]!.i)">
+    </template>
+    <button v-if="layout.more" type="button" class="att-tile thumb-more" :aria-label="tl(`Show all ${fresh.length} images`, `Voir les ${fresh.length} images`)" @click="open(fresh[layout.shown]!.i)">
       <img v-if="!offline" :src="fresh[layout.shown]!.src" alt="" loading="lazy" decoding="async">
       <span>+{{ layout.more }}</span>
     </button>

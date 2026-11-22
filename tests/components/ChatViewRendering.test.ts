@@ -71,7 +71,7 @@ describe('conversation rendering', () => {
       expect(consoleBlock.find('.omp-console-more').isVisible()).toBe(true)
       expect(consoleBlock.findAll('.omp-tool')).toHaveLength(3)
       expect(consoleBlock.text()).not.toContain('read login.png')
-      const thumbs = consoleBlock.findAll('.tool-thumbs .msg-img')
+      const thumbs = consoleBlock.findAll('.tool-thumbs .att-tile img')
       expect(thumbs).toHaveLength(1)
       const src = thumbs[0]!.attributes('src')!
       expect(src).toMatch(/^\/api\/chat\/image\?pane=/)
