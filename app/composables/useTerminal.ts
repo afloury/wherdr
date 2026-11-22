@@ -101,13 +101,15 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     coreControl = true
     if (sizeBanner) { sizeBanner = null; opts.setBanner(null) }
   }
-  // Watching a terminal taller than this screen: shift it so the cursor row,
-  // where the newest output is, stays in view.
+  // Watching a terminal taller than this screen (another viewer owns the size,
+  // or the keyboard covers the bottom while typing elsewhere): shift it so the
+  // cursor row, where the newest output is, stays in view.
   function followCursor() {
     const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
-    if (!term || !screen || !el) return
+    if (!term || !screen || !el || !term.rows) return
     const shown = el.clientHeight - (screen.offsetTop || 0)
-    const over = coreStream && !coreControl ? (term.buffer.active.cursorY + 1) * (screen.offsetHeight / term.rows) - shown : 0
+    const follow = (coreStream && !coreControl) || (kbOpen.value && !kbdOn.value)
+    const over = follow ? (term.buffer.active.cursorY + 1) * (screen.offsetHeight / term.rows) - shown : 0
     screen.style.transform = over > 0 ? `translateY(${-Math.ceil(over)}px)` : ''
   }
   function offerFit() {
@@ -330,14 +332,6 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     await sendKeys([chord])
   }
 
-  // A resize reallocates the WebGL canvas; on some GPUs the glyph atlas then
-  // holds noise until it is rebuilt — repaint clears it rather than trusting it.
-  function repaint() {
-    if (!term) return
-    term.clearTextureAtlas()
-    term.refresh(0, term.rows - 1)
-  }
-
   function fitNow(send: boolean) {
     if (!term || !fit || !el || !el.parentElement) return
     // Measured on the parent of .xterm (#term), not .xterm itself (as FitAddon does).
@@ -353,11 +347,12 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // pane keeps its size, and the close fits back to it as a no-op. Typing
     // into the terminal itself still resizes: the prompt must stay visible.
     const covered = kbOpen.value && !kbdOn.value && d.cols === lastSize.cols
-    if (!coreStream && !covered && (d.cols !== term.cols || d.rows !== term.rows)) { term.resize(d.cols, d.rows); repaint() }
+    if (!coreStream && !covered && (d.cols !== term.cols || d.rows !== term.rows)) term.resize(d.cols, d.rows)
     if (send && !covered && (d.cols !== lastSize.cols || d.rows !== lastSize.rows)) {
       if (sendTerm({ type: 'terminal.resize', cols: d.cols, rows: d.rows })) lastSize = { cols: d.cols, rows: d.rows }
     }
     if (coreStream && !covered) offerFit()
+    else followCursor()
   }
 
   // Theme change while the terminal is shown.
@@ -503,13 +498,12 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
           resized: () => {
             if (term !== current) return
             if (smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
-            repaint()
             if (coreStream) offerFit()
           },
           reset: () => mouseSgr?.reset(),
           written: () => {
             if (credit && tws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'credit', bytes: credit }))
-            if (coreStream && !coreControl) followCursor()
+            if ((coreStream && !coreControl) || (kbOpen.value && !kbdOn.value)) followCursor()
             selectionHint.refresh(current, mouseSupported)
             if (smoothTouchScrolling.value) frameTick.value++
             if (bytes.length) wheel.frame()
@@ -642,6 +636,9 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     scrollInputVersion.value++
     if (wasEnabled) sendTerm({ type: 'touch.cancel', disabled: true })
   }, { flush: 'sync' })
+  // Lives for the owning component's effect scope, not dispose(): AgentView
+  // re-mounts TerminalView on the same controller across Conversation/Terminal toggles.
+  watch([kbOpen, kbdOn], () => followCursor())
 
   function setVisible(visible: boolean) {
     if (!visible && smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
@@ -658,6 +655,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     takeoverQueued = false
     focusQueued = false
     stopSmoothWatch()
+    const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
+    if (screen) screen.style.transform = ''
     wheel.cancel()
     disconnect()
     unbindSelection?.()

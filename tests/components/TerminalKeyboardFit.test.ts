@@ -5,8 +5,9 @@ import { createTerminal } from '~/composables/useTerminal'
 import { terminalRenderer } from '~/composables/useHerdr'
 import { kbOpen } from '~/composables/useViewport'
 
-// A resize reallocates the WebGL canvas; on some GPUs the glyph atlas then
-// shows noise until rebuilt. Every resize repaints instead of trusting it.
+// While the mobile keyboard covers the bottom of the pane and the user is typing
+// elsewhere (e.g. the composer), a rows-only change keeps the pane unresized
+// and shifts .xterm-screen so the cursor row stays visible above the keyboard.
 const h1 = vi.hoisted(() => ({ terms: [] as FakeTerm[], fit: { cols: 47, rows: 40 } as { cols: number, rows: number } | undefined }))
 
 class FakeTerm {
@@ -15,23 +16,21 @@ class FakeTerm {
   options: Record<string, unknown> = { fontFamily: 'monospace', fontSize: 13, theme: {} }
   textarea = document.createElement('textarea')
   element = document.createElement('div')
+  screen = document.createElement('div')
   modes = { mouseTrackingMode: 'none' }
   buffer = { active: { viewportY: 0, baseY: 0, length: 0, cursorY: 0 } }
-  atlasClears = 0
-  refreshes = 0
   constructor(init?: Record<string, unknown>) {
     if (init) Object.assign(this.options, init)
     h1.terms.push(this)
-    this.element.append(this.textarea)
+    this.screen.className = 'xterm-screen'
+    Object.defineProperty(this.screen, 'offsetHeight', { configurable: true, get: () => this.rows * 16 })
+    this.element.append(this.screen, this.textarea)
   }
   open(host: HTMLElement) { host.append(this.element) }
   resize(cols: number, rows: number) { this.cols = cols; this.rows = rows }
   focus() { this.textarea.focus() }
   write(_d: unknown, cb?: () => void) { cb?.() }
-  loadAddon() {} dispose() {}
-  refresh() { this.refreshes++ }
-  clearTextureAtlas() { this.atlasClears++ }
-  reset() {}
+  loadAddon() {} dispose() {} refresh() {} clearTextureAtlas() {} reset() {}
   attachCustomWheelEventHandler() {} parser = { registerCsiHandler() {}, registerEscHandler() {} }; attachCustomKeyEventHandler() {}
   onData() {} onBinary() {} onScroll() {}
   scrollToLine() {}
@@ -70,16 +69,18 @@ function setup() {
     },
   }), { attachTo: document.body })
   terminalRenderer.value = 'html'
-  const open = async () => {
+  const open = async (clientHeight = 640) => {
     const parent = document.createElement('div')
     const el = document.createElement('div')
+    let height = clientHeight
+    Object.defineProperty(el, 'clientHeight', { configurable: true, get: () => height })
     parent.append(el)
     document.body.append(parent)
     expect(await ctl.mount(el)).toBe(true)
     await nextTick()
     ctl.fitNow(false)
     ctl.connect(false)
-    return FakeSocket.all.at(-1)!
+    return { ws: FakeSocket.all.at(-1)!, setHeight: (h: number) => { height = h } }
   }
   return { ctl, open, wrapper }
 }
@@ -95,7 +96,7 @@ afterEach(() => { vi.unstubAllGlobals(); kbOpen.value = false })
 it('the keyboard opening never resizes the pane for rows alone', async () => {
   const { ctl, open, wrapper } = setup()
   try {
-    const ws = await open()
+    const { ws } = await open()
     ws.open()
     // Composer focused, keyboard sliding up: the window is shorter, nothing else moved.
     kbOpen.value = true
@@ -114,7 +115,7 @@ it('the keyboard opening never resizes the pane for rows alone', async () => {
 it('the keyboard resizes as usual while the terminal itself is typed in', async () => {
   const { ctl, open, wrapper } = setup()
   try {
-    const ws = await open()
+    const { ws } = await open()
     ws.open()
     kbOpen.value = true
     ctl.kbdOn.value = true
@@ -125,29 +126,63 @@ it('the keyboard resizes as usual while the terminal itself is typed in', async 
   } finally { ctl.dispose(); wrapper.unmount() }
 })
 
-it('a core-driven resize repaints: the atlas is rebuilt, not trusted', async () => {
+it('shifts .xterm-screen to keep the cursor row visible while covered, and resets when cleared or disposed', async () => {
   const { ctl, open, wrapper } = setup()
   try {
-    const ws = await open()
+    const { ws, setHeight } = await open(640)
     ws.open()
-    ws.receive({ type: 'web.capabilities', core: true })
-    ws.receive({ type: 'terminal.control', on: true })
-    ws.receive({ type: 'terminal.frame', width: 60, height: 20, bytes: '' })
-    expect(h1.terms[0]).toMatchObject({ cols: 60, rows: 20 })
-    expect(h1.terms[0]!.atlasClears).toBeGreaterThan(0)
-    expect(h1.terms[0]!.refreshes).toBeGreaterThan(0)
-  } finally { ctl.dispose(); wrapper.unmount() }
-})
-
-it('a local fit to a new size repaints too', async () => {
-  const { ctl, open, wrapper } = setup()
-  try {
-    const ws = await open()
-    ws.open()
-    h1.fit = { cols: 50, rows: 30 }
+    const term = h1.terms[0]!
+    // Cursor sits in the lower rows that the keyboard will cover.
+    term.buffer.active.cursorY = 35
+    kbOpen.value = true
+    setHeight(480)
+    h1.fit = { cols: 47, rows: 30 }
     ctl.fitNow(true)
-    expect(h1.terms[0]).toMatchObject({ cols: 50, rows: 30 })
-    expect(h1.terms[0]!.atlasClears).toBeGreaterThan(0)
-    expect(h1.terms[0]!.refreshes).toBeGreaterThan(0)
+    expect(term.screen.style.transform).toBe('translateY(-96px)')
+
+    // New output moves the cursor further down while covered.
+    term.buffer.active.cursorY = 38
+    ws.receive({ type: 'terminal.frame', width: 47, height: 40, bytes: '' })
+    expect(term.screen.style.transform).toBe('translateY(-144px)')
+
+    // Switching to type in the terminal clears covered and resets the shift.
+    ctl.kbdOn.value = true
+    await nextTick()
+    expect(term.screen.style.transform).toBe('')
+    ctl.kbdOn.value = false
+    await nextTick()
+    expect(term.screen.style.transform).toBe('translateY(-144px)')
+
+    // Closing the keyboard clears the shift.
+    kbOpen.value = false
+    setHeight(640)
+    h1.fit = { cols: 47, rows: 40 }
+    ctl.fitNow(true)
+    expect(term.screen.style.transform).toBe('')
+
+    // Re-covering shifts again, dispose resets cleanly, and reopening on the same controller still watches kbdOn.
+    kbOpen.value = true
+    setHeight(480)
+    h1.fit = { cols: 47, rows: 30 }
+    ctl.fitNow(true)
+    expect(term.screen.style.transform).toBe('translateY(-144px)')
+    ctl.dispose()
+    expect(term.screen.style.transform).toBe('')
+
+    kbOpen.value = false
+    ctl.kbdOn.value = false
+    h1.fit = { cols: 47, rows: 40 }
+    const reopened = await open(640)
+    reopened.ws.open()
+    const term2 = h1.terms[1]!
+    term2.buffer.active.cursorY = 35
+    kbOpen.value = true
+    reopened.setHeight(480)
+    h1.fit = { cols: 47, rows: 30 }
+    ctl.fitNow(true)
+    expect(term2.screen.style.transform).toBe('translateY(-96px)')
+    ctl.kbdOn.value = true
+    await nextTick()
+    expect(term2.screen.style.transform).toBe('')
   } finally { ctl.dispose(); wrapper.unmount() }
 })

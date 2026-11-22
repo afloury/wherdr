@@ -7,7 +7,7 @@ import { pageVisible, socketWake, terminalRenderer, smoothTouchScrolling } from 
 vi.mock('@xterm/xterm', () => ({ Terminal: class {
   cols = 80; rows = 24; options = {}; modes = { mouseTrackingMode: 'none' }
   write(_data: unknown, done?: () => void) { done?.() }
-  loadAddon() {} open() {} dispose() {} refresh() {} clearTextureAtlas() {} reset() {} attachCustomWheelEventHandler() {} parser = { registerCsiHandler() {}, registerEscHandler() {} };
+  loadAddon() {} open() {} dispose() {} refresh() {} reset() {} attachCustomWheelEventHandler() {} parser = { registerCsiHandler() {}, registerEscHandler() {} };
   attachCustomKeyEventHandler() {} onData() {} onBinary() {}
 } }))
 vi.mock('@xterm/addon-fit', () => ({ FitAddon: class { proposeDimensions() { return null } } }))
