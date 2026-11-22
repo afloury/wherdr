@@ -179,3 +179,18 @@ it('the first accepted workflow moves tasks that followed the default one', asyn
   expect(moved.step).toMatchObject({ at: 1, acting: true, tries: { land: 1 } })
   expect(moved.log!.at(-1)).toMatchObject({ by: 'engine', text: 'workflow changed: work is gone, on to land' })
 })
+
+// A workspace holds features only, whatever its workflow has: the Add a task form offers 'feature' and nothing else.
+it('a workspace\'s types on the board are its feature alone', async () => {
+  dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-board-'))
+  const store = createPmStore(dir)
+  await store.setEnabled(true)
+  await store.saveTemplate(company)
+  await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [
+    { key: 'WS', name: 'Work', machine: '', path: '/src/work', kind: 'workspace', git: false, template: 'company', addedAt: 1 },
+    { key: 'CO', name: 'Company', machine: '', path: '/src/co', template: 'company', addedAt: 1 },
+  ] }))
+  const { projects } = await board(store)
+  expect(projects.find(p => p.key === 'WS')!.types).toEqual([{ id: 'feature', plan: '' }])
+  expect(projects.find(p => p.key === 'CO')!.types.length).toBeGreaterThan(1)
+})
