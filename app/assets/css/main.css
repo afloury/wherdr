@@ -1976,7 +1976,7 @@ body.kb .composer { padding-bottom: 8px; }
 .hw-sheet .hw-sheet-title.clamp.open { display: block; overflow: visible; }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
 /* A two-line title (a task's): the close cross stays at the top right, beside its first line. */
-.hw-sheet-head:has(> .hw-sheet-title.clamp) > .hw-sheet-close { align-self: flex-start; flex: none; margin: -4px -6px 0 6px; }
+.hw-sheet-head:has(> .hw-sheet-title.clamp) > .hw-sheet-close { align-self: flex-start; flex: none; margin: -4px 0 0 6px; }
 /* Before the title (a task's id badge): the title follows it. */
 .hw-sheet-lead { flex: none; align-self: flex-start; margin: 3px 10px 0 0; }
 .hw-sheet-lead + .hw-sheet-title { flex: 1; }
