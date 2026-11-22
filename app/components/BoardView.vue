@@ -18,6 +18,7 @@ const error = ref('')
 // The filters, also from an in-app link (/board?project=CO&tag=ui,
 // shared/appLinks.ts), read again when the board is already open.
 const route = useRoute()
+const router = useRouter()
 const queried = (v: unknown) => (typeof v === 'string' ? v : '')
 // The project picker: Follow machine tab (the projects the home tab picked
 // shows, projectOnBar), All projects, or one project. The user's pick follows
@@ -131,7 +132,9 @@ const waiting = (c: Card) => (c.phase === 'todo' ? waitsFor(c, data.value?.cards
 
 // Add a task: the board's project preselected; the board is read again at
 // once; a refused Start now is said on the board, the task stays added.
+// ?add=1 (the ⌘K palette's New task): the Add a task sheet opens.
 const adding = ref(false)
+watch(() => route.query.add, (a) => { if (a === '1') { adding.value = true; router.replace({ query: { ...route.query, add: undefined } }) } }, { immediate: true })
 function added(task: Task, refused?: string) {
   load().then(() => { if (refused) error.value = `${shownTaskId(data.value?.projects ?? [], task.id)}: ${refused}` })
 }
