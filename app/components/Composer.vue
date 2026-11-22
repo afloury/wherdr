@@ -409,7 +409,7 @@ function tileOf(a: Att) {
     const tile = fileTile(a.file.label, a.file.kind, a.file.size, a.file.head)
     return { ...tile, status, description: a.error || tile.description }
   }
-  return { status, ...photoTile(a.url, a.label || attachmentDisplayName(a.name || '')), description: a.error || '', url: a.url }
+  return { status, ...photoTile(a.label || attachmentDisplayName(a.name || '')), description: a.error || '', url: a.url }
 }
 function removeAtt(i: number) {
   const [a] = attachments.value.splice(i, 1)

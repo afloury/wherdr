@@ -190,9 +190,11 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   the attachment that failed*), as it waits for an upload still running (*Photo is uploading…*).
   A photo sent from this device shows in the message at once, from its own copy; an image that
   fails to load is tried again once, then shows *Tap to reload*.
-  A sent message shows its photos, files and pasted text as the same square tiles, without the
-  cross, wrapping onto more rows: a sent file (original name) in the message and its history, also
-  in conversations from v2, a tap opens or downloads it; photos past nine end on a *+N* tile, a tap
+  A sent message shows its attachments on their own row above its bubble, outside it, on the
+  bubble's side (right for yours), wrapping onto more rows; the bubble holds only the text (none
+  when there is no text). Photos are plain square thumbnails (a single photo larger); files and
+  pasted text are the field's square tiles, without the cross: a sent file (original name) in the
+  message and its history, also in conversations from v2, a tap opens or downloads it; photos past nine end on a *+N* tile, a tap
   on a photo opens the viewer on all the message's photos, and an image an action already showed
   higher up is a small *Same image as above* link. A photo stays a picture in the message,
   never its file path, also when the message was sent again (**Send now**, **Retry**) or waited

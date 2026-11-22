@@ -1,5 +1,5 @@
-// A user message's photos and files show as the message field's square tiles
-// (UChatAttachment) inside its bubble; a tap on a photo opens the viewer on
+// A user message's photos (plain thumbnails) and files (the message field's
+// tile) sit on a row above its bubble; a tap on a photo opens the viewer on
 // the message's whole set, a file's name loses its stored date prefix.
 import { afterEach, expect, it } from 'vitest'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
@@ -23,20 +23,23 @@ it('shows a message\'s PDF and two photos as tiles, a tap opens the viewer', asy
   const w = await mountSuspended(ChatView, { props: { pane, localQueued: [] }, global: { stubs: { UTooltip: { template: '<slot />' } } } })
   try {
     await expect.poll(() => w.findAll('.msg-user-wrap').length).toBe(1)
-    const bubble = w.find('.msg-user-wrap .msg-bubble')
-    // Photos then the file above the text, as tiles without a remove cross.
-    expect(bubble.element.firstElementChild!.classList.contains('msg-media')).toBe(true)
-    const photos = bubble.findAll('.msg-media .att-tile.has-photo')
+    const wrap = w.find('.msg-user-wrap')
+    // Photos as plain thumbnails then the file's tile, on a row above the bubble, outside it.
+    const row = wrap.find('.msg-atts')
+    expect(row.element.nextElementSibling!.querySelector('.msg-bubble')).not.toBeNull()
+    const photos = row.findAll('.msg-img')
     expect(photos).toHaveLength(2)
-    expect(bubble.find('[data-slot="remove"]').exists()).toBe(false)
+    expect(row.find('[data-slot="remove"]').exists()).toBe(false)
     // The file: its tile, original name, PDF badge; its path line is gone.
-    const file = bubble.find('.msg-media .att-tile:not(.has-photo)')
+    const file = row.find('.att-tile')
     expect(file.find('[data-slot="name"]').text()).toBe('report.pdf')
     expect(file.find('.att-tile-badge').text()).toBe('PDF')
+    const bubble = wrap.find('.msg-bubble')
+    expect(bubble.find('.msg-atts, .msg-img, .att-tile').exists()).toBe(false)
     expect(bubble.find('.msg-fold').text()).toBe('Here on my phone:')
     expect(bubble.text()).not.toContain('herdr-core')
     // A tap on the second photo opens the viewer on both.
-    const srcs = photos.map(p => p.find('img').attributes('src'))
+    const srcs = photos.map(p => p.attributes('src'))
     await photos[1]!.trigger('click')
     expect(lightboxSet.value).toEqual(srcs)
     expect(lightboxSrc.value).toBe(srcs[1])
