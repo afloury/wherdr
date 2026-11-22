@@ -1135,9 +1135,15 @@ its program and model; its text is Markdown, folded past a few lines with
 *Show more*. A task from before this version kept only its worker's last
 report, so its earlier *Done* says just that.
 
-**History** is the task's whole log in one timeline, oldest first: the same
-hand-offs, wherdr's catch-ups and CI fixes, the coordinator's and your
-actions, and wherdr's routine lines, lighter.
+**History** is the task's whole log as a timeline, oldest first, under the
+time per step: the same hand-offs, wherdr's catch-ups and CI fixes, the
+coordinator's and your actions, and wherdr's routine lines, lighter. Each
+event says when, who (*You*, *wherdr*, the coordinator, the worker or the
+reviewer with its program and model) and what; its square mark on the
+timeline's rule shows its kind: a run started (play, purple), a report or a
+passing verdict (check, green), a send-back (undo, orange), a merge (filled
+green), a failure (filled red), your own action (accent), a routine line (a
+small grey square). **Comments** uses the same timeline.
 
 <a id="tldr"></a>**TL;DR.** On a task waiting for you, **To do** starts with at
 most five lines in plain words, with no code names: **What changes for you**
