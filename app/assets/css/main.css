@@ -881,13 +881,16 @@ body.short-bottom { --safe-bottom: 0px; }
 .files-crumb.current { color: var(--text); cursor: default; text-decoration: none; }
 .files-actions { display: flex; flex-shrink: 0; gap: 8px; }
 .files-sep { color: var(--dim); }
-.files-list { margin: 0; padding: 0; list-style: none; }
-.files-entry { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 42px; padding: 8px 11px; text-align: left; cursor: pointer; }
-.files-entry:hover:not(:disabled) { background: var(--code-bg); }
-.files-entry:disabled { cursor: default; opacity: .6; }
-.files-icon { flex: none; color: var(--muted); }
-.files-icon.dir { color: var(--blue); }
-.files-chevron { flex: none; color: var(--dim); }
+/* Tree beside the file shown when the panel has room; else the file in its place (Back). */
+.files-view { container-type: inline-size; }
+.files-split { display: grid; gap: 16px; }
+.files-split.previewing .files-tree { display: none; }
+.files-preview { min-width: 0; }
+.files-tree .folder-tree { max-height: calc(100dvh - 200px); }
+@container (min-width: 760px) {
+  .files-split.previewing { grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); align-items: start; }
+  .files-split.previewing .files-tree { display: block; position: sticky; top: 0; }
+}
 .files-code { display: flex; border: 1px solid var(--line); background: var(--code-bg); overflow-x: auto; }
 .files-code pre { margin: 0; padding: 6px 0; font: 11px/1.5 var(--mono); white-space: pre; tab-size: 2; }
 .files-num { flex: none; min-width: 4ch; padding: 6px 8px 6px 6px !important; text-align: right; color: var(--dim); user-select: none; border-right: 1px solid var(--line); }
@@ -2181,8 +2184,7 @@ body.kb .composer { padding-bottom: 8px; }
 }
 
 .dir-browser { display: flex; flex-direction: column; min-height: 100%; }
-.dir-top { display: flex; align-items: center; gap: 8px; margin: 2px 0 10px; }
-.dir-go { display: flex; flex: 1; min-width: 0; }
+.dir-go { display: flex; min-width: 0; margin: 2px 0 10px; }
 .dir-input {
   flex: 1; min-width: 0; height: 34px; padding: 0 10px; border: 1px solid var(--line); border-right: 0;
   background: var(--bg); color: var(--text-strong); font: 16px/1 var(--mono); border-radius: 0; outline: none;
@@ -2191,14 +2193,8 @@ body.kb .composer { padding-bottom: 8px; }
 .dir-input[aria-invalid="true"] { border-color: var(--danger); }
 .dir-go > button { border-radius: 0; height: 34px; width: 34px; justify-content: center; }
 .dir-go-error { margin: -4px 0 10px; }
-@media (max-width: 480px) { .dir-parent-label { display: none; } }
-.dir-list { display: flex; flex-direction: column; flex: 1; border-top: 1px solid var(--line-soft); }
-.dir-list button {
-  display: flex; align-items: center; gap: 12px; text-align: left;
-  padding: 13px 8px; border-bottom: 1px solid var(--line-soft); font-size: 15px;
-}
-.dir-list button:active { background: var(--surface-2); }
-.dir-list button .iconify { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.dir-list { display: flex; flex-direction: column; flex: 1; }
+.dir-list .folder-tree { max-height: max(240px, calc(100dvh - 230px)); }
 .dir-list .git {
   margin-left: auto; font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
   color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); padding: 3px 6px;
@@ -2215,6 +2211,32 @@ body.kb .composer { padding-bottom: 8px; }
 .dir-denied-path { display: block; margin-top: 4px; font: 12.5px/1.5 var(--mono); color: var(--text-strong); }
 .dir-actions { display: flex; gap: 8px; padding: 12px 0 var(--sheet-end); position: sticky; bottom: 0; background: var(--sheet-bg, var(--bg-2)); }
 .dir-actions > * { flex: 1; justify-content: center; }
+
+/* A folder tree (FolderTree.vue): square mono rows, a thin guide line per
+   level, 44 px rows and a narrow indent under a finger. */
+.folder-tree { --tree-row: 30px; --tree-indent: 16px; overflow-y: auto; border: 1px solid var(--line); background: var(--surface); }
+@media (pointer: coarse) { .folder-tree { --tree-row: 44px; --tree-indent: 12px; } }
+.folder-tree .tree-row {
+  gap: 4px; min-height: var(--tree-row); padding: 0 8px 0 4px !important; font: 12.5px/1.2 var(--mono); color: var(--text-2);
+  border-bottom: 1px solid var(--line-soft); cursor: pointer;
+}
+.folder-tree .tree-row::before { border-radius: 0; }
+@media (hover: hover) { .folder-tree .tree-row:hover:not(:disabled) { background: var(--code-bg); } }
+.folder-tree .tree-row[data-selected] { background: var(--surface-2); color: var(--text-strong); box-shadow: inset 2px 0 var(--accent); }
+.folder-tree .tree-row:disabled { cursor: default; }
+.folder-tree .tree-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.tree-indent {
+  flex: none; align-self: stretch; width: calc(var(--level) * var(--tree-indent));
+  background: repeating-linear-gradient(to right, transparent 0 calc(var(--tree-indent) / 2 + 3px), var(--line) 0 calc(var(--tree-indent) / 2 + 4px), transparent 0 var(--tree-indent));
+}
+.tree-chevron { flex: none; width: 14px; height: 14px; color: var(--dim); }
+.tree-icon { flex: none; width: 16px; height: 16px; color: var(--blue); }
+.tree-icon:is(.file, .other) { color: var(--muted); }
+.tree-icon.error { color: var(--rose); }
+.tree-icon.info { color: var(--ochre); }
+.folder-tree .tree-note { color: var(--muted); opacity: 1; }
+.folder-tree .tree-note.tree-error { color: var(--rose); }
+.folder-tree .spinner { flex: none; }
 
 /* Square switches, green once enabled. */
 [role="switch"][data-slot="base"] { border-radius: 0; }
@@ -3007,7 +3029,7 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
   .hw-sheet-handle { display: none; }
   .hw-sheet-head { touch-action: auto; }
   @keyframes pop { from { opacity: 0; transform: scale(.985); } }
-  .menu button:hover, .dir-list button:hover { background: var(--surface-2); }
+  .menu button:hover { background: var(--surface-2); }
 
   ol[data-slot="viewport"] { top: 16px !important; }
 }
