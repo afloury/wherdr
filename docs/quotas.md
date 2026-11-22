@@ -104,7 +104,14 @@ per day left and a 5-hour reserve), **Every day**, or **Working days** (the days
 work (the autopilot, automations) waits while an account is ahead of its pace; your own starts
 never wait. An account with no quota reading is held by task-count limits only. A Codex row also
 shows the account's credits, and **Limit reached · work goes on with …** or **Limit reset since
-the last reading** when its reading says so. Each machine's
+the last reading** when its reading says so.
+
+Under the bar, a **weekly chart** shows the account's week, from the last weekly reset to the
+next one: the weekly % used (solid), taken from the readings wherdr kept (the pacing log, 8 days),
+the mode's target line or, in **Free with reserve**, the reserve's limit (dashed), and **now**
+(a vertical rule). **Free** has no line: usage only. Usage starts at the week's first reading
+and ends at the latest one: a part of the week without readings stays empty, never a guessed
+value (**No reading this week yet** before the first). Each machine's
 memory state shows below ([Machines](machines.md#manage-machines)).
 
 **End-of-week burn** (under **Mode settings**, per account, in every mode but Free): one switch. On, from now until the
