@@ -524,7 +524,7 @@ function resetListWidth() {
       </div>
       <div v-if="showCounters && agents.length" class="stats">
         <div v-for="c in stats" :key="c.s" class="stat" :class="[c.s, { zero: !c.n }]">
-          <b v-if="listShown">{{ c.n }}</b><b v-else class="skel stat-skel" />
+          <b v-if="listShown">{{ c.n }}</b><USkeleton v-else as="b" class="stat-skel" aria-hidden="true" />
           <span><i />{{ c.label }}</span>
         </div>
       </div>

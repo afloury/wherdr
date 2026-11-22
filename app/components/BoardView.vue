@@ -178,9 +178,9 @@ const toReview = computed(() => { const pick = reviewPick(reviewKnown); return (
     <p v-if="error" class="error board-note">{{ error }}</p>
     <p v-else-if="data && !data.cards.length" class="muted board-note">{{ tl('No task yet.', 'Aucune tâche pour l’instant.') }}</p>
     <div v-if="!data && skeleton" class="board-lanes" role="status" :aria-label="tl('Loading')" aria-busy="true" data-testid="board-skeleton">
-      <section v-for="n in 3" :key="n" class="board-lane">
-        <h2 class="mono-label"><i class="skel board-skel-title" :style="{ width: `${90 - n * 12}px` }" /></h2>
-        <div v-for="m in 4 - n" :key="m" class="board-card"><i class="skel board-skel-line" :style="{ width: `${78 - m * 12}%` }" /><i class="skel board-skel-line small" style="width: 30%" /></div>
+      <section v-for="n in 3" :key="n" class="board-lane" aria-hidden="true">
+        <h2 class="mono-label"><USkeleton as="i" class="board-skel-title" :style="{ width: `${90 - n * 12}px` }" /></h2>
+        <div v-for="m in 4 - n" :key="m" class="board-card"><USkeleton as="i" class="board-skel-line" :style="{ width: `${78 - m * 12}%` }" /><USkeleton as="i" class="board-skel-line small" style="width: 30%" /></div>
       </section>
     </div>
     <div v-else-if="data" class="board-lanes">

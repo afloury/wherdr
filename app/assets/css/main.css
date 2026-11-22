@@ -3415,27 +3415,27 @@ button.msg-ref:is(:hover, :focus-visible) { border-color: color-mix(in srgb, var
 
 /* ------------------------------------------------------------ skeletons
    Shown only with nothing kept on this device, after 300 ms (useDelayedFlag): the
-   shapes of what loads, at its size, square, static (no shimmer, no pulse). */
-/* A loading block (SettingsSkeleton, HomeSkeleton): muted, square, a gentle pulse, none with reduced motion. */
+   shapes of what loads, at its size. */
+/* A loading block: every USkeleton (app.config.ts maps it here). Muted, square, a gentle pulse, none with reduced motion. */
 .skel { display: block; background: var(--line-soft); animation: skel-pulse 1.6s ease-in-out infinite; }
 @keyframes skel-pulse { 50% { opacity: .5; } }
 @media (prefers-reduced-motion: reduce) { .skel { animation: none; } }
-.chat-skel i { display: block; height: 11px; margin: 3px 0; background: var(--line-soft); }
+.chat-skel .skel { height: 11px; margin: 3px 0; animation: none; }
 /* The conversation's: at the bottom, as the messages will be. */
 .chat-list.skeleton { flex: 1; justify-content: flex-end; }
 /* A conversation opened before it is read (ChatSkeleton). */
 .chat-skel { display: flex; flex-direction: column; gap: 14px; }
 .chat-skel .skel-user { align-self: flex-end; width: min(70%, 420px); padding: 10px 14px; border: 1px solid var(--line); background: var(--surface-2); }
-.chat-skel .skel-user i { background: var(--line); }
-.chat-skel .skel-who { width: 84px; height: 11px; margin-top: 10px; background: color-mix(in srgb, var(--text-3) 45%, transparent); }
+.chat-skel .skel-user .skel { background: var(--line); }
+.chat-skel .skel-who { width: 84px; height: 11px; margin: 10px 0 0; background: color-mix(in srgb, var(--text-3) 45%, transparent); }
 .chat-skel .skel-who.claude { background: color-mix(in srgb, var(--claude) 45%, transparent); }
 .chat-skel .skel-who.codex { background: color-mix(in srgb, var(--codex) 45%, transparent); }
 .chat-skel .skel-who.omp { background: color-mix(in srgb, var(--omp) 45%, transparent); }
 .chat-skel .skel-tool { display: flex; align-items: center; gap: 10px; width: min(60%, 360px); padding: 7px 10px; border: 1px solid var(--line-soft); }
 .chat-skel .skel-tool span { flex: none; width: 12px; height: 12px; border: 1px solid var(--line); }
-.chat-skel .skel-tool i { margin: 0; }
+.chat-skel .skel-tool .skel { margin: 0; }
 .chat-skel .skel-lines { width: min(88%, 640px); }
-.chat-skel .skel-lines i { height: 12px; margin: 0 0 10px; }
+.chat-skel .skel-lines .skel { height: 12px; margin: 0 0 10px; }
 /* Read from this device while the network catches up: "READ AT 14:02". */
 .cached-tag { display: inline-flex; align-items: center; gap: 6px; font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
 .cached-tag::before { content: ''; width: 6px; height: 6px; background: var(--muted); }
