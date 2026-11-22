@@ -2219,7 +2219,7 @@ body.kb .composer { padding-bottom: 8px; }
 .dir-go > button { border-radius: 0; height: 34px; width: 34px; justify-content: center; }
 .dir-go-error { margin: -4px 0 10px; }
 .dir-list { display: flex; flex-direction: column; flex: 1; }
-.dir-list .folder-tree { max-height: max(240px, calc(100dvh - 300px)); }
+.dir-list .folder-tree { max-height: max(240px, calc(100dvh - 230px)); }
 .dir-list .git {
   margin-left: auto; font: 500 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
   color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 35%, transparent); padding: 3px 6px;
