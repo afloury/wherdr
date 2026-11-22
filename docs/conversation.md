@@ -28,6 +28,11 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the
   **↓** button; content above that changes height (images, folding) does not move it. A
   conversation still opens at its last message.
+- **Typewriter and *New***: only a reply that arrives while you watch the open conversation is
+  typed in (**Settings › Conversation › Typewriter**). A reply already there when you open the
+  conversation, or when the app comes back from the background or offline, shows at once; if
+  this device never showed it, a thin *New* divider sits above the first such reply for a few
+  seconds, gone sooner once you scroll or write. None on a conversation's first open on a device.
 - **Message field focus**: the focused message field's border takes the agent's color, a
   second color glides slowly around it, with a faint glow around the field (omp's running
   actions get the same moving border, without the glow). It is frozen when the system asks for
@@ -174,10 +179,24 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   and comes back into the field if Codex exits instead, see [Codex updates](quotas.md#codex-updates)), attach or paste
   photos and the files the agent can read (Claude Code: PDFs, notebooks, text and code of any
   extension; Codex: notebooks, text and code), up to **8 MB per file** (core's `terminal.put`).
+  Above the field, every attachment is the same square tile (about 96 px on the phone, 120 px on
+  a computer), on one row that scrolls sideways (swipe, trackpad, Shift+wheel) and fades out at
+  the right edge while more tiles follow: a badge with the extension (*JPG*, *PNG*, *PDF*, *MD*,
+  *LOG*, *TXT*) and the remove cross on top, a preview (the photo cropped to fill, the first lines
+  of pasted text or a text file in small mono type, an icon for a PDF or another file), then the
+  file's name and its size or the line count. A tap opens a photo, or the whole pasted text with
+  *Copy*. While it uploads, the preview is dimmed under a spinner and the name shimmers; a refused
+  upload stays with the reason in red until you remove it, and Send waits for it to go (*Remove
+  the attachment that failed*), as it waits for an upload still running (*Photo is uploading…*).
   A photo sent from this device shows in the message at once, from its own copy; an image that
   fails to load is tried again once, then shows *Tap to reload*.
-  A sent file shows as a chip (icon and original name) in the message and its history, also in
-  conversations from v2; a tap opens or downloads it. A photo stays a picture in the message,
+  A sent message shows its attachments on their own row above its bubble, outside it, on the
+  bubble's side (right for yours), wrapping onto more rows; the bubble holds only the text (none
+  when there is no text). Photos are plain square thumbnails (a single photo larger); files and
+  pasted text are the field's square tiles, without the cross: a sent file (original name) in the
+  message and its history, also in conversations from v2, a tap opens or downloads it; photos past nine end on a *+N* tile, a tap
+  on a photo opens the viewer on all the message's photos, and an image an action already showed
+  higher up is a small *Same image as above* link. A photo stays a picture in the message,
   never its file path, also when the message was sent again (**Send now**, **Retry**) or waited
   in the agent's queue.
   Slash commands typed in the field (`/compact`, `/clear`…) are sent as text; **+** also lists
@@ -186,8 +205,8 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
   inside the field on its right, on a phone. A long pasted text (log, output) becomes a
-  "Pasted text · N lines" card, sent to the agent as it is and shown the same way in the
-  conversation, where it opens in full with Copy; long typed messages fold with Show more. The
+  tile in the field (*N lines*), sent to the agent as it is and shown as the same tile in the
+  conversation; both open in full with Copy; long typed messages fold with Show more. The
   draft (text, quotes, attachments) is kept per agent, across reloads.
 - **omp context**: in the header, after the state, a small gauge with the percentage of omp's
   context window and the estimated tokens (`68% · 136K`); select it for the window, the exact
@@ -241,7 +260,7 @@ No
 - Several references fit in one message, each followed by its answer.
 - Anything else is your own text: a `>` at the start of a line, a `↳` line of an unknown type or
   with words after its dash. Text you paste never becomes a reference either: a pasted line that
-  reads like one gets a `\` before its `↳`. A long paste, shown as a **Pasted text** card, is
+  reads like one gets a `\` before its `↳`. A long paste, shown as a **Pasted text** tile, is
   sent exactly as it was pasted.
 - In the conversation, each reference of a sent message shows as a quote; tap it to see the
   message it names. Messages sent earlier with `> ` lines still show as quotes.

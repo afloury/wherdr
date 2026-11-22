@@ -7,6 +7,9 @@ All notable changes to this project are documented here. The format follows
 ## [Unreleased]
 
 - **Opening the phone keyboard no longer shakes the terminal.** The keyboard's slide animation reported a new viewport height every frame, and each one resized the pane — a burst of SIGWINCHes, a visible re-scroll of every row, and garbled glyphs on some GPUs until the glyph atlas was rebuilt. A rows-only change while the keyboard is open no longer resizes the pane at all (typing into the terminal itself still does), other viewport moves settle to one fit, an event reporting the geometry already applied (the idle viewport scroll iOS fires while nothing moves) no longer restyles the tree nor stretches that settle window, and every resize repaints the atlas instead of trusting it.
+### Fixed
+
+- **Credentials in workspace, tab and pane names are masked.** A workspace or terminal launched from a URL carrying `user:password@` (a proxy, an ssh target) showed the secret in the machine list, the tab bar and the pane title — it now masks `user:password@` as `…@` everywhere.
 
 ## [3.2.2] — 2026-11-19
 
