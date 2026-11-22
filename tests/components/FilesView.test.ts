@@ -10,7 +10,10 @@ vi.mock('~/components/PdfPreview.vue', () => ({ default: { props: ['src', 'title
 
 const asked: string[] = []
 registerEndpoint('/api/files', (event) => {
-  const path = String(getQuery(event).path ?? '')
+  const q = getQuery(event)
+  // An agent started in src/, below the repository root.
+  if (q.pane === 'w1:sub' && q.path === undefined) return { root: '/home/user/demo', path: 'src', truncated: false, entries: [{ name: 'app.ts', kind: 'file', size: 19, link: false }] }
+  const path = String(q.path ?? '')
   asked.push(path)
   if (path === 'docs') return { root: '/home/user/demo', path: 'docs', truncated: false, entries: [{ name: 'guide.md', kind: 'file', size: 400, link: false }] }
   return path === 'src'
@@ -110,6 +113,15 @@ describe('FilesView', () => {
     await flushPromises()
     expect(w.find('.files-text').exists()).toBe(false)
     expect(w.findAll('.tree-row')).toHaveLength(4)
+  })
+
+  it('opens on an agent folder below the repository root, its files read by their full path', async () => {
+    const w = await mountSuspended(FilesView, { props: { paneId: 'w1:sub' } })
+    await settle(w)
+    await vi.waitFor(() => expect(w.findAll('.tree-row').map(b => b.text())).toEqual(['src', 'app.ts19 B', '.env4 B', 'README.md8 B']))
+    await w.findAll('.tree-row')[1]!.trigger('click')
+    await flushPromises()
+    expect(reads.at(-1)).toEqual({ pane: 'w1:sub', path: 'src/app.ts' })
   })
 
   it('hides dotfiles when asked, and remembers it', async () => {

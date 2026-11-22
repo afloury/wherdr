@@ -39,11 +39,30 @@ async function load<T>(url: string, apply: (data: T) => void) {
   }
 }
 const join = (dir: string, name: string) => dir ? `${dir}/${name}` : name
+const fetchList = (dir: string | null) => api<FilesListing>(`/api/files?pane=${pane()}${dir === null ? '' : `&path=${encodeURIComponent(dir)}`}`)
+// Listings already read, used once by the tree.
+const early = new Map<string, FilesListing>()
+let opened = false
 async function list(dir: string): Promise<TreeNode[]> {
-  const d = await api<FilesListing>(`/api/files?pane=${pane()}${dir ? `&path=${encodeURIComponent(dir)}` : ''}`)
+  let d = early.get(dir)
+  early.delete(dir)
+  if (!d && (dir || opened)) d = await fetchList(dir)
+  else if (!d) {
+    // First the pane's own folder: below the repository root, the tree shows
+    // the root and opens down to it.
+    opened = true
+    const own = await fetchList(null)
+    d = own.path ? await fetchList('') : own
+    if (own.path) {
+      early.set(own.path, own)
+      tree.value?.reveal(chain(own.path))
+    }
+  }
   if (!dir) root.value = d.root
   if (d.truncated) truncated.value = true
-  return d.entries.map(e => ({ key: join(dir, e.name), label: e.name, icon: icon(e), tone: e.kind, branch: e.kind === 'dir', disabled: e.kind === 'other', size: e.kind === 'file' ? e.size : null }))
+  // Keys from the path the server answered for.
+  const at = d.path
+  return d.entries.map(e => ({ key: join(at, e.name), label: e.name, icon: icon(e), tone: e.kind, branch: e.kind === 'dir', disabled: e.kind === 'other', size: e.kind === 'file' ? e.size : null }))
 }
 const visible = (n: TreeNode) => showHidden.value || !n.label.startsWith('.')
 // The folders from the top down to `dir`, all opened.
