@@ -65,8 +65,8 @@ const actions = computed<Item[]>(() => [
   { id: 'shortcuts', label: tl('Keyboard shortcuts'), icon: 'i-lucide-keyboard', kbds: shortcutKbds('help'), onSelect: () => { close(); shortcutsOpen.value = true } },
 ])
 const settings = computed<Item[]>(() => [
-  ...SETTINGS_SECTIONS.filter(s => s !== 'shortcuts' || desk.value).map(s => ({ id: `section:${s}`, label: t(settingsSectionLabels[s]), suffix: t('Settings'), icon: settingsSectionIcons[s], onSelect: () => go(`/settings?section=${s}`) })),
-  ...(Object.keys(UI_TARGETS) as UiTargetId[]).filter(id => !projectTarget(id)).map(id => ({ id: `target:${id}`, label: UI_TARGETS[id].label, suffix: t('Settings'), icon: settingsSectionIcons[id.split('.')[0] as keyof typeof settingsSectionIcons], onSelect: () => go(uiTargetLink(id).slice(1)) })),
+  ...SETTINGS_SECTIONS.filter(s => s !== 'shortcuts' || desk.value).map(s => ({ id: `section:${s}`, label: t(settingsSectionLabels[s]), icon: settingsSectionIcons[s], onSelect: () => go(`/settings?section=${s}`) })),
+  ...(Object.keys(UI_TARGETS) as UiTargetId[]).filter(id => !projectTarget(id)).map(id => ({ id: `target:${id}`, label: UI_TARGETS[id].label, icon: settingsSectionIcons[id.split('.')[0] as keyof typeof settingsSectionIcons], onSelect: () => go(uiTargetLink(id).slice(1)) })),
 ])
 const groups = computed<CommandPaletteGroup[]>(() => {
   if (!query.value.trim()) return [{ id: 'recent', label: tl('Recent conversations'), ignoreFilter: true, items: recent.value.map(agentItem) }, { id: 'actions', label: tl('Actions'), ignoreFilter: true, items: actions.value }]
