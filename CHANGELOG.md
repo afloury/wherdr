@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Improved
+
+- **Alfred's instructions are a quarter of their size.** The `AGENTS.md` wherdr writes in Alfred's home is loaded into every conversation, and at 48 KB it crowded out your own global instructions (being terse, for instance). It is now about 12 KB: the command lists are `wherdr alfred help` and `wherdr pm help` (the advice on a project's machines and workflow moved into their descriptions), the in-app addresses are listed in [Conversation](docs/conversation.md), and which tool to show what with, with an example of each, is [Showing instead of telling](docs/alfred.md#showing-instead-of-telling). What Alfred must have at hand stays in the file: its home, how it starts, what it may and never does (show, then do; `--propose`; wakes; credentials), and how to answer about wherdr. A coordinator's own instructions are unchanged.
+
 ### Fixed
 
 - **Sideways scroll in a menu sheet.** A label that is one unbreakable string (a tab name, a path) wraps like a description now, instead of pushing its row past the sheet's edge and scrolling the whole list off to the left.
