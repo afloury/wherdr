@@ -10,14 +10,15 @@ import type { DraftAtt } from '~/composables/useDraft'
 import { unreference } from '#shared/reference'
 import { quotesIn, removeQuote } from '~/utils/questionReply'
 import { attachQuoteMirror } from '~/utils/quoteMirror'
+import { fileTile, pasteTile, photoTile } from '~/utils/attachTiles'
 import { isBareBang, isSlashCommand } from '#shared/queuedMatch'
 import { viaPrompt } from '#shared/sendRoute'
-import { attachmentDisplayName, attachmentIcon, extensionOf, formatSize, type AttachKind } from '#shared/attachments'
+import { attachmentDisplayName, type AttachKind } from '#shared/attachments'
 import { refusalText, sortForAgent } from '~/utils/fileDrop'
 import { uploadPhoto } from '~/utils/photoUpload'
 import { keepPreview } from '~/utils/sentPreviews'
 import { lostPhotosText, restoreDraft } from '~/utils/queuedCancel'
-import { isLongPaste, lineCount, looksLikeLog, messageBody } from '#shared/pastedText'
+import { isLongPaste, messageBody } from '#shared/pastedText'
 import { rememberPastes } from '~/utils/sentPastes'
 import { enterSends as enterSendsFor } from '~/utils/layoutMode'
 import { kbOpen } from '~/composables/useViewport'
@@ -401,19 +402,14 @@ function viewAtt(a: Att) {
 // The pasted text opened from its tile (PastedSheet).
 const pasteOpen = ref<string | null>(null)
 // One tile (AttachTile) for a photo, a file or pasted text: its preview, badge, name, size or lines, and upload state.
-const firstLines = (s: string) => s.split('\n').slice(0, 10).map(l => l.slice(0, 80)).join('\n')
 function tileOf(a: Att) {
   const status = a.error ? 'error' as const : a.paste || a.path ? 'idle' as const : 'uploading' as const
-  if (a.paste) {
-    const n = lineCount(a.paste)
-    return { status, name: t('Pasted text'), badge: looksLikeLog(a.paste) ? 'LOG' : 'TXT', description: `${n} line${n > 1 ? 's' : ''}`, text: firstLines(a.paste), label: tl('Open pasted text', 'Ouvrir le texte collé') }
-  }
+  if (a.paste) return { status, ...pasteTile(a.paste) }
   if (a.file) {
-    const ext = extensionOf(a.file.label).slice(0, 5).toUpperCase() || (a.file.kind === 'text' ? 'TXT' : 'FILE')
-    return { status, name: a.file.label, badge: ext, description: a.error || (a.file.size ? formatSize(a.file.size) : undefined), text: a.file.head, icon: attachmentIcon(a.file.label, a.file.kind) }
+    const tile = fileTile(a.file.label, a.file.kind, a.file.size, a.file.head)
+    return { ...tile, status, description: a.error || tile.description }
   }
-  const name = a.label || attachmentDisplayName(a.name || '') || t('Photo')
-  return { status, name, badge: extensionOf(name).slice(0, 5).toUpperCase() || 'JPG', description: a.error || '', url: a.url, label: t('View image') }
+  return { status, ...photoTile(a.label || attachmentDisplayName(a.name || '')), description: a.error || '', url: a.url }
 }
 function removeAtt(i: number) {
   const [a] = attachments.value.splice(i, 1)
