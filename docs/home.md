@@ -229,6 +229,13 @@ not filtered by tab; the board is, when its picker follows the machine tab.
   when none is online, the host), a folder (recent folders, a folder browser, Git detection), a
   name, **resume** the last conversation, and an optional first message. The terminal is started
   by core in that folder; it joins the space whose folder holds it, else a new space.
+- The **folder browser** (New sheet, project and workspace forms) shows the machine's folders as a
+  tree under its home, opened on the current folder with its parents expanded; a folder's
+  subfolders are read the first time it opens, Git repositories carry a **git** mark, and a big
+  tree draws only its visible rows. The path field at the top takes a pasted or typed path (Enter
+  opens it in the tree); past 8 subfolders, a field filters the selected folder's subfolders.
+  **Choose this folder** takes the selected one; a folder the system refuses to list says why
+  (macOS privacy protection, permissions).
 - **+** in a space's tab row starts at once a terminal like the space's current one (same kind,
   same folder) in a new tab of that space. The new terminal carries the space's labels, so it
   also appears in herdr-app.

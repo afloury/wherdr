@@ -1,17 +1,23 @@
 <script setup lang="ts">
 import type { FileEntry, FilePreview, FilesListing } from '#shared/types'
+import type { TreeNode } from '~/components/FolderTree.vue'
 import { findHeading, isMarkdownPath, resolveLink } from '~/utils/mdLinks'
 import { MD_VIEW_KEY, SHOW_HIDDEN_KEY, readMdView, readShowHidden, writeShowHidden } from '~/utils/filesPrefs'
 import type { MdView } from '~/utils/filesPrefs'
 
-// Read-only browser of the agent's folder: listing, then a file's text or image.
+// Read-only browser of the agent's folder: a tree of its folders and files
+// (each folder listed the first time it opens), and the file picked, beside it
+// when there is room, else in its place with Back.
 // `file`: one file only, a path as written in the conversation (ChatView's
 // Preview), with no folder around it. inFolder: that file is a path relative to
 // the agent's folder, read only there (an agent's `ui show file`). Any file
 // shown can be downloaded.
 const props = defineProps<{ paneId: string, file?: string, inFolder?: boolean }>()
 const written = computed(() => Boolean(props.file) && !props.inFolder)
-const listing = ref<FilesListing | null>(null)
+const root = ref('')
+const truncated = ref(false)
+const selected = ref<string | null>(null)
+const tree = useTemplateRef<{ reveal: (keys: string[], select?: string) => Promise<void>, reload: () => Promise<unknown> }>('tree')
 const preview = ref<FilePreview | null>(null)
 const loading = ref(false)
 const error = ref('')
@@ -32,9 +38,18 @@ async function load<T>(url: string, apply: (data: T) => void) {
     if (id === request) loading.value = false
   }
 }
-function openDir(path: string | null) {
-  const q = path === null ? '' : `&path=${encodeURIComponent(path)}`
-  return load<FilesListing>(`/api/files?pane=${pane()}${q}`, (d) => { listing.value = d; preview.value = null })
+const join = (dir: string, name: string) => dir ? `${dir}/${name}` : name
+async function list(dir: string): Promise<TreeNode[]> {
+  const d = await api<FilesListing>(`/api/files?pane=${pane()}${dir ? `&path=${encodeURIComponent(dir)}` : ''}`)
+  if (!dir) root.value = d.root
+  if (d.truncated) truncated.value = true
+  return d.entries.map(e => ({ key: join(dir, e.name), label: e.name, icon: icon(e), tone: e.kind, branch: e.kind === 'dir', disabled: e.kind === 'other', size: e.kind === 'file' ? e.size : null }))
+}
+const visible = (n: TreeNode) => showHidden.value || !n.label.startsWith('.')
+// The folders from the top down to `dir`, all opened.
+const chain = (dir: string) => dir ? dir.split('/').map((_, i, parts) => parts.slice(0, i + 1).join('/')) : []
+function pick(n: TreeNode) {
+  if (!n.branch) openFile(n.key)
 }
 const fileQuery = (path: string) => `pane=${pane()}&path=${encodeURIComponent(path)}${written.value ? '&from=chat' : ''}`
 // The file asked for last, as asked (a conversation's "~/…" stays so).
@@ -72,11 +87,6 @@ async function download() {
   catch (e) { toast((e as Error).message, true) }
   finally { downloading.value = false }
 }
-const join = (name: string) => listing.value?.path ? `${listing.value.path}/${name}` : name
-function open(e: FileEntry) {
-  if (e.kind === 'dir') openDir(join(e.name))
-  else if (e.kind === 'file') openFile(join(e.name))
-}
 // Back to the folder: a preview still loading must not reopen afterwards.
 function back() {
   request++
@@ -91,23 +101,24 @@ function refresh() {
   // Same URL: the player comes back with its new key.
   videoFailed.value = false
   if (props.file) openFile(shown || props.file)
-  else if (preview.value) openFile(preview.value.path)
-  else openDir(listing.value ? listing.value.path : null)
+  else {
+    tree.value?.reload()
+    if (preview.value) openFile(preview.value.path)
+  }
 }
-onMounted(() => props.file ? openFile(props.file) : openDir(null))
+onMounted(() => { if (props.file) openFile(props.file) })
 onUnmounted(() => { request++ })
 
-// Breadcrumb: root folder name, then each segment of the current path.
+// Breadcrumb: root folder name, then each folder down to the file shown.
 const crumbs = computed(() => {
-  const l = listing.value
-  if (!l) return []
-  const parts = l.path ? l.path.split('/') : []
-  return [
-    { label: l.root.split('/').filter(Boolean).pop() || '/', path: '' },
-    ...parts.map((p, i) => ({ label: p, path: parts.slice(0, i + 1).join('/') })),
-  ]
+  if (props.file || !root.value) return []
+  const parts = preview.value ? chain(preview.value.path).slice(0, -1) : []
+  return [{ label: root.value.split('/').filter(Boolean).pop() || '/', path: '' }, ...parts.map(p => ({ label: p.split('/').pop()!, path: p }))]
 })
-const entries = computed(() => (listing.value?.entries || []).filter(e => showHidden.value || !e.name.startsWith('.')))
+function openFolder(dir: string) {
+  back()
+  if (dir) tree.value?.reveal(chain(dir), dir)
+}
 // Text and line numbers as two blocks: a 256 kB file stays two elements.
 const code = computed(() => {
   const raw = preview.value?.text ?? ''
@@ -122,7 +133,7 @@ const code = computed(() => {
 const mdView = syncedRef<MdView>(MD_VIEW_KEY, readMdView, v => v)
 const isMd = computed(() => preview.value?.kind === 'text' && isMarkdownPath(preview.value.path))
 const rendered = computed(() => isMd.value && mdView.value === 'rendered' ? md(preview.value!.text ?? '', { doc: true }) : '')
-const root = ref<HTMLElement | null>(null)
+const top = ref<HTMLElement | null>(null)
 const doc = ref<HTMLElement | null>(null)
 
 // Images written with a relative path are read from the folder, like any
@@ -195,41 +206,46 @@ function onDocClick(e: MouseEvent) {
   } else if (to.kind === 'outside') {
     toast(t('This link leads outside the folder.'), true)
   } else if (to.kind === 'dir') {
-    if (!props.file) openDir(to.path)
+    if (!props.file) openFolder(to.path)
   } else {
     followFile(from, to.path, to.anchor)
   }
 }
 async function followFile(from: string, path: string, anchor: string) {
-  // The breadcrumb follows the file into its folder.
-  const dir = path.split('/').slice(0, -1).join('/')
-  const folder = props.file || listing.value?.path === dir
-    ? null
-    : api<FilesListing>(`/api/files?pane=${pane()}&path=${encodeURIComponent(dir)}`).catch(() => null)
   if (props.file) trail.value.push(from)
   pendingAnchor = anchor || null
+  // The tree follows the file into its folder.
+  if (!props.file) tree.value?.reveal(chain(path).slice(0, -1), path)
   await openFile(path)
-  const d = await folder
-  if (d && preview.value?.path === path) listing.value = d
-  if (!anchor) root.value?.scrollIntoView({ block: 'start' })
+  if (!anchor) top.value?.scrollIntoView({ block: 'start' })
 }
 
+// Folders, links, then the file's type by its extension.
+const TYPES: [RegExp, string][] = [
+  [/\.(md|markdown|txt|rst)$/i, 'i-lucide-file-text'],
+  [/\.(png|jpe?g|gif|webp|avif|svg|ico)$/i, 'i-lucide-file-image'],
+  [/\.(mp4|mov|webm|m4v)$/i, 'i-lucide-file-video'],
+  [/\.(json|ya?ml|toml|lock)$/i, 'i-lucide-file-json'],
+  [/\.(zip|tar|gz|tgz|xz|7z)$/i, 'i-lucide-file-archive'],
+  [/\.([cm]?[jt]sx?|vue|py|rb|rs|go|sh|css|html?|c|h|cpp|java|kt|swift)$/i, 'i-lucide-file-code'],
+]
 function icon(e: FileEntry) {
   if (e.kind === 'dir') return e.link ? 'i-lucide-folder-symlink' : 'i-lucide-folder'
   if (e.kind === 'other') return 'i-lucide-file-question'
-  return e.link ? 'i-lucide-file-symlink' : 'i-lucide-file'
+  if (e.link) return 'i-lucide-file-symlink'
+  return TYPES.find(([re]) => re.test(e.name))?.[1] ?? 'i-lucide-file'
 }
 </script>
 
 <template>
   <div class="changes-view files-view">
-    <div ref="root" class="changes-inner">
+    <div ref="top" class="changes-inner">
       <div class="changes-toolbar">
         <nav class="files-crumbs" :aria-label="t('Folder')">
           <UButton v-if="preview && (!file || trail.length)" icon="i-lucide-arrow-left" color="neutral" variant="ghost" size="sm" :aria-label="t('Back to folder')" @click="back" />
           <template v-for="(c, i) in crumbs" :key="c.path">
             <span v-if="i" class="files-sep">/</span>
-            <button type="button" class="files-crumb" @click="openDir(c.path)">{{ c.label }}</button>
+            <button type="button" class="files-crumb" @click="openFolder(c.path)">{{ c.label }}</button>
           </template>
           <template v-if="preview">
             <span v-if="crumbs.length" class="files-sep">/</span><span class="files-crumb current">{{ preview.path.split('/').pop() }}</span>
@@ -243,59 +259,53 @@ function icon(e: FileEntry) {
       </div>
 
       <p v-if="error" class="changes-notice error" role="alert">{{ error }}</p>
-      <p v-if="loading && !listing && !preview" class="changes-notice"><span class="spinner" /> {{ t('Reading files…') }}</p>
-
-      <template v-else-if="preview">
-        <p class="changes-location">{{ preview.path }} · {{ fmtBytes(preview.size) }}</p>
-        <div v-if="isMd" class="segmented files-md-mode" role="group" :aria-label="t('Markdown view')" style="--segment-count: 2">
-          <button v-for="v in (['rendered', 'source'] as const)" :key="v" type="button" :class="{ on: mdView === v }" :aria-pressed="mdView === v" @click="mdView = v">
-            <span>{{ v === 'rendered' ? t('Rendered') : t('Source') }}</span>
-          </button>
-        </div>
-        <div v-else-if="isPage" class="segmented files-md-mode" role="group" :aria-label="t('Page view')" style="--segment-count: 2">
-          <button v-for="v in (['preview', 'source'] as const)" :key="v" type="button" :class="{ on: htmlView === v }" :aria-pressed="htmlView === v" @click="htmlView = v">
-            <span>{{ v === 'preview' ? t('Preview') : t('Source') }}</span>
-          </button>
-        </div>
-        <p v-if="preview.truncated && preview.kind === 'text'" class="changes-limit">{{ t('File truncated to keep this view responsive.') }}</p>
-        <template v-if="pageShown">
-          <!-- Never allow-same-origin, popups, forms or top navigation. -->
-          <iframe :key="`${inlineUrl}:${reloads}`" class="files-page" :src="inlineUrl" sandbox="allow-scripts" referrerpolicy="no-referrer" :title="preview.path" />
-          <p class="files-page-note">{{ t('Self-contained pages only: files next to it are not loaded; https scripts, styles and images are.') }}</p>
-        </template>
-        <button v-else-if="preview.kind === 'image'" type="button" class="files-image-open" :aria-label="t('Enlarge image')" @click="preview.dataUrl && openLightbox([preview.dataUrl])">
-          <img class="files-image" :src="preview.dataUrl" :alt="preview.path">
-        </button>
-        <PdfPreview v-else-if="preview.kind === 'pdf'" :key="`${inlineUrl}:${reloads}`" :src="inlineUrl" :title="preview.path" />
-        <template v-else-if="preview.kind === 'video'">
-          <p v-if="videoFailed" class="changes-notice" role="alert">{{ t('This video cannot be played here. Use Open or Download.') }}</p>
-          <!-- Streamed in pieces (Range); playsinline: no forced full screen on iPhone. -->
-          <video v-else :key="`${inlineUrl}:${reloads}`" class="files-video" :src="inlineUrl" :aria-label="preview.path" controls playsinline preload="metadata" @error="videoFailed = true" />
-        </template>
-        <p v-else-if="preview.kind === 'binary'" class="changes-notice">{{ t('Binary file') }}</p>
-        <p v-else-if="preview.kind === 'large'" class="changes-notice">{{ /\.pdf$/i.test(preview.path) ? t('PDF too large to preview (50 MB max).') : t('Image too large to preview.') }}</p>
-        <!-- eslint-disable-next-line vue/no-v-html -- sanitised by utils/markdown.ts -->
-        <article v-else-if="rendered" :key="readSerial" ref="doc" class="md md-body files-md" :aria-label="preview.path" @click="onDocClick" v-html="rendered" />
-        <div v-else class="files-code" role="region" :aria-label="preview.path">
-          <pre class="files-num" aria-hidden="true">{{ code.numbers }}</pre><pre class="files-text">{{ code.text }}</pre>
-        </div>
-      </template>
-
-      <template v-else-if="listing">
-        <label class="changes-toggle"><input v-model="showHidden" type="checkbox"> <span>{{ t('Show hidden files') }}</span></label>
-        <p v-if="listing.truncated" class="changes-limit">{{ t('File list or diff limited to keep this view responsive.') }}</p>
-        <p v-if="!entries.length" class="changes-notice">{{ t('Empty folder.') }}</p>
-        <ul class="files-list">
-          <li v-for="e in entries" :key="e.name">
-            <button type="button" class="change-file files-entry" :disabled="e.kind === 'other'" @click="open(e)">
-              <UIcon :name="icon(e)" class="files-icon" :class="e.kind" />
-              <span class="change-path">{{ e.name }}</span>
-              <span v-if="e.kind === 'file' && e.size !== null" class="change-status">{{ fmtBytes(e.size) }}</span>
-              <UIcon v-if="e.kind === 'dir'" name="i-lucide-chevron-right" class="files-chevron" />
+      <div class="files-split" :class="{ previewing: preview }">
+        <section v-if="!file" class="files-tree">
+          <label class="changes-toggle"><input v-model="showHidden" type="checkbox"> <span>{{ t('Show hidden files') }}</span></label>
+          <p v-if="truncated" class="changes-limit">{{ t('File list or diff limited to keep this view responsive.') }}</p>
+          <FolderTree ref="tree" v-model:selected="selected" :load="list" :show="visible" :empty="t('Empty folder.')" @pick="pick">
+            <template #trailing="{ node }"><span v-if="node.size != null" class="change-status">{{ fmtBytes(node.size as number) }}</span></template>
+          </FolderTree>
+        </section>
+        <section v-if="preview || (loading && file)" class="files-preview">
+          <p v-if="!preview" class="changes-notice"><span class="spinner" /> {{ t('Reading files…') }}</p>
+          <template v-else>
+            <p class="changes-location">{{ preview.path }} · {{ fmtBytes(preview.size) }}</p>
+            <div v-if="isMd" class="segmented files-md-mode" role="group" :aria-label="t('Markdown view')" style="--segment-count: 2">
+              <button v-for="v in (['rendered', 'source'] as const)" :key="v" type="button" :class="{ on: mdView === v }" :aria-pressed="mdView === v" @click="mdView = v">
+                <span>{{ v === 'rendered' ? t('Rendered') : t('Source') }}</span>
+              </button>
+            </div>
+            <div v-else-if="isPage" class="segmented files-md-mode" role="group" :aria-label="t('Page view')" style="--segment-count: 2">
+              <button v-for="v in (['preview', 'source'] as const)" :key="v" type="button" :class="{ on: htmlView === v }" :aria-pressed="htmlView === v" @click="htmlView = v">
+                <span>{{ v === 'preview' ? t('Preview') : t('Source') }}</span>
+              </button>
+            </div>
+            <p v-if="preview.truncated && preview.kind === 'text'" class="changes-limit">{{ t('File truncated to keep this view responsive.') }}</p>
+            <template v-if="pageShown">
+              <!-- Never allow-same-origin, popups, forms or top navigation. -->
+              <iframe :key="`${inlineUrl}:${reloads}`" class="files-page" :src="inlineUrl" sandbox="allow-scripts" referrerpolicy="no-referrer" :title="preview.path" />
+              <p class="files-page-note">{{ t('Self-contained pages only: files next to it are not loaded; https scripts, styles and images are.') }}</p>
+            </template>
+            <button v-else-if="preview.kind === 'image'" type="button" class="files-image-open" :aria-label="t('Enlarge image')" @click="preview.dataUrl && openLightbox([preview.dataUrl])">
+              <img class="files-image" :src="preview.dataUrl" :alt="preview.path">
             </button>
-          </li>
-        </ul>
-      </template>
+            <PdfPreview v-else-if="preview.kind === 'pdf'" :key="`${inlineUrl}:${reloads}`" :src="inlineUrl" :title="preview.path" />
+            <template v-else-if="preview.kind === 'video'">
+              <p v-if="videoFailed" class="changes-notice" role="alert">{{ t('This video cannot be played here. Use Open or Download.') }}</p>
+              <!-- Streamed in pieces (Range); playsinline: no forced full screen on iPhone. -->
+              <video v-else :key="`${inlineUrl}:${reloads}`" class="files-video" :src="inlineUrl" :aria-label="preview.path" controls playsinline preload="metadata" @error="videoFailed = true" />
+            </template>
+            <p v-else-if="preview.kind === 'binary'" class="changes-notice">{{ t('Binary file') }}</p>
+            <p v-else-if="preview.kind === 'large'" class="changes-notice">{{ /\.pdf$/i.test(preview.path) ? t('PDF too large to preview (50 MB max).') : t('Image too large to preview.') }}</p>
+            <!-- eslint-disable-next-line vue/no-v-html -- sanitised by utils/markdown.ts -->
+            <article v-else-if="rendered" :key="readSerial" ref="doc" class="md md-body files-md" :aria-label="preview.path" @click="onDocClick" v-html="rendered" />
+            <div v-else class="files-code" role="region" :aria-label="preview.path">
+              <pre class="files-num" aria-hidden="true">{{ code.numbers }}</pre><pre class="files-text">{{ code.text }}</pre>
+            </div>
+          </template>
+        </section>
+      </div>
     </div>
   </div>
 </template>
