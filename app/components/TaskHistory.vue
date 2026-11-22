@@ -65,7 +65,7 @@ function onClick(e: MouseEvent) {
 .task-history :deep(.kind-failed .task-history-mark) { --mark: var(--danger); background: var(--danger); color: var(--bg); }
 .task-history :deep(.kind-user .task-history-mark) { --mark: var(--accent); }
 .task-history :deep(.kind-note .task-history-mark) { --mark: var(--text-3); }
-.task-history :deep(.kind-routine .task-history-mark) { margin: 9px 6px 0; width: 7px; height: 7px; background: var(--dim); border-color: var(--dim); }
+.task-history :deep(.kind-routine .task-history-mark) { margin: 9px 6px 0 7px; width: 7px; height: 7px; background: var(--dim); border-color: var(--dim); }
 .task-history :deep(.task-history-body) { min-width: 0; padding-bottom: 0; }
 .task-history-entry { display: grid; gap: 4px; min-width: 0; padding: 8px 0; border-bottom: 1px solid var(--line-soft); }
 /* The engine's bookkeeping: one light line. */
