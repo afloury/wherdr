@@ -14,7 +14,7 @@ import { FEATURE, WORKSPACE_FIRST, coordinatorKey, handledBy, isWorkspace, membe
 import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, changeTitle, workflowChanges } from '../../shared/pm/workflowChanges'
-import { MODEL_RE, isDefaultWorkflow, validateTemplate } from '../../shared/pm/workflow'
+import { isDefaultWorkflow, validModel, validateTemplate } from '../../shared/pm/workflow'
 import { weightOf, weightText, weightsLine } from '../../shared/pm/weight'
 import { EXAMPLES } from '../../shared/pm/examples'
 import { AUTOPILOT_STARTED, UNCONFIRMED, DEFAULT_AUTOPILOT, LOOK_PER_DAY, USER_ONLY, addRefusal, bump, busyNext, busyQueue, keepsBusy, coordinatorStartRefusal, countFix, limitsLeft, pastLimit, lookAddRefusal, routinesOf, scheduledWake, tellRefusal, today, type Autopilot } from '../../shared/pm/autopilot'
@@ -733,7 +733,7 @@ export async function answerProposal(deps: Deps, key: unknown, accept: unknown) 
 
 // A program, and its model when one is given (Claude, Codex and omp take one).
 const agentOf = (v: { program?: unknown, model?: unknown }): CoordinatorAgent | null => (isCoordinatorProgram(v.program)
-  ? { program: v.program, ...(typeof v.model === 'string' && MODEL_RE.test(v.model) && (v.program === 'claude' || v.program === 'codex' || v.program === 'omp') ? { model: v.model } : {}) }
+  ? { program: v.program, ...(typeof v.model === 'string' && validModel(v.program, v.model) && (v.program === 'claude' || v.program === 'codex' || v.program === 'omp') ? { model: v.model } : {}) }
   : null)
 const BAD_AGENT = 'program: an agent that can coordinate (claude, codex, omp…)'
 const BAD_PROJECT_AGENT = 'program: claude, codex or omp (a project coordinator needs one that is kept out of the repository: by wherdr for Claude and Codex, by its tool list for omp)'
