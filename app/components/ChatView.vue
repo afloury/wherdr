@@ -381,11 +381,14 @@ async function loadStep(current: () => boolean): Promise<boolean> {
   const pane = props.pane.id
   const stale = () => !current() || pane !== props.pane.id
   try {
-    const ready = chat.value.tailStart === null ? await chatIntent.take(props.pane) : undefined
+    const firstRead = chat.value.tailStart === null
+    const openedAt = performance.now()
+    const ready = firstRead ? await chatIntent.take(props.pane) : undefined
     if (stale()) return false
     const startedAt = Date.now()
     const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
-    if (import.meta.dev && !ready && chat.value.tailStart === null) console.debug(`[chat] first read: ${Date.now() - startedAt} ms`)
+    // From the open to the answer, a preloaded read included (its own time: useChatIntent).
+    if (import.meta.dev && firstRead) console.debug(`[chat] first read (${ready ? 'preloaded' : 'direct'}, ${props.pane.machine ? 'remote' : 'local'}): ${Math.round(performance.now() - openedAt)} ms`)
     if (stale()) return false
     if (!r.available) {
       // Any list on screen counts, the end kept on this device too: a server
