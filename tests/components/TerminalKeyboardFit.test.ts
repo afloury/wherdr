@@ -80,7 +80,7 @@ function setup() {
     await nextTick()
     ctl.fitNow(false)
     ctl.connect(false)
-    return { ws: FakeSocket.all.at(-1)!, setHeight: (h: number) => { height = h } }
+    return { ws: FakeSocket.all.at(-1)!, el, parent, setHeight: (h: number) => { height = h } }
   }
   return { ctl, open, wrapper }
 }
@@ -184,5 +184,116 @@ it('shifts .xterm-screen to keep the cursor row visible while covered, and reset
     ctl.kbdOn.value = true
     await nextTick()
     expect(term2.screen.style.transform).toBe('')
+  } finally { ctl.dispose(); wrapper.unmount() }
+})
+
+it('does not repaint the glyph atlas when the pane resizes', async () => {
+  const { ctl, open, wrapper } = setup()
+  try {
+    const { ws } = await open()
+    ws.open()
+    const term = h1.terms[0]!
+    const atlas = vi.spyOn(term, 'clearTextureAtlas')
+    // A real geometry change (rotation: cols and rows, not a covered rows-only one).
+    h1.fit = { cols: 60, rows: 30 }
+    ctl.fitNow(true)
+    expect(term).toMatchObject({ cols: 60, rows: 30 })
+    expect(ws.resizes()).toEqual([[60, 30]])
+    expect(atlas).not.toHaveBeenCalled()
+  } finally { ctl.dispose(); wrapper.unmount() }
+})
+
+const liftPx = (term: FakeTerm) => {
+  const m = /^translateY\(-([\d.]+)px\)$/.exec(term.screen.style.transform)
+  return m ? Number(m[1]) : 0
+}
+
+const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+
+it('skips zero-height or disconnected hosts, then keeps the cursor row inside a real host', async () => {
+  const { ctl, open, wrapper } = setup()
+  try {
+    const { ws, el, parent, setHeight } = await open(0)
+    ws.open()
+    const term = h1.terms[0]!
+    term.buffer.active.cursorY = 39
+
+    // Zero-height host while covered must never lift the whole grid off-screen.
+    kbOpen.value = true
+    ctl.fitNow(true)
+    await nextFrame()
+    expect(term.screen.style.transform).toBe('')
+
+    // Disconnected host is skipped too.
+    parent.remove()
+    setHeight(480)
+    ctl.fitNow(true)
+    expect(term.screen.style.transform).toBe('')
+
+    // Once connected at a real height (480 px = 30 rows of 16 px), the cursor row stays inside [0, 480].
+    document.body.append(parent)
+    expect(el.isConnected).toBe(true)
+    ctl.fitNow(true)
+    const lift = liftPx(term)
+    expect(lift).toBe(160)
+    const cursorTop = term.buffer.active.cursorY * 16 - lift
+    const cursorBottom = (term.buffer.active.cursorY + 1) * 16 - lift
+    expect(cursorTop).toBeGreaterThanOrEqual(0)
+    expect(cursorBottom).toBeLessThanOrEqual(480)
+  } finally { ctl.dispose(); wrapper.unmount() }
+})
+
+it('settles keyboard open and close after layout, ending with no transform even when watching', async () => {
+  const { ctl, open, wrapper } = setup()
+  try {
+    const { ws, setHeight } = await open(640)
+    ws.open()
+    ws.receive({ type: 'web.capabilities', core: true })
+    ws.receive({ type: 'terminal.control', on: false })
+    const term = h1.terms[0]!
+    term.rows = 40
+    term.buffer.active.cursorY = 39
+
+    // Keyboard opens: in the same tick layout is still 0/stale; layout settles before the frame.
+    kbOpen.value = true
+    setHeight(0)
+    await nextTick()
+    expect(term.screen.style.transform).toBe('')
+    setHeight(16)
+    await nextFrame()
+    await nextFrame()
+    expect(term.screen.style.transform).toBe('translateY(-624px)')
+
+    // Keyboard closes: in the same tick the host still holds the 16 px covered height,
+    // then layout restores 640 px on the frame -> no footer-only transform remains.
+    kbOpen.value = false
+    await nextTick()
+    setHeight(640)
+    await nextFrame()
+    await nextFrame()
+    expect(term.screen.style.transform).toBe('')
+  } finally { ctl.dispose(); wrapper.unmount() }
+})
+
+it('re-runs followCursor when the view becomes visible again at a real height', async () => {
+  const { ctl, open, wrapper } = setup()
+  try {
+    const { ws, setHeight } = await open(640)
+    ws.open()
+    const term = h1.terms[0]!
+    term.buffer.active.cursorY = 39
+
+    // Covered while hidden: the host has no height, so nothing is projected.
+    kbOpen.value = true
+    setHeight(0)
+    ctl.fitNow(true)
+    expect(term.screen.style.transform).toBe('')
+
+    // Visible again at 480 px: setVisible re-runs followCursor and the shift lands.
+    setHeight(480)
+    ctl.setVisible(true)
+    await nextTick()
+    await nextFrame()
+    expect(term.screen.style.transform).toBe('translateY(-160px)')
   } finally { ctl.dispose(); wrapper.unmount() }
 })

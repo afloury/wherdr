@@ -96,6 +96,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   // coreStream would skip the next fit and attach at xterm's default 80×24.
   function forgetStream() {
     wheel.cancel()
+    cancelFollowSettle()
     mouseSupported = false
     coreStream = false
     coreControl = true
@@ -104,12 +105,41 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   // Watching a terminal taller than this screen (another viewer owns the size,
   // or the keyboard covers the bottom while typing elsewhere): shift it so the
   // cursor row, where the newest output is, stays in view.
+  let followRaf1 = 0
+  let followRaf2 = 0
+  function cancelFollowSettle() {
+    if (followRaf1) { cancelAnimationFrame(followRaf1); followRaf1 = 0 }
+    if (followRaf2) { cancelAnimationFrame(followRaf2); followRaf2 = 0 }
+  }
+  // The host's box lands on the layout pass, not in the tick that flips
+  // kbOpen: re-measure on the next two frames so a shift is never computed
+  // from a height that is still settling.
+  function scheduleFollowSettle() {
+    cancelFollowSettle()
+    followRaf1 = requestAnimationFrame(() => {
+      followRaf1 = 0
+      followCursor()
+      followRaf2 = requestAnimationFrame(() => {
+        followRaf2 = 0
+        followCursor()
+      })
+    })
+  }
+  const isWatching = () => (coreStream && !coreControl) || (kbOpen.value && !kbdOn.value)
   function followCursor() {
     const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
     if (!term || !screen || !el || !term.rows) return
-    const shown = el.clientHeight - (screen.offsetTop || 0)
-    const follow = (coreStream && !coreControl) || (kbOpen.value && !kbdOn.value)
-    const over = follow ? (term.buffer.active.cursorY + 1) * (screen.offsetHeight / term.rows) - shown : 0
+    const rowPx = screen.offsetHeight / term.rows
+    // Never project a lift from a zero, negative or disconnected host: layout
+    // has not given the terminal a real height yet (the keyboard is still
+    // sliding, the view is parked), and the lift it implies would move the
+    // whole grid off screen.
+    const shown = el.isConnected ? el.clientHeight - (screen.offsetTop || 0) : 0
+    if (rowPx > 0 && shown <= 0) {
+      if (screen.style.transform) screen.style.transform = ''
+      return
+    }
+    const over = isWatching() ? (term.buffer.active.cursorY + 1) * rowPx - shown : 0
     screen.style.transform = over > 0 ? `translateY(${-Math.ceil(over)}px)` : ''
   }
   function offerFit() {
@@ -339,7 +369,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     const desktop = matchMedia(DESK_QUERY).matches && !opts.fill?.()
     el.style.width = desktop ? `${terminalPixelWidth(el.parentElement.clientWidth, contentWidth.value)}px` : ''
     const p = proposeTerminalSize(term)
-    if (!p || !p.cols || !p.rows) return
+    if (!p || !p.cols || !p.rows) { followCursor(); return }
     const d = { cols: p.cols, rows: p.rows }
     // The keyboard covering the window is a rows-only change: while it is
     // open and the terminal is not what is being typed in, resizing is pure
@@ -638,13 +668,28 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }, { flush: 'sync' })
   // Lives for the owning component's effect scope, not dispose(): AgentView
   // re-mounts TerminalView on the same controller across Conversation/Terminal toggles.
-  watch([kbOpen, kbdOn], () => followCursor())
+  watch([kbOpen, kbdOn], ([open], [wasOpen]) => {
+    if (!isWatching()) {
+      cancelFollowSettle()
+      followCursor()
+      return
+    }
+    // The keyboard's open/close changes the host's box on the layout pass, not
+    // in this tick; kbdOn flipping under an already-open keyboard can
+    // re-project right away and settle on the frame.
+    if (open !== wasOpen) scheduleFollowSettle()
+    else {
+      followCursor()
+      scheduleFollowSettle()
+    }
+  }, { flush: 'post' })
 
   function setVisible(visible: boolean) {
     if (!visible && smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
     sendTerm({ type: 'visibility', visible })
-    // Another client may have resized the pane while we were away.
-    if (visible) nextTick(() => fitNow(true))
+    // Another client may have resized the pane while we were away, or the
+    // host regained its height while covered.
+    if (visible) nextTick(() => { fitNow(true); followCursor(); scheduleFollowSettle() })
   }
 
   function dispose() {
@@ -655,6 +700,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     takeoverQueued = false
     focusQueued = false
     stopSmoothWatch()
+    cancelFollowSettle()
     const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
     if (screen) screen.style.transform = ''
     wheel.cancel()
