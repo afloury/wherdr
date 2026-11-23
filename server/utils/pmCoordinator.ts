@@ -941,6 +941,16 @@ export function coordinatorUrls(here: URL): CoordinatorUrls {
   return { local: `http://127.0.0.1:${port}`, ...(remote ? { remote: remote.replace(/\/$/, '') } : {}) }
 }
 
+// The start line puts the folder's bin/ (the `wherdr` script) first in the PATH of the program it starts (startCoordinator), and omp's bash
+// tool keeps it: its PATH is a snapshot of the user's shell taken on omp's own. But only while omp is that line's own process: a terminal kept
+// across a herdr-core restart comes back as a bare shell, with the terminal's env (WHERDR_URL, WHERDR_PM_TOKEN) and without the line's
+// `export PATH`, and an omp typed into it ran `wherdr` into "command not found". omp runs PI_SHELL_PREFIX (19.1) before each of its bash
+// commands and the env outlives the line, so this puts the folder first itself, once however many commands run.
+export function ompPathPrefix(bin: string) {
+  const q = `'${bin.replace(/'/g, `'\\''`)}'`
+  return `case ":$PATH:" in *:${q}:*) ;; *) export PATH=${q}:"$PATH" ;; esac;`
+}
+
 // When a project coordinator starts: its files, a new token, how to start it.
 export async function prepareCoordinator(deps: Deps, key: string, program: CoordinatorProgram, urls: CoordinatorUrls, resume = false, model?: string) {
   const { p, local, on, folder, first, v2, none } = await writeRoleFiles(deps, key)
@@ -950,7 +960,7 @@ export async function prepareCoordinator(deps: Deps, key: string, program: Coord
   if (key === MAIN) await issueAlfredToken(deps.store, folder!)
   // Alfred starts with its greeting (startPrompt); a resumed conversation had it already.
   const prompt = key === MAIN && !resume ? [startPrompt(first, await readAlfredName(deps), v2, none)] : []
-  return { on, folder, argv: coordinatorArgs(program, folder, p?.path, isPlainFolder(p), resume, model), prompt, env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
+  return { on, folder, argv: coordinatorArgs(program, folder, p?.path, isPlainFolder(p), resume, model), prompt, env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1', ...(program === 'omp' ? { PI_SHELL_PREFIX: ompPathPrefix(`${folder}/bin`) } : {}) } }
 }
 
 // Starts the coordinator in its folder, with its model (else its harness's default), token in its environment,

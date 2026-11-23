@@ -4,7 +4,7 @@ import path from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Quotas } from '../shared/types'
 import { createPmStore } from '../server/utils/pmStore'
-import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, runCommand, setCoordinatorAgent, startCoordinator, takeUpdateNotice, userMessageTo } from '../server/utils/pmCoordinator'
+import { alfredView, answerProposal, coordinatorsView, issueToken, noteTurn, ompPathPrefix, runCommand, setCoordinatorAgent, startCoordinator, takeUpdateNotice, userMessageTo } from '../server/utils/pmCoordinator'
 import { REMOTE_SCRIPT } from '../server/utils/pmVisibility'
 import { inTurn } from '../server/utils/terminalTurns'
 import { CREATE_SCRIPT, launched } from '../server/utils/pmLaunch'
@@ -811,6 +811,22 @@ describe('role files', () => {
     expect(line()).not.toContain('--continue')
     await startCoordinator(deps, 'CO', { resume: true }, urls)
     expect(line()).toMatch(new RegExp(`exec 'omp' '--tools' '${OMP_COORDINATOR_TOOLS}' '--add-dir' '/src/co' '--append-system-prompt' '[^']*coordinator, not a worker[^']*' '--continue'$`))
+  })
+
+  // A terminal kept across a herdr-core restart comes back as a bare shell: the terminal's env (WHERDR_URL…) is there, the start
+  // line's `export PATH` is not, and an omp typed into it found `wherdr: command not found`. The env is what omp reads again.
+  it('an omp coordinator\'s env has omp put its folder\'s bin first in its shell\'s PATH, once however many commands; the other programs\' have none', async () => {
+    const { runs, deps } = fakeCore()
+    const env = () => runs.filter(r => r.method === 'terminal.run').at(-1)!.env as Record<string, string>
+    // omp runs the prefix before each command, in one shell session: twice here. (--norc: bash reads its rc files when stdin is a socket, as node's are.)
+    const pathAfter = (prefix: string, start = '/usr/bin:/bin') => execFileSync('bash', ['--norc', '-c', `${prefix} ${prefix} echo "$PATH"`], { env: { PATH: start }, encoding: 'utf8' }).trim()
+    await startCoordinator(deps, 'CO', { program: 'omp' }, urls)
+    expect(pathAfter(env().PI_SHELL_PREFIX!)).toBe('/h/.wherdr/pm/coordinators/CO/bin:/usr/bin:/bin')
+    // omp started by the line: its folder is in PATH already, and stays where the snapshot put it.
+    expect(pathAfter(env().PI_SHELL_PREFIX!, '/x:/h/.wherdr/pm/coordinators/CO/bin:/usr/bin')).toBe('/x:/h/.wherdr/pm/coordinators/CO/bin:/usr/bin')
+    expect(pathAfter(ompPathPrefix(`/h/it's here/bin`))).toBe(`/h/it's here/bin:/usr/bin:/bin`)
+    await startCoordinator(deps, 'CO', { program: 'claude' }, urls)
+    expect(env()).not.toHaveProperty('PI_SHELL_PREFIX')
   })
 
   it('first start on a project with no accepted workflow: no template needed, its first reply proposes one, in the user\'s turn; not again', async () => {
