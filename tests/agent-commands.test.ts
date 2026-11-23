@@ -165,7 +165,7 @@ describe('what a terminal’s agent offers after "/"', () => {
     expect(core.execs()[0]!.params.argv.slice(-1)).toEqual([project])
     const ran = core.ran('omp')
     expect(ran.folder).toBe(project)
-    expect(ran.args).toBe('--mode rpc --no-session')
+    expect(ran.args).toBe('--mode rpc --no-session --no-extensions')
     expect(JSON.parse(ran.input)).toEqual({ id: 'cmds', type: 'get_available_commands' })
     // No self-update, and the terminal's identity never reaches it.
     expect(ran.env).toEqual(['DISABLE_AUTOUPDATER=1'])

@@ -55,9 +55,12 @@ unset CLAUDECODE
 // Only the answer line is kept (the rest is the agent's startup chatter: tens of KB).
 // Claude: no hooks of the user's settings (the integration of a terminal manager among them),
 // no MCP servers, no self-update, no conversation kept.
+// omp: --no-extensions keeps the user's hooks and extensions out (project and user command files,
+// skills and rules still load). omp has no switch for its MCP servers, so those start and their
+// prompts are listed: the one thing here that Claude's --strict-mcp-config does not match.
 const SCRIPT: Record<Agent, string> = {
   omp: `${HEAD}command -v omp >/dev/null 2>&1 || exit 127
-DISABLE_AUTOUPDATER=1 omp --mode rpc --no-session 2>/dev/null | grep -a '"type":"response"'`,
+DISABLE_AUTOUPDATER=1 omp --mode rpc --no-session --no-extensions 2>/dev/null | grep -a '"type":"response"'`,
   claude: `${HEAD}command -v claude >/dev/null 2>&1 || exit 127
 DISABLE_AUTOUPDATER=1 claude -p --input-format stream-json --output-format stream-json --verbose --no-session-persistence --settings '{"disableAllHooks":true}' --strict-mcp-config 2>/dev/null | grep -a '"type":"control_response"'`,
 }
