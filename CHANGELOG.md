@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows
 ### New
 
 - **Send back with a note on every step that waits for you.** The task sheet's To do and Tasks to review offered *Send back* only on a merge with screenshots; a step such as *It works* or *Approve design* had its approve button alone, so your feedback could not reach the task. Each step that waits for you now has the note field and *Send back*, through the same path as the coordinator's `wherdr pm step back`: the approval drops, the worker gets your note, the task leaves Tasks to review until its next review.
+- **A missing omp browser relay is a machine problem.** A task whose workflow sets `prefs.browser` to `"relay"` now checks, before it starts, that the relay's native host is registered in Chrome, Chromium or Brave. When it is not (an omp update can unregister it), the start is refused with "browser relay: …" like any other machine readiness failure, instead of the agent asking whether the relay is on.
 
 ### Fixed
 

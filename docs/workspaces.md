@@ -36,7 +36,8 @@ sidebar's *New* sheet › *Project* with its *Project | Workspace* switch on
 *Create* adds it and starts its coordinator, whose first reply runs
 `wherdr pm map list` and offers to build the [map](#the-workspace-map) from
 the repositories it found. A coordinator that does not start is said in the
-window; the workspace stays added. From the New sheet, the sheet then closes
+window, with herdr-core's reason; the workspace stays added, and its row in the
+sidebar offers *Start again* ([Coordinators](home.md#coordinators)). From the New sheet, the sheet then closes
 and the coordinator's conversation opens. Alfred adds one too:
 `wherdr alfred workspace add` ([Alfred's command](alfred.md)).
 
