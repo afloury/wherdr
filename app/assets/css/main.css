@@ -2015,6 +2015,10 @@ body.kb .composer { padding-bottom: 8px; }
 /* A two-line title (a task's): the close cross stays at the top right, beside its first line.
    Its block margins keep it from making the header taller than the badge (one-line, compact). */
 .hw-sheet-head:has(> .hw-sheet-title.clamp) > .hw-sheet-close { align-self: flex-start; flex: none; margin: -4px 0 -4px 6px; }
+/* The sheet's own controls (a project's ⋯ menu): at the header's right, just before the cross.
+   Their block margins keep the 44 px button from making the header taller. */
+.hw-sheet-actions { flex: none; display: flex; align-items: center; margin: -4px 4px -4px auto; }
+.hw-sheet-actions + .hw-sheet-close { flex: none; }
 /* Before the title (a task's id badge): the title follows it. */
 .hw-sheet-lead { flex: none; align-self: flex-start; margin: 3px 10px 0 0; }
 .hw-sheet-lead + .hw-sheet-title { flex: 1; }
