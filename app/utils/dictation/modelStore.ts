@@ -5,11 +5,11 @@
 // share one download per model. The worker reads the same slices.
 // Based on followcat's installAsr / fetchModelFile (followcat/wherdr, branch mobile, MIT).
 import { DEVICE_CACHE } from './deviceModels'
-import type { DeviceModel } from './deviceModels'
+import type { DeviceModel, DeviceRuntime } from './deviceModels'
 
 // What the store needs of a model: a dictation model, or a read-aloud voice
 // (app/utils/speech/neuralVoice.ts) with its catalog members as files.
-export type StoredModel = Pick<DeviceModel, 'id' | 'dir' | 'set' | 'files'>
+export type StoredModel = Pick<DeviceModel, 'id' | 'dir' | 'set' | 'files'> & { runtime?: DeviceRuntime }
 
 export const CHUNK = 8 * 1024 * 1024
 export const fileUrl = (m: StoredModel, path: string) => `/models/${m.dir}/${path}`
@@ -27,7 +27,7 @@ export class MissingOnServer extends Error {
 }
 
 // The command that fetches this model's files on the server.
-export const fetchCommand = (m: StoredModel) => `node scripts/fetch-dictation-files.mjs runtime ${m.set}`
+export const fetchCommand = (m: StoredModel) => `node scripts/fetch-dictation-files.mjs ${m.runtime ?? 'runtime'} ${m.set}`
 
 export interface StoreDeps { caches?: CacheStorage | null, fetch?: typeof fetch }
 // `server`: the wherdr server is still fetching the files (`unpack`: extracting them).
@@ -45,6 +45,7 @@ export const PREPARE_URL = '/api/dictation/prepare'
 export const PREPARE_POLL_MS = 1000
 
 const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
+  if (signal?.aborted) return reject(signal.reason)
   const t = setTimeout(resolve, ms)
   signal?.addEventListener('abort', () => { clearTimeout(t); reject(signal.reason) }, { once: true })
 })
@@ -69,6 +70,7 @@ export async function prepareOnServer(m: StoredModel, deps: StoreDeps, signal: A
     const s = await r.json() as { state: string, got?: number, total?: number, phase?: string, error?: string }
     if (s.state === 'ready' || s.state === 'missing') return
     if (s.state === 'error') throw new ServerFetchFailed(s.error || 'The server could not fetch the files')
+    signal.throwIfAborted()
     onProgress({ got: s.got ?? 0, total: s.total ?? 0, server: true, unpack: s.phase === 'unpack' })
     await pause(PREPARE_POLL_MS, signal)
   }
