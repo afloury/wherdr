@@ -453,7 +453,7 @@ onMounted(() => {
             </div>
           </div>
           <ThemeEditor v-model:open="editorOpen" :base="editorBase" />
-          <AppSheet v-model:open="importOpen" :title="tl('Import theme')" hide-close>
+          <AppSheet v-model:open="importOpen" :title="tl('Import theme')">
             <form class="sheet-form" @submit.prevent="importTheme">
               <label class="field-label" for="themeImport">{{ tl('Theme JSON') }}</label>
               <UTextarea id="themeImport" v-model="importText" :rows="8" class="w-full mono" :placeholder="tl('Paste a theme file, or pick one')" />

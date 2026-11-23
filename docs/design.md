@@ -127,10 +127,12 @@ drawer's own drag, from the handle, the header or the content scrolled to its
 top); the handle also supports tap, and Escape closes either. On open, focus goes
 to the sheet itself (no outline), not to its handle or first button; Tab reaches
 the buttons, which keep their keyboard focus ring; the focus stays inside while
-it is open and returns where it was on close. **Do not add a cross close button
-to sheets.** The handle is AppSheet's own `.hw-sheet-handle` (36 × 4 px bar in a
-44 px target), not the drawer's. Current implementation gap: `AppSheet` still renders
-`.hw-sheet-close` with `i-lucide-x`; this is not a pattern to copy. Full-screen
+it is open and returns where it was on close. A sheet with a title shows
+AppSheet's square close cross (`.hw-sheet-close`, `i-lucide-x`, ghost) at the
+header's right, beside the title's first line, on the phone and on a computer;
+do not draw another. A sheet's own header controls (a project's ⋯ menu) go in
+AppSheet's `actions` slot, just before the cross. The handle is AppSheet's own `.hw-sheet-handle` (36 × 4 px bar in a
+44 px target), not the drawer's. Full-screen
 `screen` views disable sheet dragging, so retain an explicit navigation action
 when using that mode.
 

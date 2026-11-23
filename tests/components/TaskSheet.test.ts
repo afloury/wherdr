@@ -372,3 +372,12 @@ it('the header: the step\'s button first, Stop only while the step\'s agent runs
   expect(w.find('[data-testid="task-stop"]').exists()).toBe(true)
   w.unmount()
 })
+
+// The sheet's close cross is shown (not hidden) and closes it.
+it('shows the close button, and a click closes the sheet', async () => {
+  const w = await mountSuspended(TaskSheet, { props: { card }, attachTo: document.body })
+  const close = await vi.waitFor(() => { const b = document.querySelector<HTMLButtonElement>('.hw-sheet-close'); expect(b).not.toBeNull(); return b! })
+  close.click()
+  await vi.waitFor(() => expect(w.emitted('closed')).toBeTruthy())
+  w.unmount()
+})

@@ -901,8 +901,41 @@ body.short-bottom { --safe-bottom: 0px; }
 .files-md img[src] { cursor: zoom-in; }
 /* A Markdown file, formatted: the conversation's Markdown styles on a framed
    page, headings ruled as a document, light syntax colours in code blocks. */
-.files-md-mode { max-width: 280px; margin: 10px 0 0; }
-.files-md-mode button { padding: 9px 6px 8px; }
+/* Rendered | Source (Preview | Source): the compact segmented control, with the actions. */
+.files-actions { align-items: center; }
+/* One file (FilesView `file`): a document under its window's header. Folder ·
+   size, Back and the controls sit under the title (AppSheet `sub`, the side
+   panel's head), the actions as icons; the text has the window's width and a
+   readable line length, with no frame around it. */
+.files-located { min-width: 0; color: var(--muted); font: 11px/1.4 var(--mono); overflow-wrap: anywhere; }
+.files-bar:has(.files-located) .files-label { display: none; }
+/* The compact header: name over folder · size, the controls at the right of
+   both. The bar's parts are placed directly in the host header's grid. */
+.ui-show-sub, .hw-sheet-sub, .hw-sheet-sub > div, .ui-show-sub .files-bar, .hw-sheet-sub .files-bar { display: contents; }
+.ui-show-top:has(.files-located) { min-height: 44px; container-type: inline-size; }
+.ui-show-head:has(.files-located), .hw-sheet > .hw-sheet-head:has(.files-located) { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 1px 12px; }
+.hw-sheet > .hw-sheet-head:has(.files-located) { grid-template-columns: minmax(0, 1fr) auto auto; padding-top: 2px; padding-bottom: 6px; }
+.ui-show-head:has(.files-located) { padding: 4px 12px; }
+.ui-show-head:has(.files-located) h2, .hw-sheet-head:has(.files-located) .hw-sheet-title { grid-area: 1 / 1; font: 600 14px/1.25 var(--sans); letter-spacing: 0; word-spacing: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-show-head .files-crumbs, .hw-sheet-sub .files-crumbs { grid-area: 2 / 1; flex-wrap: nowrap; }
+.files-located { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-show-head .files-actions, .hw-sheet-sub .files-actions { grid-column: 2; grid-row: 1 / span 2; gap: 4px; }
+.hw-sheet-head:has(.files-located) [data-slot="close"] { grid-column: 3; grid-row: 1 / span 2; }
+.files-bar:has(.files-located) .files-crumbs button { width: 20px; height: 18px; padding: 0; justify-content: center; flex: none; }
+.files-bar:has(.files-located) .files-actions > :is(a, button) { width: 26px; height: 26px; padding: 0; justify-content: center; }
+.files-bar:has(.files-located) .hw-seg [data-slot="item"] { min-height: 24px; padding: 2px 8px; font-size: 10px; letter-spacing: .06em; }
+/* A narrow panel: the controls move beside the folder, under the name. */
+@container (max-width: 480px) {
+  .ui-show-head:has(.files-located) h2 { grid-column: 1 / -1; }
+  .ui-show-head .files-actions { grid-row: 2; }
+}
+/* By touch: larger controls. */
+@media (pointer: coarse) {
+  .files-bar:has(.files-located) .files-actions > :is(a, button) { width: 32px; height: 32px; }
+  .files-bar:has(.files-located) .hw-seg [data-slot="item"] { min-height: 30px; }
+}
+.files-view.single .changes-inner { max-width: none; padding-top: 22px; }
+.files-view.single .files-md { max-width: 70ch; margin: 0 auto; padding: 0; border: 0; background: none; font-size: 15px; }
 .files-md { margin: 12px 0 0; padding: 20px 22px 24px; border: 1px solid var(--line); background: var(--surface); min-width: 0; }
 .md-body.files-md h1 { font: 700 26px/1.2 var(--display); letter-spacing: -.02em; }
 .md-body.files-md h2 { font: 650 20px/1.25 var(--display); letter-spacing: -.015em; }
@@ -920,7 +953,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .md-body.files-md .hl-n { color: var(--teal); }
 .md-body.files-md .hl-k { color: var(--mauve); }
 .md-body.files-md .hl-t { color: var(--blue); }
-@media (max-width: 520px) { .files-md { padding: 14px 13px 18px; } .files-md-mode { max-width: none; } }
+@media (max-width: 520px) { .files-md { padding: 14px 13px 18px; } }
 /* The browser's PDF viewer: its own toolbar and scrolling, framed in a 1 px line. */
 .files-pdf { width: 100%; min-width: 0; }
 .pdf-page { width: 100%; background: white; margin-bottom: 12px; overflow: hidden; }
@@ -1958,7 +1991,7 @@ body.kb .composer { padding-bottom: 8px; }
 .hw-sheet > * { border-top: 0 !important; border-bottom: 0 !important; }
 /* Keep wrapped titles above the scrolling body when the sheet reaches its height limit. */
 .hw-sheet > [data-slot="header"] { padding: 4px 0 10px; min-height: 0; flex: none; border: 0; order: 1; display: flex; align-items: center; justify-content: space-between; }
-.hw-sheet > [data-slot="body"] { padding: 0 0 var(--sheet-end); order: 2; overflow-y: auto; overscroll-behavior: contain; flex: 1; min-height: 0; scroll-padding-bottom: 16px; }
+.hw-sheet > [data-slot="body"] { padding: 0 0 var(--sheet-end); order: 2; overflow-y: auto; overflow-x: hidden; overscroll-behavior: contain; flex: 1; min-height: 0; scroll-padding-bottom: 16px; }
 /* A body whose content fills the sheet's height (a task's), still its one scroll. */
 .hw-sheet > [data-slot="body"]:has(> .task-sheet) { display: flex; flex-direction: column; }
 /* A bar pinned (sticky) at the bottom of the body is its last element and
@@ -1975,6 +2008,13 @@ body.kb .composer { padding-bottom: 8px; }
 .hw-sheet-title.clamp { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; cursor: pointer; line-height: 1.1; }
 .hw-sheet .hw-sheet-title.clamp.open { display: block; overflow: visible; }
 .hw-sheet [data-slot="close"] { position: static; inset: auto; }
+/* A two-line title (a task's): the close cross stays at the top right, beside its first line.
+   Its block margins keep it from making the header taller than the badge (one-line, compact). */
+.hw-sheet-head:has(> .hw-sheet-title.clamp) > .hw-sheet-close { align-self: flex-start; flex: none; margin: -4px 0 -4px 6px; }
+/* The sheet's own controls (a project's ⋯ menu): at the header's right, just before the cross.
+   Their block margins keep the 44 px button from making the header taller. */
+.hw-sheet-actions { flex: none; display: flex; align-items: center; margin: -4px 4px -4px auto; }
+.hw-sheet-actions + .hw-sheet-close { flex: none; }
 /* Before the title (a task's id badge): the title follows it. */
 .hw-sheet-lead { flex: none; align-self: flex-start; margin: 3px 10px 0 0; }
 .hw-sheet-lead + .hw-sheet-title { flex: 1; }
@@ -2012,6 +2052,10 @@ body.kb .composer { padding-bottom: 8px; }
   .hw-sheet.screen .hw-sheet-handle { display: none; }
   .hw-sheet.screen > [data-slot="header"] { padding: 6px 0 12px; margin: 0 -16px; padding-left: 16px; padding-right: 8px; border-bottom: 1px solid var(--line-soft) !important; } /* overflow-safe: .hw-sheet has the same side padding */
   .hw-sheet.screen > [data-slot="body"] { padding-top: 4px; }
+  .hw-sheet.screen > .hw-sheet-head:has(.files-located) { padding-top: 2px; padding-bottom: 4px; }
+  .hw-sheet.screen .hw-sheet-head:has(.files-located) .hw-sheet-title { grid-column: 1 / 3; }
+  .hw-sheet.screen .hw-sheet-head:has(.files-located) [data-slot="close"] { grid-row: 1; }
+  .hw-sheet.screen .hw-sheet-sub .files-actions { grid-column: 2 / -1; grid-row: 2; justify-self: end; }
   .hw-sheet.screen .hw-sheet-foot > * { margin: 0 -16px; padding: 12px 16px 0; border-top: 1px solid var(--line-soft); } /* overflow-safe: into .hw-sheet's 16px side padding (the footer has none) */
   .hw-sheet.screen .hw-sheet-foot .launch-btn { margin-top: 0; }
   /* Form actions (Cancel / Save): side by side across the width, in thumb reach. */
@@ -2038,6 +2082,10 @@ body.kb .composer { padding-bottom: 8px; }
 .menu button .desc { color: var(--text-3); font-size: 14.5px; }
 /* Action with a description (plugin actions): label, then the description below. */
 .menu button .menu-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+/* A label can be one unbreakable string (a tab name, a path): wrap it like the
+   description does, or it pushes the row past the sheet's edge and the body's
+   scroll lands the whole list off to the left. */
+.menu button .menu-text > span { min-width: 0; overflow-wrap: anywhere; }
 .menu button .menu-sub { color: var(--text-3); font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
 .menu .menu-group {
   display: flex; align-items: center; gap: 8px; padding: 14px 8px 6px;

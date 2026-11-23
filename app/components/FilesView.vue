@@ -12,7 +12,12 @@ import type { MdView } from '~/utils/filesPrefs'
 // Preview), with no folder around it. inFolder: that file is a path relative to
 // the agent's folder, read only there (an agent's `ui show file`). Any file
 // shown can be downloaded.
-const props = defineProps<{ paneId: string, file?: string, inFolder?: boolean }>()
+// head: with `file`, the id of an element in the window's own header (under
+// its title, the file's name): the file's folder · size, Back and its controls
+// go there, so one file reads as a document under one header. `name` tells the
+// window the name of the file shown (a link followed opens another one).
+const props = defineProps<{ paneId: string, file?: string, inFolder?: boolean, head?: string }>()
+const emit = defineEmits<{ name: [string] }>()
 const written = computed(() => Boolean(props.file) && !props.inFolder)
 const root = ref('')
 const truncated = ref(false)
@@ -88,6 +93,14 @@ const trail = ref<string[]>([])
 const htmlView = ref<'preview' | 'source'>('preview')
 const isHtml = computed(() => preview.value?.kind === 'text' && /\.html?$/i.test(preview.value.path))
 const isPage = computed(() => isHtml.value && !preview.value!.truncated)
+watch(() => preview.value?.path, (p) => { if (p) emit('name', p.split('/').pop() || p) })
+// The file's folder · size, under the window's title.
+const located = computed(() => {
+  const p = preview.value
+  if (!p) return ''
+  const dir = p.path.includes('/') ? p.path.slice(0, p.path.lastIndexOf('/')) || '/' : ''
+  return [dir, fmtBytes(p.size)].filter(Boolean).join(' · ')
+})
 const pageShown = computed(() => isPage.value && htmlView.value === 'preview')
 // Preview and Open share the authenticated inline download path.
 // Each refresh reloads it.
@@ -151,6 +164,18 @@ const code = computed(() => {
 // file mode: utils/markdown.ts) or as its source with line numbers.
 const mdView = syncedRef<MdView>(MD_VIEW_KEY, readMdView, v => v)
 const isMd = computed(() => preview.value?.kind === 'text' && isMarkdownPath(preview.value.path))
+// Rendered | Source of a Markdown file, Preview | Source of a page.
+const views = computed(() => isMd.value
+  ? [{ label: t('Rendered'), value: 'rendered' }, { label: t('Source'), value: 'source' }]
+  : isPage.value ? [{ label: t('Preview'), value: 'preview' }, { label: t('Source'), value: 'source' }] : null)
+const view = computed({
+  get: () => isMd.value ? mdView.value : htmlView.value,
+  set: (v: string) => {
+    if (!v) return
+    if (isMd.value) mdView.value = v as MdView
+    else htmlView.value = v as 'preview' | 'source'
+  },
+})
 const rendered = computed(() => isMd.value && mdView.value === 'rendered' ? md(preview.value!.text ?? '', { doc: true }) : '')
 const top = ref<HTMLElement | null>(null)
 const doc = ref<HTMLElement | null>(null)
@@ -257,28 +282,32 @@ function icon(e: FileEntry) {
 </script>
 
 <template>
-  <div class="changes-view files-view">
+  <div class="changes-view files-view" :class="{ single: file }">
     <div ref="top" class="changes-inner">
-      <div class="changes-toolbar">
-        <nav class="files-crumbs" :aria-label="t('Folder')">
-          <UButton v-if="preview && (!file || trail.length)" icon="i-lucide-arrow-left" color="neutral" variant="ghost" size="sm" :aria-label="t('Back to folder')" @click="back" />
-          <template v-for="(c, i) in crumbs" :key="c.path">
-            <span v-if="i" class="files-sep">/</span>
-            <button type="button" class="files-crumb" @click="openFolder(c.path)">{{ c.label }}</button>
-          </template>
-          <template v-if="preview">
-            <span v-if="crumbs.length" class="files-sep">/</span><span class="files-crumb current">{{ preview.path.split('/').pop() }}</span>
-          </template>
-        </nav>
-        <div class="files-actions">
-          <UButton v-if="inlineUrl" icon="i-lucide-external-link" color="neutral" variant="outline" size="sm" :to="inlineUrl" target="_blank" external :aria-label="t('Open')">{{ t('Open') }}</UButton>
-          <UButton v-if="preview" icon="i-lucide-download" color="neutral" variant="outline" size="sm" :loading="downloading" :aria-label="t('Download')" @click="download">{{ t('Download') }}</UButton>
-          <UButton icon="i-lucide-refresh-cw" color="neutral" variant="outline" size="sm" :loading="loading" :aria-label="t('Refresh')" @click="refresh"><span class="files-label">{{ t('Refresh') }}</span></UButton>
+      <Teleport defer :to="head ? `#${head}` : 'body'" :disabled="!file || !head">
+        <div class="changes-toolbar files-bar">
+          <nav class="files-crumbs" :aria-label="t('Folder')">
+            <UButton v-if="preview && (!file || trail.length)" icon="i-lucide-arrow-left" color="neutral" variant="ghost" size="sm" :aria-label="t('Back to folder')" @click="back" />
+            <span v-if="file" class="files-located" data-testid="files-located">{{ located }}</span>
+            <template v-for="(c, i) in crumbs" :key="c.path">
+              <span v-if="i" class="files-sep">/</span>
+              <button type="button" class="files-crumb" @click="openFolder(c.path)">{{ c.label }}</button>
+            </template>
+            <template v-if="preview && !file">
+              <span v-if="crumbs.length" class="files-sep">/</span><span class="files-crumb current">{{ preview.path.split('/').pop() }}</span>
+            </template>
+          </nav>
+          <div class="files-actions">
+            <UToggleGroup v-if="views" v-model="view" :items="views" :aria-label="isMd ? t('Markdown view') : t('Page view')" class="hw-seg files-md-mode" />
+            <UButton v-if="inlineUrl" icon="i-lucide-external-link" color="neutral" variant="outline" size="sm" :to="inlineUrl" target="_blank" external :aria-label="t('Open')" :title="t('Open')"><span class="files-label">{{ t('Open') }}</span></UButton>
+            <UButton v-if="preview" icon="i-lucide-download" color="neutral" variant="outline" size="sm" :loading="downloading" :aria-label="t('Download')" :title="t('Download')" @click="download"><span class="files-label">{{ t('Download') }}</span></UButton>
+            <UButton icon="i-lucide-refresh-cw" color="neutral" variant="outline" size="sm" :loading="loading" :aria-label="t('Refresh')" :title="t('Refresh')" @click="refresh"><span class="files-label">{{ t('Refresh') }}</span></UButton>
+          </div>
         </div>
-      </div>
+      </Teleport>
 
       <p v-if="error" class="changes-notice error" role="alert">{{ error }}</p>
-      <div class="files-split" :class="{ previewing: preview }">
+      <div class="files-split" :class="{ previewing: preview && !file }">
         <section v-if="!file" class="files-tree">
           <label class="changes-toggle"><input v-model="showHidden" type="checkbox"> <span>{{ t('Show hidden files') }}</span></label>
           <p v-if="truncated" class="changes-limit">{{ t('File list or diff limited to keep this view responsive.') }}</p>
@@ -289,17 +318,7 @@ function icon(e: FileEntry) {
         <section v-if="preview || (loading && file)" class="files-preview">
           <p v-if="!preview" class="changes-notice"><span class="spinner" /> {{ t('Reading files…') }}</p>
           <template v-else>
-            <p class="changes-location">{{ preview.path }} · {{ fmtBytes(preview.size) }}</p>
-            <div v-if="isMd" class="segmented files-md-mode" role="group" :aria-label="t('Markdown view')" style="--segment-count: 2">
-              <button v-for="v in (['rendered', 'source'] as const)" :key="v" type="button" :class="{ on: mdView === v }" :aria-pressed="mdView === v" @click="mdView = v">
-                <span>{{ v === 'rendered' ? t('Rendered') : t('Source') }}</span>
-              </button>
-            </div>
-            <div v-else-if="isPage" class="segmented files-md-mode" role="group" :aria-label="t('Page view')" style="--segment-count: 2">
-              <button v-for="v in (['preview', 'source'] as const)" :key="v" type="button" :class="{ on: htmlView === v }" :aria-pressed="htmlView === v" @click="htmlView = v">
-                <span>{{ v === 'preview' ? t('Preview') : t('Source') }}</span>
-              </button>
-            </div>
+            <p v-if="!file" class="changes-location">{{ preview.path }} · {{ fmtBytes(preview.size) }}</p>
             <p v-if="preview.truncated && preview.kind === 'text'" class="changes-limit">{{ t('File truncated to keep this view responsive.') }}</p>
             <template v-if="pageShown">
               <!-- Never allow-same-origin, popups, forms or top navigation. -->
