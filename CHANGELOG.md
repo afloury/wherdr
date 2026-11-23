@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows
 ### New
 
 - **A worker that needs a person can say so, and you get a push.** A worker that cannot go on without you (a login, passkey, 2FA, payment, an admin's approval) runs `hc label "$HC_TERMINAL_ID" "wherdr.report=needs-human: <kind> <url>"`. You get a notification straight away with a link to the task, again after 5 and 15 minutes if it is still open, and the task shows in its own **Needs you now** list on Home and first in Tasks to review. The worker clears it with `needs-human: clear`; a done or stopped task clears it too, as does the worker's `done` or its step changing.
+- **omp takes a role alias as its model.** `prefs.model`, `reviewModel` and `reviewFallbackModel` accept an omp role alias of its own config (`@standard`, `@plan:high`) when the agent is omp, so a workflow follows the user's role setup instead of a pinned model id. Other agents still need a model name.
 - **A missing omp browser relay is a machine problem.** A task whose workflow sets `prefs.browser` to `"relay"` now checks, before it starts, that the relay's native host is registered in Chrome, Chromium or Brave. When it is not (an omp update can unregister it), the start is refused with "browser relay: …" like any other machine readiness failure, instead of the agent asking whether the relay is on.
 
 ### Fixed
