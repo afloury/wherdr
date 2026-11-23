@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **Restart with… the agent a coordinator or Alfred already runs resumes its conversation.** Picking the same agent no longer starts a new conversation: Claude, Codex and omp take up the last one (Alfred on omp too), with the same model. Another agent starts a new conversation as before.
+
 ### Fixed
 
 - **Sideways scroll in a menu sheet.** A label that is one unbreakable string (a tab name, a path) wraps like a description now, instead of pushing its row past the sheet's edge and scrolling the whole list off to the left.

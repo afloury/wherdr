@@ -941,6 +941,10 @@ export function coordinatorUrls(here: URL): CoordinatorUrls {
   return { local: `http://127.0.0.1:${port}`, ...(remote ? { remote: remote.replace(/\/$/, '') } : {}) }
 }
 
+// omp's newest session file of a folder, on the machine that runs it (omp keeps them in a folder named
+// after the working folder, as transcripts.ts does); none: the folder has no conversation.
+const OMP_LAST_SESSION = 'f="$1"; case "$f" in "$HOME"/*) n="-${f#"$HOME"/}";; *) n="--${f#/}--";; esac; n=$(printf %s "$n" | tr "/\\\\:" "---"); ls -t "$HOME/.omp/agent/sessions/$n"/*.jsonl 2>/dev/null | head -n 1'
+
 // When a project coordinator starts: its files, a new token, how to start it.
 export async function prepareCoordinator(deps: Deps, key: string, program: CoordinatorProgram, urls: CoordinatorUrls, resume = false, model?: string) {
   const { p, local, on, folder, first, v2, none } = await writeRoleFiles(deps, key)
@@ -950,7 +954,12 @@ export async function prepareCoordinator(deps: Deps, key: string, program: Coord
   if (key === MAIN) await issueAlfredToken(deps.store, folder!)
   // Alfred starts with its greeting (startPrompt); a resumed conversation had it already.
   const prompt = key === MAIN && !resume ? [startPrompt(first, await readAlfredName(deps), v2, none)] : []
-  return { on, folder, argv: coordinatorArgs(program, folder, p?.path, isPlainFolder(p), resume, model), prompt, env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
+  let session: string | undefined
+  if (resume && program === 'omp') {
+    session = (await exec(deps, on, OMP_LAST_SESSION, [folder])).out
+    if (!session) throw new HerdrError('bad_input', 'No conversation to resume: start a new one')
+  }
+  return { on, folder, argv: coordinatorArgs(program, folder, p?.path, isPlainFolder(p), session ?? resume, model), prompt, env: { WHERDR_PM_TOKEN: token, WHERDR_URL: url, DISABLE_AUTOUPDATER: '1' } }
 }
 
 // Starts the coordinator in its folder, with its model (else its harness's default), token in its environment,
