@@ -142,7 +142,7 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   the pm tasks folder; another project's task only within its reach), or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task
   has some). On a wide computer they open in the side panel, in place of Settings (drag its left
   edge, or the arrow keys on it, to resize; double-click: default width; kept on the device): the file
-  read-only as in Files (an HTML page runs as a page: see [Files](files.md)), the screenshots by step, before and after side by side, with a button
+  read-only as in Files, as a document under the panel's one header (see [One file shown alone](files.md#one-file); an HTML page runs as a page), the screenshots by step, before and after side by side, with a button
   to open the task. On a phone a card shows above the message field, and a tap opens a sheet
   (before and after toggled). A tap on a shown image (the file, an image of a shown Markdown
   file, a screenshot) opens the full-screen viewer, with zoom and pan, through the images shown
@@ -308,12 +308,12 @@ A tap sends that option at once as your reply, quoted to the last question writt
 block (to the whole message when there is none), the same as typing it. The buttons stay live
 until a sent message answers them, even when the agent wrote another message below (a wake, a
 report); then they are greyed, the answer given marked. A `wherdr` block with a line wherdr does not understand (a
-missing quote, no option or more than four, an unknown kind) shows as ordinary code.
+missing quote, no option or more than four, an option over 80 characters, an unknown kind) shows as ordinary code.
 
 **Several questions in one card.** When an agent has several questions at once (a plan to
 settle, say), it asks them in one `questions` card instead of a numbered list or one message
-each: a `questions` line, then one numbered line per question (up to 8), the question then its
-2 to 4 options:
+each: a `questions` line, then one numbered line per question (up to 8), the question (up to
+200 characters) then its 2 to 4 options (up to 80 characters each):
 
 ````md
 A few things before I start:

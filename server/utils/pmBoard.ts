@@ -250,9 +250,15 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
     // A merge's wait past its limit (later, no longer acting) says why too.
     const failed = result.ok || (result.later && state.acting) ? '' : state.yourTurn?.error || result.error || `${act.action.kind} failed`
     const said = [auto, failed, result.note, result.alert].filter(Boolean).join('. ')
+    // A press that worked and said nothing else leaves a line of its own, so the log shows who did it
+    // (a retry already said so above; a line the step logged, such as a warning, stays last).
+    const pressed = by === 'user' && result.ok && cur.yourTurn?.reason !== 'action'
+      ? `${act.step}: ${act.action.kind === 'git.land' ? 'landed' : 'done'}${result.commit ? ` ${result.commit.slice(0, 7)}` : ''}${result.base ?? act.action.target ? ` on ${result.base ?? act.action.target}` : ''}, by you`
+      : ''
     const saved = log?.kind === 'log' ? await store.logTask({ ...(await fresh()), step: state }, 'engine', log.text)
       : said ? await store.logTask({ ...(await fresh()), step: state }, 'engine', said.startsWith(`${act.step}: `) ? said : `${act.step}: ${said}`)
-        : await store.saveTask({ ...(await fresh()), step: state })
+        : pressed ? await store.logTask({ ...(await fresh()), step: state }, 'user', pressed)
+          : await store.saveTask({ ...(await fresh()), step: state })
     // Merged (by the engine, or on the Git host and confirmed): the task's remote branch goes, when safe.
     const merged = result.ok && run && endsMerged(act.action.kind)
     const gone = merged && await dropMergedBranch(actionShell(deps, runOn(deps, run)), {

@@ -12,14 +12,17 @@ import { PHONE_QUERY } from '~/utils/layoutMode'
 // safe areas included, no drag); unchanged on a computer. The `footer` slot stays
 // pinned under the scrolling content (above the home bar or the keyboard).
 // `top`: above the other windows (a confirmation asked from an open sheet).
+// `sub` slot: a row under the title, the header's full width (a shown file's
+// folder · size and controls, FilesView).
+// `actions` slot: the sheet's own controls, just before the close cross (a project's ⋯ menu).
 // `clamp`: a long title (a task's) on the phone: two lines in smaller type, a tap
 // shows it whole; one line once the body is scrolled or a field is typed in.
 import { kbOpen } from '~/composables/useViewport'
 
 const open = defineModel<boolean>('open', { default: false })
-const props = defineProps<{ hideClose?: boolean, title?: string, tall?: boolean, wide?: boolean, full?: boolean, screen?: boolean, top?: boolean, clamp?: boolean }>()
+const props = defineProps<{ title?: string, tall?: boolean, wide?: boolean, full?: boolean, screen?: boolean, top?: boolean, clamp?: boolean }>()
 const emit = defineEmits<{ closed: [] }>()
-const slots = defineSlots<{ default?: () => unknown, footer?: () => unknown, lead?: () => unknown }>()
+const slots = defineSlots<{ default?: () => unknown, footer?: () => unknown, lead?: () => unknown, actions?: () => unknown, sub?: () => unknown }>()
 watch(open, (v, old) => { if (old && !v) emit('closed') })
 const phone = useMediaQuery(PHONE_QUERY)
 // Typing on the phone: a text field of the sheet has focus, the keyboard over
@@ -114,7 +117,9 @@ const overlay = computed(() => phone.value
       <div v-if="title" data-slot="header" class="hw-sheet-head" :class="{ compact }">
         <span v-if="slots.lead" class="hw-sheet-lead"><slot name="lead" /></span>
         <span class="hw-sheet-title" :class="{ clamp, open: fullTitle }" :title="clamp ? title : undefined" aria-hidden="true" data-testid="sheet-title" @click="fullTitle = !!clamp && !fullTitle">{{ title }}</span>
-        <UButton v-if="!hideClose" icon="i-lucide-x" color="neutral" variant="ghost" data-slot="close" class="hw-sheet-close" :aria-label="tl('Close', 'Fermer')" @click="open = false" />
+        <span v-if="slots.actions" class="hw-sheet-actions"><slot name="actions" /></span>
+        <UButton icon="i-lucide-x" color="neutral" variant="ghost" data-slot="close" class="hw-sheet-close" :aria-label="tl('Close', 'Fermer')" @click="open = false" />
+        <div v-if="slots.sub" class="hw-sheet-sub"><slot name="sub" /></div>
       </div>
       <div
         ref="bodyEl" data-slot="body" class="hw-sheet-body" :class="{ typing }"
