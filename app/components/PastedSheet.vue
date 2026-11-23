@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // The whole pasted text in a scrolling window (sheet on the phone),
-// monospace for a log, with Copy (PastedCard, the composer's AttachTile).
+// monospace for a log, with Copy (a pasted-text AttachTile, in the field or a message).
 import { lineCount, looksLikeLog } from '#shared/pastedText'
 
 const props = defineProps<{ text: string }>()

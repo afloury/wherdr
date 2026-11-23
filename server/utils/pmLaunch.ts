@@ -415,6 +415,7 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   const { store } = deps
   const asRead = await store.task(id)
   if (!asRead) throw new HerdrError('not_found', 'Unknown task')
+  if (asRead.kind === 'feature') throw new HerdrError('refused', `${asRead.id} is a feature: it runs no agent, start its sub-tasks`)
   let task = asRead
   if (task.state === 'working' && !revive) throw new HerdrError('busy', 'This task is already working')
   const found = (await store.projects()).find(x => x.key === asRead.project)

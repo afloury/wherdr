@@ -9,6 +9,11 @@ All notable changes to this project are documented here. The format follows
 ### New
 
 - **A missing omp browser relay is a machine problem.** A task whose workflow sets `prefs.browser` to `"relay"` now checks, before it starts, that the relay's native host is registered in Chrome, Chromium or Brave. When it is not (an omp update can unregister it), the start is refused with "browser relay: …" like any other machine readiness failure, instead of the agent asking whether the relay is on.
+### Fixed
+
+- **Sideways scroll in a menu sheet.** A label that is one unbreakable string (a tab name, a path) wraps like a description now, instead of pushing its row past the sheet's edge and scrolling the whole list off to the left.
+- **Tabs of this space.** A tab's terminal title shows under its label in the sheet's rows only when it differs from the label: a repeated title made every row look like a duplicated entry, worse on a phone where long labels also wrapped.
+- **Credentials in workspace, tab and pane names are masked.** A workspace or terminal launched from a URL carrying `user:password@` (a proxy, an ssh target) showed the secret in the machine list, the tab bar and the pane title — it now masks `user:password@` as `…@` everywhere.
 
 ## [3.2.2] — 2026-11-19
 

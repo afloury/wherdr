@@ -142,7 +142,7 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   the pm tasks folder; another project's task only within its reach), or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task
   has some). On a wide computer they open in the side panel, in place of Settings (drag its left
   edge, or the arrow keys on it, to resize; double-click: default width; kept on the device): the file
-  read-only as in Files (an HTML page runs as a page: see [Files](files.md)), the screenshots by step, before and after side by side, with a button
+  read-only as in Files, as a document under the panel's one header (see [One file shown alone](files.md#one-file); an HTML page runs as a page), the screenshots by step, before and after side by side, with a button
   to open the task. On a phone a card shows above the message field, and a tap opens a sheet
   (before and after toggled). A tap on a shown image (the file, an image of a shown Markdown
   file, a screenshot) opens the full-screen viewer, with zoom and pan, through the images shown
@@ -190,8 +190,13 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   the attachment that failed*), as it waits for an upload still running (*Photo is uploading…*).
   A photo sent from this device shows in the message at once, from its own copy; an image that
   fails to load is tried again once, then shows *Tap to reload*.
-  A sent file shows as a chip (icon and original name) in the message and its history, also in
-  conversations from v2; a tap opens or downloads it. A photo stays a picture in the message,
+  A sent message shows its attachments on their own row above its bubble, outside it, on the
+  bubble's side (right for yours), wrapping onto more rows; the bubble holds only the text (none
+  when there is no text). Photos are plain square thumbnails (a single photo larger); files and
+  pasted text are the field's square tiles, without the cross: a sent file (original name) in the
+  message and its history, also in conversations from v2, a tap opens or downloads it; photos past nine end on a *+N* tile, a tap
+  on a photo opens the viewer on all the message's photos, and an image an action already showed
+  higher up is a small *Same image as above* link. A photo stays a picture in the message,
   never its file path, also when the message was sent again (**Send now**, **Retry**) or waited
   in the agent's queue.
   Slash commands typed in the field (`/compact`, `/clear`…) are sent as text; **+** also lists
@@ -200,8 +205,8 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
   inside the field on its right, on a phone. A long pasted text (log, output) becomes a
-  tile in the field (*N lines*), sent to the agent as it is and shown as a "Pasted text · N lines"
-  card in the conversation; both open in full with Copy; long typed messages fold with Show more. The
+  tile in the field (*N lines*), sent to the agent as it is and shown as the same tile in the
+  conversation; both open in full with Copy; long typed messages fold with Show more. The
   draft (text, quotes, attachments) is kept per agent, across reloads.
 - **omp context**: in the header, after the state, a small gauge with the percentage of omp's
   context window and the estimated tokens (`68% · 136K`); select it for the window, the exact
@@ -255,7 +260,7 @@ No
 - Several references fit in one message, each followed by its answer.
 - Anything else is your own text: a `>` at the start of a line, a `↳` line of an unknown type or
   with words after its dash. Text you paste never becomes a reference either: a pasted line that
-  reads like one gets a `\` before its `↳`. A long paste, shown as a **Pasted text** card, is
+  reads like one gets a `\` before its `↳`. A long paste, shown as a **Pasted text** tile, is
   sent exactly as it was pasted.
 - In the conversation, each reference of a sent message shows as a quote; tap it to see the
   message it names. Messages sent earlier with `> ` lines still show as quotes.

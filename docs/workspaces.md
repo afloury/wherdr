@@ -318,6 +318,10 @@ projects instead. A feature has no agent and no step of its own; its
 sub-tasks are ordinary tasks of the members, one per repository. Each
 sub-task's card on the board shows its feature's id (`WS-3`) as a tag.
 
+To add one yourself, use **Add a task** on the board and pick the workspace: its
+only type is *feature*, and the form has no weight, *After* or *Start now*
+for it, since a feature never starts. No workflow type is needed.
+
 The workspace's coordinator runs them with no question to you:
 
 - `wherdr pm feature add "<title>" [--description "<text>"]`: a new feature.

@@ -9,6 +9,7 @@ import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolVie
 import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
+import { sentSplit } from '~/utils/attachTiles'
 import { folderGuesses } from '~/utils/pathFallback'
 import { uploadNames, uploadSrc } from '#shared/queuedMatch'
 import { userMessageParts } from '~/utils/userMessage'
@@ -632,11 +633,11 @@ const unsentPane = computed<Pane>(old => (old && old.id === props.pane.id && old
   && old.inputText === props.pane.inputText && JSON.stringify(old.draft) === JSON.stringify(props.pane.draft) ? old : props.pane))
 const waitFor = computed(() => waitingOn(props.pane))
 // Same props objects for the messages on each render (none built inline).
-// A user message is one framed bubble: its images first, then its text, so a
-// message of images only still reads as the user's (right side, frame, time).
+// A user message: its attachments on their own row above the bubble
+// (MsgAttachments), the bubble holds only its text (none: no bubble).
 const userParts = weakMemo((b: Block & { k: 'user' }) => [{ type: 'text' as const, text: b.text || ' ' }])
 const userUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: 'msg-bubble' }))
-const userRoot = (b: Block & { k: 'user' }) => (b.text.trim() || b.files.length ? 'msg msg-user' : 'msg msg-user msg-no-text')
+const userRoot = (b: Block & { k: 'user' }) => (sentSplit(b.text, b.pasted).text.trim() ? 'msg msg-user' : 'msg msg-user msg-no-text')
 const textParts = weakMemo((b: { text: string }) => [{ type: 'text' as const, text: b.text }])
 const aiUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: 'md' }))
 const pendingUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: root.includes(' queued') ? 'msg-bubble queued' : 'msg-bubble' }))
@@ -1321,9 +1322,11 @@ function openPathMenu(el: HTMLElement, path?: string) {
   const p = path || el.dataset.path || (el.textContent || '').trim()
   if (p) openCodeMenu(el, pathMenuItems(p), fileName(p))
 }
-const filePeek = reactive({ open: false, path: '' })
+const filePeek = reactive({ open: false, path: '', name: '' })
+// Where the file's folder · size and controls go: under the window's title.
+const filePeekHead = `file-head-${useId()}`
 function previewFile(p: string) {
-  Object.assign(filePeek, { open: true, path: p })
+  Object.assign(filePeek, { open: true, path: p, name: '' })
 }
 async function downloadFile(p: string) {
   try { await saveFile(`/api/files/download?pane=${encodeURIComponent(props.pane.id)}&path=${encodeURIComponent(p)}&from=chat`, fileName(stripPosition(p))) }
@@ -1387,8 +1390,8 @@ const queuedBubbles = computed(() => queuedList.value.filter(q => !q.note))
 // wherdr's own notes in Claude's queue (a card's outcome, a wake), tagged like
 // their row in the conversation: Claude's Send now has the message it sends (WHR-550).
 const queuedNotes = computed(() => queuedList.value.filter(q => q.note))
-// Same bubble as a message in the conversation (thumbnails inside, above the
-// text), so nothing moves when it lands.
+// Same bubble as a message in the conversation (attachments above it), so
+// nothing moves when it lands.
 const pendingParts = (q: { body: string }) => [{ type: 'text' as const, text: q.body || ' ' }]
 // A message the server never got: "Cancel" puts the app's copy back into the
 // field, "Retry" sends it again.
@@ -1701,6 +1704,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
       >
         <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : 'can-reply', { asking: asked, skeleton }]" @click="onListClick" @keydown="onListKey">
           <div v-if="shownUnavailable === 'not_found' && firstPrompt" class="msg-user-wrap" data-testid="first-prompt">
+            <MsgAttachments :srcs="[]" :files="[]" :text="firstPrompt" />
             <UChatMessage
               id="first-prompt" role="user" side="right" variant="soft" :parts="firstParts(firstPrompt)"
               :ui="FIRST_UI"
@@ -1808,15 +1812,14 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <button v-if="b.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(b.origin)">
                   <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ b.reply.time }}</span><span class="msg-quote-text">{{ b.reply.excerpt }}</span>
                 </button>
+                <MsgAttachments :srcs="b.srcs" :files="b.files" :text="b.text" :pasted="b.pasted" :offline="readOnly" @file="openPathMenu" />
                 <UChatMessage
                   :id="b.key" role="user" side="right" variant="soft"
                   :parts="userParts(b)"
                   :ui="userUi(userRoot(b))"
                 >
                   <template #content>
-                    <span v-if="b.srcs.length" class="msg-media"><MsgThumbs :srcs="b.srcs" :offline="readOnly" /></span><span v-if="b.files.length" class="msg-file-chips">
-                      <FileChip v-for="f in b.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                    </span><UserText :text="b.text" :pasted="b.pasted" />
+                    <UserText :text="b.text" :pasted="b.pasted" />
                   </template>
                 </UChatMessage>
                 <MsgStamp v-if="b.ts" :ts="b.ts" />
@@ -1974,15 +1977,14 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
+            <MsgAttachments :srcs="q.srcs" :files="q.files" :text="q.body" :pasted="q.pasted" :missing="q.missing" @file="openPathMenu" />
             <UChatMessage
               :id="`q:${q.id}`" role="user" side="right" variant="soft"
               :parts="pendingParts(q)"
-              :ui="pendingUi(`msg msg-user msg-pending sent${q.body || q.files.length ? '' : ' msg-no-text'}`)"
+              :ui="pendingUi(`msg msg-user msg-pending sent${sentSplit(q.body, q.pasted).text ? '' : ' msg-no-text'}`)"
             >
               <template #content>
-                <span v-if="q.srcs.length || q.missing" class="msg-media"><MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span></span><span v-if="q.files.length" class="msg-file-chips">
-                  <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                </span><UserText :text="q.body" :pasted="q.pasted" />
+                <UserText :text="q.body" :pasted="q.pasted" />
               </template>
             </UChatMessage>
             <div class="queued-tag sent" :role="queuedSending(q) ? 'status' : undefined">
@@ -1993,15 +1995,14 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
+            <MsgAttachments :srcs="q.srcs" :files="q.files" :text="q.body" :pasted="q.pasted" :missing="q.missing" @file="openPathMenu" />
             <UChatMessage
               :id="`q:${q.id}`" role="user" side="right" variant="soft"
               :parts="pendingParts(q)"
-              :ui="pendingUi(`msg msg-user msg-pending queued${q.body || q.files.length ? '' : ' msg-no-text'}`)"
+              :ui="pendingUi(`msg msg-user msg-pending queued${sentSplit(q.body, q.pasted).text ? '' : ' msg-no-text'}`)"
             >
               <template #content>
-                <span v-if="q.srcs.length || q.missing" class="msg-media"><MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span></span><span v-if="q.files.length" class="msg-file-chips">
-                  <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                </span><UserText :text="q.body" :pasted="q.pasted" />
+                <UserText :text="q.body" :pasted="q.pasted" />
               </template>
             </UChatMessage>
             <div v-if="q.state === 'failed' && !q.inInput" class="queued-tag failed" role="alert">
@@ -2035,8 +2036,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
     <UDropdownMenu v-if="!sheetMenus" v-model:open="codeMenu.open" :items="codeMenuDropdown" :content="{ align: 'start', side: 'bottom', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
       <span class="path-anchor" :style="{ left: `${codeMenu.x}px`, top: `${codeMenu.y}px`, width: `${codeMenu.w}px`, height: `${codeMenu.h}px` }" aria-hidden="true" />
     </UDropdownMenu>
-    <AppSheet v-model:open="filePeek.open" :title="fileName(stripPosition(filePeek.path))" wide full screen>
-      <FilesView v-if="filePeek.open" :key="filePeek.path" :pane-id="paneId" :file="filePeek.path" />
+    <AppSheet v-model:open="filePeek.open" :title="filePeek.name || fileName(stripPosition(filePeek.path))" wide full screen>
+      <template #sub><div :id="filePeekHead" /></template>
+      <FilesView v-if="filePeek.open" :key="filePeek.path" :pane-id="paneId" :file="filePeek.path" :head="filePeekHead" @name="filePeek.name = $event" />
     </AppSheet>
   </div>
 </template>
