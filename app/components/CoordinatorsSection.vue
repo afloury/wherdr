@@ -52,8 +52,13 @@ async function run(c: CoordinatorView, fn: () => Promise<unknown>) {
   busy.value = c.project
   error.value = ''
   try { await fn() }
-  catch (e) { error.value = (e as Error).message }
+  catch (e) { showError(c, e) }
   finally { busy.value = '' }
+}
+// A failed start is said on its row, not a second time under the list.
+const showError = (c: CoordinatorView, e: unknown) => {
+  const message = (e as Error).message
+  if (coordinatorStartErrors.value[c.project] !== message) error.value = message
 }
 function open(c: CoordinatorView) {
   if (busy.value || rowMenu.swallowClick() || dnd.swallowClick()) return
@@ -172,7 +177,7 @@ async function restart() {
     const p = await launchCoordinator(c.project, agent)
     if (p) await navigateTo(panePath(p.id))
   }
-  catch (e) { error.value = (e as Error).message }
+  catch (e) { showError(c, e) }
   finally { busy.value = '' }
 }
 const sheetOpen = computed({ get: () => !!restarting.value, set: (v) => { if (!v) restarting.value = null } })
@@ -302,7 +307,7 @@ onUnmounted(() => clearInterval(timer))
 .coord-name { display: flex; align-items: center; gap: var(--badge-gap); min-width: 0; }
 .coord-name > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .coord-text small { overflow: hidden; color: var(--muted); font: 12px/1.4 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
-.coord-text small.failed { color: var(--blocked); }
+.coord-text small.failed { color: var(--blocked); white-space: normal; overflow-wrap: anywhere; }
 .coord-go { flex: none; color: var(--dim); }
 .coord-start { display: inline-flex; flex: none; align-items: center; gap: 4px; color: var(--text-2); font: 12px/1.4 var(--mono); }
 .coord-rename { cursor: default; }

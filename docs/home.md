@@ -107,7 +107,7 @@ while it is open. A coordinator whose terminal ended (its machine restarted, say
 *Stopped*: a tap offers *Resume the conversation* (its last one, with the agent that ran it and
 the same options) or *New conversation*. One that never started (a workspace just added whose
 start failed, say) shows *Not started* with **Start**, which launches it with its saved agent; right
-after a failed start its row says *Did not start* and herdr-core's reason in one line, with
+after a failed start its row says *Did not start* and herdr-core's reason in full, with
 **Start again**. One whose first message never reached its session
 (running or stopped) says *First message not delivered*, and its menu starts with *Send again*
 (a new conversation when its session ended). Its menu (right click on a computer, long press on a
