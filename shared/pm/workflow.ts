@@ -79,8 +79,8 @@ export interface Guards {
 
 // reviewFallbackAgent and reviewFallbackModel (both, or none): the reviewer
 // started instead when the review agent's account is at its limit.
-export interface Prefs { agent?: string, model?: string, reviewAgent?: string, reviewModel?: string, reviewFallbackAgent?: string, reviewFallbackModel?: string }
-export const PREF_KEYS = ['agent', 'model', 'reviewAgent', 'reviewModel', 'reviewFallbackAgent', 'reviewFallbackModel'] as const
+export interface Prefs { agent?: string, model?: string, reviewAgent?: string, reviewModel?: string, reviewFallbackAgent?: string, reviewFallbackModel?: string, browser?: string }
+export const PREF_KEYS = ['agent', 'model', 'reviewAgent', 'reviewModel', 'reviewFallbackAgent', 'reviewFallbackModel', 'browser'] as const
 
 // Agents the engine knows how to start with a pinned model and a first message.
 export const PROGRAMS = ['claude', 'codex', 'omp'] as const
@@ -221,6 +221,7 @@ export function checkPrefs(p: unknown, path: string, errs: WorkflowError[], name
   checkKeys(p, PREF_KEYS, path, errs)
   for (const [k, v] of Object.entries(p)) {
     if (!isStr(v)) errs.push({ path: `${path}.${k}`, message: 'must be text' })
+    else if (k === 'browser' && v !== 'relay') errs.push({ path: `${path}.browser`, message: 'must be "relay"' })
     else if (AGENT_PREFS.includes(k)) { const r = resolveAgent(v as string, named); if ('reason' in r) errs.push({ path: `${path}.${k}`, message: r.reason }) }
   }
 }
