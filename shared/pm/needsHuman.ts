@@ -3,12 +3,16 @@
 // `needs-human: <kind> <url>`. The user gets a push straight away, again at 5
 // and 15 minutes while it stays unanswered, and the task shows in its own
 // *Needs you now* list (Home, Tasks to review). `needs-human: clear` ends it,
-// as does the task being done or stopped. Pure: server/utils/pmNeedsHuman.ts
+// as does the task being done or stopped, its worker's done being handled, or its step
+// changing (it never outlives the step it was said in). Pure: server/utils/pmNeedsHuman.ts
 // carries it out.
 import { LABEL } from './run'
 
-// kind: what is needed (login, passkey, 2fa, payment, approval…); url: where; at: since when; pushed: pushes sent.
-export interface NeedsHuman { kind: string, url?: string, at: number, pushed: number }
+// kind: what is needed (login, passkey, 2fa, payment, approval…); url: where; at: since when; pushed: pushes sent; step: the step it was said in.
+export interface NeedsHuman { kind: string, url?: string, at: number, pushed: number, step: number }
+
+// Still open: its step is the task's current one.
+export const needsHumanOpen = (task: { needsHuman?: NeedsHuman, step?: { at: number } }) => task.needsHuman && task.needsHuman.step === task.step?.at ? task.needsHuman : undefined
 
 const PREFIX = 'needs-human:'
 export const NEEDS_HUMAN_CMD = `hc label "$HC_TERMINAL_ID" "${LABEL.report}=${PREFIX} <kind> <url>"`

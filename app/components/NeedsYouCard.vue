@@ -20,9 +20,9 @@ watch(taskSheetTick, load) // an action in a task's sheet or the review sheet
 </script>
 
 <template>
-  <section v-if="tasks.length" class="agent-group needs-group" data-testid="needs-you">
-    <b class="needs-title">{{ tl('Needs you now') }}</b>
-    <button v-for="x in tasks" :key="x.id" type="button" class="needs-card press-row" :data-task="x.id" data-testid="needs-you-row" @click="openTaskSheet(x.id)">
+  <section v-if="tasks.length" class="agent-group blocked needs-group" data-testid="needs-you">
+    <h2 class="group-title"><span>{{ tl('Needs you now') }}</span></h2>
+    <button v-for="x in tasks" :key="x.id" type="button" class="review-card needs-card press-row" :data-task="x.id" data-testid="needs-you-row" @click="openTaskSheet(x.id)">
       <ProjectBadge :text="x.shown" :color="x.color" />
       <span class="needs-text">
         <b>{{ x.title }}</b>
@@ -35,11 +35,7 @@ watch(taskSheetTick, load) // an action in a task's sheet or the review sheet
 
 <style scoped>
 .needs-group { display: grid; gap: 0; }
-.needs-title { padding: 8px 12px 4px; color: var(--blocked); font: 600 12px/1.3 var(--mono); text-transform: uppercase; }
-.needs-card { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 56px; padding: 10px 12px; border: 1px solid var(--line); border-left: 2px solid var(--blocked); background: var(--surface); color: var(--text); text-align: left; cursor: pointer; }
 .needs-card + .needs-card { border-top: 0; }
-.needs-card:hover { background: var(--surface-2); }
-.needs-card:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .needs-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .needs-text b { overflow: hidden; font: 600 14px/1.3 var(--display); text-overflow: ellipsis; white-space: nowrap; }
 .needs-text small { display: flex; min-width: 0; color: var(--muted); font: 12px/1.4 var(--mono); white-space: nowrap; }

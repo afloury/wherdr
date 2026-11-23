@@ -8,11 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### New
 
-- **A worker that needs a person can say so, and you get a push.** A worker that cannot go on without you (a login, passkey, 2FA, payment, an admin's approval) runs `hc label "$HC_TERMINAL_ID" "wherdr.report=needs-human: <kind> <url>"`. You get a notification straight away with a link to the task, again after 5 and 15 minutes if it is still open, and the task shows in its own **Needs you now** list on Home and first in Tasks to review. The worker clears it with `needs-human: clear`; a done or stopped task clears it too.
+- **A worker that needs a person can say so, and you get a push.** A worker that cannot go on without you (a login, passkey, 2FA, payment, an admin's approval) runs `hc label "$HC_TERMINAL_ID" "wherdr.report=needs-human: <kind> <url>"`. You get a notification straight away with a link to the task, again after 5 and 15 minutes if it is still open, and the task shows in its own **Needs you now** list on Home and first in Tasks to review. The worker clears it with `needs-human: clear`; a done or stopped task clears it too, as does the worker's `done` or its step changing.
 
-### Fixed
-
-- **An omp conversation shows a second after omp wrote it, and is never the tty's previous omp's.** omp creates its conversation file with its first reply, not when it starts, and wherdr kept “no conversation” for 8 seconds after each look, so a new omp's pane stayed on “No conversation for this agent yet.” (or on the message you had sent) for ten seconds or more after the reply. It now looks again every second until the file exists. And omp names its session file in `~/.omp/agent/terminal-sessions/<tty>`, where a new terminal that reuses a tty finds the previous omp's file until the new omp rewrites it, a moment after starting: the pane could show that other conversation for a few seconds. A file older than the terminal is now ignored, unless omp was started with `-c`/`--continue`, `-r`/`--resume` or `--restore`. Where the tty cannot be read or has no such file, the conversation is the newest one in omp's folder for the terminal's folder (the lookup of 3.2.2).
 ### Fixed
 
 - **Sideways scroll in a menu sheet.** A label that is one unbreakable string (a tab name, a path) wraps like a description now, instead of pushing its row past the sheet's edge and scrolling the whole list off to the left.

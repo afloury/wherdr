@@ -1,7 +1,7 @@
 // A worker's `needs-human: <kind> <url>` report carried out (rules in
 // shared/pm/needsHuman.ts): saved on the task, and a push straight to the user
 // with a link to the task, sent again at 5 and 15 minutes while it is not cleared.
-import { NEEDS_HUMAN_CMD, needsHumanDue, parseNeedsHuman, type NeedsHuman } from '../../shared/pm/needsHuman'
+import { NEEDS_HUMAN_CMD, needsHumanDue, needsHumanOpen, parseNeedsHuman, type NeedsHuman } from '../../shared/pm/needsHuman'
 import type { Run, Task } from '../../shared/pm/run'
 import { shownTaskId } from '../../shared/pm/projectKey'
 import type { PmLaunchDeps } from './pmLaunch'
@@ -21,7 +21,7 @@ export async function needsHumanReport(deps: PmLaunchDeps, run: Run, label: stri
   }
   // The same ask said again keeps its clock: no second first push.
   if (task.needsHuman?.kind === said.kind && task.needsHuman.url === said.url) return
-  await store.logTask({ ...task, needsHuman: { ...said, at: now, pushed: 0 } }, 'engine', `needs a person: ${said.kind}${said.url ? ` ${said.url}` : ''}`)
+  await store.logTask({ ...task, needsHuman: { ...said, at: now, pushed: 0, step: task.step!.at } }, 'engine', `needs a person: ${said.kind}${said.url ? ` ${said.url}` : ''}`)
   await needsHumanTick(store, now)
 }
 
@@ -36,13 +36,13 @@ const pushNotify: Notify = async (task, n, shown, again) =>
     : 0
 
 // The pushes due: noted on the task before sending, so a failure never repeats one.
-// One that is done, stopped or archived is over.
+// One that is done, stopped or archived, or whose step moved on, is over.
 export async function needsHumanTick(store: PmStore, now = Date.now(), notify: Notify = pushNotify) {
   const projects = await store.projects()
   for (const task of await store.tasks()) {
     const n = task.needsHuman
     if (!n) continue
-    if (task.step?.done || task.stopped || task.archived) { await store.logTask({ ...task, needsHuman: undefined }, 'engine', `needs a person: over (${n.kind})`); continue }
+    if (task.step?.done || task.stopped || task.archived || !needsHumanOpen(task)) { await store.logTask({ ...task, needsHuman: undefined }, 'engine', `needs a person: over (${n.kind})`); continue }
     if (!needsHumanDue(n, now)) continue
     await store.saveTask({ ...task, needsHuman: { ...n, pushed: n.pushed + 1 } })
     await notify(task, n, shownTaskId(projects, task.id), n.pushed > 0).catch(() => 0)

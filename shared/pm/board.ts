@@ -17,7 +17,7 @@ import { MERGE_REFUSED, ordinal } from './mergeQueue'
 import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
 import { AGENT_ENDED, retriesAction, waitsShort, wasReleased } from './release'
 import { recovering } from './incident'
-import { needsHumanTurn, type NeedsHuman } from './needsHuman'
+import { needsHumanOpen, needsHumanTurn, type NeedsHuman } from './needsHuman'
 import { showIds } from './projectKey'
 import { questionKey } from './summary'
 import { MERGE_KINDS, mergedByStep } from './cleanup'
@@ -136,7 +136,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
   const queued = (queue ?? 0) > 1 || (!!queueOut && !queueOut.startsWith(MERGE_REFUSED))
   // Just updated with its base: the user's turn waits for GitHub's read of the new commit (prUpdating).
   const settling = !!s?.caughtUp && !caughtUpSettled(s.caughtUp, undefined, now)
-  const needsHuman = s?.done || task.stopped ? undefined : task.needsHuman
+  const needsHuman = s?.done || task.stopped ? undefined : needsHumanOpen(task)
   const yourTurn = s?.done ? undefined : (needsHuman ? needsHumanTurn(needsHuman) : undefined) || ((queued && s?.yourTurn?.reason === 'action') || settling ? undefined : s?.yourTurn?.badge) || (task.state === 'waiting' && !recovering(task) ? task.waiting || 'Waiting' : undefined)
     || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
     // Work handed to an agent that cannot do it, no coordinator woken for it: the user's.

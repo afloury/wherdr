@@ -154,7 +154,7 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   const work = c.task.step!.agent
   if (!ev && work && run.role === 'worker') {
     const retry = retriesAction(c.plan, c.task.step!)
-    await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!) }, 'engine', `${work.kind}: the worker says it is done${retry ? `, ${step!.id} is tried again` : ''}`)
+    await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!), needsHuman: undefined }, 'engine', `${work.kind}: the worker says it is done${retry ? `, ${step!.id} is tried again` : ''}`)
     // A failed action it fixed: tried again now; failing again, it is back in Your turn with the new error.
     if (retry) startAction(deps, run.task, () => {})
     return
@@ -173,7 +173,7 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   if (res.refused) return void await Promise.all([tell(`${res.refused}\n\nWhen done: ${DONE_CMD}`), deps.store.logTask(c.task, 'engine', `${step!.id}: ${res.refused}`)])
   const what = ev.kind === 'verdict' ? `verdict, ${ev.findings.length} finding(s)` : 'done'
   const fresh = await deps.store.task(run.task)
-  await deps.store.logTask({ ...fresh!, step: res.state, ...signalKept(fresh!, step!.id, ev, read) }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
+  await deps.store.logTask({ ...fresh!, step: res.state, needsHuman: undefined, ...signalKept(fresh!, step!.id, ev, read) }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
 }
 
 // The worker pushed another branch than the task's: the engine pushes, opens

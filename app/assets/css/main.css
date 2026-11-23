@@ -494,6 +494,10 @@ body.short-bottom { --safe-bottom: 0px; }
 .group-title .group-sort:hover { color: var(--text); }
 .agent-group.blocked .group-title { color: var(--rose); }
 .agent-group.blocked .group-title::before { background: var(--rose); }
+/* Home's attention cards (ReviewCard, NeedsYouCard): a full-width row with a blocked-colored left rule. */
+.review-card { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 56px; padding: 10px 12px; border: 1px solid var(--line); border-left: 2px solid var(--blocked); background: var(--surface); color: var(--text); text-align: left; cursor: pointer; }
+.review-card:hover { background: var(--surface-2); }
+.review-card:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 
 /* Small mono tag on a card (usage limit). */
 .card-tag {

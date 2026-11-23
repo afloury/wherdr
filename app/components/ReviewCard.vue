@@ -34,9 +34,6 @@ watch(homeRetryTick, () => { if (homeFirstLoad.handle !== 'ok') load() }) // the
 </template>
 
 <style scoped>
-.review-card { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 56px; padding: 10px 12px; border: 1px solid var(--line); border-left: 2px solid var(--blocked); background: var(--surface); color: var(--text); text-align: left; cursor: pointer; }
-.review-card:hover { background: var(--surface-2); }
-.review-card:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .review-count { flex: none; min-width: 28px; color: var(--blocked); font: 600 20px/1 var(--display); text-align: center; }
 .review-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .review-text b { font: 600 14px/1.3 var(--display); }
