@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **`/` at the start of a message to omp or Claude Code lists the commands and skills that agent has.** Type `/` (or pick `/` in **+**) and a list opens above the field, narrowing as you type: `/ret` finds `skill:retro` by a word of its name or by its description, so a skill is found without knowing what it is called. `↑` `↓` move, `Tab` or `Enter` complete the highlighted one (`Enter` still sends a command typed in full), `Esc` closes it, and a tap picks on a phone. The list is asked of the agent itself, with no model call (omp's `--mode rpc` `get_available_commands`, Claude Code's stream-json `initialize`), on the pane's own machine and in its folder, so it holds that machine's user, project and plugin skills; it is cached for a minute. Claude Code is started without your hooks and MCP servers, both agents with DISABLE_AUTOUPDATER=1. Not covered: the commands an agent only has in its own interactive terminal (omp's `/new`, `/resume`, `/settings`, `/exit`…, Claude Code's `/resume`, `/permissions`, `/status`, `/help`…), which neither can list from outside; other agents keep the plain field.
+
 ### Fixed
 
 - **Sideways scroll in a menu sheet.** A label that is one unbreakable string (a tab name, a path) wraps like a description now, instead of pushing its row past the sheet's edge and scrolling the whole list off to the left.

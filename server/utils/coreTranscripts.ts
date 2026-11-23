@@ -70,12 +70,13 @@ export const coreFailure = (e: unknown) => `herdr-core: ${e instanceof CoreError
 // The core's error kind of a failed remote read, from its reason, else null.
 export const coreFailureKind = (e: unknown) => /^herdr-core: ([a-z_]+)$/.exec(String((e as { message?: unknown } | null)?.message ?? ''))?.[1] ?? null
 
+// `on`: the core machine to run on; empty, the machine of herdr-core itself.
 export function coreShell(call: Call, on: string): ShellExec {
   return async (script, args = [], opts = {}): Promise<ExecResult> => {
     const seconds = Math.max(1, Math.ceil((opts.timeoutMs ?? 15000) / 1000))
     try {
       const r = await call<{ code: number | null, stdout?: string, stderr?: string, timed_out?: boolean, truncated?: boolean }>('machine.exec', {
-        argv: ['sh', '-c', script, 'sh', ...args], on, timeout: seconds,
+        argv: ['sh', '-c', script, 'sh', ...args], ...(on ? { on } : {}), timeout: seconds,
         ...(opts.input ? { input: opts.input.toString('base64') } : {}),
       }, seconds * 1000 + 5000)
       const stdout = Buffer.from(r.stdout || '', 'base64')
