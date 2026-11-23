@@ -11,6 +11,7 @@ All notable changes to this project are documented here. The format follows
 - **Sideways scroll in a menu sheet.** A label that is one unbreakable string (a tab name, a path) wraps like a description now, instead of pushing its row past the sheet's edge and scrolling the whole list off to the left.
 - **Tabs of this space.** A tab's terminal title shows under its label in the sheet's rows only when it differs from the label: a repeated title made every row look like a duplicated entry, worse on a phone where long labels also wrapped.
 - **Credentials in workspace, tab and pane names are masked.** A workspace or terminal launched from a URL carrying `user:password@` (a proxy, an ssh target) showed the secret in the machine list, the tab bar and the pane title — it now masks `user:password@` as `…@` everywhere.
+- **An omp coordinator finds `wherdr` again after herdr-core restarted its terminal.** A terminal kept across a herdr-core restart (a reboot, say) comes back as a bare shell, and an omp typed into it ran `wherdr pm …` into “command not found”: only the start line puts the coordinator's `bin/` on the PATH, and the bare shell has the terminal's environment (`WHERDR_URL`, `WHERDR_PM_TOKEN`) without it. An omp coordinator now starts with `PI_SHELL_PREFIX` set, which has omp put that folder first in the PATH of each command its bash tool runs, once. An omp coordinator already running gets it once started from wherdr again.
 
 ## [3.2.2] — 2026-11-19
 
