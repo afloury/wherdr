@@ -814,6 +814,24 @@ describe('role files', () => {
     expect(line()).toMatch(new RegExp(`exec 'omp' '--tools' '${OMP_COORDINATOR_TOOLS}' '--add-dir' '/src/co' '--append-system-prompt' '[^']*coordinator, not a worker[^']*' '--resume=/h/.omp/agent/sessions/x/CO.jsonl'$`))
   })
 
+  it('a restart of omp with no session file yet starts a new conversation, for a coordinator and for Alfred', async () => {
+    const { runs, deps } = fakeCore()
+    const noSession = { ...deps, alfredHome: path.join(dir, 'alfred'), pollMs: 1, call: (async (method: string, params: { argv?: string[] }) =>
+      method === 'machine.exec' && params.argv?.[2]?.includes('.omp/agent/sessions') ? { code: 0, stdout: '' } : deps.call(method, params)) as typeof deps.call }
+    const line = () => String(runs.filter(r => r.method === 'terminal.run').at(-1)!.line)
+    await startCoordinator(noSession, 'CO', { program: 'omp' }, urls)
+    await startCoordinator(noSession, 'CO', { resume: true }, urls, ['A task was reported'])
+    expect(line()).not.toContain('--resume')
+    expect(line()).toContain('A task was reported') // as the argument, as at a new start
+    await startCoordinator(noSession, MAIN, { program: 'omp' }, urls)
+    const greetings = () => runs.filter(r => r.method === 'terminal.send').length
+    await vi.waitFor(() => expect(greetings()).toBeGreaterThan(0))
+    const before = greetings()
+    await startCoordinator(noSession, MAIN, { resume: true }, urls)
+    expect(line()).toMatch(/exec 'omp'$/)
+    await vi.waitFor(() => expect(greetings()).toBeGreaterThan(before))
+  })
+
   it('first start on a project with no accepted workflow: no template needed, its first reply proposes one, in the user\'s turn; not again', async () => {
     const { runs, deps } = fakeCore()
     const projects = JSON.parse(await fs.readFile(store.files.projects, 'utf8'))
@@ -910,9 +928,9 @@ describe('role files', () => {
     expect(coordinatorArgs('omp', '/h/c', '/src/co', true)).toEqual(['omp', '--add-dir', '/src/co'])
     expect(coordinatorArgs('omp', '/h/c')).toEqual(['omp'])
     // The messages go on omp's command line, and its conversation can be taken up again.
-    expect([canResume('omp', 'CO'), promptAsArg('omp', 'CO'), canResume('pi', 'CO'), promptAsArg('pi', 'CO')]).toEqual([true, true, false, false])
+    expect([canResume('omp'), promptAsArg('omp', 'CO'), canResume('pi'), promptAsArg('pi', 'CO')]).toEqual([true, true, false, false])
     // Alfred on omp: its greeting typed, its conversation can be resumed.
-    expect([canResume('omp', MAIN), promptAsArg('omp', MAIN), canResume('claude', MAIN), promptAsArg('claude', MAIN)]).toEqual([true, false, true, true])
+    expect([canResume('omp'), promptAsArg('omp', MAIN), canResume('claude'), promptAsArg('claude', MAIN)]).toEqual([true, false, true, true])
     // Which program may coordinate: omp offered for a project, any harness for Alfred.
     expect(['claude', 'codex', 'omp', 'pi'].map(p => canRunCoordinator(p, 'CO'))).toEqual([true, true, true, false])
     expect(canRunCoordinator('pi', MAIN)).toBe(true)

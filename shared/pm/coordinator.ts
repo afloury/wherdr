@@ -605,7 +605,7 @@ export function coordinatorArgs(program: CoordinatorProgram, folder: string, rep
 // Claude, Codex and omp can take up their last conversation again. Alfred's
 // resume types no greeting (its start prompt is for a new conversation) and its
 // AGENTS.md is rewritten at each start, so resuming omp is safe for it.
-export const canResume = (program: CoordinatorProgram, _key: string) => program === 'claude' || program === 'codex' || program === 'omp'
+export const canResume = (program: CoordinatorProgram) => program === 'claude' || program === 'codex' || program === 'omp'
 // Claude and Codex, and omp for a project's coordinator, take the first message
 // as an argument; the others (Alfred on omp too) get it typed once they are ready.
 export const promptAsArg = (program: CoordinatorProgram, key: string) => program === 'claude' || program === 'codex' || (program === 'omp' && key !== MAIN)

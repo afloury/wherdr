@@ -175,7 +175,7 @@ async function restart() {
   try {
     await api('/api/pm/coordinator-agent', { project: c.project, ...agent })
     // The agent that ran its conversation again: that conversation carries on.
-    const p = await launchCoordinator(c.project, c.ran?.program === program && canResume(program, c.project) ? 'resume' : agent)
+    const p = await launchCoordinator(c.project, c.ran?.program === program && canResume(program) ? 'resume' : agent)
     if (p) await navigateTo(panePath(p.id))
   }
   catch (e) { showError(c, e) }

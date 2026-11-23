@@ -46,7 +46,7 @@ async function start(program: AlfredProgram) {
   sheet.value = false
   try {
     // The agent that ran its conversation again: that conversation carries on.
-    const p = await launchCoordinator(MAIN, alfred.value?.ran === program && canResume(program, MAIN) ? 'resume' : { program })
+    const p = await launchCoordinator(MAIN, alfred.value?.ran === program && canResume(program) ? 'resume' : { program })
     await loadAlfred()
     if (p) await navigateTo(panePath(p.id))
   }
