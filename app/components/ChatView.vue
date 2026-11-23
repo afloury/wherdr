@@ -103,7 +103,8 @@ async function restoreChat() {
   }
   synced = true
   await apply(() => {
-    chat.value = { ...fresh(), file: saved.file || null, tail: saved.items, held: true }
+    // With what the agent still holds: a message sent while it works is in no item yet.
+    chat.value = { ...fresh(), file: saved.file || null, tail: saved.items, queue: readOnly.value ? [] : saved.queue ?? [], held: true }
     savedAt.value = saved.at
   })
   touchChat(props.pane.id)
@@ -122,7 +123,7 @@ function scrollToEnd(force: boolean) {
     held = false
     // At once (no frame of a conversation opened at its top), and again once laid out.
     pin(b)
-    requestAnimationFrame(() => { if (stick) pin(b) })
+    requestAnimationFrame(() => { if (!unmounted && stick && !held && box.value === b) pin(b) })
   }
 }
 // Updates the conversation while keeping the current reading position: stuck to the bottom if
@@ -165,7 +166,49 @@ let lastTop = 0
 // scroll events that follow nor a status change, until the reader scrolls
 // or the draft is sent or emptied.
 let held = false
+// The last scroll gesture (wheel, touch drag, pointer on the box, or scroll
+// keys on the document outside editable fields): a scroll away from the bottom
+// is the reader's intent only right after one (or while the pointer stays held
+// down on the box, e.g. dragging the scrollbar). The composer's autoresize pass
+// collapses the field to one row and back on every keystroke, which truncates
+// the box's scrollTop without moving the reader — a scroll event with no
+// gesture behind it, undone below before it paints.
+let gestureUntil = 0
+let pointerHeld = false
+const GESTURE_MS = 400
+const SCROLL_KEYS = new Set(['PageUp', 'PageDown', 'ArrowUp', 'ArrowDown', 'Home', 'End', ' '])
+function onGesture() { gestureUntil = Date.now() + GESTURE_MS }
+function hasGesture(now = Date.now()) { return pointerHeld || now <= gestureUntil }
+function onPointerDown() {
+  pointerHeld = true
+  onGesture()
+}
+function onPointerEnd() { pointerHeld = false }
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof Element)) return false
+  if ((target as HTMLElement).isContentEditable) return true
+  return Boolean(target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), .composer, .xterm'))
+}
+function onDocumentKey(e: KeyboardEvent) {
+  if (e.defaultPrevented || e.altKey || !SCROLL_KEYS.has(e.key)) return
+  if (isEditableTarget(e.target) || isEditableTarget(document.activeElement)) return
+  onGesture()
+}
+// A jump of the app's own (a quote's original, a search hit, an unanswered
+// question) leaves the bottom on purpose: its smooth scroll starts at the end,
+// so the animation's first frames still read "at the end" — re-arming the
+// following there would make the next frame a scroll away to undo, and the
+// jump would never leave the bottom. For a moment after a jump its own scroll
+// events are bookkeeping only.
+let jumpedAt = 0
+const JUMP_MS = 1000
+// A jump leaves the end, and its scroll belongs to it.
+function leaveEnd() {
+  stick = false
+  jumpedAt = Date.now()
+}
 function onUserScroll(e: Event) {
+  onGesture()
   held = false
   if (e instanceof WheelEvent && e.deltaY < 0) stick = false
   interruptThought()
@@ -181,21 +224,38 @@ onMounted(() => {
   if (box.value) ro.observe(box.value)
   // Content that grows afterwards (images loaded, blocks expanded).
   if (listEl.value) ro.observe(listEl.value)
+  document.addEventListener('keydown', onDocumentKey)
+  window.addEventListener('pointerup', onPointerEnd, true)
+  window.addEventListener('pointercancel', onPointerEnd, true)
+  window.addEventListener('blur', onPointerEnd)
 })
 onBeforeUnmount(() => {
   if (box.value && rendered.value) saveReadingPosition(props.pane.id, chat.value.file, box.value)
   // Leaving the pane stops the reply it was reading aloud.
   stopSpeaking(`${props.pane.id}:`)
 })
-onUnmounted(() => ro?.disconnect())
+onUnmounted(() => {
+  ro?.disconnect()
+  pointerHeld = false
+  document.removeEventListener('keydown', onDocumentKey)
+  window.removeEventListener('pointerup', onPointerEnd, true)
+  window.removeEventListener('pointercancel', onPointerEnd, true)
+  window.removeEventListener('blur', onPointerEnd)
+})
 function onScroll() {
   const b = box.value
   if (!b) return
   lastScroll = Date.now()
   codeMenu.open = false
-  if (!held) {
+  if (!held && Date.now() - jumpedAt >= JUMP_MS) {
     if (atEnd(b)) stick = true
-    else if (b.scrollTop < lastTop - 1) stick = false
+    else if (b.scrollTop < lastTop - 1) {
+      if (hasGesture()) stick = false
+      // Not a gesture (the composer's collapse, an anchor correction): put the
+      // view back. The scroll event dispatches before paint, so the undo is
+      // never seen.
+      else if (stick) { pin(b); return }
+    }
   }
   lastTop = b.scrollTop
   if (!stick) findAnchor()
@@ -380,10 +440,14 @@ async function loadStep(current: () => boolean): Promise<boolean> {
   const pane = props.pane.id
   const stale = () => !current() || pane !== props.pane.id
   try {
-    const ready = chat.value.tailStart === null ? await chatIntent.take(props.pane) : undefined
+    const firstRead = chat.value.tailStart === null
+    const openedAt = performance.now()
+    const ready = firstRead ? await chatIntent.take(props.pane) : undefined
     if (stale()) return false
     const startedAt = Date.now()
     const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
+    // From the open to the answer, a preloaded read included (its own time: useChatIntent).
+    if (import.meta.dev && firstRead) console.debug(`[chat] first read (${ready ? 'preloaded' : 'direct'}, ${props.pane.machine ? 'remote' : 'local'}): ${Math.round(performance.now() - openedAt)} ms`)
     if (stale()) return false
     if (!r.available) {
       // Any list on screen counts, the end kept on this device too: a server
@@ -435,7 +499,7 @@ async function loadStep(current: () => boolean): Promise<boolean> {
       chat.value = c
       noteReplies(c.tail)
     })
-    saveChat(pane, items.value, chat.value.file)
+    saveChat(pane, items.value, chat.value.file, chat.value.queue)
     // Paint the prepared tail first, then revalidate using its token and cursor.
     if (ready) return true
   } catch (err) {
@@ -479,7 +543,7 @@ async function loadOlder() {
         olderCursor: (r.cursorKind === 'opaque' ? (r.start ?? 0) !== before : (r.start ?? 0) < before) ? (r.start ?? 0) : 0,
       }
     }, true)
-    saveChat(pane, items.value, chat.value.file)
+    saveChat(pane, items.value, chat.value.file, chat.value.queue)
     if (b) b.scrollTop = b.scrollHeight - fromBottom
   } catch (err) {
     toast((err as Error).message, true)
@@ -1140,6 +1204,7 @@ async function gotoOrigin(key: string | null) {
   if (key && !msgEl(key)) await openFolds(key)
   const el = key ? msgEl(key) : null
   if (!el) return toast(t('Original message not found (further up the conversation?)'), true)
+  leaveEnd()
   el.scrollIntoView({ block: 'center', behavior: 'smooth' })
   el.classList.remove('msg-flash')
   void el.offsetWidth
@@ -1431,6 +1496,9 @@ function queuedLabel(q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' 
 }
 // Sending: a small turning loader instead of a fixed icon.
 const queuedSending = (q: Pick<PendingMessage, 'phase' | 'state' | 'inAgentQueue' | 'inInput'>) => pendingLabel(q, waitFor.value, props.pane.agent, props.pane.sending).kind === 'sending'
+// The queued bubbles, the live run, the unsent draft and the status line sit
+// outside the list: the list's ResizeObserver does not see them grow, so each
+// keeps its own pin to the end while stick holds.
 watch(() => queuedList.value.map(q => `${q.id}:${q.phase}`).join(','), () => nextTick(() => scrollToEnd(false)))
 watch(() => liveRun.value && `${liveRun.value.text}\n${liveRun.value.omp.out || ''}`, () => nextTick(() => scrollToEnd(false)))
 watch(() => props.pane.draft?.text, () => nextTick(() => scrollToEnd(false)))
@@ -1474,6 +1542,7 @@ function statusNow() {
   if (p.status === 'blocked' && !p.menu && !waiting.value && !(p.prompt && p.prompt.options) && !knownScreen(p)) return { typing: false, text: t('Waiting for your reply — details in the Terminal tab') }
   return null
 }
+// The status line sits outside the list too: no ResizeObserver on its growth.
 watch(() => props.pane.status, () => nextTick(() => scrollToEnd(false)))
 
 // ------------------------------------------------------------ search
@@ -1528,6 +1597,7 @@ function focusHit() {
   const r = search.hits[search.cur]
   const b = box.value
   if (r && b) {
+    leaveEnd()
     const rect = r.getBoundingClientRect()
     const br = b.getBoundingClientRect()
     b.scrollTo({ top: b.scrollTop + rect.top - br.top - b.clientHeight / 2, behavior: 'smooth' })
@@ -1594,7 +1664,11 @@ async function jumpToResult() {
     await nextTick()
     const target = [...(listEl.value?.querySelectorAll<HTMLElement>('[data-hit-key]') || [])].find(el => el.dataset.hitKey === key)
     applySearchMarks(false, target)
-    if (target && !search.hits.length) target.scrollIntoView({ block: 'center' })
+    if (target && !search.hits.length) {
+      // The jump to the result leaves the bottom on purpose.
+      leaveEnd()
+      target.scrollIntoView({ block: 'center' })
+    }
   } finally { jumping = false; search.loading = false }
 }
 watch(() => route.query.hit, () => { if (route.params.pane === props.pane.id) jumpToResult() })
@@ -1665,6 +1739,7 @@ function gotoUnanswered() {
     : !isQuoted(text, refOf(x)!))
   if (!el) return
   const lit = el.classList.contains('q-trow') ? [el] : [...wordsOf(el)]
+  leaveEnd()
   ;(lit[0] || el).scrollIntoView({ block: 'center', behavior: reducedMotion.value ? 'auto' : 'smooth' })
   for (const x of lit) {
     x.classList.remove('q-flash')
@@ -1695,7 +1770,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
     <OfflineNote v-else-if="isStale(misses)" :label="t('Conversation not up to date — reconnecting…')" />
     <!-- The end kept on this device while the network is slow to answer: said, over the list (nothing moves). -->
     <span v-if="cachedTag && savedAt" class="cached-tag chat-cached" role="status">{{ tl(`Read at ${fmtTime(savedAt)}`, `Lu à ${fmtTime(savedAt)}`) }}</span>
-    <div ref="box" class="chat" @scroll.passive="onScroll" @wheel.passive="onUserScroll" @touchmove.passive="onUserScroll" @click.capture="onJump">
+    <div ref="box" class="chat" @scroll.passive="onScroll" @wheel.passive="onUserScroll" @touchmove.passive="onUserScroll" @pointerdown="onPointerDown" @click.capture="onJump">
       <UChatMessages
         :status="working ? 'streaming' : 'ready'" :should-auto-scroll="false"
         :auto-scroll="{ color: 'neutral', variant: 'outline' }"
