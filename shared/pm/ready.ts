@@ -28,11 +28,11 @@ if [ -f "$clone/package.json" ]; then
   fi
 fi
 if [ "$relay" = 1 ]; then
-  found=; for d in "$HOME/.config/google-chrome" "$HOME/.config/chromium" "$HOME/Library/Application Support/Google/Chrome" "$HOME/Library/Application Support/Chromium"; do
+  found=; for d in "$HOME/.config/google-chrome" "$HOME/.config/google-chrome-beta" "$HOME/.config/google-chrome-unstable" "$HOME/.config/google-chrome-canary" "$HOME/.config/chromium" "$HOME/.config/BraveSoftware/Brave-Browser" "$HOME/Library/Application Support/Google/Chrome" "$HOME/Library/Application Support/Google/Chrome Beta" "$HOME/Library/Application Support/Google/Chrome Dev" "$HOME/Library/Application Support/Google/Chrome Canary" "$HOME/Library/Application Support/Chromium" "$HOME/Library/Application Support/BraveSoftware/Brave-Browser"; do
     m="$d/NativeMessagingHosts/sh.omp.browser.json"
     [ -f "$m" ] && h=$(sed -n 's/.*"path" *: *"\\([^"]*\\)".*/\\1/p' "$m" | head -n 1) && [ -x "$h" ] && found=1
   done
-  if [ -n "$found" ]; then say relay ok ""; else say relay fail "the omp browser relay's native host is not registered in Chrome: run omp's browser relay setup again (an omp update can unregister it)"; fi
+  if [ -n "$found" ]; then say relay ok ""; else say relay fail "the omp browser relay's native host is not registered in any browser it supports (Chrome, Chromium, Brave): run omp's browser relay setup again (an omp update can unregister it)"; fi
 fi
 for p in "$@"; do
   if ! command -v "$p" >/dev/null 2>&1; then say "agent:$p" fail "$p is not installed"

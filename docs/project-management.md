@@ -581,7 +581,7 @@ or one of the two prefs without the other.
 
 A task that drives the omp browser relay (the user's own Chrome) sets
 `"browser": "relay"` the same way. Before it starts, the machine check also
-verifies that the relay's native host is registered in Chrome; when it is not
+verifies that the relay's native host is registered in Chrome (any channel), Chromium or Brave; when it is not
 (an omp update can unregister it), the start is refused as a machine problem,
 "browser relay: …", not asked as a question to the agent.
 

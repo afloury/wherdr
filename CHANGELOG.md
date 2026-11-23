@@ -8,7 +8,8 @@ All notable changes to this project are documented here. The format follows
 
 ### New
 
-- **A missing omp browser relay is a machine problem.** A task whose workflow sets `prefs.browser` to `"relay"` now checks, before it starts, that the relay's native host is registered in Chrome. When it is not (an omp update can unregister it), the start is refused with "browser relay: …" like any other machine readiness failure, instead of the agent asking whether the relay is on.
+- **A missing omp browser relay is a machine problem.** A task whose workflow sets `prefs.browser` to `"relay"` now checks, before it starts, that the relay's native host is registered in Chrome, Chromium or Brave. When it is not (an omp update can unregister it), the start is refused with "browser relay: …" like any other machine readiness failure, instead of the agent asking whether the relay is on.
+
 ## [3.2.2] — 2026-11-19
 
 wherdr 3.2.2 brings back *Open in editor* on v3 (Mod+Alt+O) and fixes omp: its conversations open from herdr-core terminals, its status shows with an extension's status line, an omp coordinator keeps coordinating, and a project's default workflow runs on its coordinator's agent. Release notes: [docs/release-notes-3.2.2.md](docs/release-notes-3.2.2.md).
