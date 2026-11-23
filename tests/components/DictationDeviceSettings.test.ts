@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises } from '@vue/test-utils'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import DictationDeviceSettings from '~/components/DictationDeviceSettings.vue'
-import { DEVICE_MODEL_KEY } from '~/utils/dictation/deviceModels'
+import { DEVICE_MODEL_KEY, forgetUnsupported, markUnsupported, unsupportedModels } from '~/utils/dictation/deviceModels'
 import { fakeCaches, rangeServer } from '../fakeModelCache'
 
 const rows = (w: Awaited<ReturnType<typeof mountSuspended>>) => w.findAll('.dictation-model')
@@ -17,11 +17,15 @@ const qwenId = 'qwen3-asr-0.6b-q4f16'
 beforeEach(() => {
   localStorage.removeItem(DEVICE_MODEL_KEY)
   localStorage.removeItem('dictationTooLarge')
+  for (const id of unsupportedModels()) forgetUnsupported(id)
   vi.stubGlobal('caches', fakeCaches())
 })
 afterEach(() => {
+  for (const id of unsupportedModels()) forgetUnsupported(id)
   vi.unstubAllGlobals()
+  vi.restoreAllMocks()
   Reflect.deleteProperty(navigator, 'gpu')
+  Reflect.deleteProperty(navigator, 'deviceMemory')
 })
 
 describe('DictationDeviceSettings', () => {
@@ -122,6 +126,62 @@ describe('DictationDeviceSettings', () => {
     await flushPromises()
     expect(row(saved, qwenId).find('[role="radio"]').attributes('aria-checked')).toBe('true')
     saved.unmount()
+  })
+
+  it('marks Qwen over budget on iPhone and 2 GB devices, and keeps it selectable on 4 GB and 8 GB', async () => {
+    Object.defineProperty(navigator, 'gpu', { configurable: true, value: { requestAdapter: async () => ({ features: new Set(['shader-f16']) }) } })
+    localStorage.setItem(DEVICE_MODEL_KEY, qwenId)
+
+    const ua = vi.spyOn(navigator, 'userAgent', 'get').mockReturnValue('Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Version/18.0 Mobile/15E148 Safari/604.1')
+    const ios = await mountSuspended(DictationDeviceSettings)
+    await flushPromises()
+    expect(row(ios, qwenId).find('[data-testid="model-too-large"]').text()).toBe('Too large for this device · it needs about 1.0 GB of memory once loaded, more than this browser safely gives a page.')
+    expect(row(ios, qwenId).find('[role="radio"]').attributes('aria-disabled')).toBe('true')
+    expect(row(ios, 'canary-180m').find('[role="radio"]').attributes('aria-checked')).toBe('true')
+    ios.unmount()
+    ua.mockRestore()
+
+    Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: 2 })
+    const mem2 = await mountSuspended(DictationDeviceSettings)
+    await flushPromises()
+    expect(row(mem2, qwenId).find('[data-testid="model-too-large"]').text()).toContain('it needs about 1.0 GB of memory once loaded')
+    expect(row(mem2, qwenId).find('[role="radio"]').attributes('aria-disabled')).toBe('true')
+    expect(row(mem2, 'canary-180m').find('[role="radio"]').attributes('aria-checked')).toBe('true')
+    mem2.unmount()
+
+    for (const gb of [4, 8]) {
+      localStorage.removeItem(DEVICE_MODEL_KEY)
+      Object.defineProperty(navigator, 'deviceMemory', { configurable: true, value: gb })
+      const ok = await mountSuspended(DictationDeviceSettings)
+      await flushPromises()
+      const qwen = row(ok, qwenId)
+      expect(qwen.find('[data-testid="model-too-large"]').exists()).toBe(false)
+      expect(qwen.find('[role="radio"]').attributes('aria-disabled')).toBe('false')
+      expect(qwen.find('button:not([role])').text()).toBe('Install · 889 MB')
+      await qwen.find('[role="radio"]').trigger('click')
+      expect(qwen.find('[role="radio"]').attributes('aria-checked')).toBe('true')
+      ok.unmount()
+    }
+  })
+
+  it('shows Qwen as unsupported for the page, falls back to Parakeet, and Try again restores Qwen', async () => {
+    Object.defineProperty(navigator, 'gpu', { configurable: true, value: { requestAdapter: async () => ({ features: new Set(['shader-f16']) }) } })
+    localStorage.setItem(DEVICE_MODEL_KEY, qwenId)
+    markUnsupported(qwenId)
+    const w = await mountSuspended(DictationDeviceSettings)
+    await flushPromises()
+    const qwen = () => row(w, qwenId)
+    expect(qwen().find('[data-testid="model-unsupported"]').text()).toBe('Not working on this device right now · the GPU could not run this model.')
+    expect(qwen().find('[data-testid="model-too-large"]').exists()).toBe(false)
+    expect(qwen().find('[role="radio"]').attributes('aria-disabled')).toBe('true')
+    expect(row(w, 'parakeet-v3').find('[role="radio"]').attributes('aria-checked')).toBe('true')
+
+    await qwen().find('[data-testid="model-retry"]').trigger('click')
+    expect(qwen().find('[data-testid="model-unsupported"]').exists()).toBe(false)
+    expect(qwen().find('[role="radio"]').attributes('aria-checked')).toBe('true')
+    expect(qwen().find('button:not([role])').text()).toBe('Install · 889 MB')
+    expect(unsupportedModels().has(qwenId)).toBe(false)
+    w.unmount()
   })
 
   it('installs with progress, counts the space used, deletes, and saves the chosen model', async () => {

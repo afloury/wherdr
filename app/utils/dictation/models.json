@@ -192,7 +192,11 @@
         "basis": "RTF 0.27 over four takes on an OPPO Find X8 Ultra (Adreno 8xx, Chrome 157, WebGPU): Mandarin 0.16, Cantonese 0.20, English 0.26, French 0.43; a flagship GPU, not comparable with the CPU figures",
         "source": "https://github.com/afloury/wherdr/blob/v3/docs/dictation.md#f4-webgpu-models"
       },
-      "license": { "id": "Apache-2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0" }
+      "license": { "id": "Apache-2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0" },
+      "memory": {
+        "heap": 1000000000,
+        "basis": "Estimated from the 889 MB of weights plus runtime buffers, not measured: the weights live in GPU memory, which a page cannot read, and on a phone that memory is shared with the tab"
+      }
     }
   ]
 }

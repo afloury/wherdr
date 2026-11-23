@@ -6,7 +6,7 @@
 import { splitTake } from './audio'
 import { abortError, DeviceUnsupported, ModelTooLarge } from './engine'
 import type { DictationEngine, PrepareProgress, Readiness } from './engine'
-import { DEVICE_CACHE, DEVICE_MODEL_KEY, DEVICE_MODELS, DEVICE_RUNTIMES, deviceLanguage, deviceModel, gpuFeatures, markLoading, markTooLarge, memoryFit, modelBytes, sentenceCase, takeCrash } from './deviceModels'
+import { DEVICE_CACHE, DEVICE_MODEL_KEY, DEVICE_MODELS, DEVICE_RUNTIMES, deviceLanguage, deviceModel, gpuFeatures, markLoading, markTooLarge, markUnsupported, memoryFit, modelBytes, sentenceCase, takeCrash, unsupportedModels } from './deviceModels'
 import type { DeviceModel, DeviceNeed } from './deviceModels'
 import { CHUNK, installModel, prepareOnServer, storedBytes } from './modelStore'
 import type { Progress } from './modelStore'
@@ -48,7 +48,7 @@ function savedModel(gpu?: readonly DeviceNeed[]): DeviceModel {
 
 export async function openDeviceEngine(): Promise<DictationEngine> {
   const saved = DEVICE_MODELS.find(m => m.id === readSavedId())
-  const gpu = saved?.requires.length ? await gpuFeatures() : []
+  const gpu = saved?.requires.length && !unsupportedModels().has(saved.id) ? await gpuFeatures() : []
   return createDeviceEngine({ gpu })
 }
 
@@ -120,7 +120,8 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
       const fail = (err: Error) => { if (worker === w) reset(err); reject(err) }
       // A load that dies (no message) or runs out of memory: too large here.
       const tooLarge = (msg: string) => { markTooLarge(model.id, 'oom'); return new ModelTooLarge(msg) }
-      const workerError = (msg: string) => UNSUPPORTED_DEVICE.test(msg) ? new DeviceUnsupported(msg) : new Error(msg || 'dictation worker failed')
+      const unsupported = (msg: string) => { markUnsupported(model.id); return new DeviceUnsupported(msg) }
+      const workerError = (msg: string) => UNSUPPORTED_DEVICE.test(msg) ? unsupported(msg) : new Error(msg || 'dictation worker failed')
       const loadFailed = (msg: string) => fail((!msg && started) || OUT_OF_MEMORY.test(msg) ? tooLarge(msg || 'dictation worker died') : workerError(msg))
       w.onerror = (e) => {
         e.preventDefault?.()
@@ -142,7 +143,7 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
         }
         else if (m.id === undefined) loadFailed(m.error)
         else if (OUT_OF_MEMORY.test(m.error)) fail(tooLarge(m.error))
-        else if (UNSUPPORTED_DEVICE.test(m.error)) fail(new DeviceUnsupported(m.error))
+        else if (UNSUPPORTED_DEVICE.test(m.error)) fail(unsupported(m.error))
         else {
           pending.get(m.id)?.reject(new Error(m.error))
           pending.delete(m.id)
@@ -206,7 +207,9 @@ export function createDeviceEngine(deps: DeviceEngineDeps = {}): DictationEngine
         notice = undefined
         return { ready: false, reason: 'too-large', detail }
       }
-      if (memoryFit(model) !== 'ok') return { ready: false, reason: 'too-large', detail: model.name }
+      const fit = memoryFit(model)
+      if (fit === 'unsupported') return { ready: false, reason: 'unsupported', detail: model.name }
+      if (fit !== 'ok') return { ready: false, reason: 'too-large', detail: model.name }
       if (await cached().catch(() => false)) return { ready: true }
       // Not on this device yet: prepare downloads it if the server has it.
       try {

@@ -317,7 +317,7 @@ family is added there without code; the app needs a rebuild to ship it. An entry
 | `ranked` | The same languages, best first, from the model's own published figures (sources in the `RANKING SOURCES` comment of `deviceModels.ts`) |
 | `autoDetect` | `false` when the model does not detect the language (Canary): the worker is given the first of the device's languages it speaks, else English |
 | `textCase` | `"upper"` when the model writes in capitals (SenseVoice, even with inverse text normalization on): the app puts its text in sentence case |
-| `memory` | Measured `{ heap, peak, basis }`: WASM heap after load, and the page's peak memory. `heap` is what the device budget checks |
+| `memory` | Measured `{ heap, peak, basis }` for WASM CPU models (WASM heap after load and the page's peak memory), or estimated `{ heap, basis }` (`peak` omitted) for GPU models whose weights live in GPU memory that a page cannot read. `heap` is what the device budget checks |
 | `quality` | Raw published error rate per language: `{ lang, dataset, wer, source }`, plus `metric: "CER"` for a character error rate (Chinese, Cantonese, Japanese, Korean) |
 | `speed` | `{ estimate: 1–5, basis, source }`, absent when there is no source |
 | `license` | `{ id, url }` |
@@ -349,9 +349,13 @@ goes black and reloads. Measured on 2026-11-05 (worker in headless Chromium and 
 
 SenseVoice runs on a real iPhone; Parakeet kills it. `memoryBudget()` (`deviceModels.ts`) gives
 iOS and iPadOS a 640 MiB heap budget, and other browsers a quarter of `navigator.deviceMemory`
-when they report it. A model over the budget shows **Too large for this device** in Settings, and
-is never chosen (`deviceModel()` falls back to the first catalog model that fits, so Canary 180M
-on an iPhone).
+when they report it. Qwen3-ASR 0.6B carries an estimated `1 GB` (`1,000,000,000` bytes) `memory`
+entry (`peak` omitted, not measured: its 889 MB of weights live in GPU memory, which a page cannot
+read, and on a phone GPU memory is shared with the tab), keeping it off iOS and iPadOS and off
+Android devices reporting `deviceMemory <= 2` GB (512 MiB budget) while leaving it available on
+4 GB (1 GiB budget) and 8 GB (2 GiB budget) devices. A model over the budget shows **Too large for
+this device** in Settings, and is never chosen (`deviceModel()` falls back to the first CPU catalog
+model that fits, so Canary 180M on an iPhone).
 
 When the page is killed anyway: a load in progress is noted in `localStorage` and cleared when it
 ends or on `pagehide`. Found at the next start, it means the system killed the page: the model is
@@ -360,7 +364,14 @@ large for this device", and the choice falls back to a model that fits. A worker
 running out of memory (emscripten `Aborted(OOM)`, a failed grow or allocation) fails the same way,
 during the session: the composer then frees the engine, so the next press loads the model that
 fits without a reload. Settings tells the two cases apart, and **Try again** (or Delete) clears the
-mark, since a page can also be lost for another reason.
+mark, since a page can also be lost for another reason. Only `Unsupported speech device` (when the worker finds no adapter with
+`shader-f16` after the page's initial feature check passed) maps to `DeviceUnsupported` and marks
+the model `unsupported` in memory for the page's lifetime (never persisted in `localStorage`): the
+next press skips probing and falls back to a CPU model that fits, and Settings shows why with **Try
+again** (or Delete). A lost GPU device (`Speech GPU device lost`, which can happen even while idle
+on Android when a PWA is backgrounded or the GPU resets) and `Speech runtime used an unexpected GPU
+device` are **not** marked unsupported: they stay plain errors that reset the worker so the next
+press reloads Qwen on a fresh device.
 
 ### Adding a model
 
@@ -395,8 +406,15 @@ cannot run), and `readiness()` answers `unsupported` if the required GPU feature
 The load/decode protocol matches the CPU worker. `device.ts` selects `dictation-webgpu-worker.js`
 and `/models/runtime/onnxruntime-web-1.23.2/` for `qwen3Q4F16`, sets `caps.terms: true`, passes
 pane `terms` and `language` on `decode`, posts `{ t: 'cancel', id }` when `opts.signal` aborts,
-and maps `Unsupported speech device` errors to `unsupported`. A load checks for device loss before
-publishing `ready`; a failed load
+and maps only `Unsupported speech device` (worker found no adapter with `shader-f16` after the
+page's probe passed) to `DeviceUnsupported`, marking the model `unsupported` in memory for the
+page's lifetime (not persisted in `localStorage`). On the next press `openDeviceEngine()` skips
+probing the adapter and `deviceModel()` falls back to a CPU model that fits; Settings shows the
+reason and offers **Try again** (or Delete) to clear the mark. `Speech GPU device lost` (including
+when idle on Android after backgrounding the PWA or a GPU reset) and `Speech runtime used an
+unexpected GPU device` stay plain errors: they terminate and reset the worker without marking the
+model unsupported so the next press reloads Qwen on a fresh device. A load
+checks for device loss before publishing `ready`; a failed load
 reports an error and releases its resources. A decode's final message includes detected `language`
 and `truncated`. All operations are serialized.
 `{ t: 'cancel', id }` cancels only that request, including queued work, suppresses its result,
@@ -407,8 +425,10 @@ CPU tensors, logits, encoder outputs and GPU KV tensors are disposed on success,
 and failure. Partial loads release their successful sessions too. A failed run or lost device
 releases the model; the next decode reloads the last configuration on a fresh device. External
 weights leave the worker's own references after session creation; the embedding table remains
-for decoding. There is no synthetic `heap` figure in worker messages. Measurements: pending
-Android. A parent can terminate the worker to stop a stalled runtime or download.
+for decoding. There is no synthetic `heap` figure in worker messages; Qwen's `memory` entry in
+`models.json` is an estimated `1 GB` (`1,000,000,000` bytes, `peak` omitted), not measured,
+because a page cannot read GPU memory. A parent can terminate the worker to stop a stalled runtime
+or download.
 
 ORT 1.23.2's custom-device path fails GPU-to-CPU downloads
 ([ORT #32257](https://github.com/microsoft/onnxruntime/issues/32257)). The worker therefore
@@ -462,9 +482,19 @@ q4f16** (889 MB; 16 languages including French and English; uses pane terms as c
   pinned by commit SHA and per-file `sha256` in `models.json`).
 - The `qwen3Q4F16` family runs in `dictation-webgpu-worker.js` behind the device `DictationEngine`,
   selected opt-in when the user picks Qwen3-ASR 0.6B on a browser with WebGPU and `shader-f16`.
-- Catalog entry with `runtime: "ort"` and `requires: ['webgpu', 'shader-f16']`; `readiness()`
-  answers `unsupported` when `navigator.gpu` or `shader-f16` is missing. No CPU fallback is
-  used for a direct GPU load, while `deviceModel()` keeps CPU defaults and fallbacks everywhere else.
+- Catalog entry with `runtime: "ort"`, `requires: ['webgpu', 'shader-f16']`, and an estimated
+  `memory` budget of `1 GB` (`1,000,000,000` bytes, `peak` omitted, not measured: weights live in
+  GPU memory shared with the tab), keeping it off iOS/iPadOS and `deviceMemory <= 2` GB while
+  available on 4 GB and 8 GB devices; `readiness()` answers `unsupported` when `navigator.gpu` or
+  `shader-f16` is missing or when the model is marked `unsupported` for the page. Only
+  `Unsupported speech device` (worker found no adapter with `shader-f16` after the page's probe
+  passed) marks Qwen `unsupported` in memory for the page's lifetime so the next press falls back
+  to a CPU model and Settings explains why with **Try again**; `Speech GPU device lost` (such as
+  when an Android PWA is backgrounded or the GPU resets, even while idle) and `Speech runtime used
+  an unexpected GPU device` remain plain errors that reset the worker so the next press reloads
+  Qwen on a fresh device.
+  No CPU fallback is used for a direct GPU load, while `deviceModel()` keeps CPU defaults and
+  fallbacks everywhere else.
 - Pane terms (`opts.terms`) passed as the model's context prompt; `caps.terms: true`.
 - Measured on an OPPO Find X8 Ultra (Android, Chrome 157, WebGPU on Adreno 8xx with `shader-f16`),
   model files from Cache Storage. Mandarin and Cantonese were spoken into the microphone; English

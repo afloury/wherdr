@@ -44,8 +44,10 @@ export interface DeviceModel {
   quality: { lang: string, dataset: string, wer: number, metric?: 'CER', source: string }[]
   speed?: { estimate: number, basis: string, source: string } // 1-5, until measured here
   license?: { id: string, url: string }
-  // Measured: WASM heap after load (what the budget checks) and the page's peak.
-  memory?: { heap: number, peak: number, basis: string }
+  // Measured WASM heap after load (what the budget checks) and the page's peak
+  // for CPU models, or an estimated GPU memory budget (peak omitted) when
+  // weights live in GPU memory.
+  memory?: { heap: number, peak?: number, basis: string }
 }
 
 // A catalog entry of a family this build does not know is skipped, so a newer
@@ -125,23 +127,40 @@ export function takeCrash(): string | null {
   return id
 }
 
+// Models whose GPU could not run them in the worker (Unsupported speech device):
+// kept in memory for the page's lifetime only, never in localStorage, so a
+// page reload retries; a lost GPU device resets the worker and reloads cleanly
+// without marking the model unsupported. Settings' Try again clears it.
+const unsupported = new Set<string>()
+export function unsupportedModels(): ReadonlySet<string> {
+  return new Set(unsupported)
+}
+export function markUnsupported(id: string): void {
+  unsupported.add(id)
+}
+export function forgetUnsupported(id: string): void {
+  unsupported.delete(id)
+}
+
 // 'ok', or why this model should not run here.
-export function memoryFit(m: DeviceModel, budget = memoryBudget(), marks = crashedModels()): 'ok' | 'budget' | TooLargeWhy {
+export function memoryFit(m: DeviceModel, budget = memoryBudget(), marks = crashedModels(), bad: ReadonlySet<string> = unsupportedModels()): 'ok' | 'budget' | TooLargeWhy | 'unsupported' {
+  if (bad.has(m.id)) return 'unsupported'
   if (marks[m.id]) return marks[m.id]!
   if (budget != null && m.memory && m.memory.heap > budget) return 'budget'
   return 'ok'
 }
 
 // The model this device uses: its saved choice if offered here and not too
-// large, else the first CPU model of the catalog that fits (GPU models are
-// opt-in only: never the default and never an automatic fallback).
+// large or unsupported, else the first CPU model of the catalog that fits (GPU
+// models are opt-in only: never the default and never an automatic fallback).
 export function deviceModel(
   saved: string | null | undefined,
   budget = memoryBudget(),
   marks = crashedModels(),
   have: readonly DeviceNeed[] = [],
+  bad: ReadonlySet<string> = unsupportedModels(),
 ): DeviceModel {
-  const fits = (m: DeviceModel) => memoryFit(m, budget, marks) === 'ok'
+  const fits = (m: DeviceModel) => memoryFit(m, budget, marks, bad) === 'ok'
   const defaults = runnableModels([])
   const own = runnableModels(have).find(m => m.id === saved)
   return (own && fits(own) ? own : defaults.find(fits)) ?? (own && !own.requires.length ? own : defaults[0]!)
