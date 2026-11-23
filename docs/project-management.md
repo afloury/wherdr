@@ -1000,8 +1000,10 @@ click, long press, or ••• when it has more than *Open*) offers:
 - **Continue**, **Take it as it is** or **Archive**, on a stopped task;
 - **Check on GitHub**, on a task at its merge step or archived with a PR: its
   sheet opens with what wherdr found (see [Task sheet](#task-sheet));
-- **Delete…**, on a task never started (no agent, worktree or branch). A task
-  other tasks wait for cannot be deleted; its number is never given again.
+- **Delete…**, on a task never started (no agent, worktree or branch), also one
+  whose start failed before its worktree was made (its error stays on the card
+  until you delete it or start it again). A task other tasks wait for cannot be
+  deleted; its number is never given again.
 
 **Add task** opens a sheet: the project, a title, the task type (with its steps
 in one line), its weight, a Markdown description, the tasks it waits for, and
@@ -1109,7 +1111,7 @@ them too.
 A card opens the task's sheet. Tasks to review and a task
 link in the chat (`#/board?task=ID`) open it over the page you are on (a bottom
 sheet on a phone), with `?task=ID` added to that page's address, so it survives a
-reload and can be shared; closing it leaves the page as it was. The sheet's header holds only what matters first. Its id badge sits by the title (a tap copies it; a long title takes two lines at most, cut with an ellipsis, a tap shows it whole, the Description keeping it in full; on a phone one line once the sheet is scrolled or you type). Then which branch merges into
+reload and can be shared; closing it (the close cross at the header's top right, Escape, a tap outside or, on a phone, a swipe down) leaves the page as it was. The sheet's header holds only what matters first. Its id badge sits by the title (a tap copies it; a long title takes two lines at most, cut with an ellipsis, a tap shows it whole, the Description keeping it in full; on a phone one line once the sheet is scrolled or you type). Then which branch merges into
 which once it has one (*task/WHR-12 → develop · 3 commits*, or *task/WHR-12 will
 open a PR to v3* before its PR, with a button to copy the branch name), the
 task's PR as a badge on that line with its state (*PR #646 · open ↗*: *open*, *merged*, *closed*, *conflict* or *red CI*; opens it in a new tab; on a phone
@@ -1135,9 +1137,15 @@ its program and model; its text is Markdown, folded past a few lines with
 *Show more*. A task from before this version kept only its worker's last
 report, so its earlier *Done* says just that.
 
-**History** is the task's whole log in one timeline, oldest first: the same
-hand-offs, wherdr's catch-ups and CI fixes, the coordinator's and your
-actions, and wherdr's routine lines, lighter.
+**History** is the task's whole log as a timeline, oldest first, under the
+time per step: the same hand-offs, wherdr's catch-ups and CI fixes, the
+coordinator's and your actions, and wherdr's routine lines, lighter. Each
+event says when, who (*You*, *wherdr*, the coordinator, the worker or the
+reviewer with its program and model) and what; its square mark on the
+timeline's rule shows its kind: a run started (play, purple), a report or a
+passing verdict (check, green), a send-back (undo, orange), a merge (filled
+green), a failure (filled red), your own action (accent), a routine line (a
+small grey square). **Comments** uses the same timeline.
 
 <a id="tldr"></a>**TL;DR.** On a task waiting for you, **To do** starts with at
 most five lines in plain words, with no code names: **What changes for you**
@@ -1805,11 +1813,15 @@ An agent you talk to stays: your last message to one of the task's agents
 10, and while you have that conversation open in wherdr they are not ended at
 all. Only a machine short of memory for a task waiting to start cuts that
 grace (the plain 10 minutes then apply), and the log says so. Once the worker
-is released, *Open the agent* stays on the task, with one muted line under it
-(*Released at 12:43 to free memory: opening it starts it again.*): opening it
-starts the worker again in its worktree with its conversation taken up again,
-whose first line says *Restarted: it was released to free memory at 12:43*,
-and you write to it as before.
+is released, *Open the agent* stays on the task (and in Tasks to review): it
+first asks, in a small dialog, saying the agent was closed at 12:43 to free
+memory on its machine and that its conversation comes back as it was.
+*Reopen* starts the worker again in its worktree with its conversation taken
+up again and no message sent to it, so it costs no model turn until you write
+to it as before; *Cancel* leaves it closed. Claude and Codex workers get their
+conversation back (Codex's is found in its machine's Codex sessions); omp
+workers have no conversation wherdr can take up again, so a new one starts and
+reads the handover, as does a Codex worker whose conversation is not found.
 
 The same goes when you answer and the task moves on: a review decision (*pass*,
 say), *Send back*, *Try again* or a merge you confirm hands the next step to

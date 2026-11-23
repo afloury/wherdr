@@ -24,7 +24,7 @@
   also in Settings › Shortcuts, where **Change** gives a shortcut new keys, **Reset** goes back
   to its default; keys used by another shortcut or by the browser are refused, Escape and `?`
   stay reserved; your keys follow you on every device and show in the help and tooltips):
-  - `Ctrl/⌘+K` global search across agents and conversations, `Alt+↑/↓` previous / next agent
+  - `Ctrl/⌘+K` the palette: conversations, tasks, projects, settings and actions, `Alt+↑/↓` previous / next agent
     in the list, `Mod+,` settings.
   - `Mod+Alt+N` new agent in a new space, `Mod+Alt+T` new tab in the current space,
     `Mod+Alt+W` close the current pane (after confirmation). They work from the terminal too.

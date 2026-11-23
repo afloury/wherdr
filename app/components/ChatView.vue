@@ -9,6 +9,7 @@ import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolVie
 import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
+import { sentSplit } from '~/utils/attachTiles'
 import { folderGuesses } from '~/utils/pathFallback'
 import { uploadNames, uploadSrc } from '#shared/queuedMatch'
 import { userMessageParts } from '~/utils/userMessage'
@@ -16,7 +17,7 @@ import { type PendingMessage, type WaitingOn, inputShown, pendingLabel, pendingQ
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
 import { CHAT_READ_MS, createFlipGuard, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
-import { pickTyping, replyId } from '~/utils/typewriter'
+import { missedReply, replyId, sortNewReplies } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
 import { isStale, noMisses, onError, onUnavailable, type ChatMisses } from '~/utils/chatMiss'
@@ -91,9 +92,11 @@ async function restoreChat() {
   if (!mayReadOffline(readOfflineAccess())) return
   const id = props.pane.id
   const saved = await readChat(id)
-  if (!saved || synced || rendered.value || unavailable.value || id !== props.pane.id) return
-  // Its replies are known: one that arrives with the server's answer is new,
-  // and comes in as it would live (noteReplies).
+  if (!saved || unavailable.value || id !== props.pane.id) return
+  // The server answered first: the kept end still tells what this device missed.
+  if (synced || rendered.value) { markMissed(saved.items); return }
+  // Its replies are known: one the server's answer adds is new to this
+  // device, shown at once under the "New" divider (noteReplies).
   for (const it of saved.items) {
     if (it.role === 'assistant') knownReplies.add(replyId(it))
     else if (it.role === 'thinking') knownThoughts.add(replyId(it))
@@ -166,6 +169,7 @@ function onUserScroll(e: Event) {
   held = false
   if (e instanceof WheelEvent && e.deltaY < 0) stick = false
   interruptThought()
+  clearFresh()
 }
 let ro: ResizeObserver | null = null
 onMounted(() => {
@@ -303,27 +307,55 @@ function interruptThought() { activeThought.value = null }
 // ------------------------------------------------------------ typewriter
 // Only a reply that arrives while following the conversation is revealed
 // (ChatMarkdown): never on first load, on return to the app or after
-// being offline, nor for older slices. Opened on the end kept on this device,
-// what the server's answer adds to it is new (restoreChat).
+// being offline, nor for older slices. Replies this device never showed,
+// found by such a read, show at once under a "New" divider for a moment
+// (`freshId`), unless nothing was known yet (first open on this device).
 const knownReplies = new Set<string>()
 const knownThoughts = new Set<string>()
 const activeThought = ref<{ id: string, at: number } | null>(null)
 const typing = ref<{ id: string, at: number } | null>(null)
+const freshId = ref<string | null>(null)
+let freshTimer: ReturnType<typeof setTimeout> | undefined
+const FRESH_MS = 6000
+// The first block of that reply, or the agent's name heading it: the divider goes above.
+const freshKey = computed(() => {
+  if (!freshId.value) return null
+  const list = blocks.value
+  const i = list.findIndex(b => b.k === 'assistant' && b.id === freshId.value)
+  if (i < 0) return null
+  return list[i - 1]?.k === 'who' ? list[i - 1]!.key : list[i]!.key
+})
+watch(() => props.pane.id, clearFresh)
+onUnmounted(() => clearTimeout(freshTimer))
+function clearFresh() { clearTimeout(freshTimer); freshId.value = null }
 let synced = false // replies known: first load from the server, or the end kept on this device
-let away = false // app in the background or offline since the last re-read
-watch(pageVisible, (v) => { if (!v) { away = true; interruptThought() } })
-watch(offlineView, (v) => { if (v) { away = true; interruptThought() } })
+// Read live from the server since opening, without going to the background or offline since.
+let followed = false
+watch(pageVisible, (v) => { if (!v) { followed = false; interruptThought() } })
+watch(offlineView, (v) => { if (v) { followed = false; interruptThought() } })
 function noteReplies(list: ChatItem[]) {
   // A server answer means the app is online, even while the home state shown
   // is still the one kept on this device (offlineView, at startup).
-  const live = synced && !away && typewriterActive.value && !searchOpen.value && !paneStale(props.pane)
-  const revealThinking = synced && !away && !searchOpen.value && !paneStale(props.pane)
-  const thought = newestThought(knownThoughts, list.filter(i => i.role === 'thinking').map(replyId), revealThinking)
+  const following = synced && followed
+  const reveal = !searchOpen.value && !paneStale(props.pane)
+  const thought = newestThought(knownThoughts, list.filter(i => i.role === 'thinking').map(replyId), following && reveal)
   if (thought) activeThought.value = { id: thought, at: Date.now() }
-  away = false
+  const r = sortNewReplies(knownReplies, list.filter(i => i.role === 'assistant').map(replyId),
+    { following, animate: reveal && typewriterActive.value && !thought, baseline: synced })
+  followed = true
   synced = true
-  const id = pickTyping(knownReplies, list.filter(i => i.role === 'assistant').map(replyId), live && !thought)
-  if (id) typing.value = { id, at: Date.now() }
+  if (r.typing) typing.value = { id: r.typing, at: Date.now() }
+  if (r.fresh) showFresh(r.fresh)
+}
+function showFresh(id: string) {
+  clearFresh()
+  freshId.value = id
+  freshTimer = setTimeout(clearFresh, FRESH_MS)
+}
+function markMissed(kept: ChatItem[]) {
+  if (freshId.value || typing.value) return
+  const id = missedReply(kept, items.value)
+  if (id) showFresh(id)
 }
 const typingAt = (id: string) => (typing.value && typing.value.id === id ? typing.value.at : null)
 function typingDone(id: string) { if (typing.value?.id === id) typing.value = null }
@@ -364,6 +396,7 @@ async function loadStep(current: () => boolean): Promise<boolean> {
       integration.value = r.reason === 'no_integration' ? r.integration || null : null
       // Conversation opened before its first reply: that reply is new.
       synced = true
+      followed = true
       return false
     }
     unavailable.value = null
@@ -600,11 +633,11 @@ const unsentPane = computed<Pane>(old => (old && old.id === props.pane.id && old
   && old.inputText === props.pane.inputText && JSON.stringify(old.draft) === JSON.stringify(props.pane.draft) ? old : props.pane))
 const waitFor = computed(() => waitingOn(props.pane))
 // Same props objects for the messages on each render (none built inline).
-// A user message is one framed bubble: its images first, then its text, so a
-// message of images only still reads as the user's (right side, frame, time).
+// A user message: its attachments on their own row above the bubble
+// (MsgAttachments), the bubble holds only its text (none: no bubble).
 const userParts = weakMemo((b: Block & { k: 'user' }) => [{ type: 'text' as const, text: b.text || ' ' }])
 const userUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: 'msg-bubble' }))
-const userRoot = (b: Block & { k: 'user' }) => (b.text.trim() || b.files.length ? 'msg msg-user' : 'msg msg-user msg-no-text')
+const userRoot = (b: Block & { k: 'user' }) => (sentSplit(b.text, b.pasted).text.trim() ? 'msg msg-user' : 'msg msg-user msg-no-text')
 const textParts = weakMemo((b: { text: string }) => [{ type: 'text' as const, text: b.text }])
 const aiUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: 'md' }))
 const pendingUi = keyedMemo((root: string) => ({ root, container: 'msg-c', content: root.includes(' queued') ? 'msg-bubble queued' : 'msg-bubble' }))
@@ -1045,7 +1078,7 @@ provide<QuestionsHost>(QUESTIONS_HOST, {
 // The words of a question (`.q-text`) and its button share a number in their message.
 const wordsOf = (btn: HTMLElement) => btn.closest('.md-body')?.querySelectorAll<HTMLElement>(`.q-text[data-n="${btn.dataset.n}"]`) || []
 const draftText = computed(() => useDraft(props.pane.id).text)
-watch(draftText, (text) => { if (!text) held = false })
+watch(draftText, (text) => { if (!text) held = false; clearFresh() })
 watch([() => useDraft(props.pane.id).text, visibleBlocks], () => nextTick(syncQuoted), { flush: 'post' })
 const selReply = ref<{ text: string, time: string | null, id: string | null, sig: string, top: number, left: number } | null>(null)
 const selBtn = ref<HTMLElement | null>(null)
@@ -1289,9 +1322,11 @@ function openPathMenu(el: HTMLElement, path?: string) {
   const p = path || el.dataset.path || (el.textContent || '').trim()
   if (p) openCodeMenu(el, pathMenuItems(p), fileName(p))
 }
-const filePeek = reactive({ open: false, path: '' })
+const filePeek = reactive({ open: false, path: '', name: '' })
+// Where the file's folder · size and controls go: under the window's title.
+const filePeekHead = `file-head-${useId()}`
 function previewFile(p: string) {
-  Object.assign(filePeek, { open: true, path: p })
+  Object.assign(filePeek, { open: true, path: p, name: '' })
 }
 async function downloadFile(p: string) {
   try { await saveFile(`/api/files/download?pane=${encodeURIComponent(props.pane.id)}&path=${encodeURIComponent(p)}&from=chat`, fileName(stripPosition(p))) }
@@ -1355,8 +1390,8 @@ const queuedBubbles = computed(() => queuedList.value.filter(q => !q.note))
 // wherdr's own notes in Claude's queue (a card's outcome, a wake), tagged like
 // their row in the conversation: Claude's Send now has the message it sends (WHR-550).
 const queuedNotes = computed(() => queuedList.value.filter(q => q.note))
-// Same bubble as a message in the conversation (thumbnails inside, above the
-// text), so nothing moves when it lands.
+// Same bubble as a message in the conversation (attachments above it), so
+// nothing moves when it lands.
 const pendingParts = (q: { body: string }) => [{ type: 'text' as const, text: q.body || ' ' }]
 // A message the server never got: "Cancel" puts the app's copy back into the
 // field, "Retry" sends it again.
@@ -1669,6 +1704,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
       >
         <div ref="listEl" class="chat-list" :class="[readOnly ? 'no-reply' : 'can-reply', { asking: asked, skeleton }]" @click="onListClick" @keydown="onListKey">
           <div v-if="shownUnavailable === 'not_found' && firstPrompt" class="msg-user-wrap" data-testid="first-prompt">
+            <MsgAttachments :srcs="[]" :files="[]" :text="firstPrompt" />
             <UChatMessage
               id="first-prompt" role="user" side="right" variant="soft" :parts="firstParts(firstPrompt)"
               :ui="FIRST_UI"
@@ -1717,6 +1753,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <template v-for="b in (skeleton ? [] : shownBlocks)" :key="b.key">
               <!-- "!" command running, with messages written after it started: above them. -->
               <ChatShellRun v-if="liveRun && b.key === liveRunAt" :tool="liveRun" :agent="agent" live />
+              <Transition name="new-sep"><div v-if="b.key === freshKey" class="day-sep new-sep" data-testid="new-sep"><span>{{ t('New') }}</span></div></Transition>
               <div v-if="b.k === 'day'" class="day-sep"><span>{{ b.label }}</span></div>
 
               <div v-else-if="b.k === 'who'" class="msg-who" :class="agent || ''">
@@ -1775,15 +1812,14 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                 <button v-if="b.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(b.origin)">
                   <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ b.reply.time }}</span><span class="msg-quote-text">{{ b.reply.excerpt }}</span>
                 </button>
+                <MsgAttachments :srcs="b.srcs" :files="b.files" :text="b.text" :pasted="b.pasted" :offline="readOnly" @file="openPathMenu" />
                 <UChatMessage
                   :id="b.key" role="user" side="right" variant="soft"
                   :parts="userParts(b)"
                   :ui="userUi(userRoot(b))"
                 >
                   <template #content>
-                    <span v-if="b.srcs.length" class="msg-media"><MsgThumbs :srcs="b.srcs" :offline="readOnly" /></span><span v-if="b.files.length" class="msg-file-chips">
-                      <FileChip v-for="f in b.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                    </span><UserText :text="b.text" :pasted="b.pasted" />
+                    <UserText :text="b.text" :pasted="b.pasted" />
                   </template>
                 </UChatMessage>
                 <MsgStamp v-if="b.ts" :ts="b.ts" />
@@ -1941,15 +1977,14 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
+            <MsgAttachments :srcs="q.srcs" :files="q.files" :text="q.body" :pasted="q.pasted" :missing="q.missing" @file="openPathMenu" />
             <UChatMessage
               :id="`q:${q.id}`" role="user" side="right" variant="soft"
               :parts="pendingParts(q)"
-              :ui="pendingUi(`msg msg-user msg-pending sent${q.body || q.files.length ? '' : ' msg-no-text'}`)"
+              :ui="pendingUi(`msg msg-user msg-pending sent${sentSplit(q.body, q.pasted).text ? '' : ' msg-no-text'}`)"
             >
               <template #content>
-                <span v-if="q.srcs.length || q.missing" class="msg-media"><MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span></span><span v-if="q.files.length" class="msg-file-chips">
-                  <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                </span><UserText :text="q.body" :pasted="q.pasted" />
+                <UserText :text="q.body" :pasted="q.pasted" />
               </template>
             </UChatMessage>
             <div class="queued-tag sent" :role="queuedSending(q) ? 'status' : undefined">
@@ -1960,15 +1995,14 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
             <button v-if="q.reply" type="button" class="msg-quote" :aria-label="t('Show original message')" @click="gotoOrigin(q.origin)">
               <UIcon name="i-lucide-corner-left-up" class="msg-quote-time" /><span class="msg-quote-time">{{ q.reply.time }}</span><span class="msg-quote-text">{{ q.reply.excerpt }}</span>
             </button>
+            <MsgAttachments :srcs="q.srcs" :files="q.files" :text="q.body" :pasted="q.pasted" :missing="q.missing" @file="openPathMenu" />
             <UChatMessage
               :id="`q:${q.id}`" role="user" side="right" variant="soft"
               :parts="pendingParts(q)"
-              :ui="pendingUi(`msg msg-user msg-pending queued${q.body || q.files.length ? '' : ' msg-no-text'}`)"
+              :ui="pendingUi(`msg msg-user msg-pending queued${sentSplit(q.body, q.pasted).text ? '' : ' msg-no-text'}`)"
             >
               <template #content>
-                <span v-if="q.srcs.length || q.missing" class="msg-media"><MsgThumbs v-if="q.srcs.length" :srcs="q.srcs" /><span v-for="k in q.missing" :key="k" class="thumb-missing" :title="t('Image')"><UIcon name="i-lucide-image" /></span></span><span v-if="q.files.length" class="msg-file-chips">
-                  <FileChip v-for="f in q.files" :key="f.path" :name="f.name" clickable @open="el => openPathMenu(el, f.path)" />
-                </span><UserText :text="q.body" :pasted="q.pasted" />
+                <UserText :text="q.body" :pasted="q.pasted" />
               </template>
             </UChatMessage>
             <div v-if="q.state === 'failed' && !q.inInput" class="queued-tag failed" role="alert">
@@ -2002,8 +2036,9 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
     <UDropdownMenu v-if="!sheetMenus" v-model:open="codeMenu.open" :items="codeMenuDropdown" :content="{ align: 'start', side: 'bottom', sideOffset: 4 }" :ui="{ content: 'hw-dropdown' }">
       <span class="path-anchor" :style="{ left: `${codeMenu.x}px`, top: `${codeMenu.y}px`, width: `${codeMenu.w}px`, height: `${codeMenu.h}px` }" aria-hidden="true" />
     </UDropdownMenu>
-    <AppSheet v-model:open="filePeek.open" :title="fileName(stripPosition(filePeek.path))" wide full screen>
-      <FilesView v-if="filePeek.open" :key="filePeek.path" :pane-id="paneId" :file="filePeek.path" />
+    <AppSheet v-model:open="filePeek.open" :title="filePeek.name || fileName(stripPosition(filePeek.path))" wide full screen>
+      <template #sub><div :id="filePeekHead" /></template>
+      <FilesView v-if="filePeek.open" :key="filePeek.path" :pane-id="paneId" :file="filePeek.path" :head="filePeekHead" @name="filePeek.name = $event" />
     </AppSheet>
   </div>
 </template>
