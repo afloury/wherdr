@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### New
 
+- **omp takes a role alias as its model.** `prefs.model`, `reviewModel` and `reviewFallbackModel` accept an omp role alias of its own config (`@standard`, `@plan:high`) when the agent is omp, so a workflow follows the user's role setup instead of a pinned model id. Other agents still need a model name.
 - **A missing omp browser relay is a machine problem.** A task whose workflow sets `prefs.browser` to `"relay"` now checks, before it starts, that the relay's native host is registered in Chrome, Chromium or Brave. When it is not (an omp update can unregister it), the start is refused with "browser relay: …" like any other machine readiness failure, instead of the agent asking whether the relay is on.
 
 ### Fixed
