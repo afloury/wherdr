@@ -122,6 +122,13 @@ it('a decision or a stopped task has no Send back', async () => {
   }
 })
 
+it('a step with no agent step before it has no Send back', async () => {
+  const first = [{ ...plan[0]!, holder: 'none' as const, ends: 'user' as const }, ...plan.slice(1)]
+  const w = await mountSuspended(TaskSheet, { props: { card: waiting({ plan: first, userLabel: 'Approve', state: at(0, { yourTurn: { reason: 'user', badge: 'Approve' } }) }) }, global: { stubs } })
+  expect(w.find('[data-testid="todo-back"]').exists()).toBe(false)
+  w.unmount()
+})
+
 it('a visual merge is sent back with a note: Send back alone loads until the server answered, then says Sent back', async () => {
   const w = await mountSuspended(TaskSheet, { props: { card: cases[0]![1] }, global: { stubs } })
   await w.get('textarea[data-testid="todo-back-note"]').setValue('The button is cut on the phone')

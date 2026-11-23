@@ -14,7 +14,7 @@
 // disabled meanwhile; once through, a check on it for a moment (DONE_MS), Send back's says Sent back.
 import { adviceChoices } from '#shared/pm/decisions'
 import { canStart, coordinatorWait, mayAccept, mergeGoesNow, mergeStuck, mergeWaits, prLink, prUpdating, type Card } from '#shared/pm/board'
-import { stepLabels } from '#shared/pm/steps'
+import { sendBackTo, stepLabels } from '#shared/pm/steps'
 import { RESUMES, stoppedText, type Resume } from '#shared/pm/stop'
 import { earlierCommit, shotUrl } from '#shared/pm/shots'
 import { reviewNote, workerNote } from '#shared/pm/report'
@@ -60,7 +60,8 @@ const pr = computed(() => (props.kind === 'merge' || props.kind === 'step' || pr
 const note = ref('')
 // stepAbove: the step's own button (StepButton) is in the sheet's header, not here.
 // Send back with a note on every step that waits for the user (the engine refuses it on any other step, or one running).
-const sendsBack = computed(() => props.kind === 'merge' || (!!props.card.userLabel && !props.card.state?.acting && props.kind !== 'stopped' && props.kind !== 'decide'))
+const sendsBack = computed(() => sendBackTo(props.card.plan, props.card.state?.at ?? 0) >= 0
+  && (props.kind === 'merge' || (!!props.card.userLabel && !props.card.state?.acting && props.kind !== 'stopped' && props.kind !== 'decide')))
 // A stalled review in one plain sentence: its reviewer gone, or still there past the step's time limit.
 const reviewSay = computed(() => (props.card.terminal
   ? tl(`The review has run over ${props.card.plan[props.card.state?.at ?? 0]?.timeout ?? 'its time limit'} without a verdict. Restart it to review the PR's latest commit from the start.`)
