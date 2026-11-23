@@ -581,6 +581,12 @@ or a Claude reviewer with a Codex fallback:
 The fallback follows the reviewer's rules; saving refuses one that breaks them,
 or one of the two prefs without the other.
 
+A task that drives the omp browser relay (the user's own Chrome) sets
+`"browser": "relay"` the same way. Before it starts, the machine check also
+verifies that the relay's native host is registered in Chrome (any channel), Chromium or Brave; when it is not
+(an omp update can unregister it), the start is refused as a machine problem,
+"browser relay: …", not asked as a question to the agent.
+
 Before it starts a reviewer, wherdr reads the review agent's account (the
 reading of the home screen and pacing): at its limit and not yet reset, its
 5-hour window at 90 % or more, or held by its [pace](quotas.md#pace), the
