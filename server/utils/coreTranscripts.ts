@@ -141,17 +141,23 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
     return info
   }
 
+  // Controlling terminal of a process on the machine (`ps` prints `pts/3`, `ttys003`).
+  const ttyOf = (on: string) => async (pid: number) => {
+    const r = await deps.call<{ stdout?: string }>('machine.exec', { argv: ['ps', '-o', 'tty=', '-p', String(pid)], ...(on ? { on } : {}), timeout: 5 }, 8000).catch(() => null)
+    return Buffer.from(r?.stdout || '', 'base64').toString('utf8').trim() || null
+  }
+
   const machines = new Map<string, Promise<Transcripts>>()
   function forMachine(name: string): Promise<Transcripts> {
     let t = machines.get(name)
     if (!t) {
       t = (async () => {
-        if (!name) return createTranscripts({ home: deps.localHome, herdr, fs: localFs, codexHistory: deps.codexHistory })
+        if (!name) return createTranscripts({ home: deps.localHome, herdr, fs: localFs, codexHistory: deps.codexHistory, ttyOf: ttyOf('') })
         const shell = coreShell(deps.call, name)
         const home = (await shell('printf %s "$HOME"')).stdout.toString('utf8').trim()
         if (!home.startsWith('/')) throw new CoreError('unreachable', 'machine home unknown')
         const fs: MachineFs = createShellFs(shell)
-        return createTranscripts({ home, herdr, fs })
+        return createTranscripts({ home, herdr, fs, ttyOf: ttyOf(name) })
       })()
       machines.set(name, t)
       // Not remembered when it fails: the machine may come back.

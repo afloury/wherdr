@@ -3,8 +3,8 @@
 import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
-import { createTranscripts, extractImage, parseLines, stripBlobs } from '../server/utils/transcripts'
+import { describe, expect, it, vi } from 'vitest'
+import { createTranscripts, extractImage, ompTerminalName, parseLines, stripBlobs } from '../server/utils/transcripts'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 const HOME = '/home/user'
@@ -321,6 +321,187 @@ describe('omp', () => {
     writeFileSync(withCmd, msg({ role: 'user', content: [{ type: 'text', text: '# Aside\n\nRéponds vite.\n\nquelle heure ?' }], attribution: 'user' }, '2026-01-02T00:00:00Z') + '\n')
     const t2 = createTranscripts({ home, herdr: async () => { throw new Error('pas de Herdr') } })
     expect((await t2.chat({ ...omp, id: 'wO:p5', agentSession: withCmd }, {})).items!.map(i => i.text)).toEqual(['/aside quelle heure ?'])
+  })
+
+  it('names omp terminals like omp does', () => {
+    expect(ompTerminalName('pts/3')).toBe('pts-3')
+    expect(ompTerminalName('/dev/pts/15\n')).toBe('pts-15')
+    expect(ompTerminalName('ttys003')).toBe('ttys003')
+    expect(ompTerminalName('s003')).toBe('ttys003')
+    for (const none of ['?', '??', '-', '', null, undefined, '../x', 'pts/../../x']) expect(ompTerminalName(none)).toBeNull()
+  })
+
+  it('finds the session of an omp terminal from its tty (terminal-sessions)', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-omp-tty-'))
+    const dir = path.join(home, '.omp/agent/sessions/-x')
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(path.join(home, '.omp/agent/terminal-sessions'), { recursive: true })
+    const crumb = (name: string, session: string) => writeFileSync(path.join(home, '.omp/agent/terminal-sessions', name), `/x\n${session}\ncwdstat 1 2\n`)
+    const file = path.join(dir, '2026-01-01T00-00-00-000Z_s1.jsonl')
+    writeFileSync(file, lines)
+    const herdr = async () => ({ process_info: { foreground_processes: [{ pid: 321, name: 'omp', argv: ['omp'] }] } })
+    const ttys: Record<number, string | null> = { 321: 'pts/3' }
+    const t = createTranscripts({ home, herdr, ttyOf: async pid => ttys[pid] ?? null })
+    const pane = (id: string) => ({ id, agent: 'omp', cwd: '/x' })
+
+    // No terminal-sessions file for that tty (and no session folder for /x): nothing.
+    expect(await t.locate(pane('a'))).toBeNull()
+    // Valid mapping pts/3 -> pts-3.
+    crumb('pts-3', file)
+    expect(await t.locate(pane('b'))).toEqual({ file, session: file })
+    expect((await t.chat(pane('b2'), {})).available).toBe(true)
+    // /new: the terminal now points at another file (a pane looked up again).
+    const next = path.join(dir, '2026-01-02T00-00-00-000Z_s2.jsonl')
+    writeFileSync(next, lines)
+    crumb('pts-3', next)
+    t.forget('b')
+    expect(await t.locate(pane('b'))).toEqual({ file: next, session: next })
+    // A tty with no terminal, or no breadcrumb for it: only the folder lookup remains (empty for /x).
+    ttys[321] = null
+    expect(await t.locate(pane('c'))).toBeNull()
+    ttys[321] = 'pts/9'
+    expect(await t.locate(pane('d'))).toBeNull()
+    // Without a way to read the tty (no ttyOf): the folder lookup alone, empty for /x.
+    expect(await createTranscripts({ home, herdr }).locate(pane('e'))).toBeNull()
+
+    // Only an omp session file under ~/.omp/agent/sessions, absolute, .jsonl, existing.
+    ttys[321] = 'pts/3'
+    const outside = path.join(home, 'autre.jsonl')
+    writeFileSync(outside, lines)
+    const other = path.join(home, '.claude/projects/-x/s.jsonl')
+    mkdirSync(path.dirname(other), { recursive: true })
+    writeFileSync(other, lines)
+    const bad = [outside, other, `${dir}/../../../../autre.jsonl`, path.join(dir, 'absent.jsonl'), path.relative(home, file), path.join(dir, 'x.txt'), dir, '']
+    for (const [i, session] of bad.entries()) {
+      crumb('pts-3', session)
+      expect(await t.locate(pane(`bad${i}`)), session).toBeNull()
+    }
+  })
+
+  it('falls back to the newest session of the terminal\'s omp folder when its tty names none', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-omp-folder-'))
+    const cwd = path.join(home, 'proj')
+    const dir = path.join(home, '.omp/agent/sessions/-proj')
+    const crumbs = path.join(home, '.omp/agent/terminal-sessions')
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(crumbs, { recursive: true })
+    const older = path.join(dir, '2026-01-01T00-00-00-000Z_s1.jsonl')
+    const newest = path.join(dir, '2026-01-02T00-00-00-000Z_s2.jsonl')
+    for (const [file, ago] of [[older, 7_200_000], [newest, 3_600_000]] as const) {
+      writeFileSync(file, lines)
+      const at = new Date(Date.now() - ago)
+      utimesSync(file, at, at)
+    }
+    const herdr = async () => ({ process_info: { foreground_processes: [{ pid: 321, name: 'omp', argv: ['omp'] }] } })
+    const ttys: Record<number, string | null> = { 321: 'pts/3' }
+    const t = createTranscripts({ home, herdr, ttyOf: async pid => ttys[pid] ?? null })
+    const pane = (id: string) => ({ id, agent: 'omp', cwd })
+    const guess = { file: newest, session: path.basename(newest, '.jsonl'), guessed: true }
+
+    // No terminal-sessions file for the tty, no tty, no way to read it: the folder's newest session.
+    expect(await t.locate(pane('a'))).toEqual(guess)
+    ttys[321] = null
+    expect(await t.locate(pane('b'))).toEqual(guess)
+    expect(await createTranscripts({ home, herdr }).locate(pane('c'))).toEqual(guess)
+    // The terminal's own file is no guess, and wins over a newer file of the folder.
+    ttys[321] = 'pts/3'
+    writeFileSync(path.join(crumbs, 'pts-3'), `${cwd}\n${older}\ncwdstat 1 2\n`)
+    expect(await t.locate(pane('d'))).toEqual({ file: older, session: older })
+    // The file it names does not exist yet (omp writes it with its first reply): not another conversation meanwhile.
+    writeFileSync(path.join(crumbs, 'pts-3'), `${cwd}\n${path.join(dir, '2026-01-03T00-00-00-000Z_s3.jsonl')}\ncwdstat 1 2\n`)
+    expect(await t.locate(pane('e'))).toBeNull()
+  })
+
+  it('looks for an omp session again after a second, not 8: its file only appears with the first reply', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-omp-miss-'))
+    const dir = path.join(home, '.omp/agent/sessions/-x')
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(path.join(home, '.omp/agent/terminal-sessions'), { recursive: true })
+    const crumb = (session: string, fresh: boolean) => writeFileSync(path.join(home, '.omp/agent/terminal-sessions/pts-3'), `/x\n${session}\n${fresh ? 'fresh\n' : ''}cwdstat 1 2\n`)
+    const file = path.join(dir, '2026-01-01T00-00-00-000Z_s1.jsonl')
+    const next = path.join(dir, '2026-01-02T00-00-00-000Z_s2.jsonl')
+    const herdr = async () => ({ process_info: { foreground_processes: [{ pid: 321, name: 'omp', argv: ['omp'] }] } })
+    const t = createTranscripts({ home, herdr, ttyOf: async () => 'pts/3' })
+    const omp = { id: 'wM:p1', agent: 'omp', cwd: '/x' }
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      // A new omp has written its terminal-sessions file (marked fresh), not its session file.
+      crumb(file, true)
+      expect(await t.chat(omp, {})).toEqual({ available: false, reason: 'not_found' })
+      // Its first reply creates the file: the next poll still gets the answer it just had…
+      writeFileSync(file, lines)
+      crumb(file, false)
+      vi.advanceTimersByTime(500)
+      expect((await t.chat(omp, {})).available).toBe(false)
+      // …and the conversation shows a second later (8 s would leave "No conversation" that long).
+      vi.advanceTimersByTime(600)
+      const r = await t.chat(omp, {})
+      expect(r.available).toBe(true)
+      expect(r.items!.map(i => i.role)).toContain('assistant')
+      // A conversation found is kept 8 s, as for every agent: /new shows after that.
+      writeFileSync(next, lines)
+      crumb(next, false)
+      vi.advanceTimersByTime(5000)
+      expect(await t.locate(omp)).toEqual({ file, session: file })
+      vi.advanceTimersByTime(4000)
+      expect(await t.locate(omp)).toEqual({ file: next, session: next })
+    } finally { vi.useRealTimers() }
+  })
+
+  it('ignores the terminal-sessions file a tty\'s previous omp left, unless omp continues a session', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-omp-stale-'))
+    const dir = path.join(home, '.omp/agent/sessions/-x')
+    const crumbs = path.join(home, '.omp/agent/terminal-sessions')
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(crumbs, { recursive: true })
+    const previous = path.join(dir, '2026-01-01T00-00-00-000Z_s1.jsonl')
+    writeFileSync(previous, lines)
+    const found = { file: previous, session: previous }
+    // The terminal's folder holds a session written since the terminal appeared: it never stands in for a
+    // terminal-sessions file refused as stale (the folder lookup is for a tty that names nothing).
+    const recent = path.join(home, '.omp/agent/sessions/--x--/2026-01-02T00-00-00-000Z_s2.jsonl')
+    mkdirSync(path.dirname(recent), { recursive: true })
+    writeFileSync(recent, lines)
+    // The terminal-sessions file of the tty, last written `ago` ms ago.
+    const crumb = (ago: number) => {
+      const f = path.join(crumbs, 'ttys002')
+      writeFileSync(f, `/x\n${previous}\ncwdstat 1 2\n`)
+      const at = new Date(Date.now() - ago)
+      utimesSync(f, at, at)
+    }
+    let argv = ['omp']
+    const herdr = async () => ({ process_info: { foreground_processes: [{ pid: 7, name: 'omp', argv }] } })
+    const t = createTranscripts({ home, herdr, ttyOf: async () => 'ttys002' })
+    const born = Date.now() - 60_000 // the terminal appeared a minute ago
+    let n = 0
+    const pane = () => ({ id: `wS:p${++n}`, agent: 'omp', cwd: '/x', bornAt: born })
+
+    // Written an hour ago, before this terminal existed: the previous omp's, not this one's.
+    crumb(3_600_000)
+    expect(await t.locate(pane())).toBeNull()
+    // The new omp rewrote it when it started its session.
+    crumb(30_000)
+    expect(await t.locate(pane())).toEqual(found)
+    // A margin for the clocks and the file's date: a second before the terminal counts, three do not.
+    crumb(61_000)
+    expect(await t.locate(pane())).toEqual(found)
+    crumb(63_000)
+    expect(await t.locate(pane())).toBeNull()
+
+    // omp asked to continue a session keeps the file it finds, unchanged, so older than the terminal.
+    crumb(3_600_000)
+    for (const args of [['omp', '-c'], ['omp', '--continue'], ['omp', '-r', 'abc'], ['omp', '--resume=abc'], ['omp', '--restore', previous]]) {
+      argv = args
+      expect(await t.locate(pane()), args.join(' ')).toEqual(found)
+    }
+    // Other launches (a prompt, other flags, no session at all) have nothing of the previous omp's.
+    for (const args of [['omp'], ['omp', '--model', 'opus'], ['omp', 'continue the work'], ['omp', '--no-session']]) {
+      argv = args
+      expect(await t.locate(pane()), args.join(' ')).toBeNull()
+    }
+    // A pane whose birth is unknown has nothing to be compared with: the file is read as before.
+    argv = ['omp']
+    expect(await t.locate({ id: 'wS:nb', agent: 'omp', cwd: '/x' })).toEqual(found)
   })
 
   it('keeps reading an omp session as omp while the pane reports another agent', async () => {

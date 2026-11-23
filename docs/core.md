@@ -104,6 +104,18 @@ Each read has 1.5 s, a whole request 3 s, and a refused connection is retried af
 An expired paging cursor reloads the conversation's end. Daemon image attachments are not
 shown yet; remote machines keep the rollout reader.
 
+omp terminals are read too: the process's tty (`ps -o tty=`, on its machine) names omp's
+`~/.omp/agent/terminal-sessions/<tty>` file, whose second line is the current session file.
+omp creates that session file with its first reply, not when it starts, so a new omp's
+Conversation reads "No conversation for this agent yet." until then (a missing file is looked
+for again every second, where other agents' is kept 8 seconds). A tty is reused by the next
+terminal and its file keeps the previous omp's session until the new omp rewrites it, a moment
+after starting: a file older than the terminal is ignored, unless omp was started with
+`-c`/`--continue`, `-r`/`--resume` or `--restore`, which keep the file they find.
+Where the tty cannot be read or has no such file, the conversation is the newest file in
+omp's session folder for the terminal's folder, once it is no older than the terminal
+(`--continue` / `--resume` take up an older one).
+
 Devin CLI (tested with 3000.11.234) is read through its saved ATIF-v1.7 files at
 `~/.local/share/devin/cli/transcripts/<session>.json` (24 MiB maximum, transferred
 in chunks of at most 4 MiB so remote replies stay below core's transport limit). The reader

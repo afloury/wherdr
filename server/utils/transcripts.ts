@@ -45,6 +45,16 @@ interface CodexRollout { file: string, id: string, ts: number, mtimeMs: number }
 // Window in which a Codex's conversation is created around its appearance.
 const CODEX_BIRTH_BEFORE = 5000
 const CODEX_BIRTH_AFTER = 120000
+// omp writes its conversation file with its first assistant message, not when it
+// starts: a "no file" for an omp pane is kept OMP_MISS_MS only (locate).
+const OMP_MISS_MS = 1000
+// A terminal-sessions file is the previous omp's of that tty until the new omp
+// rewrites it, a moment after it started: one older than the terminal (less this
+// margin) is not this omp's (locateOmpPane).
+const OMP_STALE_SLACK = 2000
+// Launch arguments with which omp keeps the terminal-sessions file it finds: it
+// continues the tty's previous session, so the file may be older than the terminal.
+const OMP_CONTINUES = /^(?:-c|-r|--continue|--resume|--restore)(?:=|$)/
 type Lines = string[] & { refs?: string[] }
 type Parsed = ChatItem[] & { queue?: ClaudeQueueEntry[], popped?: ClaudeQueueEntry[] }
 // `anchor`: fingerprint of the bytes just above `start` (see anchorAt).
@@ -1060,7 +1070,25 @@ export function isMissing(e: unknown): boolean {
   return err.code === 'remote' && /no such file|not a directory|introuvable/i.test(err.message || '')
 }
 
-export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, codexHistory }: { home: string, herdr: HerdrCall, fs?: MachineFs, now?: () => number, codexHistory?: CodexHistory }) {
+// omp's name for a terminal in ~/.omp/agent/terminal-sessions: the tty without
+// `/dev/`, `/` -> `-` (`pts/3` -> `pts-3`, `ttys003` stays). `ps` may print
+// the macOS tty as `s003` and a process without terminal as `?`/`??`/`-`.
+export function ompTerminalName(tty: string | null | undefined): string | null {
+  let t = String(tty || '').trim().replace(/^\/dev\//, '')
+  if (/^s\d+$/.test(t)) t = `tty${t}`
+  t = t.replace(/\//g, '-')
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(t) && !t.includes('..') ? t : null
+}
+
+export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, codexHistory, ttyOf }: {
+  home: string
+  herdr: HerdrCall
+  fs?: MachineFs
+  now?: () => number
+  codexHistory?: CodexHistory
+  // Controlling terminal of a process of this machine (`pts/3`), null if none or unknown.
+  ttyOf?: (pid: number) => Promise<string | null>
+}) {
   // The machine's paths (POSIX for a remote Linux machine, even from a Windows host).
   const path = machinePath(home)
   const devin = createDevinTranscripts({ home, fs, now })
@@ -1287,6 +1315,42 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     return best && { file: best.file, session: path.basename(best.file, '.jsonl'), guessed: true }
   }
 
+  // omp writes `cwd`, the session file and a `cwdstat` line to
+  // ~/.omp/agent/terminal-sessions/<tty> (updated by /new, /resume): the file
+  // of the omp that owns the terminal, without any help from the terminal.
+  // A tty is reused by the next terminal and its file stays the previous omp's
+  // until the new omp rewrites it, so a file older than this terminal is
+  // ignored (it names another conversation) unless omp was asked to continue:
+  // no conversation yet, not the folder's guess, which may be that one too.
+  // Where the tty cannot be read or has no such file, that guess (locateOmp)
+  // is all there is.
+  async function locateOmpPane(pane: TranscriptPane): Promise<Loc | null> {
+    if (!ttyOf) return locateOmp(pane)
+    const proc = await paneProcess(pane.id, 'omp')
+    if (!proc || !Number.isSafeInteger(proc.pid) || proc.pid <= 0) return locateOmp(pane)
+    const name = ompTerminalName(await ttyOf(proc.pid))
+    if (!name) return locateOmp(pane)
+    const crumbFile = path.join(home, '.omp/agent/terminal-sessions', name)
+    let crumb: string
+    try {
+      // Dated before it is read: a file rewritten in between reads as too old
+      // (the next look finds it), never as the previous omp's.
+      const written = (await fs.stat(crumbFile)).mtimeMs
+      const continues = Array.isArray(proc.argv) && proc.argv.some((a: unknown) => OMP_CONTINUES.test(String(a)))
+      if (pane.bornAt && written < pane.bornAt - OMP_STALE_SLACK && !continues) return null
+      crumb = await fs.readFile(crumbFile)
+    } catch (e) {
+      if (isMissing(e)) return locateOmp(pane)
+      throw e
+    }
+    const line = crumb.split('\n')[1]?.trim()
+    if (!line || !path.isAbsolute(line)) return null
+    const f = path.normalize(line)
+    const root = path.join(home, '.omp/agent/sessions') + path.sep
+    if (!f.startsWith(root) || !f.endsWith('.jsonl') || transcriptKind(f) !== 'omp' || !await exists(f)) return null
+    return { file: f, session: f }
+  }
+
   // Codex panes of the machine (kept up to date by the state): for the claims.
   const codexPeers = new Map<string, TranscriptPane>()
   // Agents seen at work: they have a conversation (see shared/integrations.ts).
@@ -1342,10 +1406,11 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   }
 
   // `fresh`: a cached "no file" is not trusted (a brand new Claude writes its
-  // transcript with its first message, within those 8 s).
+  // transcript with its first message, within those 8 s). An omp pane's "no file"
+  // is kept OMP_MISS_MS only, `fresh` or not: omp's file comes with its first reply.
   async function locate(pane: TranscriptPane, fresh = false): Promise<Loc | null> {
     const hit = locCache.get(pane.id)
-    if (hit && (hit.loc || !fresh) && Date.now() - hit.at < 8000 && hit.session === pane.agentSession) return hit.loc
+    if (hit && (hit.loc || !fresh) && Date.now() - hit.at < (hit.loc || pane.agent !== 'omp' ? 8000 : OMP_MISS_MS) && hit.session === pane.agentSession) return hit.loc
     let loc: Loc | null = null
     let failed = false
     try {
@@ -1375,7 +1440,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
         const proc = await paneProcess(pane.id, 'claude')
         if (proc) loc = await locateClaude(proc)
       }
-      if (!loc && pane.agent === 'omp') loc = await locateOmp(pane)
+      if (!loc && pane.agent === 'omp') loc = await locateOmpPane(pane)
     } catch { failed = true }
     // Failed read (SSH, timeout): we keep the last known file rather
     // than conclude "no conversation" (the view would empty for a second).
