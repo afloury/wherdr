@@ -104,7 +104,7 @@ describe('DictationDeviceSettings', () => {
     expect(row(w, 'parakeet-v3').find('[role="radio"]').attributes('aria-checked')).toBe('true')
     expect(qwen().find('.dictation-model-meta').text()).toBe('ZH · EN · Multi (16) · 889 MB')
     expect(qwen().find('[data-testid="model-gpu"]').text()).toBe('Uses the GPU')
-    expect(rating(qwen())).toEqual(['Quality', 'ZH ■■■■■', 'EN ■■■■■ yours', 'Speed', 'unknown'])
+    expect(rating(qwen())).toEqual(['Quality', 'ZH ■■■■■', 'EN ■■■■■ yours', 'Speed', '■■■□□ est.'])
     expect(qwen().find('button:not([role])').text()).toBe('Install · 889 MB')
 
     // Cancelling while the server is still fetching the 889 MB files stops cleanly.

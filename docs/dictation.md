@@ -19,7 +19,7 @@ pane terms, model route, fetch script), with credit in the code.
 | `/models/**` route, fetch script with sha256, CSP, service worker | Merged |
 | On-device engine (sherpa-onnx WASM worker, CPU) | Merged: Parakeet v3 (French + English, default), Canary 180M (default on iPhone) and SenseVoice |
 | Model list in Settings (install, delete, progress, ratings) | Merged |
-| WebGPU models (Qwen3-ASR q4f16) | Merged (opt-in on WebGPU + `shader-f16`; measurements: pending Android) |
+| WebGPU models (Qwen3-ASR q4f16) | Merged (opt-in on WebGPU + `shader-f16`; measured on Android, see [F4](#f4-webgpu-models)) |
 
 ## Overview
 
@@ -331,8 +331,8 @@ model speaks it, marked "yours" (never forced first).
 **Ratings are computed, never typed by hand.** Quality: the WER for the language, FLEURS first,
 else MLS, else Common Voice; ≤ 5 → 5 dots, ≤ 7 → 4, ≤ 10 → 3, ≤ 15 → 2, above → 1, no figure →
 "?". The tooltip names the figure, dataset and source. Speed: the catalog's `speed.estimate`, from
-native real-time factors on a phone-class CPU (≤ 0.1 → 5, ≤ 0.2 → 4, ≤ 0.4 → 3, ≤ 0.8 → 2,
-above → 1), shown as estimated; measuring it on the device is left for later. A language the model
+native real-time factors on a phone-class CPU, or a phone GPU's measured one for a WebGPU model
+(≤ 0.1 → 5, ≤ 0.2 → 4, ≤ 0.4 → 3, ≤ 0.8 → 2, above → 1), shown as estimated; measuring it on the device is left for later. A language the model
 does not speak shows "—"; a missing figure is left out of the file, never set to zero, and shows
 "unknown".
 
@@ -450,7 +450,7 @@ interface above.
 | F1 | `/models/**` route, fetch script with sha256, CSP, service worker | Merged |
 | F2 | On-device engine: worker, CPU models with French (Parakeet v3) | Merged |
 | F3 | Model list in Settings: install, delete, progress, resume, storage used, WebGPU detection, ratings | Merged |
-| F4 | WebGPU models (Qwen3-ASR q4f16): worker, catalog entry, opt-in selection | Merged (measurements: pending Android) |
+| F4 | WebGPU models (Qwen3-ASR q4f16): worker, catalog entry, opt-in selection | Merged (measured on Android) |
 
 ### F4: WebGPU models
 
@@ -466,8 +466,25 @@ q4f16** (889 MB; 16 languages including French and English; uses pane terms as c
   answers `unsupported` when `navigator.gpu` or `shader-f16` is missing. No CPU fallback is
   used for a direct GPU load, while `deviceModel()` keeps CPU defaults and fallbacks everywhere else.
 - Pane terms (`opts.terms`) passed as the model's context prompt; `caps.terms: true`.
-- Measurements: pending Android (load time, decode time per take, memory, and fp16 validation on a
-  device with `shader-f16`).
+- Measured on an OPPO Find X8 Ultra (Android, Chrome 157, WebGPU on Adreno 8xx with `shader-f16`),
+  model files from Cache Storage. Mandarin and Cantonese were spoken into the microphone; English
+  and French are WAV files on the phone (LibriSpeech dev-clean 1272-128104-0003 and -0005;
+  Multilingual LibriSpeech French test, two utterances; both CC BY 4.0):
+
+  | | Audio | Decode | RTF | Text |
+  | --- | --- | --- | --- | --- |
+  | Load (worker created → ready) | | 5.7–6.2 s (worker 5.1–5.6 s) | | |
+  | Mandarin, microphone | 18.1 s | 2.9 s (1 piece) | 0.16 | no reference |
+  | Cantonese, microphone | 22.4 s | 4.6 s (2 pieces) | 0.20 | no reference |
+  | English, WAV, language detected | 19.5 s | 5.0 s (1 piece) | 0.26 | identical to the reference |
+  | French, WAV, language detected | 23.9 s | 10.4 s (2 pieces) | 0.43 | a few words wrong (*monstre*, *si démesurée*, *fuite*) |
+  | French, WAV, `fr` forced | 23.9 s | 8.9 s (2 pieces) | 0.37 | the same text |
+
+  Overall RTF 0.27 over the four languages with detection: decoding is autoregressive, so a take
+  with more words per second costs more. The fp16 path gives the expected text. The page's JavaScript heap stays at 12–25 MB; the weights
+  live in GPU memory, which a page can't read. The catalog's speed estimate (3) comes from these
+  takes: a flagship GPU, so it does not compare with the CPU models' figures. No iPhone or Mac with
+  `shader-f16` was available.
 
 ## Read aloud
 
