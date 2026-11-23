@@ -77,7 +77,9 @@ with the agent you chose (*Start with Claude*, *Codex*…), and its first
 message proposes a workflow ([its first
 conversation](#the-coordinators-first-conversation)). A folder without git
 needs no workflow: it has no tasks (a task needs git for its own worktree),
-and its coordinator does the work in it directly. Below, *Restart a
+and its coordinator does the work in it directly. Once that folder becomes a
+git repository, wherdr treats the project as one at its next task or
+coordinator start, or at *Check again* in the project sheet. Below, *Restart a
 coordinator* (with their number, collapsed until you open it) lists the
 projects whose coordinator does not run, to start it again; those running are
 in the sidebar, and with none stopped the section is hidden. The agent
@@ -147,7 +149,7 @@ board* goes to the board. Until the list is read, the switch and the rows show
 as grey blocks and both buttons wait; a failed read says why, with *Try again*. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
 Autopilot; on a computer it is a wide window, and its General fields pair up
-side by side (name and key, worker and reviewer). Its ⋯ menu removes the project from wherdr, after a confirmation:
+side by side (name and key, worker and reviewer). Its header has a close cross, and beside it a ⋯ menu that removes the project from wherdr, after a confirmation:
 its folder, branches and task worktrees stay on the machine. Removing is refused,
 with why, while the project has open tasks (finish, abandon or close them first)
 and, for a workspace, while it still has member projects (remove them first). A
@@ -578,6 +580,12 @@ or a Claude reviewer with a Codex fallback:
 `"reviewModel": "claude-sonnet-5-5", "reviewFallbackAgent": "codex", "reviewFallbackModel": "gpt-6.1-sol"`.
 The fallback follows the reviewer's rules; saving refuses one that breaks them,
 or one of the two prefs without the other.
+
+A task that drives the omp browser relay (the user's own Chrome) sets
+`"browser": "relay"` the same way. Before it starts, the machine check also
+verifies that the relay's native host is registered in Chrome (any channel), Chromium or Brave; when it is not
+(an omp update can unregister it), the start is refused as a machine problem,
+"browser relay: …", not asked as a question to the agent.
 
 Before it starts a reviewer, wherdr reads the review agent's account (the
 reading of the home screen and pacing): at its limit and not yet reset, its
