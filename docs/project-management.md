@@ -147,7 +147,7 @@ board* goes to the board. Until the list is read, the switch and the rows show
 as grey blocks and both buttons wait; a failed read says why, with *Try again*. A row opens the
 project's sheet, with five tabs: General, Workflow, Guards, Automations and
 Autopilot; on a computer it is a wide window, and its General fields pair up
-side by side (name and key, worker and reviewer). Its ⋯ menu removes the project from wherdr, after a confirmation:
+side by side (name and key, worker and reviewer). Its header has a close cross, and beside it a ⋯ menu that removes the project from wherdr, after a confirmation:
 its folder, branches and task worktrees stay on the machine. Removing is refused,
 with why, while the project has open tasks (finish, abandon or close them first)
 and, for a workspace, while it still has member projects (remove them first). A
