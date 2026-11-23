@@ -9,6 +9,9 @@ All notable changes to this project are documented here. The format follows
 ### Improved
 
 - **Alfred's instructions are a quarter of their size.** The `AGENTS.md` wherdr writes in Alfred's home is loaded into every conversation, and at 48 KB it crowded out your own global instructions (being terse, for instance). It is now about 12 KB: the command lists are `wherdr alfred help` and `wherdr pm help` (the advice on a project's machines and workflow moved into their descriptions), the in-app addresses are listed in [Conversation](docs/conversation.md), and which tool to show what with, with an example of each, is [Showing instead of telling](docs/alfred.md#showing-instead-of-telling). What Alfred must have at hand stays in the file: its home, how it starts, what it may and never does (show, then do; `--propose`; wakes; credentials), and how to answer about wherdr. A coordinator's own instructions are unchanged.
+### New
+
+- **A missing omp browser relay is a machine problem.** A task whose workflow sets `prefs.browser` to `"relay"` now checks, before it starts, that the relay's native host is registered in Chrome, Chromium or Brave. When it is not (an omp update can unregister it), the start is refused with "browser relay: …" like any other machine readiness failure, instead of the agent asking whether the relay is on.
 
 ### Fixed
 
