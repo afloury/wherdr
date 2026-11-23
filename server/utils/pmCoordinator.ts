@@ -31,6 +31,7 @@ import { cardNotesMessage, tellCardOutcome } from './cardOutcome'
 import { cardNoteOf } from '../../shared/uiActions'
 import { answeredTask, clearQuestion } from './pmAnswer'
 import { PATH_SETUP, homeOf, machineOn, type CoreAdminDeps } from './coreCreate'
+import { startFailure } from './coreInput'
 import { deliverFirst, queuedFirst, startTurn } from './coordinatorFirst'
 import { CREATE_SCRIPT, WRITE_SCRIPT, exec, launched, startTask } from './pmLaunch'
 import { actionShell } from './pmActions'
@@ -1000,7 +1001,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
       labels: { 'wherdr.install': await deps.store.install(), 'wherdr.coordinator': key },
       line: `${PATH_SETUP}; export PATH=${quote(`${c.folder}/bin`)}:"$PATH"; exec ${argv.map(quote).join(' ')}`,
     }, 30000)).address
-  } catch (e) { up(); throw e }
+  } catch (e) { up(); startFailure(e) }
   // Its folder is wherdr's own, new at its first start: its trust dialog is answered here.
   void answerOwnTrust(deps, address, c.folder).catch(() => {})
   // Alfred keeps the agent the user picked as its own (a project coordinator keeps its default).
