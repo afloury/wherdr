@@ -288,6 +288,16 @@ describe('where a written path is found', () => {
     expect(found['src/']).toBeUndefined()
   })
 
+  it('finds a folder written without its closing slash, marked as one, and not one that leaves the policy', async () => {
+    mkdirSync(path.join(coord, 'docs'), { recursive: true })
+    symlinkSync('/etc', path.join(coord, 'out'))
+    const found = await findWritten(home(), coord, [], ['docs', 'out', 'README.md', 'missing'])
+    expect(found.docs).toEqual([{ where: 'agent', abs: path.join(coord, 'docs'), dir: true }])
+    expect(found.out).toEqual([])
+    expect(found['README.md']).toEqual([{ where: 'agent', abs: path.join(coord, 'README.md') }])
+    expect(found.missing).toEqual([])
+  })
+
   it('never offers a protected file, a folder outside the policy or a symlink leaving it', async () => {
     const found = await findWritten(home(), coord, ['/etc'], ['~/.ssh/key', 'hosts', '~/leaves-home.txt'])
     expect(found).toEqual({ '~/.ssh/key': [], 'hosts': [], '~/leaves-home.txt': [] })

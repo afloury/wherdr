@@ -318,6 +318,12 @@ ${OPEN_FILE}
   shift 2
 done`
 
+// The same pairs as folders: 1 when the folder, symlinks resolved, lies under its root.
+export const DIR_EXISTS_SCRIPT = `while [ "$#" -ge 2 ]; do
+  r=$(cd -P -- "$1" 2>/dev/null && pwd -P) && d=$(cd -P -- "$1/$2" 2>/dev/null && pwd -P) && case "$d" in "$r"/*) echo 1;; *) echo 0;; esac || echo 0
+  shift 2
+done`
+
 // Where each written path is found (shared/filePaths.ts: the agent's folder,
 // then `repos`), checked on the machine in one run, then the notes on this
 // server (`notes`: their folder and a reader, given when the policy allows that folder). Missing,
@@ -335,6 +341,12 @@ export async function findWritten(m: Machine, cwd: string | null | undefined, re
   const lines = checks.length ? (await run(m, EXISTS_SCRIPT, [policy.protected ? '1' : '', ...checks.flatMap(x => [x.root, x.rel])], { timeoutMs: 20000 })).toString('utf8').split('\n') : []
   const found: Record<string, PathFound[]> = Object.fromEntries(paths.map(w => [w, []]))
   checks.forEach((x, i) => { if (lines[i] === '1') found[x.w]!.push(x.c) })
+  // What is no file may be a folder written without its closing slash.
+  const misses = checks.filter((x, i) => lines[i] !== '1' && x.rel)
+  if (misses.length) {
+    const dirs = (await run(m, DIR_EXISTS_SCRIPT, misses.flatMap(x => [x.root, x.rel]), { timeoutMs: 20000 })).toString('utf8').split('\n')
+    misses.forEach((x, i) => { if (dirs[i] === '1') found[x.w]!.push({ ...x.c, dir: true }) })
+  }
   if (notes) {
     for (const w of paths) {
       const rel = stripPosition(w.trim())

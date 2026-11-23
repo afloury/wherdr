@@ -23,6 +23,18 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   entry takes the card's place (shown once), with its run time and its output folded.
   Run while Claude is working: Claude Code queues the command and runs it once, when its turn
   ends; until then it shows only as its queued bubble, and the card starts when Claude runs it.
+  An inline command (`~/tools/update.sh 3.2.2`, `./script --flag`) is a command, not a path: an
+  executable path followed by arguments opens the command menu, while a bare path stays a path.
+  A command in an agent's reply also has **Run in split right**, **Run in split down** (a new shell
+  pane beside the conversation) and, in a browser on the agent's own computer, **Run in my terminal**:
+  each asks you to confirm, runs the command in the agent's folder, and stays open when it ends.
+  A folder the agent writes (`~/project/`, with or without its closing slash) has **Open in split right** and **Open in split down**
+  (a shell in that folder beside the conversation, on the agent's machine, from any device), and,
+  in a browser on the agent's own computer, **Open in my terminal**: it opens the computer's default terminal app
+  (Linux: `xdg-terminal-exec`, else `$TERMINAL`; macOS: the default terminal) outside wherdr, in
+  your shell, in that folder. **Open in file manager** shows the same folder in the desktop's file
+  manager (`xdg-open`, or `open` on macOS). Neither is offered on a phone, a remote browser or for an agent on
+  another machine, and only for folders chat files may use (Settings › Security).
 - **Following new messages**: a new or growing reply (typed in as it arrives, or shown at once)
   keeps the view at the bottom only if you were at the bottom. Scroll up (wheel, touch, keyboard
   or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the

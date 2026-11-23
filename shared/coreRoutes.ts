@@ -43,7 +43,7 @@ const BASE = [
   'chat', 'chat/image', 'prompt', 'input', 'interrupt', 'close', 'agents', 'codex-restart',
   'dirs', 'isgit', 'quotas', 'claude-statusline', 'claude-setup',
   'machine/add', 'machine/connect', 'machine/core', 'machine/core-rename', 'machine/core-forget',
-  'upload', 'attach', 'file', 'keep', 'open-editor',
+  'upload', 'attach', 'file', 'keep', 'open-editor', 'open-terminal', 'open-folder',
   'dictation/status', 'dictation/key', 'dictation/transcribe', 'dictation/prepare', 'GET dictation/models',
   'dictation/rewrite', 'GET dictation/text-models',
   // Action buttons an agent puts in its reply (shared/uiActions.ts).
