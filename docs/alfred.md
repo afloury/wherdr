@@ -140,7 +140,7 @@ task ABC-12
 status machine:laptop
 ```
 
-- At most one card or button group per message, after the sentence that explains it; never a card with no sentence. Several questions go in one `questions` card, answered in one message, one line per question: `1A Postgres`, `2B No, remove it`, `3 <your own words>` or `3 skip`.
+- At most one card or button group per message, after the sentence that explains it; never a card with no sentence. Limits: an option up to 80 characters, a question up to 200, 2 to 4 options per question, at most 8 questions; one line over a limit and the whole block shows as plain code. Several questions go in one `questions` card, answered in one message, one line per question: `1A Postgres`, `2B No, remove it`, `3 <your own words>` or `3 skip`.
 - In a wake (wherdr's own message to Alfred, not yours): `wherdr` blocks only. A `ui` command or `--propose` is refused there, so Alfred says what it would show instead of trying.
 - When a `ui` command is refused in your turn (no open wherdr: `not_found`), Alfred gives the in-app link in text and never retries in a loop.
 - Only your click acts: Alfred never says a button's action is done ("I merged it") before its card shows the outcome.

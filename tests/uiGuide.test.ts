@@ -10,7 +10,7 @@ import { parseAlfredCommand } from '../shared/pm/alfredCli'
 import { parseStatusBlock } from '../shared/statusBlock'
 import { parseWherdrBlock } from '../app/utils/markdown'
 import { UI_ACTIONS } from '../shared/uiActions'
-import { CHOICE_MAX_CHARS, QUESTION_MAX_CHARS } from '../shared/wherdrBlockLimits'
+import { CHOICES_MAX, CHOICE_MAX_CHARS, QUESTIONS_MAX, QUESTION_CHOICES_MIN, QUESTION_MAX_CHARS } from '../shared/wherdrBlockLimits'
 
 const cases: [UiRole, { key?: string }][] = [['task', {}], ['coordinator', { key: 'WEB' }]]
 
@@ -68,6 +68,10 @@ describe('docs/alfred.md, "Showing instead of telling"', () => {
     expect(blocks.map(b => b.split(/\s/)[0])).toEqual(['choices', 'questions', 'choices', 'task', 'status'])
     for (const start of ['ui open --target ', 'setting set ', 'project guards ']) expect(cmds.some(c => c.cli === 'alfred' && c.rest.startsWith(start)), start).toBe(true)
     for (const start of [...UI_ACTIONS.map(a => `ui action ${a} `), 'ui show shots ']) expect(cmds.some(c => c.cli === 'pm' && c.rest.startsWith(start)), start).toBe(true)
+  })
+
+  it('states the card limits the parser enforces', () => {
+    expect(section).toContain(`Limits: an option up to ${CHOICE_MAX_CHARS} characters, a question up to ${QUESTION_MAX_CHARS}, ${QUESTION_CHOICES_MIN} to ${CHOICES_MAX} options per question, at most ${QUESTIONS_MAX} questions; one line over a limit and the whole block shows as plain code.`)
   })
 
   it('states the wake, refusal and "never say done" rules', () => {
