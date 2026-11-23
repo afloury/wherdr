@@ -103,7 +103,8 @@ async function restoreChat() {
   }
   synced = true
   await apply(() => {
-    chat.value = { ...fresh(), file: saved.file || null, tail: saved.items, held: true }
+    // With what the agent still holds: a message sent while it works is in no item yet.
+    chat.value = { ...fresh(), file: saved.file || null, tail: saved.items, queue: readOnly.value ? [] : saved.queue ?? [], held: true }
     savedAt.value = saved.at
   })
   touchChat(props.pane.id)
@@ -384,6 +385,7 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     if (stale()) return false
     const startedAt = Date.now()
     const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
+    if (import.meta.dev && !ready && chat.value.tailStart === null) console.debug(`[chat] first read: ${Date.now() - startedAt} ms`)
     if (stale()) return false
     if (!r.available) {
       // Any list on screen counts, the end kept on this device too: a server
@@ -435,7 +437,7 @@ async function loadStep(current: () => boolean): Promise<boolean> {
       chat.value = c
       noteReplies(c.tail)
     })
-    saveChat(pane, items.value, chat.value.file)
+    saveChat(pane, items.value, chat.value.file, chat.value.queue)
     // Paint the prepared tail first, then revalidate using its token and cursor.
     if (ready) return true
   } catch (err) {
@@ -479,7 +481,7 @@ async function loadOlder() {
         olderCursor: (r.cursorKind === 'opaque' ? (r.start ?? 0) !== before : (r.start ?? 0) < before) ? (r.start ?? 0) : 0,
       }
     }, true)
-    saveChat(pane, items.value, chat.value.file)
+    saveChat(pane, items.value, chat.value.file, chat.value.queue)
     if (b) b.scrollTop = b.scrollHeight - fromBottom
   } catch (err) {
     toast((err as Error).message, true)
