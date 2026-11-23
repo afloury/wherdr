@@ -130,7 +130,8 @@ the buttons, which keep their keyboard focus ring; the focus stays inside while
 it is open and returns where it was on close. A sheet with a title shows
 AppSheet's square close cross (`.hw-sheet-close`, `i-lucide-x`, ghost) at the
 header's right, beside the title's first line, on the phone and on a computer;
-do not draw another. The handle is AppSheet's own `.hw-sheet-handle` (36 × 4 px bar in a
+do not draw another. A sheet's own header controls (a project's ⋯ menu) go in
+AppSheet's `actions` slot, just before the cross. The handle is AppSheet's own `.hw-sheet-handle` (36 × 4 px bar in a
 44 px target), not the drawer's. Full-screen
 `screen` views disable sheet dragging, so retain an explicit navigation action
 when using that mode.

@@ -9,6 +9,7 @@ All notable changes to this project are documented here. The format follows
 ### New
 
 - **Restart with… the agent a coordinator or Alfred already runs resumes its conversation.** Picking the same agent no longer starts a new conversation: Claude, Codex and omp take up the last one (Alfred on omp too), with the same model. Another agent starts a new conversation as before.
+- **A missing omp browser relay is a machine problem.** A task whose workflow sets `prefs.browser` to `"relay"` now checks, before it starts, that the relay's native host is registered in Chrome, Chromium or Brave. When it is not (an omp update can unregister it), the start is refused with "browser relay: …" like any other machine readiness failure, instead of the agent asking whether the relay is on.
 
 ### Fixed
 
