@@ -4,7 +4,10 @@
 
 - **Terminal view**: the real terminal of the hc terminal (xterm.js, WebGL or DOM renderer),
   attached through core's `terminal.attach` on a connection of its own. Every agent has it;
-  `` Ctrl+` `` switches between conversation and terminal.
+  `` Ctrl+` `` switches between conversation and terminal. With the WebGL renderer, the glyph
+  atlas is rebuilt once after resizes settle (a divider drag gives one repaint) and once after
+  the phone keyboard opens or closes: some mobile GPUs otherwise keep garbled or blank glyphs
+  until then.
 - **Shared with other viewers**: each viewer (phone, computer, herdr-app) has its own
   connection, so several work at once. A viewer opens at the terminal's current size and does
   not resize it until you **take control**: by typing in the terminal or the message field,
