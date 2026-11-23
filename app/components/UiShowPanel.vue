@@ -35,7 +35,7 @@ watch(() => route.path, close)
     <SidePanelHandle controls="ui-show" />
     <header class="ui-show-top">
       <div class="ui-show-head">
-        <span class="ui-open-by">{{ tl(`Shown by ${e.by || 'the agent'}`) }}</span>
+        <span v-if="e.what !== 'file'" class="ui-open-by">{{ tl(`Shown by ${e.by || 'the agent'}`) }}</span>
         <h2>{{ title }}</h2>
         <div v-if="e.what === 'file'" :id="head" class="ui-show-sub" />
       </div>
