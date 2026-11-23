@@ -40,8 +40,8 @@ export function onMdDropped(fn: (html: string) => void) { dropListeners.add(fn) 
 // shows as text (a task's description), except in `doc`, sanitized as above.
 // `doc`: a whole Markdown document read in the file explorer (implies
 // `plain`). Line breaks follow Markdown (a single newline is a space), code
-// blocks get light syntax colours and only Copy, inline code is never a
-// control, and an image with a relative path keeps it in `data-src` (no
+// blocks get light syntax colours and only Copy, inline code is plain text
+// (no control, no kind glyph), and an image with a relative path keeps it in `data-src` (no
 // request to the app's own address): FilesView loads it from the folder.
 export interface MdOptions { plain?: boolean, doc?: boolean }
 const PLAIN = { FORBID_TAGS: ['style', 'form', 'textarea', 'select', 'option', 'optgroup', 'fieldset', 'legend', 'label', 'datalist', 'output', 'dialog'], FORBID_ATTR: ['style'] }
@@ -246,6 +246,8 @@ export function md(text: string, options: MdOptions = {}): string {
         // (utils/codeKind.ts) for the terminal-style tints.
         codespan({ text }) {
           const code = escHtml(text)
+          // A document reads as one: no glyph or chip on its inline code.
+          if (docNow) return `<code>${code}</code>`
           if (plainNow) {
             const kind = codeKind(text)
             return `<code${kind ? ` data-k="${kind}"` : ''}>${code}</code>`

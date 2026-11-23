@@ -13,6 +13,11 @@ All notable changes to this project are documented here. The format follows
 ### Fixed
 
 - **An omp conversation shows a second after omp wrote it, and is never the tty's previous omp's.** omp creates its conversation file with its first reply, not when it starts, and wherdr kept “no conversation” for 8 seconds after each look, so a new omp's pane stayed on “No conversation for this agent yet.” (or on the message you had sent) for ten seconds or more after the reply. It now looks again every second until the file exists. And omp names its session file in `~/.omp/agent/terminal-sessions/<tty>`, where a new terminal that reuses a tty finds the previous omp's file until the new omp rewrites it, a moment after starting: the pane could show that other conversation for a few seconds. A file older than the terminal is now ignored, unless omp was started with `-c`/`--continue`, `-r`/`--resume` or `--restore`. Where the tty cannot be read or has no such file, the conversation is the newest one in omp's folder for the terminal's folder (the lookup of 3.2.2).
+### Fixed
+
+- **Sideways scroll in a menu sheet.** A label that is one unbreakable string (a tab name, a path) wraps like a description now, instead of pushing its row past the sheet's edge and scrolling the whole list off to the left.
+- **Tabs of this space.** A tab's terminal title shows under its label in the sheet's rows only when it differs from the label: a repeated title made every row look like a duplicated entry, worse on a phone where long labels also wrapped.
+- **Credentials in workspace, tab and pane names are masked.** A workspace or terminal launched from a URL carrying `user:password@` (a proxy, an ssh target) showed the secret in the machine list, the tab bar and the pane title — it now masks `user:password@` as `…@` everywhere.
 
 ## [3.2.2] — 2026-11-19
 

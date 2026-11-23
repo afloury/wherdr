@@ -193,10 +193,10 @@ const setVisibility = (body: { value: string } | { check: true }) => run('vis', 
 const visibilityNote = (v?: RepoVisibility) => !v ? tl('Not checked yet', 'Pas encore vérifié')
   : v.by === 'user' ? tl('Set by you', 'Choisi par vous')
   : `${v.value === 'unknown' ? tl('Not found', 'Introuvable') : tl('Checked', 'Vérifié')} ${new Date(v.at).toLocaleDateString()}`
-const visibilityItems = (v?: RepoVisibility) => [
-  ...((v?.value ?? 'unknown') === 'unknown' ? [{ label: tl('Repository: unknown', 'Dépôt : inconnu'), value: 'unknown', disabled: true }] : []),
-  { label: tl('Public repository', 'Dépôt public'), value: 'public' },
-  { label: tl('Private repository', 'Dépôt privé'), value: 'private' },
+// Unknown selects neither: the note beside it says so.
+const visibilityItems = [
+  { label: tl('Public repository', 'Dépôt public'), value: 'public', icon: 'i-lucide-globe' },
+  { label: tl('Private repository', 'Dépôt privé'), value: 'private', icon: 'i-lucide-lock' },
 ]
 
 // The agents its tasks start with: the offered programs, or the workflow's default.
@@ -359,7 +359,7 @@ async function remove() {
             <span class="field-label" data-ui-target="project.instructions">{{ tl('Workspace instructions files') }}<SavedMark :s="auto.state.instrMode" /></span>
             <span class="pm-field">
               <ProjectFollow :project="last" field="instructionsFiles" :workspace="wsName" @followed="followed" />
-              <USelect v-model="instr.instrMode" :items="instrItems" size="lg" class="pm-base-pick" :aria-label="tl('Workspace instructions files')" data-testid="pm-ws-files-mode" />
+              <SettingsChoice v-model="instr.instrMode" :items="instrItems" :label="tl('Workspace instructions files')" data-testid="pm-ws-files-mode" />
               <UTextarea v-if="instr.instrMode === 'files'" v-model="instr.instrFiles" :rows="2" autoresize size="lg" class="w-full mono" placeholder="AGENTS.md" :aria-label="tl('Paths under the workspace\'s root, one per line')" maxlength="2000" data-testid="pm-ws-files" />
               <small v-if="auto.errors.instrFiles" class="form-error pm-field-error" role="alert">{{ t(auto.errors.instrFiles) }}</small>
               <small class="muted">{{ wsKind === 'workspace' ? tl('Files at the workspace\'s root that the worker and the reviewer of every member\'s task get after the workflow\'s instructions, read again at each step.') : tl('Files at the workspace\'s root that this project\'s workers and reviewers get after the workflow\'s instructions.') }}</small>
@@ -367,7 +367,7 @@ async function remove() {
             <template v-if="wsKind === 'workspace'">
               <span class="field-label">{{ tl('Workspace skills') }}<SavedMark :s="auto.state.rootSkills" /></span>
               <span class="pm-field">
-                <USelect v-model="instr.rootSkills" :items="skillItems" size="lg" class="pm-base-pick" :aria-label="tl('Workspace skills')" data-testid="pm-ws-skills" />
+                <SettingsChoice v-model="instr.rootSkills" :items="skillItems" :label="tl('Workspace skills')" data-testid="pm-ws-skills" />
                 <small class="muted">{{ tl('Skills of the root that the worker and the reviewer of every member\'s task find, linked in its worktree and never committed; a member\'s own skill of the same name wins.') }}</small>
               </span>
             </template>
@@ -451,9 +451,9 @@ async function remove() {
 
           <span class="field-label pm-later">{{ tl('Repository') }}</span>
           <span class="pm-vis">
-            <USelect
-              :model-value="p.visibility?.value ?? 'unknown'" :items="visibilityItems(p.visibility)" size="lg" :disabled="busy !== ''" :aria-label="tl(`Repository of ${p.name}`, `Dépôt de ${p.name}`)"
-              data-testid="pm-visibility" @update:model-value="v => setVisibility({ value: String(v) })"
+            <SettingsChoice
+              :model-value="p.visibility?.value === 'unknown' ? undefined : p.visibility?.value" :items="visibilityItems" :disabled="busy !== ''" :label="tl(`Repository of ${p.name}`, `Dépôt de ${p.name}`)"
+              data-testid="pm-visibility" @update:model-value="v => v && setVisibility({ value: v })"
             />
             <small class="mono-label">{{ visibilityNote(p.visibility) }}</small>
             <UButton color="neutral" variant="ghost" size="sm" icon="i-lucide-refresh-cw" :loading="busy === 'vis'" :disabled="busy !== ''" data-testid="pm-visibility-check" @click="setVisibility({ check: true })">{{ tl('Check again', 'Revérifier') }}</UButton>
@@ -555,4 +555,5 @@ async function remove() {
 .pm-proposal-gap { flex: 1 1 0; }
 @media (max-width: 599px) { .pm-proposal-actions > :not(.pm-proposal-gap) { flex: 1 1 auto; } .pm-proposal-gap { display: none; } }
 .pm-vis { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.pm-vis > .hw-seg-wrap { flex: 1 1 100%; min-width: 0; }
 </style>
