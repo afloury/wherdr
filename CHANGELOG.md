@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### New
+
+- **omp takes a role alias as its model.** `prefs.model`, `reviewModel` and `reviewFallbackModel` accept an omp role alias of its own config (`@standard`, `@plan:high`) when the agent is omp, so a workflow follows the user's role setup instead of a pinned model id. Other agents still need a model name.
+
 ### Fixed
 
 - **Sideways scroll in a menu sheet.** A label that is one unbreakable string (a tab name, a path) wraps like a description now, instead of pushing its row past the sheet's edge and scrolling the whole list off to the left.
