@@ -77,7 +77,9 @@ with the agent you chose (*Start with Claude*, *Codex*…), and its first
 message proposes a workflow ([its first
 conversation](#the-coordinators-first-conversation)). A folder without git
 needs no workflow: it has no tasks (a task needs git for its own worktree),
-and its coordinator does the work in it directly. Below, *Restart a
+and its coordinator does the work in it directly. Once that folder becomes a
+git repository, wherdr treats the project as one at its next task or
+coordinator start, or at *Check again* in the project sheet. Below, *Restart a
 coordinator* (with their number, collapsed until you open it) lists the
 projects whose coordinator does not run, to start it again; those running are
 in the sidebar, and with none stopped the section is hidden. The agent

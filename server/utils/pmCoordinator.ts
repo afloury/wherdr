@@ -39,6 +39,7 @@ import { SCRIPT } from '../../shared/pm/actions'
 import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from '../../shared/pm/contributorPr'
 import { userEvent, userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
+import { refreshGit } from './pmFolder'
 import { boardOrder, orderTasks } from '../../shared/pm/boardOrder'
 import { pauseForRoom, removeTask, resumeTask, stopTask } from './pmStop'
 import { checkOnGithub } from './pmGhCheck'
@@ -823,7 +824,7 @@ export async function writeRoleFiles(deps: Deps, key: string) {
   if (key === MAIN) return { p: undefined, local: true, on: undefined, ...await writeAlfredHome(deps) }
   const projects = await store.projects()
   const found = projects.find(x => x.key === key)
-  const p = found && await ensureVisibility(deps, found)
+  const p = found && await ensureVisibility(deps, (await refreshGit(deps, found)).project)
   if (!p) throw new HerdrError('not_found', 'Unknown project')
   const t = p ? await store.workflow(p.key) : null
   const { m, on } = machineOn(deps, p.machine)
@@ -978,7 +979,7 @@ export async function startCoordinator(deps: Deps, key: unknown, agent: { progra
   // What the user applied on its cards while it did not run, said once (a resume too).
   const notes = cardNotesMessage(before)
   // Its very first start on a git project with no accepted workflow: its first reply proposes one.
-  const git = key !== MAIN && projects.find(x => x.key === key)?.git !== false
+  const git = key !== MAIN && (await deps.store.project(key))?.git !== false // read again: this start may have found git
   // A new workspace's: its first reply offers to build the map.
   const fresh = !resume && !before?.ran
   const proposes = fresh && isWorkspace(projects.find(x => x.key === key)) ? [WORKSPACE_FIRST]
