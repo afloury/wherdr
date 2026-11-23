@@ -7,14 +7,16 @@
 // Neither is a model call: no turn, no cost, no conversation file. Both run on the terminal's
 // machine (machine.exec, so a remote machine answers for itself), in the terminal's folder
 // (its project skills and commands count), with the PATH the machine's terminals have.
-// Not covered: what the agent keeps to its own screen (omp's /new, /resume, /settings…,
-// Claude's /resume, /permissions, /help…) is left out of both listings, and so is its
-// project's file-based commands when the folder is gone.
+// What the agent keeps to its own screen (omp's /new, /resume, /settings…, Claude's /resume,
+// /permissions, /help…) is in neither listing: a short hand-kept list (agentBuiltins.ts) follows
+// the agent's own, which wins on a clash. Not covered: a project's file-based commands when
+// the folder is gone.
 import type { Pane } from '../../shared/types'
 import type { SlashAgent, SlashCommand, SlashKind, SlashList } from '../../shared/slashCommands'
 import { hasSlashList } from '../../shared/slashCommands'
 import { USER_PATH_SETUP } from './agentAvailability'
 import { coreShell, machineOfAddress } from './coreTranscripts'
+import { withBuiltins } from './agentBuiltins'
 import { HerdrError } from './herdr'
 import type { ShellExec } from './fsx'
 
@@ -149,7 +151,7 @@ const PARSE: Record<Agent, (stdout: string) => SlashCommand[] | null> = { omp: p
 async function ask(exec: ShellExec, agent: Agent, cwd: string): Promise<SlashList> {
   const r = await exec(SCRIPT[agent], [cwd], { input: Buffer.from(REQUEST[agent]), timeoutMs: TIMEOUT_MS, maxBytes: MAX_BYTES })
   const commands = r.code === 127 ? null : PARSE[agent](r.stdout.toString('utf8'))
-  if (commands) return { agent, commands }
+  if (commands) return { agent, commands: withBuiltins(agent, commands) }
   // 127: not on the machine's PATH; 255: the machine (or herdr-core) did not answer (see coreShell).
   return { agent, commands: [], error: r.code === 127 ? 'not_installed' : r.code === 255 ? 'unreachable' : 'unavailable' }
 }
