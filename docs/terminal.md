@@ -11,6 +11,12 @@
   pressing a key of the key bar, or **Fit to this screen** in the banner ("Shown at the size of
   another screen."). When another viewer then sets its size, the banner comes back. **Take
   control of this terminal** and **Reconnect** are also in the agent's **…** menu.
+  - A program that erases the **saved lines** (`ESC[3J`, as Antigravity `agy` does on a
+    SIGWINCH) does not wipe the scrollback this view already holds: the screen still clears,
+    the history stays. A shell's own `clear` therefore keeps the earlier lines in the
+    scrollback too. While watching another screen's size, a screen erase (`ESC[2J`) also
+    brings the viewport back to the cursor's row, so a clear never leaves a phone over
+    rows it just blanked or older scrollback.
 - **Input**: keys go to core with `terminal.keys`, text with `terminal.send` (never retried),
   Stop with `terminal.interrupt`. The history the terminal received is scrolled locally, with the
   wheel or by touch. A program that tracks the mouse in its own full screen (Claude Code's

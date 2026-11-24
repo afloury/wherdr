@@ -67,7 +67,10 @@ and shows a banner, and does not resize the terminal again until the user takes 
 typing in the terminal or the composer, a key of the keybar, or "Fit to this screen".
 A watch-only viewer attaches at the terminal's current size.
 The browser returns credit after xterm has written each chunk (core's 256 KiB window
-bounds the relay) and scrolls the history it received locally.
+bounds the relay) and scrolls the history it received locally. A core program that
+erases the saved lines (`ESC[3J`, as Antigravity `agy` does on a SIGWINCH) does not
+wipe the scrollback xterm holds: the screen still clears, and a shell's own `clear`
+keeps its earlier lines in the scrollback too (see [Terminal](terminal.md)).
 The composer sends with `terminal.send` (never retried), Stop calls
 `terminal.interrupt` and reports what core observed, keys use `terminal.keys`, and
 closing a pane ends its program with `terminal.kill`. Controls that core does not support

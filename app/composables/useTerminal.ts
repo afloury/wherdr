@@ -84,6 +84,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let coreStream = false
   // herdr-core: whether this viewer's size is the terminal's (see coreTerm.ts).
   let coreControl = true
+  // A core program cleared its screen (ED 2) while watching. The rows the
+  // screen held are gone (and, with ED 3 swallowed, so is any trace of where
+  // the screen started): the next followCursor() scrolls back to the bottom
+  // before placing the cursor row.
+  let screenErased = false
   let sizeBanner: Banner | null = null
   // Asked before the stream was attached (composer focused on arrival): sent once it is.
   let controlPending = false
@@ -99,13 +104,21 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     mouseSupported = false
     coreStream = false
     coreControl = true
+    screenErased = false
     if (sizeBanner) { sizeBanner = null; opts.setBanner(null) }
   }
   // Watching a terminal taller than this screen: shift it so the cursor row,
   // where the newest output is, stays in view.
   function followCursor() {
-    const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
-    if (!term || !screen || !el) return
+    if (!term) return
+    if (coreStream && !coreControl && screenErased) {
+      screenErased = false
+      term.scrollToBottom()
+    } else {
+      screenErased = false
+    }
+    const screen = term.element?.querySelector('.xterm-screen') as HTMLElement | null
+    if (!screen || !el) return
     const shown = el.clientHeight - (screen.offsetTop || 0)
     const over = coreStream && !coreControl ? (term.buffer.active.cursorY + 1) * (screen.offsetHeight / term.rows) - shown : 0
     screen.style.transform = over > 0 ? `translateY(${-Math.ceil(over)}px)` : ''
@@ -252,6 +265,21 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // utils/terminalWheel.ts); TerminalView converts it to terminal.scroll.
     term.attachCustomWheelEventHandler(() => false)
     mouseSgr = trackSgrMouse(term)
+    // A core program (agy) answers SIGWINCH with `ESC[2J ESC[3J ESC[H`: it
+    // clears the screen and the saved lines, then redraws only its footer. The
+    // saved lines are this xterm's history — the scrollback the viewer already
+    // holds — so a core stream keeps them. `ESC[2J` still clears the screen.
+    // Trade-off: a shell's own `clear` (which also writes `ESC[3J`) keeps the
+    // earlier lines in the scrollback instead of erasing them.
+    // A cleared screen blanks every row a watching viewer could have scrolled
+    // onto, so followCursor() returns xterm's viewport to the bottom before
+    // placing the cursor row.
+    term.parser.registerCsiHandler({ final: 'J' }, (params) => {
+      if (!coreStream) return false
+      if (params[0] === 3) return true
+      if (params[0] === 2 && !coreControl) screenErased = true
+      return false
+    })
     // Shift+Enter as a named key; Ctrl+V (outside Apple) and F12 left to the browser.
     bindTerminalKeys(term, key => sendVirtualKey(key))
     term.onData(d => {
@@ -491,7 +519,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
             if (smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
             if (coreStream) offerFit()
           },
-          reset: () => mouseSgr?.reset(),
+          reset: () => { mouseSgr?.reset(); screenErased = false },
           written: () => {
             if (credit && tws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'credit', bytes: credit }))
             if (coreStream && !coreControl) followCursor()
@@ -573,7 +601,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
   const isConnected = () => Boolean(tws && tws.readyState <= 1)
 
-  function reset() { term?.reset(); mouseSgr?.reset() }
+  function reset() { screenErased = false; term?.reset(); mouseSgr?.reset() }
   function focus() {
     focusQueued = !term && mounting
     term?.focus()
