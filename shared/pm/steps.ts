@@ -285,10 +285,10 @@ export function actAgain(plan: PlannedStep[], s: StepState, now: number): StepSt
 }
 
 // Back to the verdict step's sendBack step, with one message: what to fix.
-function sendBack(plan: PlannedStep[], state: StepState, step: PlannedStep, findings: Finding[], now: number, effects: Effect[]): StepState {
+function sendBack(plan: PlannedStep[], state: StepState, step: PlannedStep, findings: Finding[], now: number, effects: Effect[], minor: Finding[] = []): StepState {
   const back = plan.findIndex(p => p.id === step.sendBack)
   const s = enter(plan, { ...state, backFrom: step.id }, back, now, [])
-  effects.push({ kind: 'instruct', step: plan[back]!.id, holder: plan[back]!.holder!, text: sendBackText(step.id, findings) })
+  effects.push({ kind: 'instruct', step: plan[back]!.id, holder: plan[back]!.holder!, text: sendBackText(step.id, findings, minor) })
   return s
 }
 
@@ -355,7 +355,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
         const advice = advise({ rounds: history, nextGuarded: !!plan[state.at + 1]?.guarded, extraUsed: !!state.extra?.[step.id], swapped: !!state.swapped?.[step.id] })
         return { state: { ...s, yourTurn: { reason: 'rounds', badge: `Decide: ${step.id} failed ${n} times`, advice } }, effects }
       }
-      return { state: sendBack(plan, s, step, left, now, effects), effects }
+      return { state: sendBack(plan, s, step, left, now, effects, ev.findings.filter(f => !left.includes(f))), effects }
     }
     case 'decide': {
       const advice = state.yourTurn?.reason === 'rounds' ? state.yourTurn.advice : undefined

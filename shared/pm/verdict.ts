@@ -128,8 +128,10 @@ export function advise({ rounds, nextGuarded, extraUsed, swapped }: AdviceInput)
 const line = (f: Finding) => `- ${f.id} [${weight(f)}] ${f.title}${f.where ? ` (${f.where})` : ''}${f.proof ? `: ${f.proof}` : ''}`
 
 // What the worker is told when a verdict sends the task back.
-export const sendBackText = (step: string, fs: Finding[]) =>
-  [`Step "${step}" sent it back:`, ...fs.map(line), 'Fix them, commit, then say you are done. If you contest one, say so with its id.'].join('\n')
+// minor: what the same verdict found below the bar; listed, never required.
+export const sendBackText = (step: string, fs: Finding[], minor: Finding[] = []) =>
+  [`Step "${step}" sent it back:`, ...fs.map(line), 'Fix them, commit, then say you are done. If you contest one, say so with its id.',
+    ...(minor.length ? ['', 'For later (minor), not blocking:', ...minor.map(line)] : [])].join('\n')
 
 // From the second round on, the reviewer checks only the points already found.
 export function reviewText(text: string, prev?: Round) {

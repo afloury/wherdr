@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### New
 
+- **A send-back lists the minor findings of the same verdict.** A failing review used to drop everything below major; the worker never heard of it and it came back later as a red check. The send-back now ends with *For later (minor), not blocking:* and those findings, which the worker may fix but need not.
 - **Qwen3-ASR 0.6B on-device dictation (WebGPU, opt-in).** Browsers with WebGPU and `shader-f16` offer **Qwen3-ASR 0.6B** (889 MB, 16 languages, pane terms as context) under *Settings › Conversation › Dictation › On this device*, never as the default or fallback ([Dictation](docs/dictation.md)).
 - **omp takes a role alias as its model.** `prefs.model`, `reviewModel` and `reviewFallbackModel` accept an omp role alias of its own config (`@standard`, `@plan:high`) when the agent is omp, so a workflow follows the user's role setup instead of a pinned model id. Other agents still need a model name.
 - **A missing omp browser relay is a machine problem.** A task whose workflow sets `prefs.browser` to `"relay"` now checks, before it starts, that the relay's native host is registered in Chrome, Chromium or Brave. When it is not (an omp update can unregister it), the start is refused with "browser relay: …" like any other machine readiness failure, instead of the agent asking whether the relay is on.

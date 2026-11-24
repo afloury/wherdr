@@ -93,7 +93,7 @@ describe('verdict steps in the engine', () => {
     const r = play(company, 'feature', [{ kind: 'start' }, report, verdict(bug, typo)])
     expect(r.at()).toBe('work')
     expect(r.effects.at(-1)).toEqual({ kind: 'instruct', step: 'work', holder: 'worker',
-      text: 'Step "review" sent it back:\n- bug [major] bug title: bug proof\nFix them, commit, then say you are done. If you contest one, say so with its id.' })
+      text: 'Step "review" sent it back:\n- bug [major] bug title: bug proof\nFix them, commit, then say you are done. If you contest one, say so with its id.\n\nFor later (minor), not blocking:\n- typo [minor] typo title: typo proof' })
   })
 
   it('round 2: the reviewer checks only the last findings and hears what the worker contests', () => {
