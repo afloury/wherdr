@@ -2,16 +2,17 @@
 // its filter, kept on the server like the Board's project picker: Follow group
 // tab, All, a project (`p:KEY`) or a machine group (its id); null until the
 // user picks (then Follow once machine groups exist, else All).
-import type { Card } from '#shared/pm/board'
+import { waitsOnYou, type Card } from '#shared/pm/board'
 import { syncedRef } from './useSyncedSettings'
 
 export const REVIEW_FOLLOW = 'follow'
 export const REVIEW_ALL = 'all'
 export const reviewOpen = ref(false)
 export const showReview = (v = true) => { reviewOpen.value = v }
-// A card the sheet lists (before what it handled itself): the board's To review counts the same.
-// What the user snoozed or dismissed (Card.hidden) is not counted.
-export const reviewWaits = (c: Card) => !!c.yourTurn && !c.state?.done && !c.hidden
+// A card the sheet lists (before what it handled itself): the board's To review counts the same, as
+// Home's card and the coordinators' rows do (waitsOnYou): not what the user snoozed or dismissed, nor
+// a task whose agent works.
+export const reviewWaits = (c: Card) => waitsOnYou(c, taskAgentWorking)
 export const reviewFilter = syncedRef<string | null>('reviewFilter', raw => raw || null, v => v || null)
 
 // The filter as it applies: a group or project removed since it was picked falls back to the default.

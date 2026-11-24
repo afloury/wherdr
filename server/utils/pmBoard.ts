@@ -65,6 +65,11 @@ async function cardsOf(store: PmStore, tasks: Task[], known: MachineInfo[]): Pro
   })
 }
 
+// The cards as every list shows them: with what the user snoozed or dismissed (Card.hidden).
+const listedCards = async (store: PmStore, tasks: Task[], known: MachineInfo[]) => hiddenCards(await cardsOf(store, tasks, known), readHidden((await readSettings()).reviewHidden))
+// The cards of every task, as the board has them, for the counts that must agree with Tasks to review (the coordinators' rows).
+export const countedCards = async (store: PmStore) => listedCards(store, await store.tasks(), [])
+
 // known: the machines wherdr knows, to name those a project allows.
 // Archived tasks stay off it: only their count per project.
 export async function board(store: PmStore, known: MachineInfo[] = []): Promise<Board> {
@@ -78,7 +83,7 @@ export async function board(store: PmStore, known: MachineInfo[] = []): Promise<
       return { key: p.key, ...(p.kind ? { kind: p.kind } : {}), ...(p.workspace ? { workspace: p.workspace } : {}), ...(p.base ? { base: p.base } : {}), ...(p.label ? { label: p.label } : {}), ...(p.aliases ? { aliases: p.aliases } : {}), ...(p.color ? { color: p.color } : {}), name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: isWorkspace(p) ? [{ id: FEATURE, plan: '' }] : plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → '), weight: weightText(weightOf(t, { type: x.id })) })), ...(machines ? { machines } : {}) }
     }),
     // Done ones last, newest done first; the others in board order.
-    cards: hiddenCards(await cardsOf(store, [...all.filter(t => !t.step?.done), ...all.filter(t => t.step?.done && !t.archived).sort((a, b) => doneAt(b) - doneAt(a))], known), readHidden((await readSettings()).reviewHidden)),
+    cards: await listedCards(store, [...all.filter(t => !t.step?.done), ...all.filter(t => t.step?.done && !t.archived).sort((a, b) => doneAt(b) - doneAt(a))], known),
     archived,
   }
 }

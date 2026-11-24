@@ -4,15 +4,19 @@
 // link: `open` with the waiting tasks' ids (the row decides where it leads).
 import type { WorkCounts } from '#shared/pm/coordinator'
 
-defineProps<{ counts: WorkCounts }>()
+import { liveCounts } from '#shared/pm/coordinator'
+
+const props = defineProps<{ counts: WorkCounts }>()
 defineEmits<{ open: [ids: string[]] }>()
+// A waiting task whose agent works counts as working until it is idle again.
+const live = computed(() => liveCounts(props.counts, taskAgentWorking))
 </script>
 
 <template>
-  <small v-if="counts.working || counts.waiting.length" class="work-counts" data-testid="workspace-counts">
-    <span v-if="counts.working">{{ tl(`${counts.working} working`) }}</span>
-    <template v-if="counts.working && counts.waiting.length"> · </template>
-    <button v-if="counts.waiting.length" type="button" class="work-waiting" data-testid="workspace-waiting" @click.stop="$emit('open', counts.waiting)">{{ tl(`${counts.waiting.length} waiting for you`) }}</button>
+  <small v-if="live.working || live.waiting.length" class="work-counts" data-testid="workspace-counts">
+    <span v-if="live.working">{{ tl(`${live.working} working`) }}</span>
+    <template v-if="live.working && live.waiting.length"> · </template>
+    <button v-if="live.waiting.length" type="button" class="work-waiting" data-testid="workspace-waiting" @click.stop="$emit('open', live.waiting)">{{ tl(`${live.waiting.length} waiting for you`) }}</button>
   </small>
 </template>
 

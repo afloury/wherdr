@@ -57,7 +57,10 @@ watch(taskSheetTick, load) // an action in a task's sheet, also read by Tasks to
 const waitsForYou = (c: Card) => { const p = paneOf(c); return !!p && hasAgent(c) && statusKey(p) === 'blocked' }
 const shownCards = computed(() => (data.value?.cards ?? [])
   .filter(c => shownProject(c.project) && (!tag.value || c.tags.includes(tag.value)))
-  .map(c => (!c.yourTurn && waitsForYou(c) ? { ...c, yourTurn: tl('Answer the agent', 'Réponds à l’agent') } : c)))
+  .map(c => (!c.yourTurn && waitsForYou(c) ? { ...c, yourTurn: tl('Answer the agent', 'Réponds à l’agent') } : c))
+  // Its agent works (the user replied to it, or it redoes something): the card shows it working with its
+  // agent, not Your turn, until it is idle again. Only what the board shows: the task keeps its step.
+  .map(c => (c.yourTurn && !c.hidden && taskAgentWorking(c.id) ? { ...c, yourTurn: undefined } : c)))
 // Each feature placed by its sub-tasks; with a workspace picked, its sub-tasks
 // fold into its card unless the switch shows them in their columns too.
 const unfold = ref(false)

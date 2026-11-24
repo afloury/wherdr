@@ -13,6 +13,7 @@ import pkg from '../../package.json'
 type AgentRole = Run['role']
 import type { WorkflowChanges } from './workflowChanges'
 import type { ProjectColor } from './projectKey'
+import { waitsOnYou, type Card } from './board'
 import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, taskStatus, type Autopilot, type FixKind, type limitsLeft } from './autopilot'
 import type { Wake, WakeSkip } from './wakes'
 import type { PaceGauge } from './pace'
@@ -130,19 +131,29 @@ export interface CoordinatorView {
 export interface WorkCounts { working: number, waiting: string[] }
 export interface WorkspaceView extends WorkCounts { group?: string, members: ({ key: string, name: string, label?: string, color?: ProjectColor } & WorkCounts)[] }
 
-const workCounts = (tasks: Task[]): WorkCounts => {
-  const by = tasks.map(t => ({ id: t.id, s: taskStatus(t) }))
-  return { working: by.filter(x => x.s === 'working' || x.s === 'stalled').length, waiting: by.filter(x => x.s === 'waiting' || x.s === 'ready').map(x => x.id) }
+// Waiting: the cards the board's Tasks to review lists (waitsOnYou: snoozed and dismissed ones are not counted).
+// Working: tasks at work, not already counted as waiting.
+const workCounts = (tasks: Task[], cards: Card[]): WorkCounts => {
+  const waits = new Set(cards.filter(c => waitsOnYou(c)).map(c => c.id))
+  const waiting = tasks.filter(t => waits.has(t.id)).map(t => t.id)
+  return { working: tasks.filter(t => !waits.has(t.id) && ['working', 'stalled'].includes(taskStatus(t))).length, waiting }
+}
+
+// The counts as the client sees them: a waiting task whose agent works (`working`, from the live panes)
+// counts as working until it is idle again. Same rule as Tasks to review (waitsOnYou).
+export const liveCounts = (c: WorkCounts, working: (id: string) => boolean): WorkCounts => {
+  const waiting = c.waiting.filter(id => !working(id))
+  return { working: c.working + c.waiting.length - waiting.length, waiting }
 }
 
 // The sidebar's workspace row: its members (in the order they were added), each
 // with its own counts, and the total: theirs plus the workspace's own tasks (its features).
-export function workspaceView(ws: Pick<Project, 'key' | 'group'>, projects: Project[], tasks: Task[]): WorkspaceView {
+export function workspaceView(ws: Pick<Project, 'key' | 'group'>, projects: Project[], tasks: Task[], cards: Card[]): WorkspaceView {
   const members = projects.filter(p => p.workspace === ws.key)
   return {
     ...(ws.group ? { group: ws.group } : {}),
-    members: members.map(m => ({ key: m.key, name: m.name, ...(m.label ? { label: m.label } : {}), ...(m.color ? { color: m.color } : {}), ...workCounts(tasks.filter(t => t.project === m.key)) })),
-    ...workCounts(tasks.filter(t => t.project === ws.key || members.some(m => m.key === t.project))),
+    members: members.map(m => ({ key: m.key, name: m.name, ...(m.label ? { label: m.label } : {}), ...(m.color ? { color: m.color } : {}), ...workCounts(tasks.filter(t => t.project === m.key), cards) })),
+    ...workCounts(tasks.filter(t => t.project === ws.key || members.some(m => m.key === t.project)), cards),
   }
 }
 
