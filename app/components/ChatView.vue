@@ -131,6 +131,8 @@ function resetChat(reason: ChatResponse['reason'] | null = null) {
   // never held mid-scroll by the previous one.
   stick = true
   held = false
+  // A jump (search, quote) leaves the bottom for its own conversation only.
+  jumpedAt = 0
   lastTop = 0
   anchor = null
   shown.value = Infinity
