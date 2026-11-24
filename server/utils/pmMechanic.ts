@@ -342,8 +342,8 @@ export async function startNext(deps: PmLaunchDeps, now = Date.now()) {
 
 // Kept for the board: since when the agent holding the step sits idle while
 // the step waits for its report (pm/blocked.ts), also past its timeout. Unread
-// status: unchanged. Idle, then seen working: back to work (backToWork).
-async function noteIdle(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], runs: Run[], now: number): Promise<Task> {
+// status: unchanged. Idle, then seen working, or a timeout in Your turn while it works: back to work (backToWork).
+export async function noteIdle(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], runs: Run[], now: number): Promise<Task> {
   const open = task.step?.yourTurn?.reason === 'timeout' ? { ...task, step: { ...task.step, yourTurn: undefined } } : task
   const step = awaitsHolder(open, plan) ? plan[task.step!.at] : undefined
   const holder = step && runs.filter(r => r.task === task.id && r.role === step.holder && r.state !== 'ended' && r.terminal).sort((a, b) => b.startedAt - a.startedAt)[0]
@@ -353,7 +353,9 @@ async function noteIdle(deps: PmLaunchDeps, task: Task, plan: PlannedStep[], run
     if (!st) return task
     const s = typeof st.status === 'string' ? st.status : st.status?.state
     idle = s === 'idle' || s === 'done' ? task.idle ?? now : undefined
-    if (task.idle !== undefined && s === 'working') {
+    // A timeout in Your turn goes too when its agent is seen working, even if it was never seen idle
+    // (the user wrote to it, the coordinator moved the task on, or the idle reading was lost meanwhile).
+    if (s === 'working' && (task.idle !== undefined || task.step?.yourTurn?.reason === 'timeout')) {
       const saved = await deps.store.saveTask({ ...task, idle })
       return noteBack(deps.store, saved, plan, 'engine', `the ${step!.holder} is working again`, now)
     }
