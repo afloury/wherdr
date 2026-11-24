@@ -215,7 +215,7 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   hidden; a reading taken while omp rests, or before its panel hid the gauge, is marked as
   the last one.
 - **Composer and terminal together** on a computer: under an agent's terminal, the composer stays
-  available; typing in it takes control of the terminal's size ([Terminal](terminal.md)).
+  available without taking control of the terminal's size ([Terminal](terminal.md)).
 - The model and effort pickers, the slash-command list and Codex update cards are v2 only.
 
 An agent's reply can be quoted in the field question by question and point by point (a list
