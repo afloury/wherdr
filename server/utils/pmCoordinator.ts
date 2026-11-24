@@ -37,7 +37,7 @@ import { CREATE_SCRIPT, WRITE_SCRIPT, exec, launched, startTask } from './pmLaun
 import { actionShell } from './pmActions'
 import { SCRIPT } from '../../shared/pm/actions'
 import { PR_FIELDS, prMergeAskRefusal, prMergeRefusal, type ContributorPr } from '../../shared/pm/contributorPr'
-import { userEvent, userStep } from './pmBoard'
+import { countedCards, userEvent, userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
 import { refreshGit } from './pmFolder'
 import { boardOrder, orderTasks } from '../../shared/pm/boardOrder'
@@ -773,7 +773,7 @@ function startsSince(projects: Project[], tasks: Task[], since: number) {
 // Each project's coordinator: who answers, the agent of its kept conversation, its pending change.
 export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[]> {
   if (!(await store.enabled())) return []
-  const now = Date.now(), [tasks, runs] = [await store.tasks(), await store.runs()]
+  const now = Date.now(), [tasks, runs] = [await store.tasks(), await store.runs()], cards = await countedCards(store)
   const projects = await store.projects(), holds = await slotsOf(store, projects)
   // The timeline's start: yesterday's local midnight.
   const since = sinceYesterday(now), wakes = await store.wakes(now - since)
@@ -809,7 +809,7 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
       ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, changes, template: c.proposal.template, by: c.proposal.by ?? (p.key === MAIN ? 'main' : p.key), ...(c.proposal.said ? { said: c.proposal.said } : {}), ...(c.proposal.saidAt ? { saidAt: c.proposal.saidAt } : {}) } } : {}),
       ...('label' in p && p.label ? { label: p.label } : {}), ...('color' in p && p.color ? { color: p.color } : {}),
       ...(answersOf(c).length ? { answers: answersOf(c) } : {}),
-      ...('kind' in p && isWorkspace(p) ? { workspace: workspaceView(p, projects, tasks) } : {}),
+      ...('kind' in p && isWorkspace(p) ? { workspace: workspaceView(p, projects, tasks, cards) } : {}),
       ...(autoProps.some(x => x.by === byOf(p.key)) ? { automationProposals: autoProps.filter(x => x.by === byOf(p.key)) } : {}),
     }
   }))

@@ -20,6 +20,7 @@ import { recovering } from './incident'
 import { showIds } from './projectKey'
 import { questionKey } from './summary'
 import { MERGE_KINDS, mergedByStep } from './cleanup'
+import type { CardHide } from './reviewHide'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -42,6 +43,7 @@ export interface Card {
   starts?: AgentStart[] // each run of its worker and reviewer: when it started and its agent by name (History)
   released?: number // its worker was released to free memory, at (0: unknown): opening it starts it again (release.ts)
   yourTurn?: string // the badge
+  hidden?: CardHide // the user snoozed or dismissed its entry in Tasks to review: off the lists and counts, the task unchanged (reviewHide.ts)
   stall?: Stall // stalled, the machine may still fix it (blocked.ts); past HANDLE_AFTER_MS, also its yourTurn
   userLabel?: string // the button of a step that waits for the user
   tags: string[]
@@ -217,7 +219,14 @@ export function shownTexts(projects: Parameters<typeof showIds>[0], c: Card): Ca
 }
 
 export interface ToHandle { id: string, shown: string, project: string, color?: string, title: string, action: string, label: string, terminal?: string }
-export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn).map(taskRow)
+// The one rule for every count of what waits for the user (Tasks to review, Home's card, the board's
+// To review, the coordinators' "n waiting for you"): the task's step or a block hands it
+// to them, it is not done, they did not snooze or dismiss it (Card.hidden), and none of its agents is
+// working (`working`: the client's live read of the panes; the server cannot see them and passes none).
+// A task whose agent works again keeps its step and guards: it only leaves the counts until the agent is idle.
+export const waitsOnYou = (c: Pick<Card, 'id' | 'yourTurn' | 'state' | 'hidden'>, working: (id: string) => boolean = () => false) =>
+  !!c.yourTurn && !c.state?.done && !c.hidden && !working(c.id)
+export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => waitsOnYou(c)).map(taskRow)
 // Any task as that row (a `task <ID>` block in a chat, ChatTaskCard.vue): in
 // Your turn, what to do and its short action; else where it stands and its column.
 export function taskRow(c: Card): ToHandle {

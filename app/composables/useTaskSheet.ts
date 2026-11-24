@@ -8,15 +8,20 @@ import type { LocationQuery } from 'vue-router'
 export const taskSheetTick = ref(0)
 export const taskChanged = () => { taskSheetTick.value++ }
 
+// A task's agent works now, as the live panes say (the events the board already reads). A task that waits
+// for the user while its agent works shows as working, and leaves every waiting count (waitsOnYou).
+export const taskAgentWorking = (id: string) => !!herdrState.value?.panes.some(p => p.task === id && p.status === 'working')
+
 // A task's agent at work again (its question answered here, in its
-// conversation, by a coordinator's tell or on another device): every task list
-// (Tasks to review, Tasks to handle, the board) reads again at once, and once
-// more a moment later, after the server saved the answer. TaskSheetHost.vue, always mounted.
+// conversation, by a coordinator's tell or on another device) or idle again
+// (its words are new): every task list (Tasks to review, Tasks to handle, the
+// board, the counts) reads again at once, and once more a moment later, after
+// the server saved it. TaskSheetHost.vue, always mounted.
 export function watchTaskAgents() {
   let again: ReturnType<typeof setTimeout> | undefined
   const working = () => new Set((herdrState.value?.panes ?? []).filter(p => p.task && p.status === 'working').map(p => p.id))
   watch(working, (now, before) => {
-    if (![...now].some(id => !before.has(id))) return
+    if (![...now].some(id => !before.has(id)) && ![...before].some(id => !now.has(id))) return
     taskChanged()
     clearTimeout(again)
     again = setTimeout(taskChanged, 2000)

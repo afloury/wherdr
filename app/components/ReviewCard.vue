@@ -9,7 +9,7 @@
 import type { ToHandle } from '#shared/pm/board'
 
 const all = ref<ToHandle[]>([])
-const tasks = computed(() => all.value.filter(x => projectOnBar(x.project)))
+const tasks = computed(() => all.value.filter(x => projectOnBar(x.project) && !taskAgentWorking(x.id)))
 const load = () => api<ToHandle[]>('/api/pm/handle').then((v) => { all.value = Array.isArray(v) ? v : []; markHomeLoad('handle', true) }, () => markHomeLoad('handle', false))
 let timer: ReturnType<typeof setInterval> | undefined
 // Read while the card is on screen: a hidden page waits for the next tick it is shown.

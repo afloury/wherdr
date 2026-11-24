@@ -1235,6 +1235,22 @@ when it is long (open when there is no summary). *Open the task* stays. A questi
 coordinator's `tell`) leaves *Tasks to review* and *Tasks to handle* at once,
 without waiting for the engine's next pass.
 
+Each item has a clock (**Snooze**: 1 hour, 4 hours, until tomorrow at 8:00) and an eye
+(**Dismiss**). Both act on the entry only, never on the task, its step or its agent. A
+snoozed item comes back when its time ends, if it still waits for you. A dismissed one
+stays away until something new happens on the task: a new step, a new block or
+question, a new timeout. They are kept on the server, so every device and every count
+(Home's card, the board's *To review*, the coordinators' *n waiting for you*) follows. *N hidden* under the filter
+has **Show**, which brings them all back.
+
+One rule counts what waits for you, everywhere: *Tasks to review*, Home's card, the board's *To review*
+and the coordinators' *n waiting for you* list the same tasks. A task whose step waits
+for you while its agent is seen working (you replied to it, or it redoes something) shows as *working*
+with its agent, not *waiting for you*, and leaves those counts and *Tasks to review* until the agent is
+idle again; then it comes back as waiting, read again with the agent's new words. Only the reading
+changes: its step, its guards and its agent are not touched, and you still press the step's button.
+Live, from the same events as the board, without a reload.
+
 While the window is open, its list keeps its order and the task on screen never
 changes by itself: a task that becomes ready goes at the end (*2 of 6*), one
 handled elsewhere (approved, merged, answered) drops out, and if it is the one

@@ -6,6 +6,7 @@ import { boardColumns, cardOf, toHandle, type Board, type Card } from '../../sha
 import { onEvent, planSteps } from '../../shared/pm/steps'
 import { publicTask, taskPlan, type Task } from '../../shared/pm/run'
 import { MAIN, type CoordinatorView } from '../../shared/pm/coordinator'
+import { dismiss, hideOf, show, snooze, snoozeEnd, type Hidden } from '../../shared/pm/reviewHide'
 import * as P from './projects'
 
 type Reply = { status: number, body: unknown }
@@ -15,6 +16,7 @@ export class DemoPm {
   private tasks: Task[]
   private runs
   private projects = P.projects()
+  private hidden: Hidden = {}
 
   constructor(private clock: { now: () => number, setTimeout: (fn: () => void, ms: number) => unknown }) {
     this.tasks = P.tasks(clock.now())
@@ -26,7 +28,8 @@ export class DemoPm {
   board(): Board {
     const now = this.clock.now()
     const done = (t: Task) => !!t.step?.done
-    const card = (t: Task): Card => ({ ...cardOf(t, this.plan(t), this.runs, now), ...(this.projects.find(p => p.key === t.project)?.color ? { color: this.projects.find(p => p.key === t.project)!.color } : {}) })
+    const card = (t: Task): Card => withHide({ ...cardOf(t, this.plan(t), this.runs, now), ...(this.projects.find(p => p.key === t.project)?.color ? { color: this.projects.find(p => p.key === t.project)!.color } : {}) })
+    const withHide = (c: Card): Card => { const h = c.yourTurn && !c.state?.done ? hideOf(this.hidden, c, now) : undefined; return h ? { ...c, hidden: h } : c }
     const plans = Object.keys(P.TEMPLATE.taskTypes).map(type => ({ id: type, steps: planSteps(P.TEMPLATE, { type }, 'main') }))
     return {
       projects: this.projects.map(p => ({ key: p.key, name: p.name, base: 'main', ...(p.color ? { color: p.color } : {}), columns: boardColumns(plans.map(x => x.steps)), types: plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → ') })) })),
@@ -58,8 +61,20 @@ export class DemoPm {
   post(path: string, body: Record<string, unknown>): Reply | null {
     const t = this.tasks.find(x => x.id === body.id)
     if (path === '/api/pm/step-user' && t) return this.press(t)
+    if (path === '/api/pm/review-hide' && t) return this.hide(t, body)
     if (path === '/api/pm/answer' && t) return this.answer(t, String(body.text || ''))
     return null
+  }
+
+  // Snooze, dismiss or show an entry of Tasks to review: the task itself stays as it is.
+  private hide(t: Task, body: Record<string, unknown>): Reply {
+    const now = this.clock.now()
+    const until = snoozeEnd(body.until, now)
+    if (body.show) this.hidden = show(this.hidden, t.id)
+    else if (body.dismiss) this.hidden = dismiss(this.hidden, this.board().cards.find(c => c.id === t.id)!, now)
+    else if (until !== undefined) this.hidden = snooze(this.hidden, t.id, until, now)
+    else return { status: 400, body: { error: 'until, dismiss or show', code: 'bad_input' } }
+    return ok({ ok: true })
   }
 
   private set(t: Task, patch: Partial<Task>) {

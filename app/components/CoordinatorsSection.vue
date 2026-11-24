@@ -226,7 +226,7 @@ onUnmounted(() => clearInterval(timer))
                 v-if="c.workspace.members.length" type="button" class="ws-members" :aria-expanded="membersOpen === c.project"
                 :aria-label="tl(`Members of ${coordinatorName(c)}`)" data-testid="workspace-members" @click="toggleMembers(c)"
               >
-                <span v-for="m in c.workspace.members" :key="m.key" class="ws-badge" :class="{ waits: m.waiting.length }"><ProjectBadge :text="m.label ?? m.key" :color="m.color" /></span>
+                <span v-for="m in c.workspace.members" :key="m.key" class="ws-badge" :class="{ waits: m.waiting.some(id => !taskAgentWorking(id)) }"><ProjectBadge :text="m.label ?? m.key" :color="m.color" /></span>
                 <UIcon name="i-lucide-chevron-down" class="ws-chevron" :class="{ open: membersOpen === c.project }" />
               </button>
               <WorkspaceCounts :counts="c.workspace" class="ws-counts" @open="ids => openWaiting(ids, c.project, false)" />

@@ -128,7 +128,7 @@ members have none of their own): its key badge and name, its coordinator's state
 members' key badges with how many tasks are *working* and *waiting for you* (*2 working · 1
 waiting for you*: its members' and its own features'). A member with a task waiting has a small
 orange square on its badge. A tap on the badges lists the members, each opening its board and
-showing its own counts. *n waiting for you* is a link: one task opens its sheet; several open
+showing its own counts. *n waiting for you* counts what *Tasks to review* lists (not what you snoozed or dismissed; a task whose agent works counts as *working*). It is a link: one task opens its sheet; several open
 the workspace's board, or, on a member's line, *Tasks to review* filtered to that member. Its menu is a coordinator's, with *Workspace settings* for *Project settings*;
 *Open the board* shows the workspace's features and every member's tasks. It reorders and hides
 like any coordinator.
@@ -156,7 +156,7 @@ Right under Alfred, above the coordinators, while something waits for you on the
 review** card with its count: tasks to approve, an agent's question, a failure to try again, a
 decision. Under its title, the ids of the first ones as their project's key badge, in its color, on
 one line (… when they do not all fit). A tap opens them one at a time (a sheet on the phone), with Approve, Reject and each
-item's own answers
+item's own answers, and Snooze or Dismiss to hide an item for a while or until something new happens
 ([Tasks to review](project-management.md#tasks-to-review)).
 
 ### Offered agents
