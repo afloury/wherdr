@@ -12,7 +12,7 @@ export interface CoreList { terminals: CoreTerminal[], machines?: { name: string
 // quotas: the account readings (tests give their own).
 export type IncidentDeps = PmLaunchDeps & { quotas?: () => Promise<Quotas> }
 
-async function machineFacts(deps: IncidentDeps, list: CoreList, now: number): Promise<MachineFacts[]> {
+export async function machineFacts(deps: IncidentDeps, list: CoreList, now: number): Promise<MachineFacts[]> {
   const status = await deps.call<{ uptime_ms?: number }>('server.status', {}, 8000).catch(() => null)
   // wherdr's agents still running on a machine: its terminals are `name/t7`, the local ones `t7`.
   const live = (local: boolean, name: string) => list.terminals.filter(t => t.state !== 'finished' && (local ? !t.address.includes('/') : t.address.startsWith(`${name}/`))).length
@@ -20,6 +20,8 @@ async function machineFacts(deps: IncidentDeps, list: CoreList, now: number): Pr
     if (m.local) return { key: m.key, label: m.label, state: 'connected', live: live(true, ''), ...(typeof status?.uptime_ms === 'number' ? { coreStartedAt: now - status.uptime_ms } : {}) }
     const v = list.machines?.find(x => x.name === m.label)
     if (!v) return { key: m.key, label: m.label, state: m.status === 'online' ? 'connected' : m.status, why: m.error }
+    // wherdr's own check already failed (ssh): offline now, even while herdr-core's list still says connected.
+    if (m.status === 'offline' && v.state === 'connected') return { key: m.key, label: m.label, state: 'offline', why: m.error, live: live(false, m.label) }
     return { key: m.key, label: m.label, state: v.state, since: v.since_ms, why: v.why, live: live(false, m.label) }
   })
 }
