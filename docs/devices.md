@@ -80,7 +80,8 @@
   and shows every key. Saved on the device.
   Terminal links back to this app stay in the current window on a phone; external
   links still open separately.
-- **Offline reading** of the last known state and of recently opened conversations.
+- **Offline reading** of the last known state and of recently opened conversations. Back in a
+  conversation, its latest messages show at once, including one the agent has not taken yet.
 
 ### On an iPad
 
