@@ -5,13 +5,13 @@
 // for a moment once through) and Open the task (its sheet). Nothing to press unless the task
 // waits that way (taskTodo: a merge or a step ending with the user). Before the board is
 // read, or for a task not on it, the pill stays a plain badge.
-import { mergeGoesNow, mergeStuck, mergeWaits, mayAccept, taskRow } from '#shared/pm/board'
+import { canStop, mergeGoesNow, mergeStuck, mergeWaits, mayAccept, taskRow } from '#shared/pm/board'
 import { DONE_MS, taskTodo } from '~/utils/taskTodo'
 
 const props = defineProps<{ task: string, text: string, color?: string }>()
 const card = useBoardCard(() => props.task)
 const open = ref(false)
-const { busy, pressing, refused, error, press } = useTaskActions(() => card.value ?? undefined, taskChanged)
+const { busy, pressing, refused, error, press, markDone } = useTaskActions(() => card.value ?? undefined, taskChanged)
 
 const row = computed(() => (card.value ? taskRow(card.value) : null))
 const step = computed(() => (card.value?.state?.started && !card.value.state.done ? card.value.step : undefined))
@@ -33,6 +33,15 @@ async function pressStep() {
   timer = setTimeout(() => { confirmed.value = false }, DONE_MS)
 }
 onBeforeUnmount(() => clearTimeout(timer))
+// Mark done asks once more: it moves the task to Done as it stands, whatever its step.
+const closing = ref(false)
+const finishes = computed(() => !!card.value && canStop(card.value))
+async function close() {
+  if (busy.value) return
+  await markDone()
+  if (!error.value) { closing.value = false; open.value = false }
+}
+watch(open, (o) => { if (!o) closing.value = false })
 const openSheet = () => { open.value = false; openTaskSheet(card.value!.id) }
 </script>
 
@@ -52,6 +61,14 @@ const openSheet = () => { open.value = false; openTaskSheet(card.value!.id) }
         <p v-if="pressing" class="muted" role="status">{{ tl('Running this step… A merge waits for the PR\'s checks, which can take a few minutes.') }}</p>
         <p v-else-if="refused" class="error" role="alert" data-testid="task-pill-refused">{{ stepRefusalText(refused) }}</p>
         <p v-else-if="error" class="error" role="alert">{{ error }}</p>
+        <template v-if="finishes">
+          <p v-if="closing" class="muted">{{ tl('Mark this task done? Nothing is merged or landed and no step runs.') }}</p>
+          <div v-if="closing" class="task-pill-row">
+            <UButton color="primary" size="lg" :loading="busy" data-testid="task-pill-done-yes" @click="close">{{ tl('Mark done') }}</UButton>
+            <UButton color="neutral" variant="outline" size="lg" :disabled="busy" @click="closing = false">{{ t('Cancel') }}</UButton>
+          </div>
+          <UButton v-else color="neutral" variant="outline" size="lg" icon="i-lucide-check" data-testid="task-pill-done" @click="closing = true">{{ tl('Mark done') }}</UButton>
+        </template>
         <UButton color="neutral" variant="outline" size="lg" icon="i-lucide-panel-right-open" data-testid="task-pill-open" @click="openSheet">{{ tl('Open the task') }}</UButton>
       </div>
     </template>
@@ -65,6 +82,7 @@ const openSheet = () => { open.value = false; openTaskSheet(card.value!.id) }
 .task-pill:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .task-pill-menu { display: grid; gap: 8px; padding: 12px; max-width: min(320px, 90vw); justify-items: start; }
 .task-pill-menu p { margin: 0; overflow-wrap: anywhere; }
+.task-pill-row { display: flex; gap: 8px; }
 .task-pill-state { color: var(--text); font-weight: 600; }
 .task-pill-menu .confirmed { pointer-events: none; border-color: var(--done); background: var(--done); color: var(--bg); }
 </style>

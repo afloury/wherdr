@@ -69,6 +69,8 @@ export function useTaskActions(card: () => Card | undefined, changed: (id: strin
     resume: (how: Resume) => run(() => resumeTaskApi(id(), how)),
     decide: (choice: Choice) => run(() => api('/api/pm/decide', { id: id(), choice })),
     sendBack: (note: string, shots?: string[]) => run(() => api('/api/pm/step-back', { id: id(), note, ...(shots?.length ? { shots } : {}) })),
+    // Finish the task where it stands: done, no step's action run.
+    markDone: () => run(() => api('/api/pm/task-close', { id: id() })),
     restartReview: () => run(() => api('/api/pm/review-restart', { id: id() })),
     startWorker: () => run(() => api('/api/pm/worker-start', { id: id() })),
     askCoordinator: () => run(() => api('/api/pm/ask-coordinator', { id: id() })),
