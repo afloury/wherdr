@@ -1,4 +1,4 @@
-// Snooze and dismiss on Tasks to review (SRC-33): the user's notes on an entry,
+// Snooze and dismiss on Tasks to review (#1055): the user's notes on an entry,
 // kept in the `reviewHidden` setting; the board's cards carry them (Card.hidden),
 // the lists and counts follow, the task itself is never touched.
 import fs from 'node:fs/promises'
