@@ -15,6 +15,7 @@ import { parseStatusBlock, STATUS_MAX } from '../../shared/statusBlock'
 import { parseOpenLine } from '../../shared/uiOpen'
 import { parseActionLine } from '../../shared/uiActions'
 import { parseShowLine } from '../../shared/uiShow'
+import { CHOICES_MAX, CHOICES_MIN, CHOICE_MAX_CHARS, QUESTIONS_MAX, QUESTION_CHOICES_MIN, QUESTION_MAX_CHARS } from '../../shared/wherdrBlockLimits'
 
 let hooked = false
 // Budget of the cache, in characters of text + HTML: about 4 MB of strings
@@ -80,10 +81,7 @@ export interface WherdrTask { kind: 'task', id: string }
 export interface WherdrQuestion { q: string, options: string[] }
 export interface WherdrQuestions { kind: 'questions', items: WherdrQuestion[] }
 export type WherdrElement = WherdrChoices | WherdrTask | WherdrQuestions
-export const CHOICES_MIN = 1
-export const CHOICES_MAX = 4
-const CHOICE_MAX_CHARS = 80
-const CHOICE = /^\s*"([^"]+)"\s*$/
+const CHOICE =/^\s*"([^"]+)"\s*$/
 function parseChoices(arg: string): WherdrChoices | null {
   const options: string[] = []
   for (const part of arg.split('|')) {
@@ -93,8 +91,6 @@ function parseChoices(arg: string): WherdrChoices | null {
   }
   return options.length >= CHOICES_MIN && options.length <= CHOICES_MAX ? { kind: 'choices', options } : null
 }
-export const QUESTIONS_MAX = 8
-const QUESTION_MAX_CHARS = 200
 // One numbered line of a `questions` element: `2 "Keep the old API?" | "Yes" | "No"`.
 function parseQuestion(line: string, n: number): WherdrQuestion | null {
   const m = /^\s*(\d+)[.)]?\s+(.*)$/.exec(line)
@@ -102,7 +98,7 @@ function parseQuestion(line: string, n: number): WherdrQuestion | null {
   const [head, ...rest] = m[2]!.split('|')
   const q = CHOICE.exec(head!)?.[1]?.replace(/\s+/g, ' ').trim() || ''
   const choices = rest.length ? parseChoices(rest.join('|')) : null
-  return q && q.length <= QUESTION_MAX_CHARS && choices && choices.options.length >= 2 ? { q, options: choices.options } : null
+  return q && q.length <= QUESTION_MAX_CHARS && choices && choices.options.length >= QUESTION_CHOICES_MIN ? { q, options: choices.options } : null
 }
 const TASK_ID = /^[A-Za-z][\w.-]*-\d+$/
 const parseTask = (arg: string): WherdrTask | null => TASK_ID.test(arg.trim()) ? { kind: 'task', id: arg.trim() } : null
