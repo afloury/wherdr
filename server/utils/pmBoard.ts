@@ -28,6 +28,8 @@ import { noteTaskError } from './pmSentinel'
 import { wakeCoordinators } from './pmWakes'
 import { mergeAfterWake, mergeHold, mergeWaits } from '../../shared/pm/mergeQueue'
 import type { PmStore } from './pmStore'
+import { dismiss, hideOf, readHidden, show as showHidden, snooze, snoozeEnd, writeHidden } from '../../shared/pm/reviewHide'
+import { patchSettings, readSettings } from './settings'
 import { archiveDays, archiveDue, archivedMatch, archivedText, doneAt } from '../../shared/pm/archive'
 
 const planOf = (t: Template | null, task: Task, p?: Project) => (t ? taskPlan(t, task, p) : [])
@@ -76,7 +78,7 @@ export async function board(store: PmStore, known: MachineInfo[] = []): Promise<
       return { key: p.key, ...(p.kind ? { kind: p.kind } : {}), ...(p.workspace ? { workspace: p.workspace } : {}), ...(p.base ? { base: p.base } : {}), ...(p.label ? { label: p.label } : {}), ...(p.aliases ? { aliases: p.aliases } : {}), ...(p.color ? { color: p.color } : {}), name: p.name, columns: boardColumns(plans.map(x => x.steps)), types: isWorkspace(p) ? [{ id: FEATURE, plan: '' }] : plans.map(x => ({ id: x.id, plan: x.steps.map(s => s.id).join(' → '), weight: weightText(weightOf(t, { type: x.id })) })), ...(machines ? { machines } : {}) }
     }),
     // Done ones last, newest done first; the others in board order.
-    cards: await cardsOf(store, [...all.filter(t => !t.step?.done), ...all.filter(t => t.step?.done && !t.archived).sort((a, b) => doneAt(b) - doneAt(a))], known),
+    cards: hiddenCards(await cardsOf(store, [...all.filter(t => !t.step?.done), ...all.filter(t => t.step?.done && !t.archived).sort((a, b) => doneAt(b) - doneAt(a))], known), readHidden((await readSettings()).reviewHidden)),
     archived,
   }
 }
@@ -395,4 +397,33 @@ export async function uploadShot(store: PmStore, id: unknown, phase: unknown, da
     return { ...fresh, step: r.state, ...(dropped.length || said.length ? { log: [...(fresh.log ?? []), ...dropped, ...said] } : {}) }
   })
   return kept
+}
+
+// Each card in Your turn the user snoozed or dismissed carries it (Card.hidden): the lists and counts leave it out.
+function hiddenCards(cards: Card[], hidden: ReturnType<typeof readHidden>, now = Date.now()): Card[] {
+  if (!Object.keys(hidden).length) return cards
+  return cards.map((c) => {
+    const h = c.yourTurn && !c.state?.done ? hideOf(hidden, c, now) : undefined
+    return h ? { ...c, hidden: h } : c
+  })
+}
+
+// The user hides an entry of Tasks to review, or shows it again: `until` (a time) snoozes it,
+// `dismiss` hides it until something new happens on the task, `show` undoes either. Only the
+// entry: the task, its step and its agent are not touched.
+export async function reviewHide(store: PmStore, body: { id?: unknown, until?: unknown, dismiss?: unknown, show?: unknown }, now = Date.now()) {
+  const id = typeof body.id === 'string' ? body.id : ''
+  const task = id ? await store.task(id) : undefined
+  if (!task) throw new HerdrError('not_found', `No task ${id || ''}`.trim())
+  const card = body.dismiss ? (await board(store)).cards.find(c => c.id === id) : undefined
+  if (body.dismiss && !card?.yourTurn) throw new HerdrError('bad_input', 'Nothing waits for you on this task')
+  const until = body.until === undefined ? undefined : snoozeEnd(body.until, now)
+  if (body.until !== undefined && until === undefined) throw new HerdrError('bad_input', 'until: a time in the future, within a month')
+  if (!body.show && !body.dismiss && until === undefined) throw new HerdrError('bad_input', 'until, dismiss or show')
+  const known = new Set((await store.tasks()).map(t => t.id))
+  await patchSettings((cur) => {
+    const h = readHidden(cur.reviewHidden)
+    const next = body.show ? showHidden(h, id) : body.dismiss ? dismiss(h, card!, now) : snooze(h, id, until!, now)
+    return { reviewHidden: writeHidden(next, now, k => known.has(k)) }
+  })
 }

@@ -30,6 +30,8 @@ export const SYNCED_SETTINGS = [
   'notesFilter',
   // Tasks to review: its filter (useReview.ts)
   'reviewFilter',
+  // Tasks to review: the items the user snoozed or dismissed (shared/pm/reviewHide.ts), read by the server
+  'reviewHidden',
   // Files
   'wherdr.files.hidden', 'wherdr.files.md',
   // Security: files shown from conversations (shared/chatFiles.ts), read by the server
