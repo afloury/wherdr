@@ -1,3 +1,5 @@
+import { stoppedTask } from '../shared/pm/stop'
+import { parkWaits } from '../shared/pm/park'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -1447,6 +1449,21 @@ describe('commands of lot 10', () => {
     calls.length = 0
     await answerQuestion({ store, call } as never, task.id, undefined, 'host/t3') // no question: nothing changes
     expect(calls.map(c => c[0])).toEqual(['terminal.get'])
+  })
+
+  it('task edit --after defers a stopped or waiting started task: parked behind those tasks, never a working one', async () => {
+    await noteTurn(store, 'CO', 'user', 'do the second after the first')
+    const first = await store.addTask({ project: 'CO', title: 'First', type: 'feature' })
+    const second = await store.addTask({ project: 'CO', title: 'Second', type: 'feature' })
+    await store.saveTask({ ...second, state: 'working', step: state(1) })
+    await refused(cli(['task', 'edit', second.id, '--after', first.id, '--reason', 'Later']), 'has started')
+    await store.saveTask(stoppedTask((await store.task(second.id))!, { by: 'the coordinator', why: 'later', at: 1 }))
+    const saved = (await cli(['task', 'edit', second.id, '--after', first.id, '--reason', 'Do it after the first']) as { task: Task }).task
+    expect(saved).toMatchObject({ state: 'working', after: first.id, parked: { on: first.id, need: 'Do it after the first' } })
+    expect(saved.stopped).toBeUndefined()
+    expect(saved.waiting).toBeUndefined()
+    expect(parkWaits(saved)).toEqual([first.id])
+    await refused(cli(['task', 'edit', first.id, '--after', second.id, '--reason', 'Cycle']), /cycle/)
   })
 
   it('spec changes: task edit, task note and tell --spec reach the running agent and the reviewer\'s next prompt; never in a wake', async () => {

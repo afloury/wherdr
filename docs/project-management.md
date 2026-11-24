@@ -1612,6 +1612,11 @@ shared contract (proto, API, schema) into its own task both wait for, or merge
 the two tasks into one. If it cannot decide, it tells you both options and leaves the wake unanswered:
 you also get the *coordinator is not answering* notification.
 
+A coordinator can park a started task that is **stopped or waiting for the
+user** the same way: `wherdr pm task edit <task> --after <task> --reason "…"`.
+Use it to defer work ("do X after Y") instead of `task stop`, which lands the
+task in your Tasks to review. A working task is refused.
+
 ### A task paused for room
 
 A coordinator that only needs to free a crowded machine pauses a started task
