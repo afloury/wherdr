@@ -69,8 +69,22 @@ pass1=$(printf '%s\\n' "$P"/[0-9]* | awk -v maxd="$maxd" '
     }
     next
   }
-  if (cm ~ /^(command-code|command_code|commandcode|cmdc)$/ || cm ~ /^(node|nodejs|bun|bunx|deno)[0-9]*$/) {
-    print "C " d; next
+  if (cm ~ /^(command-code|command_code|commandcode|cmdc)$/) { print "C " d; next }
+  if (cm ~ /^(node|nodejs|bun|bunx|deno)[0-9]*$/) {
+    # A plain interpreter running visible code is never Command Code: only an
+    # argument that could name the package (a bin/alias word, a package script
+    # basename, or a command-code entrypoint path) is worth a full record.
+    # Empty/unreadable cmdlines took the earlier arm and are kept.
+    ev = 0
+    cnt = split(ag, av, "\\000")
+    for (j = 2; j <= cnt; j++) {
+      w = av[j]
+      wb = w; sub(/.*\\//, "", wb)
+      if (wb ~ /^(cmd|cmdc|command-code|commandcode|command_code|index\\.mjs|cli\\.mjs)$/) { ev = 1; break }
+      if (w ~ /\\/command-code\\/(dist\\/(index|cli)\\.mjs|bin\\/(cmd|cmdc|command-code|commandcode|command_code))$/) { ev = 1; break }
+    }
+    if (ev) { print "C " d }
+    next
   }
   a0 = ag; sub(/\\000.*/, "", a0); a0b = a0; sub(/.*\\//, "", a0b)
   if (a0b ~ /^(cmd|cmdc|command-code|commandcode|command_code)$/ || a0b ~ /^(node|nodejs|bun|bunx|deno)/) {

@@ -75,14 +75,15 @@ const base = (s: string | undefined) => (s || '').split('/').pop() || ''
 
 type ScriptPos =
   | { kind: 'script', raw: string, index: number, preloads: string[] }
-  | { kind: 'eval' }
-  | { kind: 'unknown' }
-  | { kind: 'none' }
+  | { kind: 'eval', preloads: string[] }
+  | { kind: 'unknown', preloads: string[] }
+  | { kind: 'none', preloads: string[] }
 
 // The actual script position: consume the supported option subset, stop at
 // the first positional (arguments after it never supply identity). `index` is
 // the argv index of the script. An unterminated operand or unrecognized bare
-// option means unknown.
+// option means unknown. Every branch carries the preloads seen so far: a
+// loaded package proves the peer whatever follows.
 function scriptPos(argv: string[], terminated: boolean): ScriptPos {
   const args = argv.slice(1)
   const preloads: string[] = []
@@ -91,23 +92,23 @@ function scriptPos(argv: string[], terminated: boolean): ScriptPos {
     if (!a.startsWith('-')) return { kind: 'script', raw: a, index: i + 1, preloads } // a cut tail is the script's own argument
     if (a === '--') {
       const n = args[i + 1]
-      return n === undefined ? { kind: 'unknown' } : { kind: 'script', raw: n, index: i + 2, preloads }
+      return n === undefined ? { kind: 'unknown', preloads } : { kind: 'script', raw: n, index: i + 2, preloads }
     }
-    if (a === '-' || EVAL_OPTS.has(a) || a.startsWith('--eval=') || a.startsWith('--print=')) return { kind: 'eval' }
+    if (a === '-' || EVAL_OPTS.has(a) || a.startsWith('--eval=') || a.startsWith('--print=')) return { kind: 'eval', preloads }
     const eq = a.indexOf('=')
     const k = eq > 0 ? a.slice(0, eq) : a
     if (LOAD_OPERAND.has(k)) {
       const v = eq > 0 ? a.slice(eq + 1) : args[++i]
-      if (v === undefined || i === args.length - 1 && !terminated && eq < 0) return { kind: 'unknown' }
+      if (v === undefined || i === args.length - 1 && !terminated && eq < 0) return { kind: 'unknown', preloads }
       if (v) preloads.push(v)
       continue
     }
     if (VAL_OPERAND.has(k)) { if (eq < 0) i++; continue }
     if (eq > 0) continue // --x=y self-contained
     if (OPT_FLAG.has(a)) continue
-    return { kind: 'unknown' }
+    return { kind: 'unknown', preloads }
   }
-  return { kind: 'none' }
+  return { kind: 'none', preloads }
 }
 
 function classify(p: { comm?: string, argv?: string[], exe?: string, terminated?: boolean, res?: { raw: string, res: string }[] }): 'peer' | 'other' | 'unknown' {
@@ -116,18 +117,25 @@ function classify(p: { comm?: string, argv?: string[], exe?: string, terminated?
   if (p.comm && CMD_NAMES.has(p.comm)) return 'peer' // retitled agent (affirmative)
   if (a0b && CMD_NAMES.has(a0b)) return 'peer' // bin symlink or argv0 claim; over-count is safe
   if (p.exe && ENTRY.test(p.exe)) return 'peer'
-  // The interpreter name is the real binary (comm) when it is one — argv0 may
-  // be rewritten — otherwise argv0. Only Node's CLI subset is supported;
-  // bun/deno and unclassifiable argv are unknown, not absent peers.
+  // The interpreter is the real binary (comm) when it is one — argv0 may be
+  // rewritten — otherwise argv0. Any interpreter with a READABLE cmdline has
+  // no hidden process behind it: only its own script position, preloads or a
+  // package entrypoint can make it Command Code, and everything else is a
+  // proven other (`bun run dev`, `node server.js`). Without a usable cmdline
+  // nothing proves what it runs, so it stays bounded uncertain evidence.
   const iname = INTERPRETER.test(p.comm ?? '') ? base(p.comm) : a0b
   if (INTERPRETER.test(iname)) {
-    if (!/^node/.test(iname)) return 'unknown'
     if (!p.argv?.length || p.argv.every(a => a === '')) return 'unknown' // nothing to positionally classify
-    const sp = scriptPos(p.argv, p.terminated !== false)
-    if (sp.kind !== 'script') return 'unknown'
     const res = new Map((p.res ?? []).map(c => [c.raw, c.res]))
-    const hit = (c: string) => CMD_BIN.has(base(c)) || ENTRY.test(c) || ENTRY.test(res.get(c) ?? '')
-    return hit(sp.raw) || sp.preloads.some(hit) ? 'peer' : 'other'
+    const entry = (c: string) => ENTRY.test(c) || ENTRY.test(res.get(c) ?? '')
+    const bin = (c: string) => CMD_BIN.has(base(c)) || entry(c)
+    const sp = scriptPos(p.argv, p.terminated !== false)
+    if (sp.preloads.some(bin)) return 'peer' // a preload loads the package in-process
+    if (sp.kind === 'script') return bin(sp.raw) ? 'peer' : 'other'
+    // The script position is unprovable (eval code, stdin, an unknown option
+    // shape) or absent: a bare alias word there could be any argument, so
+    // only a package entrypoint path — raw or resolved — still proves it.
+    return p.argv.slice(1).some(entry) ? 'peer' : 'other'
   }
   // No usable argv: only affirmative comm/exe evidence above could have
   // returned 'peer'. Every comm the producer marks suspicious on an empty

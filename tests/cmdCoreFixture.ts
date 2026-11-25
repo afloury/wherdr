@@ -23,14 +23,19 @@ export const ENTRY: [string, string][] = [['/x/bin/cmd', PKG]]
 
 export const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64')
 export const H = 'H 100 1767225600 1\n'
-export const S = (pid: number, o: { ppid?: number, ticks?: string, up?: string, wall?: string, comm?: string, argv?: string[], cwd?: string | null } = {}) =>
-  `S ${pid} ${o.ppid ?? 1} ${o.ticks ?? '12345'} ${o.up ?? '500.12'} ${o.wall ?? '1767226100.123456789'} ${b64(o.comm ?? 'node')} ${b64((o.argv ?? ['node', '/x/bin/cmd']).join('\0') + '\0')} ${o.cwd === null ? '' : b64((o.cwd ?? WORK) + '\n')} ${b64('/usr/bin/node\n')} ${b64(ENTRY.map(([r, s]) => `${r}\x01${s}\x01`).join(''))}\n`
+export const S = (pid: number, o: { ppid?: number, ticks?: string, up?: string, wall?: string, comm?: string, argv?: string[] | null, cwd?: string | null } = {}) =>
+  `S ${pid} ${o.ppid ?? 1} ${o.ticks ?? '12345'} ${o.up ?? '500.12'} ${o.wall ?? '1767226100.123456789'} ${b64(o.comm ?? 'node')} ${b64((o.argv === null ? [] : o.argv ?? ['node', '/x/bin/cmd']).join('\0') + '\0')} ${o.cwd === null ? '' : b64((o.cwd ?? WORK) + '\n')} ${b64('/usr/bin/node\n')} ${b64(ENTRY.map(([r, s]) => `${r}\x01${s}\x01`).join(''))}\n`
 export const T = (n: number, r: number, o = 0, u = 0) => `T ${n} ${r} ${o} ${u}\n`
 export const retitled = (pid: number, o: { cwd?: string, ticks?: string } = {}) => S(pid, { comm: 'command-code', argv: ['command-code'], cwd: o.cwd, ticks: o.ticks }) // launch argv lost -> argvExact false
 
 export const st = (m: string, ino = 42) => `7 ${m} ${ino} regular file`
+// One directory row: <dir>\0<stat line>\0, type "directory".
+export const dirRow = (dir: string) => `${dir}\u00007 ${POSTOBS} 41 directory\u0000`
 export const F = (dir: string, id: string) => `${ROOT}/${dir}/${id}.jsonl`
-export const filesWire = (recs: [string, string][]) => `H\n${recs.map(([p, s]) => `R\x01${b64(p)}\x01${s}`).join('\n')}\nT ${recs.length} ${recs.length} ${recs.length} 0\n`
+// NUL-framed listing: H, one row per project dir, one per file, then the
+// footer T dirs found records flags.
+export const filesWire = (recs: [string, string][], dirs: string[] = [...new Set(recs.map(([p]) => p.slice(0, p.lastIndexOf('/'))))]) =>
+  `H\u0000${dirs.map(d => `${d}\u00007 ${POSTOBS} 41 directory\u0000`).join('')}${recs.map(([p, s]) => `${p}\u0000${s}\u0000`).join('')}T\u0000${dirs.length}\u0000${recs.length}\u0000${recs.length}\u00000\u0000`
 export const sess = (id: string, cwd = WORK) => `${JSON.stringify({ type: 'session', version: 3, id, cwd })}\nevent\n`
 // Observed stat must equal listing stat; every requested path gets a record.
 export const hdrs = (tbl: Record<string, { st: string, body: string }>) => (args: string[]) => {
@@ -46,11 +51,16 @@ export const PRE = '1700000000.5' // pre-birth
 export const AT = '1767225723.464' // exactly the birth bound
 export const GAP = '1767225800.5' // in the fork->exec gap: > old-shell birth, < firstObs
 
+// The producer answers base64 (one encoding over the whole NUL-framed
+// stream); a wire fixture is written in plain text and encoded here, never
+// hand-encoded in a test.
+export const wire = (s: string) => Buffer.from(s, 'utf8').toString('base64')
+
 export const stub = (o: { census?: string, files?: string, headers?: (a: string[]) => string, code?: number }) => {
   const calls = { census: 0, files: 0, headers: 0 }
   const exec: ShellExec = async (script, args = []) => {
     if (script === AGENT_CENSUS_SCRIPT) { calls.census++; return { code: o.code ?? 0, stdout: Buffer.from(o.census ?? `${H}T 0 0 0 0\n`), stderr: '' } }
-    if (script === CMD_FILES_SCRIPT) { calls.files++; return { code: 0, stdout: Buffer.from(o.files ?? 'H\nT 0 0 0 0\n'), stderr: '' } }
+    if (script === CMD_FILES_SCRIPT) { calls.files++; return { code: 0, stdout: Buffer.from(wire(o.files ?? 'H\u0000T\u00000\u00000\u00000\u00000\u0000')), stderr: '' } }
     if (script === CMD_HEADERS_SCRIPT) { calls.headers++; return { code: 0, stdout: Buffer.from(o.headers?.(args ?? []) ?? 'H\nT 0 0 0\n'), stderr: '' } }
     return { code: 1, stdout: Buffer.alloc(0), stderr: 'x' }
   }

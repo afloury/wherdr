@@ -4,7 +4,7 @@ import type { ShellExec } from '../server/utils/fsx'
 import { AGENT_CENSUS_SCRIPT, CMD_FILES_SCRIPT, CMD_HEADERS_SCRIPT } from './cmdCoreFixture'
 import {
   AT, clock, F, filesWire, GAP, H, hdrs, HOME, live, OTHER, PKG, POST3,
-  POST, POST2, POSTOBS, PRE, retitled, S, sess, st, stub, T, U1, U2, U3, WORK
+  POST, POST2, POSTOBS, PRE, retitled, S, sess, st, stub, T, U1, U2, U3, wire, WORK
 } from './cmdCoreFixture'
 
 describe('createCmdCore', () => {
@@ -102,25 +102,43 @@ describe('createCmdCore', () => {
   it('scopes unclassifiable processes: an unrelated cwd never voids the lookup', async () => {
     const { exec } = stub({
       census: H + S(4242)
-        + S(7701, { argv: ['/opt/tools/node_repl'], cwd: OTHER }) // bare REPL: argv0 only
-        + S(7702, { argv: ['node', '-e', 'tick()'], cwd: '/w/eval' }) // eval code
-        + S(7703, { comm: 'bun', argv: ['bun', '/srv/app.js'], cwd: '/w/bun' })
-        + S(7704, { comm: 'deno', argv: ['deno', 'run', '/srv/x.ts'], cwd: '/w/deno' })
-        + S(7705, { argv: ['node', '-'], cwd: '/w/stdin' }) // script on stdin
-        + T(6, 6),
+        + S(7701, { argv: null, cwd: OTHER }) // unreadable cmdline elsewhere
+        + S(7702, { argv: null, cwd: '/w/eval' })
+        + S(7703, { comm: 'bun', argv: null, cwd: '/w/bun' })
+        + S(7704, { comm: 'deno', argv: null, cwd: '/w/deno' })
+        + T(5, 5),
       files: filesWire([[F('a', U1), st(POSTOBS)]]),
       headers: hdrs({ [F('a', U1)]: { st: st(POSTOBS), body: sess(U1) } })
     })
     expect(await createCmdCore(exec, HOME).locate(live({ pid: 9000, foreground: { pid: 4242 } }))).toEqual({ file: F('a', U1), session: U1 })
   })
 
-  it('refuses before file IO when an unclassifiable process shares the target cwd', async () => {
+  it('never lets a plain interpreter in the project block the conversation', async () => {
+    // The review's reproductions: `bun run dev` and `node --enable-source-maps
+    // server.js` in the SAME project, and another user's `node
+    // --max-old-space-size 512 /srv/app.js` whose cwd is unreadable. Each has a
+    // readable cmdline with no Command Code evidence, so each is a proven
+    // other — the working selection must survive all three.
     for (const u of [
-      S(7701, { argv: ['/opt/tools/node_repl'] }),
-      S(7702, { argv: ['node', '-e', 'tick()'] }),
-      S(7703, { comm: 'bun', argv: ['bun', '/srv/app.js'] }),
-      S(7704, { comm: 'deno', argv: ['deno', 'run', '/srv/x.ts'] }),
-      S(7705, { argv: ['node', '-'] }),
+      S(7701, { comm: 'bun', argv: ['bun', 'run', 'dev'] }),
+      S(7702, { argv: ['node', '--enable-source-maps', 'server.js'] }),
+      S(7703, { argv: ['node', '--max-old-space-size', '512', '/srv/app.js'], cwd: null }),
+    ]) {
+      const { exec, calls } = stub({
+        census: H + S(4242) + u + T(2, 2),
+        files: filesWire([[F('a', U1), st(POSTOBS)]]),
+        headers: hdrs({ [F('a', U1)]: { st: st(POSTOBS), body: sess(U1) } })
+      })
+      expect(await createCmdCore(exec, HOME).locate(live({ pid: 9000, foreground: { pid: 4242 } }))).toEqual({ file: F('a', U1), session: U1 })
+      expect(calls.files).toBe(1) // collection ran: the other never refused it
+    }
+  })
+
+  it('refuses before file IO when a process with an unreadable cmdline shares the target cwd', async () => {
+    for (const u of [
+      S(7701, { argv: null }),
+      S(7702, { comm: 'bun', argv: null }),
+      S(7703, { comm: 'deno', argv: null }),
     ]) {
       const { exec, calls } = stub({ census: H + S(4242) + u + T(2, 2) })
       expect(await createCmdCore(exec, HOME).locate(live({ pid: 9000, foreground: { pid: 4242 } }))).toEqual({ unavailable: 'peers' })
@@ -128,8 +146,8 @@ describe('createCmdCore', () => {
     }
   })
 
-  it('refuses an unclassifiable process whose cwd is unreadable, whatever the target', async () => {
-    const { exec } = stub({ census: H + S(4242) + S(7701, { argv: ['/opt/tools/node_repl'], cwd: null }) + T(2, 2) })
+  it('refuses an unreadable process whose cwd is unreadable too, whatever the target', async () => {
+    const { exec } = stub({ census: H + S(4242) + S(7701, { argv: null, cwd: null }) + T(2, 2) })
     expect(await createCmdCore(exec, HOME).locate(live({ pid: 9000, foreground: { pid: 4242 } }))).toEqual({ unavailable: 'peers' })
   })
 
@@ -139,11 +157,12 @@ describe('createCmdCore', () => {
       files: filesWire([[F('a', U1), st(POST)], [F('r', U2), st(POST2)]]),
       headers: hdrs({ [F('a', U1)]: { st: st(POST), body: sess(U1) }, [F('r', U2)]: { st: st(POST2), body: sess(U2, OTHER) } })
     })
-    // The resume target's header cwd is OTHER: an unknown there could own it.
-    expect(await createCmdCore(seeded(S(7701, { argv: ['/opt/tools/node_repl'], cwd: OTHER })).exec, HOME)
+    // The resume target's header cwd is OTHER: an unreadable process there
+    // could own it.
+    expect(await createCmdCore(seeded(S(7701, { argv: null, cwd: OTHER })).exec, HOME)
       .locate(live({ pid: 9000, foreground: { pid: 4242 } }))).toEqual({ unavailable: 'peers' })
-    // An unrelated unknown cannot: the legitimate launch target still wins.
-    expect(await createCmdCore(seeded(S(7701, { argv: ['/opt/tools/node_repl'], cwd: '/w/three' })).exec, HOME)
+    // An unrelated one cannot: the legitimate launch target still wins.
+    expect(await createCmdCore(seeded(S(7701, { argv: null, cwd: '/w/three' })).exec, HOME)
       .locate(live({ pid: 9000, foreground: { pid: 4242 } }))).toEqual({ file: F('r', U2), session: U2 })
   })
 
@@ -358,12 +377,13 @@ describe('createCmdCore', () => {
     const gate = new Promise<void>(res => { filesRelease = res })
     const exec: ShellExec = async (script, args = []) => {
       const out = (s: string) => ({ code: 0, stdout: Buffer.from(s), stderr: '' })
+      const wireOut = (s: string) => ({ code: 0, stdout: Buffer.from(wire(s)), stderr: '' })
       if (script === AGENT_CENSUS_SCRIPT) {
         seq.push('census')
         active++; maxActive = Math.max(maxActive, active)
         try { return out(o.census) } finally { active-- }
       }
-      if (script === CMD_FILES_SCRIPT) { seq.push('files'); filesBegan(); await gate; return out(o.files) }
+      if (script === CMD_FILES_SCRIPT) { seq.push('files'); filesBegan(); await gate; return wireOut(o.files) }
       if (script === CMD_HEADERS_SCRIPT) { seq.push('headers'); return out(o.headers(args ?? [])) }
       return { code: 1, stdout: Buffer.alloc(0), stderr: 'x' }
     }
@@ -400,8 +420,9 @@ describe('createCmdCore', () => {
     const gate = new Promise<void>(res => { headersRelease = res })
     const exec: ShellExec = async (script, args = []) => {
       const out = (s: string) => ({ code: 0, stdout: Buffer.from(s), stderr: '' })
+    const wireOut = (s: string) => ({ code: 0, stdout: Buffer.from(wire(s)), stderr: '' })
       if (script === AGENT_CENSUS_SCRIPT) { seq.push('census'); return out(o.census) }
-      if (script === CMD_FILES_SCRIPT) { seq.push('files'); return out(o.files) }
+      if (script === CMD_FILES_SCRIPT) { seq.push('files'); return wireOut(o.files) }
       if (script === CMD_HEADERS_SCRIPT) { seq.push('headers'); headersBegan(); await gate; return out(o.headers(args ?? [])) }
       return { code: 1, stdout: Buffer.alloc(0), stderr: 'x' }
     }
@@ -434,8 +455,9 @@ describe('createCmdCore', () => {
       const gate = new Promise<void>(res => { release = res })
       const exec: ShellExec = async (script, args = []) => {
         const out = (s: string) => ({ code: 0, stdout: Buffer.from(s), stderr: '' })
+    const wireOut = (s: string) => ({ code: 0, stdout: Buffer.from(wire(s)), stderr: '' })
         if (script === AGENT_CENSUS_SCRIPT) return out(o.census)
-        if (script === CMD_FILES_SCRIPT) { filesBegan(); await gate; return out(o.files) }
+        if (script === CMD_FILES_SCRIPT) { filesBegan(); await gate; return wireOut(o.files) }
         if (script === CMD_HEADERS_SCRIPT) return out(o.headers(args ?? []))
         return { code: 1, stdout: Buffer.alloc(0), stderr: 'x' }
       }
@@ -465,6 +487,7 @@ describe('createCmdCore', () => {
       const gate = new Promise<void>(res => { release = res })
       const exec: ShellExec = async (script, args = []) => {
         const out = (s: string) => ({ code: 0, stdout: Buffer.from(s), stderr: '' })
+    const wireOut = (s: string) => ({ code: 0, stdout: Buffer.from(wire(s)), stderr: '' })
         if (script === AGENT_CENSUS_SCRIPT) {
           if (++censusN === 2) {
             if (fail === 'throw') throw new Error('gone')
@@ -473,7 +496,7 @@ describe('createCmdCore', () => {
           }
           return out(o.census)
         }
-        if (script === CMD_FILES_SCRIPT) { filesBegan(); await gate; return out(o.files) }
+        if (script === CMD_FILES_SCRIPT) { filesBegan(); await gate; return wireOut(o.files) }
         if (script === CMD_HEADERS_SCRIPT) return out(o.headers(args ?? []))
         return { code: 1, stdout: Buffer.alloc(0), stderr: 'x' }
       }
@@ -486,11 +509,12 @@ describe('createCmdCore', () => {
   })
 
   it('scopes post-collection unknown and foreign peers to the final sample', async () => {
-    // An unknown in the target's cwd — or a live cmd at the seed's header
-    // cwd — must be judged on the post-collection census, not the stale one.
+    // A process with no readable cmdline in the target's cwd — or a live cmd
+    // at the seed's header cwd — must be judged on the post-collection census,
+    // not the stale one.
     for (const [c2, want] of [
-      [H + S(4242, { ppid: 9000, up: '1300.12', wall: '1767226900.123' }) + S(7701, { argv: ['/opt/tools/node_repl'], up: '1300.12', wall: '1767226900.123' }) + T(2, 2), 'peers'],
-      [H + S(4242, { ppid: 9000, up: '1300.12', wall: '1767226900.123' }) + S(7701, { argv: ['/opt/tools/node_repl'], cwd: OTHER, up: '1300.12', wall: '1767226900.123' }) + T(2, 2), 'file']
+      [H + S(4242, { ppid: 9000, up: '1300.12', wall: '1767226900.123' }) + S(7701, { argv: null, up: '1300.12', wall: '1767226900.123' }) + T(2, 2), 'peers'],
+      [H + S(4242, { ppid: 9000, up: '1300.12', wall: '1767226900.123' }) + S(7701, { argv: null, cwd: OTHER, up: '1300.12', wall: '1767226900.123' }) + T(2, 2), 'file']
     ] as const) {
       const cl = clock()
       const o = {
@@ -503,8 +527,9 @@ describe('createCmdCore', () => {
       const gate = new Promise<void>(res => { release = res })
       const exec: ShellExec = async (script, args = []) => {
         const out = (s: string) => ({ code: 0, stdout: Buffer.from(s), stderr: '' })
+    const wireOut = (s: string) => ({ code: 0, stdout: Buffer.from(wire(s)), stderr: '' })
         if (script === AGENT_CENSUS_SCRIPT) return out(o.census)
-        if (script === CMD_FILES_SCRIPT) { filesBegan(); await gate; return out(o.files) }
+        if (script === CMD_FILES_SCRIPT) { filesBegan(); await gate; return wireOut(o.files) }
         if (script === CMD_HEADERS_SCRIPT) return out(o.headers(args ?? []))
         return { code: 1, stdout: Buffer.alloc(0), stderr: 'x' }
       }
@@ -537,8 +562,9 @@ describe('createCmdCore', () => {
     const gate = new Promise<void>(res => { release = res })
     const exec: ShellExec = async (script, args = []) => {
       const out = (s: string) => ({ code: 0, stdout: Buffer.from(s), stderr: '' })
+    const wireOut = (s: string) => ({ code: 0, stdout: Buffer.from(wire(s)), stderr: '' })
       if (script === AGENT_CENSUS_SCRIPT) return out(o.census)
-      if (script === CMD_FILES_SCRIPT) { filesBegan(); await gate; return out(o.files) }
+      if (script === CMD_FILES_SCRIPT) { filesBegan(); await gate; return wireOut(o.files) }
       if (script === CMD_HEADERS_SCRIPT) return out(o.headers(args ?? []))
       return { code: 1, stdout: Buffer.alloc(0), stderr: 'x' }
     }
@@ -568,8 +594,9 @@ describe('createCmdCore', () => {
     const gate = new Promise<void>(res => { release = res })
     const exec: ShellExec = async (script, args = []) => {
       const out = (s: string) => ({ code: 0, stdout: Buffer.from(s), stderr: '' })
+    const wireOut = (s: string) => ({ code: 0, stdout: Buffer.from(wire(s)), stderr: '' })
       if (script === AGENT_CENSUS_SCRIPT) return out(o.census)
-      if (script === CMD_FILES_SCRIPT) { filesBegan(); await gate; return out(o.files) }
+      if (script === CMD_FILES_SCRIPT) { filesBegan(); await gate; return wireOut(o.files) }
       if (script === CMD_HEADERS_SCRIPT) return out(o.headers(args ?? []))
       return { code: 1, stdout: Buffer.alloc(0), stderr: 'x' }
     }
@@ -620,6 +647,7 @@ describe('createCmdCore', () => {
     let censusN = 0, active = 0, maxActive = 0
     const exec: ShellExec = async (script, args = []) => {
       const out = (s: string) => ({ code: 0, stdout: Buffer.from(s), stderr: '' })
+    const wireOut = (s: string) => ({ code: 0, stdout: Buffer.from(wire(s)), stderr: '' })
       if (script === AGENT_CENSUS_SCRIPT) {
         calls.census++
         active++
@@ -629,7 +657,7 @@ describe('createCmdCore', () => {
           return out(o.census)
         } finally { active-- }
       }
-      if (script === CMD_FILES_SCRIPT) { calls.files++; filesBegan(); await filesGate; return out(o.files) }
+      if (script === CMD_FILES_SCRIPT) { calls.files++; filesBegan(); await filesGate; return wireOut(o.files) }
       if (script === CMD_HEADERS_SCRIPT) { calls.headers++; return out(o.headers(args ?? [])) }
       return { code: 1, stdout: Buffer.alloc(0), stderr: 'x' }
     }

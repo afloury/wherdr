@@ -144,34 +144,67 @@ it('identifies only the script position; prompt arguments never prove identity',
   expect(pl.processes.map(p => p.pid)).toEqual([6])
 })
 
-it('keeps unclassifiable shapes as bounded uncertain evidence, never a proven other', () => {
-  // Emitted records the supported subset cannot classify stay in the census
-  // scoped by their own evidence — the lookup decides relevance; they are
-  // never dropped and never converted into a proven other.
+it('counts an interpreter with no Command Code evidence as other, never as unknown', () => {
+  // The review's reproductions: a bun/deno/node process running ordinary code
+  // in the project, whatever its flags or its unreadable cwd, is a proven
+  // other. Only an unreadable cmdline stays uncertain.
   const c = parseAgentCensus(H()
-    + S(1, { argv: ['node', '--mystery', '/srv/server.js'], cwd: '/w/x', exe: '/usr/bin/node' })
-    + S(2, { argv: ['node', '-'], cwd: '/w/x', exe: '/usr/bin/node' })
-    + S(3, { argv: ['node'], cwd: '/w/x', exe: '/usr/bin/node' })
-    + S(4, { argv: ['node', '-e', `require('${PKGD}/index.mjs')`], cwd: '/w/x', exe: '/usr/bin/node' })
-    + S(5, { argv: ['node', '--eval=x'], cwd: '/w/x', exe: '/usr/bin/node' })
-    + S(6, { argv: ['node', '-p', '1'], cwd: '/w/x', exe: '/usr/bin/node' })
-    + S(7, { argv: ['/opt/tools/node_repl'], cwd: '/w/x', exe: '/usr/bin/node' }) // bare REPL: argv0 only
-    + S(8, { comm: 'deno', argv: ['deno', 'run', '/x.ts'], cwd: '/w/x', exe: '/usr/bin/deno' })
-    + S(9, { comm: 'bun', argv: ['bun', '/x.js'], cwd: '/w/x', exe: '/usr/bin/bun' })
-    + T(9, 9))
+    + S(1, { comm: 'bun', argv: ['bun', 'run', 'dev'], cwd: '/w/proj', exe: '/usr/bin/bun' })
+    + S(2, { argv: ['node', '--enable-source-maps', 'server.js'], cwd: '/w/proj', exe: '/usr/bin/node' })
+    + S(3, { argv: ['node', '--max-old-space-size', '512', '/srv/app.js'], cwd: undefined, exe: '/usr/bin/node' })
+    + S(4, { comm: 'deno', argv: ['deno', 'run', '--allow-net', 'app.ts'], cwd: '/w/proj', exe: '/usr/bin/deno' })
+    + S(5, { argv: ['node', '--mystery', '/srv/server.js'], cwd: '/w/x', exe: '/usr/bin/node' })
+    + S(6, { argv: ['node', '-'], cwd: '/w/x', exe: '/usr/bin/node' })
+    + S(7, { argv: ['node'], cwd: '/w/x', exe: '/usr/bin/node' })
+    + S(8, { argv: ['node', '-e', `require('${PKGD}/index.mjs')`], cwd: '/w/x', exe: '/usr/bin/node' })
+    + S(9, { argv: ['node', '--eval=x'], cwd: '/w/x', exe: '/usr/bin/node' })
+    + S(10, { argv: ['node', '-p', '1'], cwd: '/w/x', exe: '/usr/bin/node' })
+    + S(11, { argv: ['/opt/tools/node_repl'], cwd: '/w/x', exe: '/usr/bin/node' }) // bare REPL: argv0 only
+    + T(11, 11))
   expect(c.complete).toBe(true)
   expect(c.processes).toEqual([])
-  expect(c.uncertain.map(p => p.pid)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9])
-  expect(c.uncertain[0]).toMatchObject({ pid: 1, cwd: '/w/x' }) // bounded evidence incl. cwd
-  // Mixed: the proven peer still resolves; the unknown stays scoped evidence.
+  expect(c.uncertain).toEqual([])
+  // Mixed: the proven peer still resolves while the plain node stays other.
   const mix = parseAgentCensus(H()
     + S(1, { argv: ['node', '/x/bin/cmdc'], cwd: '/w/x', exe: '/usr/bin/node' })
-    + S(2, { argv: ['node', '--weird', 'x.js'], cwd: '/w/x', exe: '/usr/bin/node' }) + T(2, 2))
+    + S(2, { argv: ['node', 'server.js'], cwd: '/w/x', exe: '/usr/bin/node' }) + T(2, 2))
   expect(mix.complete).toBe(true)
   expect(mix.processes.map(p => p.pid)).toEqual([1])
-  expect(mix.uncertain.map(p => p.pid)).toEqual([2])
-  // An unknown whose cwd is unreadable is still kept — relevance decides.
-  const noCwd = parseAgentCensus(H() + `S 9 1 12345 500.12 1767226100.1 ${b64('node')} ${arg64(['/opt/tools/node_repl'])}  ${link64('/usr/bin/node')} \n` + T())
+  expect(mix.uncertain).toEqual([])
+})
+
+it('keeps Command Code evidence past an unproven option shape or a value operand', () => {
+  // The script position is unprovable, but a bin/alias word or the package
+  // entrypoint elsewhere in argv (raw or resolved) still proves the peer.
+  const entry = parseAgentCensus(H() + S(1, { argv: ['node', '--mystery', `${PKGD}/index.mjs`], cwd: '/w/x', exe: '/usr/bin/node' }) + T())
+  expect(entry.processes.map(p => p.pid)).toEqual([1])
+  // A resolved script position named only by its bare bin proves it too.
+  const resolved = parseAgentCensus(H() + S(2, {
+    argv: ['node', '--mystery', '/x/bin/cmd'], cwd: '/w/x', exe: '/usr/bin/node',
+    res: [['/x/bin/cmd', `${PKGD}/index.mjs`]],
+  }) + T())
+  expect(resolved.processes.map(p => p.pid)).toEqual([2])
+  // A value operand of a known option never supplies identity.
+  const cond = parseAgentCensus(H() + S(3, { argv: ['node', '--mystery', '--conditions', 'command-code', '/srv/x.js'], cwd: '/w/x', exe: '/usr/bin/node' }) + T())
+  expect(cond.processes).toEqual([])
+  expect(cond.uncertain).toEqual([])
+})
+
+it('keeps only an unreadable cmdline uncertain — bounded evidence, never a proven other', () => {
+  // Emitted records with no usable cmdline stay in the census scoped by their
+  // own evidence: the lookup decides relevance, they are never dropped and
+  // never converted into a proven other. A readable cmdline without Command
+  // Code evidence is other (above).
+  const c = parseAgentCensus(H()
+    + `S 1 1 12345 500.12 1767226100.1 ${b64('node')}  ${link64('/w/x')} ${link64('/usr/bin/node')} \n`
+    + `S 2 1 12345 500.12 1767226100.1 ${b64('bun')}  ${link64('/w/x')} ${link64('/usr/bin/bun')} \n`
+    + T(2, 2))
+  expect(c.complete).toBe(true)
+  expect(c.processes).toEqual([])
+  expect(c.uncertain.map(p => p.pid)).toEqual([1, 2])
+  expect(c.uncertain[0]).toMatchObject({ pid: 1, cwd: '/w/x' })
+  // No readable cwd either: still kept, relevance can never be proven.
+  const noCwd = parseAgentCensus(H() + `S 9 1 12345 500.12 1767226100.1 ${b64('node')}   ${link64('/usr/bin/node')} \n` + T())
   expect(noCwd.complete).toBe(true)
   expect(noCwd.uncertain[0]?.pid).toBe(9)
   expect(noCwd.uncertain[0]?.cwd).toBeUndefined()

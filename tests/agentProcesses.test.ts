@@ -5,6 +5,7 @@ import { afterEach, expect, it } from 'vitest'
 import { AGENT_CENSUS_SCRIPT, agentCensus } from '../server/utils/agentProcesses'
 import { parseAgentCensus } from '../server/utils/agentCensus'
 import { shq } from '../server/utils/fsx'
+import { CMD_ALIASES } from '../shared/cmdAliases'
 import { localShell } from './helpers/localShell'
 
 const linux = it.runIf(process.platform === 'linux')
@@ -141,7 +142,7 @@ linux('relative entrypoint resolves through the process cwd link', async () => {
   expect(c.processes.map(p => p.pid)).toEqual([401])
 })
 
-linux('producer finds the entrypoint behind node options; unknown shapes stay scoped', async () => {
+linux('producer finds the entrypoint behind node options; plain interpreters are other', async () => {
   const root = fakeRoot()
   const pkg = `${root}/pkg/command-code/dist`
   fs.mkdirSync(pkg, { recursive: true })
@@ -149,15 +150,14 @@ linux('producer finds the entrypoint behind node options; unknown shapes stay sc
   fakeProc(root, 601, { argv: ['node', '-r', 'a', '-r', 'b', '-r', 'c', '-r', 'd', `${pkg}/index.mjs`], cwd: '/w/x', exe: '/usr/bin/node' })
   fakeProc(root, 602, { argv: ['node', '/srv/server.js', 'cmd'], cwd: '/w/x', exe: '/usr/bin/node' }) // arg, not identity
   fakeProc(root, 603, { argv: ['node', '--mystery', 'x.js'], cwd: '/w/x', exe: '/usr/bin/node' }) // unknown launch shape
-  fakeProc(root, 604, { argv: ['node', '-e', `require('${pkg}/index.mjs')`], cwd: '/w/x', exe: '/usr/bin/node' }) // eval: unclassifiable
+  fakeProc(root, 604, { argv: ['node', '-e', `require('${pkg}/index.mjs')`], cwd: '/w/x', exe: '/usr/bin/node' }) // eval: not a launch
   fakeProc(root, 605, { argv: ['node', '--conditions', 'command-code', '/srv/server.js'], cwd: '/w/x', exe: '/usr/bin/node' }) // value operand: not identity
   const c = await agentCensus(inPath(root), { procRoot: root })
   expect(c.complete).toBe(true)
   expect(c.processes.map(p => p.pid)).toEqual([601])
-  // Emitted unclassifiable records keep their cwd: scoped evidence, not a
-  // global failure and never a proven other.
-  expect(c.uncertain.map(p => p.pid).sort()).toEqual([603, 604])
-  expect(c.uncertain.every(p => p.cwd === '/w/x')).toBe(true)
+  // A readable cmdline without Command Code evidence is a proven other — even
+  // an unlisted option shape or eval code — never uncertain evidence.
+  expect(c.uncertain).toEqual([])
 })
 
 linux('producer stdout is capped before the exec reply', async () => {
@@ -168,6 +168,70 @@ linux('producer stdout is capped before the exec reply', async () => {
   expect(r.stdout.length).toBeLessThanOrEqual(3_200_000)
   expect(parseAgentCensus(r.stdout.toString('utf8')).incomplete).toBe('oversize')
 }, 30000)
+
+linux('pass 1 skips plain interpreters with no Command Code evidence', async () => {
+  const root = fakeRoot()
+  // The review's reproduction: idle node processes in a project cost a full
+  // record each (about 55 ms). Pass 1 must drop them without any per-process
+  // fork — an absolute script that neither names nor resolves to the package
+  // proves nothing. `bun run dev` in the same project is a proven other, not
+  // uncertain evidence; only an unreadable cmdline stays uncertain.
+  for (let i = 0; i < 12; i++) {
+    fakeProc(root, 700 + i, { argv: ['node', `/srv/app${i}.js`, '--port', String(8000 + i)], cwd: '/srv/project', exe: '/usr/bin/node' })
+  }
+  fakeProc(root, 720, { comm: 'bun', argv: ['bun', 'run', '/srv/build.ts'], cwd: '/srv/project', exe: '/usr/bin/bun' })
+  fakeProc(root, 721, { comm: 'deno', argv: ['deno', 'run', '--allow-net', 'https://host/app.ts'], cwd: '/srv/project', exe: '/usr/bin/deno' })
+  fakeProc(root, 722, { comm: 'node', argv: null, cwd: '/srv/project', exe: '/usr/bin/node' })
+  fs.chmodSync(`${root}/722/cmdline`, 0) // live, unreadable cmdline: a possible hidden peer
+  const r = await inPath(root)(AGENT_CENSUS_SCRIPT, [root], { timeoutMs: 8000 })
+  const out = r.stdout.toString('utf8')
+  // Not one plain interpreter reached a full record: only the live process
+  // with an unreadable cmdline is still collected, as scoped evidence.
+  expect(out.match(/^S /gm)).toEqual(['S '])
+  const c = parseAgentCensus(out)
+  expect(c.complete).toBe(true)
+  expect(c.scanned).toBe(15) // every live pid was still counted
+  expect(c.processes).toEqual([])
+  expect(c.uncertain.map(p => p.pid)).toEqual([722])
+})
+
+linux('pass 1 keeps an interpreter whose arguments could name the package', async () => {
+  const root = fakeRoot()
+  const pkg = `${root}/pkg/command-code/dist`
+  fs.mkdirSync(pkg, { recursive: true })
+  fs.writeFileSync(`${pkg}/index.mjs`, '// x')
+  // Each shape is kept for pass 2 to classify: an evidence word, a package
+  // path and a bare relative operand (which may resolve through the cwd).
+  fakeProc(root, 801, { argv: ['node', '/srv/server.js', 'cmdc'], cwd: '/srv/project', exe: '/usr/bin/node' })
+  fakeProc(root, 802, { argv: ['node', '/srv/server.js', `${pkg}/index.mjs`], cwd: '/srv/project', exe: '/usr/bin/node' })
+  fakeProc(root, 803, { argv: ['node', 'index.mjs'], cwd: pkg, exe: '/usr/bin/node' })
+  fakeProc(root, 804, { argv: ['bun', 'run', 'dev'], cwd: '/srv/project', exe: '/usr/bin/bun' })
+  const c = await agentCensus(inPath(root), { procRoot: root })
+  expect(c.complete).toBe(true)
+  expect(c.scanned).toBe(4)
+  expect(c.processes.map(p => p.pid)).toEqual([803]) // only the real launch
+  expect(c.uncertain).toEqual([])
+})
+
+linux('the census script recognizes exactly the names CMD_ALIASES declares', async () => {
+  // The shell's candidate rule and the shared alias list must never drift: an
+  // alias added to CMD_ALIASES without the script (or the reverse) would make
+  // a real agent invisible to the census, or a name prove Command Code that
+  // is not. Each declared alias is launched as a bare process; a renamed
+  // lookalike is not one.
+  const root = fakeRoot()
+  for (const [i, name] of CMD_ALIASES.entries()) {
+    fakeProc(root, 900 + i, { comm: name, argv: [name], cwd: '/w/x', exe: '/usr/bin/node' })
+  }
+  fakeProc(root, 990, { comm: 'command-code2', argv: ['command-code2'], cwd: '/w/x', exe: '/usr/bin/node' })
+  fakeProc(root, 991, { comm: 'cmdcx', argv: ['cmdcx'], cwd: '/w/x', exe: '/usr/bin/node' })
+  const c = await agentCensus(inPath(root), { procRoot: root })
+  expect(c.complete).toBe(true)
+  expect(c.processes.map(p => p.pid).sort()).toEqual(CMD_ALIASES.map((_, i) => 900 + i))
+  // Nothing from the script's candidate family is missing from CMD_ALIASES:
+  // every bare name it selects is one the shared list already declares.
+  for (const p of c.processes) expect(CMD_ALIASES).toContain(p.comm)
+})
 
 linux('record cap, missing proc and missing uptime never yield a usable sole peer', async () => {
   const root = fakeRoot()
