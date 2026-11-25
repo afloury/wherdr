@@ -354,6 +354,8 @@ field, so nothing moves when it comes or goes.
 **Settings › Conversation** has three tabs, each kept in the address so a link opens it:
 
 - **Display** (`#/settings?section=conversation&tab=display`, the default): default pane view,
+  **Copy on select** (selecting text with the mouse, in a conversation or the terminal, copies it at
+  once and shows *Copied*; never in a text field; on by default on a computer, off on a phone),
   typewriter, reply style and quoted replies. The typewriter's sample reply sits under **Show me**
   (closed by default; it plays once on opening, ↻ replays it, **Hide** folds it).
 - **Dictation** (`#/settings?section=conversation&tab=dictation`): off, on this device (its
