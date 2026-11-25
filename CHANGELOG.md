@@ -19,6 +19,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **A grid too large for WebGL keeps its text.** On a high-density phone a 200×120 pane asks for a WebGL canvas the browser cannot give a full drawing buffer (Chrome clamped 5600×7680 to 4918×6745), and the add-on drew nothing: the terminal was blank at open. Such a grid is now drawn by xterm's DOM renderer, and WebGL comes back once **Fit to this screen** shrinks the grid under the safe size.
 - **Garbled glyphs after a resize or the keyboard.** With the WebGL renderer, a resize (a divider drag included) or the phone keyboard opening or closing could leave noise in the terminal's glyph atlas — garbled or blank glyphs — on some mobile GPUs (seen on an OPPO Find X8 Ultra, Android Chrome). The atlas and the viewport are now rebuilt once after the resizes settle (a drag gives one repaint) and once after the keyboard opens or closes.
 - **Sideways scroll in a menu sheet.** A label that is one unbreakable string (a tab name, a path) wraps like a description now, instead of pushing its row past the sheet's edge and scrolling the whole list off to the left.
 - **Tabs of this space.** A tab's terminal title shows under its label in the sheet's rows only when it differs from the label: a repeated title made every row look like a duplicated entry, worse on a phone where long labels also wrapped.
