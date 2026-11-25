@@ -683,6 +683,8 @@ const openTools = reactive(new Set<string>())
 // (new preview, new screen…) changes the pane object, but rebuilds the blocks
 // only when one of these flips.
 const paneId = computed(() => props.pane.id)
+// A reply holding a task list: its checkboxes can be ticked (ChatMarkdown.vue `check`).
+const TASK_ITEM = /^\s*(?:[-*+]|\d+[.)])\s+\[[ xX]\]\s/m
 const working = computed(() => !readOnly.value && props.pane.status === 'working')
 const blocked = computed(() => !readOnly.value && props.pane.status === 'blocked')
 const pendingPrompt = computed(() => Boolean(props.pane.pendingPrompt))
@@ -1908,7 +1910,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   :ui="aiUi(`msg msg-ai tw-${agent || 'agent'}${canRun ? ' can-run' : ''}`)"
                 >
                   <template #content>
-                    <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" :runs="runButtons" @done="typingDone(b.id)" />
+                    <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" :runs="runButtons" :check="TASK_ITEM.test(b.text) ? { pane: paneId, key: b.rid, at: b.ms ?? 0, text: b.text } : undefined" @done="typingDone(b.id)" />
                   </template>
                 </UChatMessage>
                 <div v-if="!b.endsTurn && (b.ts || !readOnly || readAloudEngine !== 'off')" class="msg-actions">

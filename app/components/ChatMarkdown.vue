@@ -20,11 +20,12 @@ import ActionCard from './ActionCard.vue'
 import { QUESTIONS_HOST, type QuestionsHost } from '~/utils/questionsCard'
 import type { WherdrQuestion } from '~/utils/markdown'
 import { h, render } from 'vue'
+import { parseChecklist } from '#shared/checklist'
 
 // `cipher` must default to undefined, not false: Vue casts a missing Boolean
 // prop to false, which would switch the encrypted text off everywhere.
 // `runs`: state of the Run buttons, by command (composables/useCodeRun.ts).
-const props = withDefaults(defineProps<{ html: string, typing: number | null, speed?: TypingSpeed, cipher?: boolean, runs?: Record<string, RunMark> }>(), { speed: undefined, cipher: undefined, runs: undefined })
+const props = withDefaults(defineProps<{ html: string, typing: number | null, speed?: TypingSpeed, cipher?: boolean, runs?: Record<string, RunMark>, check?: { pane: string, key: string, at: number, text: string } }>(), { speed: undefined, cipher: undefined, runs: undefined, check: undefined })
 const emit = defineEmits<{ done: [] }>()
 // Two roots (the task cards' teleports): a class given to this component goes on the body.
 defineOptions({ inheritAttrs: false })
@@ -284,10 +285,38 @@ function syncRuns() {
 }
 watch(() => props.runs, syncRuns)
 
+// Task-list checkboxes of an agent's reply (`check` set): ticking is passive, it only
+// goes to the checklist store (composables/useChecklist.ts), never to the agent.
+const checklist = props.check ? useChecklist(props.check.pane) : null
+const checkboxes = () => Array.from(el.value?.querySelectorAll<HTMLInputElement>('input[type="checkbox"]') ?? [])
+function syncChecks() {
+  const c = props.check
+  if (!c || !checklist) return
+  const items = checklist.state.value[c.key]?.items
+  checkboxes().forEach((box, i) => {
+    if (box.disabled || box.classList.contains('md-check')) {
+      box.disabled = false
+      box.classList.add('md-check')
+      box.setAttribute('aria-label', t('Mark as done'))
+    } else return
+    const stored = items?.[String(i)]
+    if (stored) box.checked = stored.checked
+  })
+}
+function onCheck(event: Event) {
+  const c = props.check
+  const box = event.target
+  if (!c || !checklist || !(box instanceof HTMLInputElement) || !box.classList.contains('md-check')) return
+  const index = checkboxes().indexOf(box)
+  if (index >= 0) checklist.toggle(c.key, { at: c.at, items: parseChecklist(c.text) }, index, box.checked)
+}
+watch(() => checklist?.state.value[props.check?.key ?? '']?.items, () => syncChecks(), { deep: true, flush: 'post' })
+
 // First state applied before display: no flash of the full text.
 onMounted(() => {
   mountCards()
   syncRuns()
+  syncChecks()
   fillTaskSlots()
   syncSvgTheme(true)
   if (props.typing !== null) start(props.typing)
@@ -304,7 +333,7 @@ watch(() => props.html, () => {
   plan = null
   emit('done')
 }, { flush: 'pre' })
-watch(() => props.html, () => { mountCards(); syncRuns(); fillTaskSlots(); syncSvgTheme(true) }, { flush: 'post' })
+watch(() => props.html, () => { mountCards(); syncRuns(); syncChecks(); fillTaskSlots(); syncSvgTheme(true) }, { flush: 'post' })
 onBeforeUnmount(() => {
   dropCards()
   themeObserver?.disconnect()
@@ -316,7 +345,7 @@ onBeforeUnmount(() => {
 
 <template>
   <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
-  <div ref="el" v-bind="$attrs" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" @click="onAppLink($event); onSvgToggle($event)" @keydown="onKey" @error.capture="onImageError" v-html="html" />
+  <div ref="el" v-bind="$attrs" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" @click="onAppLink($event); onSvgToggle($event)" @change="onCheck" @keydown="onKey" @error.capture="onImageError" v-html="html" />
   <Teleport v-for="(s, i) in taskSlots" :key="`${i}:${s.id}`" :to="s.to">
     <ChatTaskCard :id="s.id" />
   </Teleport>
@@ -326,6 +355,10 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.md-body :deep(input.md-check) { cursor: pointer; accent-color: var(--accent); }
+@media (pointer: coarse) {
+  .md-body :deep(input.md-check) { width: 20px; height: 20px; margin: 12px 12px 12px 0; vertical-align: middle; }
+}
 .md-body :deep(.svg-block) { background: transparent; }
 .md-body :deep(.wherdr-block .ui-open-card) { margin: 0; }
 .md-body :deep(.wherdr-block) { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px; margin: 8px 0; }

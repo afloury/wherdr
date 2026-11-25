@@ -45,6 +45,16 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   reference instances. Incomplete, unsupported or unsafe diagrams stay readable code. Scripts,
   foreign HTML, animation and external resources are rejected; raw inline SVG is not inserted
   into the page. Other fence languages and file-explorer document fences remain code.
+- <a id="tickable-checklists"></a>**Tickable checklists**: the Markdown task items (`- [ ]` / `- [x]`) in an agent's reply are
+  checkboxes you can tick, also nested and inside an accordion. Ticking is passive: nothing is sent and the agent is never woken
+  or prompted. The ticks are kept on the server for each conversation and reply, so they survive a reload and show on your other
+  devices (within a few seconds). A chip above the message field (*3 ticked items will be sent*) says what the next message will
+  carry; **×** on it drops that state without sending it. When you send a message, wherdr appends a compact block to it:
+  `Checklist from your 10:39 message:` then one line per item, `[x] Header`, `[ ] Alert card › one layout` (text shortened,
+  a nested item with its parents' labels, ticked and unticked both listed), only for the lists that changed since the agent wrote
+  them or since they were last sent. After sending, that state counts as sent: a later change is sent again with a later message.
+  A block never goes alone (an empty message stays unsent), never with a slash command, and a choice tapped in the conversation
+  does not carry it. It works in a coordinator's chat, a task agent's and Alfred's.
 - <a id="live-status-cards"></a>**Live status cards**: a code fence labelled `wherdr` whose lines are all `status …` shows one
   card per line, read from wherdr's own data, never from what the agent wrote:
   `status machine:<key or name>` (online or offline, free memory, load, agents),
