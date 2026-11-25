@@ -28,6 +28,7 @@ import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
 import { createWheelPacer, trackSgrMouse, wheelReports, type SgrMouse } from '~/utils/terminalWheel'
 import { virtualNavigationBytes, virtualNavigationKeys } from '~/utils/keybarKeys'
 import { createCompositionTracker, toggleVirtualModifier, virtualChord, virtualInputKey, type VirtualModifier } from '~/utils/terminalModifiers'
+import { registerEraseInDisplay } from '~/utils/terminalScrollback'
 import { kbOpen } from './useViewport'
 
 const CORE_SCROLLBACK = 5000
@@ -38,7 +39,7 @@ export interface Banner { text: string, btn: string, fn: () => void }
 
 // `fill`: side-by-side cell, the terminal takes the whole cell instead of the
 // reading column of a pane opened alone.
-export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | null) => void, hasBanner: () => boolean, fill?: () => boolean, input?: () => boolean, wheelAccel?: () => boolean }) {
+export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | null) => void, hasBanner: () => boolean, fill?: () => boolean, input?: () => boolean, wheelAccel?: () => boolean, keepSavedLines?: () => boolean }) {
   let term: Terminal | null = null
   let fit: FitAddon | null = null
   let webgl: WebglAddon | null = null
@@ -301,20 +302,15 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // utils/terminalWheel.ts); TerminalView converts it to terminal.scroll.
     term.attachCustomWheelEventHandler(() => false)
     mouseSgr = trackSgrMouse(term)
-    // A core program (agy) answers SIGWINCH with `ESC[2J ESC[3J ESC[H`: it
-    // clears the screen and the saved lines, then redraws only its footer. The
-    // saved lines are this xterm's history — the scrollback the viewer already
-    // holds — so a core stream keeps them. `ESC[2J` still clears the screen.
-    // Trade-off: a shell's own `clear` (which also writes `ESC[3J`) keeps the
-    // earlier lines in the scrollback instead of erasing them.
-    // A cleared screen blanks every row a watching viewer could have scrolled
-    // onto, so followCursor() returns xterm's viewport to the bottom before
-    // placing the cursor row.
-    term.parser.registerCsiHandler({ final: 'J' }, (params) => {
-      if (!coreStream) return false
-      if (params[0] === 3) return true
-      if (params[0] === 2 && !coreControl) screenErased = true
-      return false
+    // Antigravity (agy) answers SIGWINCH with `ESC[2J ESC[3J ESC[H`: it
+    // clears the screen and the saved lines, then redraws only its footer. On
+    // an agy pane the saved lines are this xterm's history: ED 3 is swallowed,
+    // and ED 2 first scrolls the screen into the scrollback. Every other
+    // program keeps xterm's stock erase behavior. A cleared screen blanks every
+    // row a watching viewer could have scrolled onto, so followCursor()
+    // returns xterm's viewport to the bottom before placing the cursor row.
+    registerEraseInDisplay(term, () => coreStream && opts.keepSavedLines?.() === true, () => {
+      if (!coreControl) screenErased = true
     })
     // Shift+Enter as a named key; Ctrl+V (outside Apple) and F12 left to the browser.
     bindTerminalKeys(term, key => sendVirtualKey(key))
