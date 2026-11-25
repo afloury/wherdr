@@ -592,19 +592,20 @@ export const OMP_COORDINATOR_ROLE = 'You are a wherdr coordinator, not a worker.
 // without git, not a workspace: Codex keeps a workspace's root read-only, since a
 // writable --add-dir would open its members too).
 // resume: its last conversation again, the last one started in its own folder
-// (Claude, Codex and omp only, see canResume), with the same options: omp's
-// `--continue` takes up the last conversation of its working folder, which is
-// the coordinator's own (its resume is for a project's coordinator, not Alfred).
-export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false, resume = false, model?: string): string[] {
+// (Claude, Codex and omp only, see canResume), with the same options. omp: the
+// session file to take up (resume, a path: omp's own `--continue` follows the
+// terminal it runs in, which is new at each start, so it would open a new one).
+export function coordinatorArgs(program: CoordinatorProgram, folder: string, repo?: string, works = false, resume: boolean | string = false, model?: string): string[] {
   const m = model ? ['--model', model] : []
   if (program === 'claude') return ['claude', ...m, ...(resume ? ['--continue'] : []), ...(repo ? ['--add-dir', repo] : [])]
   if (program === 'codex') return ['codex', ...CODEX_NO_UPDATE, ...m, '-C', folder, ...(repo && works ? ['--add-dir', repo] : []), '-c', 'default_permissions="wherdr"', '-c', 'permissions.wherdr.extends=":workspace"', '-c', 'permissions.wherdr.network.enabled=true', ...(resume ? ['resume', '--last'] : [])]
-  if (program === 'omp') return ['omp', ...m, ...(repo && !works ? ['--tools', OMP_COORDINATOR_TOOLS] : []), ...(repo ? ['--add-dir', repo] : []), ...(repo && !works ? ['--append-system-prompt', OMP_COORDINATOR_ROLE] : []), ...(resume ? ['--continue'] : [])]
+  if (program === 'omp') return ['omp', ...m, ...(repo && !works ? ['--tools', OMP_COORDINATOR_TOOLS] : []), ...(repo ? ['--add-dir', repo] : []), ...(repo && !works ? ['--append-system-prompt', OMP_COORDINATOR_ROLE] : []), ...(resume ? [`--resume=${resume}`] : [])]
   return [program]
 }
-// Claude and Codex, and omp for a project's coordinator, can take up their last
-// conversation again. Alfred on omp stays as before: always a new conversation.
-export const canResume = (program: CoordinatorProgram, key: string) => program === 'claude' || program === 'codex' || (program === 'omp' && key !== MAIN)
+// Claude, Codex and omp can take up their last conversation again. Alfred's
+// resume types no greeting (its start prompt is for a new conversation) and its
+// AGENTS.md is rewritten at each start, so resuming omp is safe for it.
+export const canResume = (program: CoordinatorProgram) => program === 'claude' || program === 'codex' || program === 'omp'
 // Claude and Codex, and omp for a project's coordinator, take the first message
 // as an argument; the others (Alfred on omp too) get it typed once they are ready.
 export const promptAsArg = (program: CoordinatorProgram, key: string) => program === 'claude' || program === 'codex' || (program === 'omp' && key !== MAIN)
