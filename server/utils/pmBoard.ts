@@ -315,6 +315,9 @@ export async function userDecide(store: PmStore, id: unknown, choice: unknown) {
   return userEvent(store, id, { kind: 'decide', by: 'user', choice: choice as Choice })
 }
 
+// The user finishes the task where it stands (Mark done): done, with no step's action run.
+export const userClose = (store: PmStore, id: unknown) => userEvent(store, id, { kind: 'close' })
+
 // The user sends their step (a visual merge) back to the worker, saying what to change.
 // shots: screenshots of the task the user points at (the worker's, or their own
 // from userShot), each given to the worker as a download with its task's key,

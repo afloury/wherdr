@@ -111,6 +111,7 @@ export type StepEvent =
   | { kind: 'catch-up', base: string, head: string }
   | { kind: 'caught-up', head?: string, review?: Rereview, error?: string }
   | { kind: 'tick' }
+  | { kind: 'close' } // the user finishes the task where it stands: done, no step's action run (nothing to land, merge or verify)
   | { kind: 'skip' } // the user takes a stopped task as it is: on to the next step
   | { kind: 'back', note: string, redo?: string[] } // the user sends a step of theirs (a visual merge) back to the worker, with what to change and the worker's shots to redo
 
@@ -307,6 +308,11 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
     return { state: enter(plan, state, step.ends ? 0 : 1, now, effects), effects }
   }
   if (!state.started) return refuse('Not started')
+  if (ev.kind === 'close') {
+    if (state.acting) return refuse('A step is running: wait for it to end')
+    effects.push({ kind: 'log', text: `${step.id}: closed as done by the user` }, { kind: 'done' })
+    return { state: { ...state, done: true, yourTurn: undefined, deadline: undefined, recheckAt: undefined, waitUser: undefined, paused: undefined, watch: undefined, agent: undefined }, effects }
+  }
   const fromHolder = (from: Holder) => from === step.holder
 
   switch (ev.kind) {
