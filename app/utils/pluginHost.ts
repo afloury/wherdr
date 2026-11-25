@@ -2,6 +2,7 @@
 // object and isolates their failures (a plugin that throws is disabled, the
 // app keeps working). Framework-free: the page supplies what it touches.
 import type { ClientPluginInfo, PluginPrefs } from '../../shared/clientPlugins'
+import type { HeaderActionCleanup, HeaderActionRender } from './headerActions'
 
 export interface CurrentAgent { id: string, agent: string | null, name: string | null, machine: string | null }
 export interface WherdrApi {
@@ -13,8 +14,10 @@ export interface WherdrApi {
     focus: () => void
   }
   currentAgent: () => CurrentAgent | null
-  // Returns the unsubscribe function.
+  // Returns the disposer.
   onNavigate: (cb: (path: string) => void) => () => void
+  // Mounts a widget into every [data-wherdr="header-actions"] slot; returns the disposer.
+  mountHeaderAction: (render: HeaderActionRender) => () => void
 }
 type Plugin = ((w: WherdrApi) => unknown) | { activate: (w: WherdrApi) => unknown, deactivate?: () => unknown }
 
@@ -30,6 +33,8 @@ export interface HostDeps {
   currentAgent: () => CurrentAgent | null
   // Subscribes to route changes; returns the unsubscribe function.
   subscribeNavigate: (cb: (path: string) => void) => () => void
+  // Mounts a renderer into the [data-wherdr="header-actions"] slots; returns the disposer.
+  mountHeaderAction: (render: HeaderActionRender) => () => void
   prefs: () => PluginPrefs
   savePrefs: (p: PluginPrefs) => void
   // Called when anything about a plugin's state changed (the Settings list).
@@ -44,6 +49,7 @@ export type PluginStatus = 'running' | 'off' | 'failed' | 'loading'
 export interface PluginRow extends ClientPluginInfo { status: PluginStatus, error: string, wanted: boolean }
 
 const msg = (e: unknown) => String((e as Error)?.message || e).slice(0, 300)
+const isThenable = (v: unknown): v is PromiseLike<unknown> => Boolean(v && typeof (v as PromiseLike<unknown>).then === 'function')
 
 export function createPluginHost(deps: HostDeps) {
   const infos: ClientPluginInfo[] = []
@@ -99,15 +105,22 @@ export function createPluginHost(deps: HostDeps) {
     }
     // A host-invoked callback: skipped once the run is stale, a throw or a
     // rejection disables the plugin (which disposes its registrations).
-    const guard = (fn: () => unknown) => {
-      if (!isCurrent()) return
+    // onResult shapes what the callback returned (a render's cleanup), in the
+    // same run only.
+    const guard = <T>(fn: () => T, onResult?: (res: T) => unknown): unknown => {
+      if (!isCurrent()) return undefined
       try {
         const res = fn()
-        if (res && typeof (res as PromiseLike<unknown>).then === 'function') {
-          Promise.resolve(res).catch((e) => { if (isCurrent()) fail(id, e) })
+        if (isThenable(res)) {
+          return Promise.resolve(res).then(
+            v => (isCurrent() && onResult ? onResult(v as T) : undefined),
+            (e) => { if (isCurrent()) fail(id, e); return undefined },
+          )
         }
+        return onResult ? onResult(res) : res
       } catch (e) {
         if (isCurrent()) fail(id, e)
+        return undefined
       }
     }
     return {
@@ -125,6 +138,18 @@ export function createPluginHost(deps: HostDeps) {
         const off = deps.subscribeNavigate((path) => {
           if (!isCurrent() || status.get(id) !== 'running') return
           guard(() => cb(path))
+        })
+        return track(off)
+      },
+      mountHeaderAction: (render) => {
+        if (typeof render !== 'function') throw new TypeError('mountHeaderAction expects a function')
+        if (!isCurrent()) return () => {}
+        const off = deps.mountHeaderAction((el) => {
+          if (!isCurrent()) return
+          // The renderer's own cleanup never breaks the slot's teardown.
+          return guard(() => render(el), cleanup => (typeof cleanup === 'function'
+            ? () => { try { cleanup() } catch { /* a failing teardown changes nothing */ } }
+            : undefined)) as HeaderActionCleanup | Promise<HeaderActionCleanup | void> | void
         })
         return track(off)
       },

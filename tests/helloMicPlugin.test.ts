@@ -21,6 +21,7 @@ function setup(load: HostDeps['load']) {
     focusDraft: () => {},
     currentAgent: () => null,
     subscribeNavigate: (cb) => { navs.add(cb); return () => navs.delete(cb) },
+    mountHeaderAction: () => () => {},
     prefs: () => prefs,
     savePrefs: (p) => { prefs = p },
     changed: () => {},
