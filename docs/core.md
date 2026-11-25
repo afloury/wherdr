@@ -149,15 +149,18 @@ even when sampled argv is exact. A session file already saved when that first
 observation happens — or after a reader restart or eviction of the observed evidence —
 waits for the next persisted write, not just the first assistant flush. Linux process
 evidence backs the bound; without it, with a live Cmd peer in the process's own cwd,
-with a live peer or an unknown process at a cross-cwd launch candidate's header cwd,
 or with an ambiguous newest file, the conversation stays unavailable (the pane offers
-**View terminal**) rather than a guess. Unknown processes count only when they share
-the target's cwd or an eligible header cwd — and one whose own cwd cannot be read
-blocks conservatively, since nothing proves it irrelevant — while guessed launch
-arguments are never subtracted. Ownership is re-collected after the file and header
-pass, so a target lost, moved or reused between the two samples — or a failed refresh —
-answers unavailable too; that census judges live peers, not who wrote a disk file: an
-exited peer may still own the newest one.
+**View terminal**) rather than a guess. An interpreter is only a possible peer when
+its command line cannot be read: with a readable one, a plain `node`, `bun` or `deno`
+process is a proven other (`bun run dev`, `node --enable-source-maps server.js`), while
+`command-code`, the package's entrypoint in argv or exe, or a preload of it make it a
+peer. A process with no readable command line counts only when it shares the target's
+cwd or an eligible header cwd — and one whose own cwd cannot be read blocks
+conservatively, since nothing proves it irrelevant — while guessed launch arguments are
+never subtracted. Ownership is re-collected after the file and header pass, so a target
+lost, moved or reused between the two samples — or a failed refresh — answers
+unavailable too; that census judges live peers, not who wrote a disk file: an exited
+peer may still own the newest one.
 
 A new process shows no conversation until its first persisted assistant write lands
 (the project directory itself may exist from startup). An in-process `/clear` fixes
@@ -178,7 +181,10 @@ shortcuts and permission prompts, use the Command Code terminal itself.
 Reads are bounded: a 24 MiB logical window aligned to line starts and anchored on
 what was already read (overlapping reads can transfer more than the window), remote
 chunks of at most 4 MiB, watched-record prefixes of at most 64 KiB, a newest span of
-at most 4 MiB, and caps of 4096 watched records and 64 files.
+at most 4 MiB, and caps of 4096 watched records and 64 files. The listing of the
+project directories forks once per directory, never once per transcript: one `stat`
+over a directory and all of its `*.jsonl` entries, NUL-framed and encoded by a single
+`base64`, cached between windows while it is unchanged.
 
 A whole-second timestamp's continuity is sampled, not proven byte-for-byte: instead
 of a whole-file checksum, Command Code fingerprints the claimed prefix's head and
