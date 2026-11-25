@@ -129,7 +129,7 @@
 ## Extending and fixing
 
 - [Plugins](docs/plugins.md#wherdr-plugins): optional page plugins and how to install them; they load only once the [Community plugins switch](docs/plugins.md#community-plugins-switch) (server-wide, off by default, full-access warning; existing installs with plugins stay on; off while settings.json cannot be read) is on. [Install one from GitHub](docs/plugins.md#install-from-github) (`owner/repo[@ref]`, exact commit and warning shown before Install; Check for update installs only on Update, which leaves the switch as it is; Remove); [publish one](docs/plugins.md#publish-a-plugin-on-github).
-- [The plugin module](docs/plugins.md#the-module): what a plugin file exports.
+- [The plugin module](docs/plugins.md#the-module): what a plugin file exports; its [lifecycle](docs/plugins.md#lifecycle-and-failure-isolation): tracked, idempotent disposers for every registration, disposed by the host when the plugin stops (switch, update, removal, Community plugins off, failure) even when `deactivate()` is missing, throws or rejects, a late registration never reaches the page, a throw or rejection in a host-invoked callback disables that plugin only.
 - [Markers](docs/plugins.md#markers-data-wherdr): `data-wherdr` markers a plugin can find.
 - [Troubleshooting](docs/troubleshooting.md#troubleshooting): hc connection, conversations, machines and network problems.
 - [Setup on hc](docs/core.md#setup): `HC_SOCKET`, the hc endpoint wherdr talks to.

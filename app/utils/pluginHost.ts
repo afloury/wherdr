@@ -48,7 +48,11 @@ export function createPluginHost(deps: HostDeps) {
   // ran at import() and cannot be undone; only activate() is skipped (plugins
   // keep their side effects in activate, docs/plugins.md).
   const runs = new Map<string, number>()
-  const cancel = (id: string) => runs.set(id, (runs.get(id) ?? 0) + 1)
+  const cancel = (id: string) => {
+    const next = (runs.get(id) ?? 0) + 1
+    runs.set(id, next)
+    return next
+  }
 
   function fail(id: string, e: unknown) {
     const p = deps.prefs()
@@ -58,28 +62,70 @@ export function createPluginHost(deps: HostDeps) {
     deps.changed()
   }
 
-  // The `wherdr` object of one plugin: callbacks are guarded, a throw disables it.
-  function apiFor(id: string): WherdrApi {
+  // The `wherdr` object of one plugin, scoped to one activation run: every
+  // registration is tracked and its callback guarded, so that the host can
+  // undo everything the plugin registered when it stops for any reason,
+  // whether deactivate() exists or not, and a throw or a rejected promise in
+  // a host-invoked callback disables that plugin only.
+  function apiFor(id: string, run: number): WherdrApi {
     const own = new Set<() => void>()
     subs.set(id, own)
+    const isCurrent = () => subs.get(id) === own && runs.get(id) === run
+    // A registration's disposer: idempotent, and the registration is disposed
+    // at once when the plugin it belongs to is already stopped.
+    const track = (dispose: () => void): (() => void) => {
+      if (!isCurrent()) {
+        try { dispose() } catch { /* a failing teardown changes nothing */ }
+        return () => {}
+      }
+      let done = false
+      const wrap = () => {
+        if (done) return
+        done = true
+        own.delete(wrap)
+        try { dispose() } catch { /* a failing teardown changes nothing */ }
+      }
+      own.add(wrap)
+      return wrap
+    }
+    // A host-invoked callback: skipped once the run is stale, a throw or a
+    // rejection disables the plugin (which disposes its registrations).
+    const guard = (fn: () => unknown) => {
+      if (!isCurrent()) return
+      try {
+        const res = fn()
+        if (res && typeof (res as PromiseLike<unknown>).then === 'function') {
+          Promise.resolve(res).catch((e) => { if (isCurrent()) fail(id, e) })
+        }
+      } catch (e) {
+        if (isCurrent()) fail(id, e)
+      }
+    }
     return {
       apiVersion: 1,
       draft: { insert: (text) => { if (typeof text === 'string' && text) deps.insertDraft(text) } },
       currentAgent: () => deps.currentAgent(),
       onNavigate: (cb) => {
+        if (typeof cb !== 'function') throw new TypeError('onNavigate expects a function')
+        if (!isCurrent()) return () => {}
         const off = deps.subscribeNavigate((path) => {
-          if (status.get(id) !== 'running') return
-          try { Promise.resolve(cb(path)).catch(e => fail(id, e)) } catch (e) { fail(id, e) }
+          if (!isCurrent() || status.get(id) !== 'running') return
+          guard(() => cb(path))
         })
-        own.add(off)
-        return () => { off(); own.delete(off) }
+        return track(off)
       },
     }
   }
 
   function stop(id: string) {
-    for (const off of subs.get(id) || []) off()
+    cancel(id)
+    const own = subs.get(id)
     subs.delete(id)
+    if (own) {
+      for (const off of [...own]) {
+        try { off() } catch { /* a failing teardown changes nothing */ }
+      }
+    }
     const inst = instances.get(id)
     instances.delete(id)
     if (inst && typeof inst === 'object' && typeof inst.deactivate === 'function') {
@@ -90,7 +136,7 @@ export function createPluginHost(deps: HostDeps) {
   async function start(info: ClientPluginInfo) {
     status.set(info.id, 'loading')
     deps.changed()
-    const run = cancel(info.id).get(info.id)
+    const run = cancel(info.id)
     // Still wanted: not turned off (or off and on again) since this load began.
     const live = () => community && runs.get(info.id) === run
     try {
@@ -100,9 +146,10 @@ export function createPluginHost(deps: HostDeps) {
       const fn = typeof plugin === 'function' ? plugin : plugin && typeof plugin.activate === 'function' ? plugin.activate.bind(plugin) : null
       if (!fn) throw new Error('The bundle has no default export (a function or { activate })')
       if (typeof plugin === 'object') instances.set(info.id, plugin)
-      await withTimeout(Promise.resolve(fn(apiFor(info.id))), deps.timeoutMs ?? 8000, 'Activation timed out')
-      // Turned off while it activated: undo it.
-      if (!live()) { stop(info.id); return }
+      await withTimeout(Promise.resolve(fn(apiFor(info.id, run))), deps.timeoutMs ?? 8000, 'Activation timed out')
+      // Stale (turned off, failed or started again while it activated): stop()
+      // already undid its registrations, and any late one disposes itself.
+      if (!live()) return
       status.set(info.id, 'running')
       deps.changed()
     } catch (e) { if (live()) fail(info.id, e) }
