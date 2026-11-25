@@ -10,6 +10,7 @@ export const UI_TARGETS = {
   'appearance.home-screen': { link: '#/settings?section=appearance', label: 'Appearance › Home screen' },
   'appearance.quotas': { link: '#/settings?section=appearance', label: 'Appearance › Quotas' },
   'conversation.default-pane': { link: '#/settings?section=conversation&tab=display', label: 'Conversation › Default pane view' },
+  'conversation.copy-on-select': { link: '#/settings?section=conversation&tab=display', label: 'Conversation › Copy on select' },
   'conversation.typewriter': { link: '#/settings?section=conversation&tab=display', label: 'Conversation › Typewriter' },
   'conversation.dictation': { link: '#/settings?section=conversation&tab=dictation', label: 'Conversation › Dictation' },
   'conversation.read-aloud': { link: '#/settings?section=conversation&tab=read-aloud', label: 'Conversation › Read aloud' },
