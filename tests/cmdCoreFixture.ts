@@ -29,8 +29,6 @@ export const T = (n: number, r: number, o = 0, u = 0) => `T ${n} ${r} ${o} ${u}\
 export const retitled = (pid: number, o: { cwd?: string, ticks?: string } = {}) => S(pid, { comm: 'command-code', argv: ['command-code'], cwd: o.cwd, ticks: o.ticks }) // launch argv lost -> argvExact false
 
 export const st = (m: string, ino = 42) => `7 ${m} ${ino} regular file`
-// One directory row: <dir>\0<stat line>\0, type "directory".
-export const dirRow = (dir: string) => `${dir}\u00007 ${POSTOBS} 41 directory\u0000`
 export const F = (dir: string, id: string) => `${ROOT}/${dir}/${id}.jsonl`
 // NUL-framed listing: H, one row per project dir, one per file, then the
 // footer T dirs found records flags.

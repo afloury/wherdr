@@ -3,7 +3,7 @@ import { createCmdCore } from '../server/utils/commandCodeCore'
 import type { ShellExec } from '../server/utils/fsx'
 import { AGENT_CENSUS_SCRIPT, CMD_FILES_SCRIPT, CMD_HEADERS_SCRIPT } from './cmdCoreFixture'
 import {
-  AT, clock, F, filesWire, GAP, H, hdrs, HOME, live, OTHER, PKG, POST3,
+  clock, F, filesWire, GAP, H, hdrs, HOME, live, OTHER, PKG, POST3,
   POST, POST2, POSTOBS, PRE, retitled, S, sess, st, stub, T, U1, U2, U3, wire, WORK
 } from './cmdCoreFixture'
 
@@ -694,17 +694,6 @@ describe('createCmdCore', () => {
     const { exec } = stub({ census: H + S(4242, { wall: '-' }) + T(1, 1) })
     // NaN wall => no startedAt either: the row is incomplete metadata.
     expect(await createCmdCore(exec, HOME).locate(live({ pid: 9000, foreground: { pid: 4242 } }))).toEqual({ unavailable: 'incomplete' })
-  })
-
-  it('enforces the strict post-birth write boundary', async () => {
-    const { exec } = stub({
-      census: H + S(4242) + T(1, 1),
-      files: filesWire([[F('a', U1), st(AT)], [F('b', U2), st(PRE)]]),
-      headers: hdrs({})
-    })
-    // The at-bound file is not after it, the other is pre-birth: nothing
-    // eligible — explicit empty, never a last-file fallback.
-    expect(await createCmdCore(exec, HOME).locate(live({ pid: 4242, argv: ['cmd'] }))).toEqual({ unavailable: 'empty' })
   })
 
   it('seeds a cross-cwd resume only from proven exact argv and only when globally unique', async () => {

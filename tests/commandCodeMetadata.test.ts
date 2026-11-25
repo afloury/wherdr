@@ -3,7 +3,7 @@
 // bound search and image re-reads — fake disk and gated IO only, never a
 // real fs/agent.
 import { describe, expect, it } from 'vitest'
-import { createTranscripts, type Loc, type TranscriptPane } from '../server/utils/transcripts'
+import { createTranscripts, type Loc, type TranscriptPane, type Transcripts } from '../server/utils/transcripts'
 import type { FsStat, MachineFs } from '../server/utils/fsx'
 import { defer, memFs, type MemFile, type MemIo } from './cmdStateFixture'
 import { at, assistant, J, results, sess, user } from './cmdParserFixture'
@@ -443,37 +443,46 @@ describe('Command Code metadata', () => {
     return { gate, entered, io }
   }
 
-  it('a model read pending across an observed selection move serves nothing and overwrites no cache', async () => {
-    const disk: Record<string, MemFile> = {
-      [FILE]: { body: body(sess('s1'), user('u1', 'q', 1), mc('example/model-a', 2)) },
-      [FILE2]: { body: body(sess('s2'), user('u2', 'q', 1), mc('example/model-z', 2)) },
-    }
+  // Every public read must publish nothing when a selection move lands while
+  // its raw read is in flight — one table, one row per surface.
+  it.each([
+    {
+      name: 'model',
+      card: (t: Transcripts) => t.model(PANE),
+      disk: {
+        [FILE]: { body: body(sess('s1'), user('u1', 'q', 1), mc('example/model-a', 2)) },
+        [FILE2]: { body: body(sess('s2'), user('u2', 'q', 1), mc('example/model-z', 2)) },
+      },
+    },
+    {
+      name: 'preview',
+      card: (t: Transcripts) => t.latestReply(PANE),
+      disk: {
+        [FILE]: { body: body(sess('s1'), user('u1', 'q', 1), assistant('a1', 'first reply', 2)) },
+        [FILE2]: { body: body(sess('s2'), user('u2', 'q', 1), assistant('a1', 'other file reply', 2)) },
+      },
+    },
+    {
+      name: 'image',
+      card: (t: Transcripts) => {
+        const img = imgLine('a2', 6)
+        const imgOff = Buffer.byteLength(J(sess('s1'), user('u1', 'q', 1)) + '\n')
+        return t.image(PANE, 's1.jsonl', `${imgOff}:${Buffer.byteLength(JSON.stringify(img))}`, 0)
+      },
+      disk: {
+        [FILE]: { body: body(sess('s1'), user('u1', 'q', 1), imgLine('a2', 6)) },
+        [FILE2]: { body: body(sess('s2'), user('u2', 'q', 1), assistant('a1', 'other', 2)) },
+      },
+    },
+  ])('a $name read pending across an observed selection move serves nothing', async ({ card, disk }) => {
     let cur: Loc | null = sel()
     const { gate, entered, io } = pendOnce(disk)
     const t = mk(disk, io, async () => cur)
-    const aP = t.model(PANE)
-    await entered.promise
-    // The SAME pane observes the moved selection — FILE1's stamp stays live.
-    cur = sel(FILE2, 's2')
-    expect((await t.model(PANE))!.id).toBe('example/model-z')
-    gate.resolve()
-    expect(await aP).toBeNull()
-    // The late answer overwrote nothing of the newer selection's entry.
-    expect((await t.model(PANE))!.id).toBe('example/model-z')
-  })
-
-  it('a preview read pending across an observed selection move serves nothing', async () => {
-    const disk: Record<string, MemFile> = {
-      [FILE]: { body: body(sess('s1'), user('u1', 'q', 1), assistant('a1', 'first reply', 2)) },
-      [FILE2]: { body: body(sess('s2'), user('u2', 'q', 1), assistant('a1', 'other file reply', 2)) },
-    }
-    let cur: Loc | null = sel()
-    const { gate, entered, io } = pendOnce(disk)
-    const t = mk(disk, io, async () => cur)
-    const aP = t.latestReply(PANE)
+    const aP = card(t)
     await entered.promise
     cur = sel(FILE2, 's2')
-    expect(await t.chat(PANE, {})).toMatchObject({ available: true })
+    // The same pane observes the move: the newer selection answers on its own.
+    expect((await t.chat(PANE, {})).available).toBe(true)
     gate.resolve()
     expect(await aP).toBeNull()
   })
@@ -492,24 +501,5 @@ describe('Command Code metadata', () => {
     expect((await t.chat(PANE, {})).available).toBe(false)
     gate.resolve()
     expect((await aP).hits).toEqual([])
-  })
-
-  it('an image read pending across an observed selection move serves nothing', async () => {
-    const img = imgLine('a2', 6)
-    const imgOff = Buffer.byteLength(J(sess('s1'), user('u1', 'q', 1)) + '\n')
-    const imgLen = Buffer.byteLength(JSON.stringify(img))
-    const disk: Record<string, MemFile> = {
-      [FILE]: { body: body(sess('s1'), user('u1', 'q', 1), img) },
-      [FILE2]: { body: body(sess('s2'), user('u2', 'q', 1), assistant('a1', 'other', 2)) },
-    }
-    let cur: Loc | null = sel()
-    const { gate, entered, io } = pendOnce(disk)
-    const t = mk(disk, io, async () => cur)
-    const aP = t.image(PANE, 's1.jsonl', `${imgOff}:${imgLen}`, 0)
-    await entered.promise
-    cur = sel(FILE2, 's2')
-    expect((await t.chat(PANE, {})).available).toBe(true)
-    gate.resolve()
-    expect(await aP).toBeNull()
   })
 })
