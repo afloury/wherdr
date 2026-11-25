@@ -6,17 +6,17 @@
 import { wakeKindOf } from '../../shared/pm/wakes'
 
 // What a wake is about, most pressing first (its icon and label).
-export type WakeTone = 'stuck' | 'question' | 'ready' | 'done' | 'added' | 'incident' | 'step' | 'engine' | 'health' | 'run' | 'scheduled'
-export const TONE_ORDER: WakeTone[] = ['stuck', 'question', 'ready', 'done', 'added', 'incident', 'step', 'engine', 'health', 'run', 'scheduled']
+export type WakeTone = 'stuck' | 'question' | 'ready' | 'done' | 'added' | 'incident' | 'step' | 'engine' | 'health' | 'reply' | 'run' | 'scheduled'
+export const TONE_ORDER: WakeTone[] = ['stuck', 'question', 'ready', 'done', 'added', 'incident', 'step', 'engine', 'health', 'reply', 'run', 'scheduled']
 export const TONE_ICON: Record<WakeTone, string> = {
   stuck: 'i-lucide-triangle-alert', question: 'i-lucide-circle-help', ready: 'i-lucide-hourglass', done: 'i-lucide-check', added: 'i-lucide-plus',
-  incident: 'i-lucide-siren', step: 'i-lucide-flag', engine: 'i-lucide-wrench', health: 'i-lucide-heart-pulse', run: 'i-lucide-play', scheduled: 'i-lucide-circle',
+  incident: 'i-lucide-siren', step: 'i-lucide-flag', engine: 'i-lucide-wrench', health: 'i-lucide-heart-pulse', reply: 'i-lucide-message-square-reply', run: 'i-lucide-play', scheduled: 'i-lucide-circle',
 }
 // A task's label on its row (after its chip), and the header's count.
 const TASK_LABEL: Partial<Record<WakeTone, string>> = { stuck: 'stuck', question: 'question', ready: 'ready for you', done: 'merged', added: 'added' }
-const LABEL: Record<WakeTone, string> = { ...TASK_LABEL, incident: 'Incident', step: 'Step check', engine: 'Engine', health: 'Health check', run: 'Run now', scheduled: 'Scheduled' } as Record<WakeTone, string>
-const COUNT: Record<WakeTone, string> = { stuck: 'stuck', question: 'question', ready: 'waits for you', done: 'merged', added: 'added', incident: 'incident', step: 'step check', engine: 'engine', health: 'health check', run: 'run now', scheduled: 'quiet' }
-const PLURAL = new Set<WakeTone>(['question', 'incident', 'step', 'health'])
+const LABEL: Record<WakeTone, string> = { ...TASK_LABEL, incident: 'Incident', step: 'Step check', engine: 'Engine', health: 'Health check', reply: 'Reply', run: 'Run now', scheduled: 'Scheduled' } as Record<WakeTone, string>
+const COUNT: Record<WakeTone, string> = { stuck: 'stuck', question: 'question', ready: 'waits for you', done: 'merged', added: 'added', incident: 'incident', step: 'step check', engine: 'engine', health: 'health check', reply: 'reply', run: 'run now', scheduled: 'quiet' }
+const PLURAL = new Set<WakeTone>(['question', 'incident', 'step', 'health', 'reply'])
 // A tone the user should look at: the header stands out.
 const FOR_USER = new Set<WakeTone>(['ready', 'question', 'stuck'])
 

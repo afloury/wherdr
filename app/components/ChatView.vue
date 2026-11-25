@@ -27,6 +27,7 @@ import { WAKE_LABEL, splitWakes, wakeKindOf, type WakeKind } from '#shared/pm/wa
 import { cardNoteOf } from '#shared/uiActions'
 import { isStartPrompt } from '#shared/pm/alfred'
 import type { ProposalAnswer } from '#shared/pm/coordinator'
+import { answeredElsewhere } from '#shared/pm/elsewhere'
 import type { AutomationProposal } from '#shared/pm/automations'
 import { proposalSpot, type PlacedBlock } from '~/utils/proposalPlace'
 import { liveRunSpot } from '~/utils/liveRunPlace'
@@ -1103,14 +1104,25 @@ function sentAnswer(key: string, ref: Reference): string | null {
   }
   return null
 }
+// A card about a task the user already answered elsewhere (its agent's own
+// session, a step's button: the coordinator's `elsewhere`, newer than
+// the message) is done too, with a muted note, no answer pressed.
+function elsewhereOf(key: string) {
+  const b = blocks.value.find(x => x.key === key)
+  const list = coord.value?.elsewhere
+  return b?.k === 'assistant' && b.ms !== undefined && list?.length ? answeredElsewhere(list, { text: b.text, at: b.ms }) : undefined
+}
 function syncChoices() {
   for (const group of listEl.value?.querySelectorAll<HTMLElement>('.w-choices') || []) {
     const key = group.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey || ''
     const buttons = [...group.querySelectorAll<HTMLButtonElement>('.q-choice')]
     const ref = buttons[0] ? choiceRef(buttons[0]) : null
     const given = ref ? sentAnswer(key, ref)?.toLowerCase() ?? null : null
-    const live = given === null && !readOnly.value
+    const gone = given === null ? elsewhereOf(key) : undefined
+    const live = given === null && !gone && !readOnly.value
     group.classList.toggle('done', !live)
+    if (gone) group.dataset.note = elsewhereNote()
+    else delete group.dataset.note
     for (const b of buttons) {
       b.disabled = !live
       b.setAttribute('aria-pressed', String(given !== null && given === (b.dataset.a || '').toLowerCase()))
@@ -1130,7 +1142,8 @@ provide<QuestionsHost>(QUESTIONS_HOST, {
     const key = el.closest<HTMLElement>('[data-hit-key]')?.dataset.hitKey || ''
     const ref = choiceRef(el)
     const given = ref ? sentAnswer(key, ref) : null
-    return { live: given === null && !readOnly.value, given }
+    const gone = given === null ? elsewhereOf(key) : undefined
+    return { live: given === null && !gone && !readOnly.value, given, note: gone ? elsewhereNote() : null }
   },
   send(el, text) {
     const ref = choiceRef(el)
@@ -1143,7 +1156,7 @@ provide<QuestionsHost>(QUESTIONS_HOST, {
 const wordsOf = (btn: HTMLElement) => btn.closest('.md-body')?.querySelectorAll<HTMLElement>(`.q-text[data-n="${btn.dataset.n}"]`) || []
 const draftText = computed(() => useDraft(props.pane.id).text)
 watch(draftText, (text) => { if (!text) held = false; clearFresh() })
-watch([() => useDraft(props.pane.id).text, visibleBlocks], () => nextTick(syncQuoted), { flush: 'post' })
+watch([() => useDraft(props.pane.id).text, visibleBlocks, () => coord.value?.elsewhere], () => nextTick(syncQuoted), { flush: 'post' })
 const selReply = ref<{ text: string, time: string | null, id: string | null, sig: string, top: number, left: number } | null>(null)
 const selBtn = ref<HTMLElement | null>(null)
 const isTouch = () => window.matchMedia('(pointer: coarse)').matches

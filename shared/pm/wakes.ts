@@ -15,9 +15,10 @@ import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, inHours, type Autopilot } from './
 // user's "run now"), a step the coordinator holds (its start, recheck or
 // timeout), the engine giving up on a block, or an incident (incidentWake.ts,
 // about: its id). Old wakes without one: the autopilot. 'health': the separate
-// health check of older versions, still read in the chat and the timeline.
-export type WakeKind = 'autopilot' | 'step' | 'engine' | 'health' | 'incident'
-export const WAKE_LABEL: Record<WakeKind, string> = { autopilot: 'Autopilot', step: 'Step check', engine: 'Engine', health: 'Health check', incident: 'Incident' }
+// health check of older versions, still read in the chat and the timeline. 'reply': the user answered
+// a task's agent in its own session (about: "<task> (reply)", server/utils/pmReply.ts).
+export type WakeKind = 'autopilot' | 'step' | 'engine' | 'health' | 'incident' | 'reply'
+export const WAKE_LABEL: Record<WakeKind, string> = { autopilot: 'Autopilot', step: 'Step check', engine: 'Engine', health: 'Health check', incident: 'Incident', reply: 'Reply' }
 
 export interface Wake {
   id: string
@@ -34,6 +35,7 @@ export interface Wake {
   ended?: 'ack' | 'idle' | 'quit' | 'timeout' | 'unanswered' | 'merged'
   now?: true // the user's "run now"
   scheduled?: true // holds the autopilot's scheduled wake: its first line says so
+  after?: number // not delivered before: a reply wake waits for more replies to the same task (REPLY_BATCH)
 }
 
 export const WAKE = { QUIET_MS: 60_000, ACK_MS: 15 * 60_000, IDLE_MS: 2 * 60_000, TIMEOUT_MS: 3_600_000, TRIES: 2 } as const
@@ -42,6 +44,9 @@ const mine = (q: Wake[], c: string) => q.filter(w => w.coordinator === c)
 const same = (a: Pick<Wake, 'kind' | 'about'>, b: Pick<Wake, 'kind' | 'about'>) => (a.kind ?? 'autopilot') === (b.kind ?? 'autopilot') && a.about === b.about
 const pendings = (q: Wake[], c: string) => mine(q, c).filter(w => w.deliveredAt === undefined && !w.ended)
 const pendingOf = (q: Wake[], c: string, like?: Pick<Wake, 'kind' | 'about'>) => pendings(q, c).find(w => !like || same(w, like))
+// A reply wake goes once the user has not replied to the task for REPLY_QUIET_MS, at the latest REPLY_BATCH_MS after the first.
+export const REPLY_QUIET_MS = 15_000, REPLY_BATCH_MS = 60_000
+export const replyAfter = (createdAt: number, now: number) => Math.min(now + REPLY_QUIET_MS, createdAt + REPLY_BATCH_MS)
 const isOpen = (w: Wake) => w.deliveredAt !== undefined && w.endedAt === undefined
 
 // New reasons join the coordinator's pending wake of the same kind (and step),
@@ -160,7 +165,8 @@ export function tickWakes(q: Wake[], coordinator: string, { status, lastUserAt, 
   }
   // Never in the middle of a turn; not within a minute of the user's message,
   // nor over an open wake, unless the user asked to run now.
-  const next = pendings(cur(), coordinator).find(w => w.now) ?? pendingOf(cur(), coordinator)
+  const ready = pendings(cur(), coordinator).filter(w => w.after === undefined || w.after <= now)
+  const next = ready.find(w => w.now) ?? ready[0]
   let deliver: Wake | undefined
   if (next && status === 'idle' && (next.now || ((lastUserAt === undefined || now - lastUserAt >= WAKE.QUIET_MS) && !cur().some(isOpen)))) {
     for (const w of cur().filter(isOpen)) put({ ...w, endedAt: now, ended: w.ackedAt !== undefined ? 'ack' : 'idle' })

@@ -30,6 +30,7 @@ import { SHOT_FILE_RE } from '../../shared/pm/shots'
 import { withMark } from '../../shared/pm/times'
 import { HerdrError } from './herdr'
 import type { FolderOptions } from '../../shared/pm/newProject'
+import type { Elsewhere } from '../../shared/pm/elsewhere'
 import { MAIN, type CoordinatorAgent, type NotedTurn, type Proposal, type ProposalAnswer } from '../../shared/pm/coordinator'
 import type { Incident } from '../../shared/pm/incident'
 import { NEW_AUTOPILOT, type Autopilot, type DayCount, type LastWake, type TaskStatus } from '../../shared/pm/autopilot'
@@ -70,6 +71,8 @@ export interface CoordinatorRecord {
   version?: string, told?: string
   cards?: UiCard[] // the action buttons it put in its replies (shared/uiActions.ts), newest first
   cardNotes?: string[] // what the user did with its cards while it did not run, said at its next start (cardOutcome.ts)
+  elsewhere?: Elsewhere[] // what the user did on tasks elsewhere than through it (their agent's session, a step button): its views' cards read as answered, its next wake says so (elsewhere.ts)
+  elsewhereTold?: number // the newest of them a wake said already
   visits?: { at: number, by: string, what: string }[] // what other coordinators did on its project since its last wake (reach.ts)
   undelivered?: { texts: string[], why: string, at: number, queued?: true } // first messages its session never got; queued: still being typed (coordinatorFirst.ts)
   openTab?: string // Alfred's: the home tab the user had open at their last message (a note scope: all, *group:…, machine:…)
