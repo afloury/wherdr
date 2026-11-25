@@ -155,7 +155,8 @@ global.
 Right under Alfred, above the coordinators, while something waits for you on the tab's projects, one **Tasks to
 review** card with its count: tasks to approve, an agent's question, a failure to try again, a
 decision. Under its title, the ids of the first ones as their project's key badge, in its color, on
-one line (… when they do not all fit). A tap opens them one at a time (a sheet on the phone), with Approve, Reject and each
+one line (… when they do not all fit). A tap opens them one at a time (a sheet on the phone), with what there is to look at
+([To review](project-management.md#to-review): links, files and screenshots, one tap each), Approve, Reject and each
 item's own answers
 ([Tasks to review](project-management.md#tasks-to-review)).
 

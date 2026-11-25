@@ -7,28 +7,35 @@
 // GET and HEAD (files/download.get.ts, download.head.ts).
 import type { H3Event } from 'h3'
 import { getQuery, getRequestHeader, setResponseHeader, setResponseStatus } from 'h3'
-import { TEXT_BYTES, attachmentHeader, isHtmlPage, isPdf, readFileBytes, readWrittenBytes, videoType } from './files'
+import { TEXT_BYTES, attachmentHeader, isHtmlPage, isPdf, readBytesIn, readFileBytes, readWrittenBytes, videoType } from './files'
 import { HerdrError } from './herdr'
 import { coreFilesMachine } from './coreFilesMachine'
 import { defineApi } from './http'
 import { findPane } from './state'
 import { chatFilesPolicy } from './chatFiles'
-import { answer, cutOnError, openVideo, openWrittenVideo } from './videoStream'
+import { answer, cutOnError, openVideo, openVideoIn, openWrittenVideo } from './videoStream'
+import { taskQuery } from './pmTaskFiles'
 import { PAGE_CSP } from './csp'
 
+import type { Machine } from './machines'
 import type { Pane } from '../../shared/types'
 
-async function serveVideo(event: H3Event, p: Pane, q: Record<string, unknown>, type: string) {
-  const m = await coreFilesMachine(p.machine)
+// A task's root (`task=&in=`: pmTaskFiles.ts) or an agent's pane.
+type Source = { task: { m: Machine, root: string } } | { pane: Pane }
+
+async function serveVideo(event: H3Event, src: Source, q: Record<string, unknown>, type: string) {
+  const m = 'task' in src ? src.task.m : await coreFilesMachine(src.pane.machine)
   const res = event.node.res
   // The browser drops a request (seek, closed player): the read stops with
   // it, from the start: while the file opens too.
   const closed = new AbortController()
   res.once('close', () => closed.abort())
   if (res.destroyed) closed.abort()
-  const v = q.from === 'chat'
-    ? await openWrittenVideo(m, p.cwd, q.path, closed.signal, await chatFilesPolicy())
-    : await openVideo(m, p.cwd!, q.path, closed.signal)
+  const v = 'task' in src
+    ? await openVideoIn(m, src.task.root, q.path, closed.signal)
+    : q.from === 'chat'
+      ? await openWrittenVideo(m, src.pane.cwd, q.path, closed.signal, await chatFilesPolicy())
+      : await openVideo(m, src.pane.cwd!, q.path, closed.signal)
   if (closed.signal.aborted) {
     v.close()
     return ''
@@ -65,14 +72,22 @@ async function serveVideo(event: H3Event, p: Pane, q: Record<string, unknown>, t
 
 export const fileDownload = defineApi(async (event) => {
   const q = getQuery(event)
-  const p = findPane(String(q.pane || ''))
-  if (!p) throw new HerdrError('bad_pane', 'Pane not found')
-  if (q.from !== 'chat' && !p.cwd) throw new HerdrError('bad_cwd', 'This agent’s folder is unknown')
+  const task = await taskQuery(q)
+  let src: Source
+  if (task) src = { task }
+  else {
+    const p = findPane(String(q.pane || ''))
+    if (!p) throw new HerdrError('bad_pane', 'Pane not found')
+    if (q.from !== 'chat' && !p.cwd) throw new HerdrError('bad_cwd', 'This agent’s folder is unknown')
+    src = { pane: p }
+  }
   const video = q.inline === '1' ? videoType(String(q.path || '')) : undefined
-  if (video) return serveVideo(event, p, q, video)
-  const f = q.from === 'chat'
-    ? await readWrittenBytes(await coreFilesMachine(p.machine), p.cwd, q.path, await chatFilesPolicy())
-    : await readFileBytes(await coreFilesMachine(p.machine), p.cwd!, q.path)
+  if (video) return serveVideo(event, src, q, video)
+  const f = 'task' in src
+    ? await readBytesIn(src.task.m, src.task.root, q.path)
+    : q.from === 'chat'
+      ? await readWrittenBytes(await coreFilesMachine(src.pane.machine), src.pane.cwd, q.path, await chatFilesPolicy())
+      : await readFileBytes(await coreFilesMachine(src.pane.machine), src.pane.cwd!, q.path)
   setResponseHeader(event, 'x-content-type-options', 'nosniff')
   if (q.inline === '1' && isHtmlPage(f.name)) {
     if (f.body.length > TEXT_BYTES) throw new HerdrError('too_large', 'Page too large to preview (256 KB max).')

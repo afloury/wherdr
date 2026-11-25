@@ -52,6 +52,15 @@
   message, kept for the conversation; a folder outside the setting above is skipped and
   protected files are never offered. In a note, inline code naming a notes file (`` `plans/x.md` ``)
   opens it like a link.
+- <a id="task-files"></a>**A task's files**: a file a task's step or report names (`catalogue.md`, a
+  plan, a screenshot) is a plain link in [To review](project-management.md#to-review), on the task
+  sheet and in Tasks to review, handled by the operating system, not by a viewer of wherdr. From a
+  browser on the task's computer a tap opens it in that computer's default application (`xdg-open`,
+  `open` on macOS), like a double-click; from a phone or another machine, or where no application
+  opens it, the link downloads it. Neither the task's agent nor its session has to be open. The name
+  is looked for on the task's machine, in the task's worktree and then in the task's own folder
+  (where wherdr keeps `instructions.md` and the reports); only a regular file is offered, never a
+  protected one, and never through `..` or `~`.
 - **Remote agents**: on this machine the files are read from disk; on a core machine they are
   read with `machine.exec` on that machine, with the same scripts, and only while it is online.
   macOS may need "Allow full disk access for remote users" (System Settings › General › Sharing ›

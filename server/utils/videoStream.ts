@@ -15,7 +15,7 @@ import { Readable } from 'node:stream'
 import { HerdrError } from './herdr'
 import type { Machine } from './machines'
 import type { ChatFilesPolicy } from '../../shared/chatFiles'
-import { OPEN_FILE, VIDEO_HEAD, cleanRelative, isVideo, rootOf, shellError, writtenTarget } from './files'
+import { OPEN_FILE, VIDEO_HEAD, cleanRelative, isVideo, refuseProtected, rootOf, shellError, writtenTarget } from './files'
 
 // dd's block: the range is read from the block holding its first byte.
 export const VIDEO_BLOCK = 64 * 1024
@@ -258,6 +258,15 @@ export async function openVideo(m: Machine, cwd: string, rel: unknown, signal?: 
   // command finishes on its own (shared executor), but nobody waits for it.
   const root = await untilClosed(rootOf(m, cwd, signal), signal)
   if (signal?.aborted) throw closedError()
+  return openAt(m, root, p, signal)
+}
+
+// A video under a fixed root (a task's worktree or folder: pmTaskFiles.ts).
+export async function openVideoIn(m: Machine, root: string, rel: unknown, signal?: AbortSignal) {
+  if (signal?.aborted) throw closedError()
+  const p = cleanRelative(rel)
+  if (!p) throw new HerdrError('not_file', 'Not a file')
+  refuseProtected(m, path.posix.join(root, p))
   return openAt(m, root, p, signal)
 }
 

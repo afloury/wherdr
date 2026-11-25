@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { addShot, earlierCommit, sinceLastLook, isImage, shotRows, shotsMissing, type Shot } from '../shared/pm/shots'
+import { addShot, earlierCommit, sinceLastLook, isImage, shotRows, shotSet, shotsMissing, shotUrl, type Shot } from '../shared/pm/shots'
 import { initialState, onEvent, planSteps, type StepState } from '../shared/pm/steps'
 import { shotsForReview } from '../shared/pm/advance'
 import { validateTemplate, type Template } from '../shared/pm/workflow'
@@ -123,6 +123,14 @@ describe('screenshots evidence', () => {
     const list = [shot('before', 1), shot('after', 2), shot('before', 3)]
     expect(shotRows(list, 'before-after')).toEqual([{ before: list[0], after: list[1] }, { before: list[2] }])
     expect(shotRows(list, 'after')).toEqual([{ after: list[1] }])
+  })
+
+  it('opens the viewer on the set the gallery shows: each row\'s before, then its after', () => {
+    const list = [shot('before', 1), shot('after', 2), shot('before', 3)]
+    const url = (n: number) => shotUrl('T-1', shot('after', n).file)
+    expect(shotSet('T-1', list, 'before-after')).toEqual([url(1), url(2), url(3)])
+    expect(shotSet('T-1', list, 'after')).toEqual([url(2)])
+    expect(shotSet('T-1', [], 'after')).toEqual([])
   })
 })
 

@@ -70,6 +70,15 @@ export function shotRows(shots: Shot[], mode: ShotMode): { before?: Shot, after?
   }))
 }
 
+// The screenshots a gallery shows, in the order of its image viewer: each row's
+// before, then its after (a mode without before has none).
+export const shotsShown = (shots: Shot[], mode: ShotMode): Shot[] =>
+  shotRows(shots, mode).flatMap(r => [r.before, r.after].filter((s): s is Shot => !!s))
+
+// Their addresses: the set the image viewer opens on.
+export const shotSet = (task: string, shots: Shot[], mode: ShotMode): string[] =>
+  shotsShown(shots, mode).map(s => shotUrl(task, s.file))
+
 // A new screenshot for the task's current step: refused unless that step,
 // open and held by an agent, asks for one of this phase. since: the commit the
 // review passed, when the task's head moved after it (reworkSince): a step that
