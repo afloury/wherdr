@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { Pane } from '../shared/types'
-import { cleanTitle, maskCreds, paneOwnTitle, paneTitle } from '../shared/paneTitle'
+import { cleanTitle, maskCreds, meaningfulTitle, paneOwnTitle, paneTitle } from '../shared/paneTitle'
 
 const pane = (overrides: Partial<Pane> = {}): Pane => ({
   id: 'w1:p1', workspace: 'w1', tab: 't1', tabLabel: null,
@@ -44,6 +44,29 @@ describe('name of a pane in a space with several panes', () => {
   it('goes back to the automatic title when the name is cleared', () => {
     const named = shell({ label: 'Serveur', command: 'pnpm dev' })
     expect(paneTitle({ ...named, label: null })).toBe('pnpm dev')
+  })
+})
+
+describe('a Command Code pane', () => {
+  const cmd = (o: Partial<Pane> = {}) => pane({ agent: 'cmd', name: 'cmd', title: '', ...o })
+
+  it('is labelled by its kind when its name only repeats the agent', () => {
+    expect(paneTitle(cmd())).toBe('Command Code')
+    expect(paneTitle(cmd({ name: 'cmdc' }))).toBe('Command Code')
+    expect(paneTitle(cmd({ name: 'Command Code' }))).toBe('Command Code')
+    expect(paneTitle(cmd({ name: 'command_code' }))).toBe('Command Code')
+    expect(paneOwnTitle(cmd({ name: 'cmdc' }))).toBe('cmd')
+  })
+
+  it('keeps a name that says something', () => {
+    expect(paneTitle(cmd({ name: 'review the migration' }))).toBe('review the migration')
+    expect(paneTitle(cmd({ name: null, title: 'Fixing the parser | cmd' }))).toBe('Fixing the parser')
+  })
+
+  it('never offers its own titles as the subject of the conversation', () => {
+    expect(meaningfulTitle({ agent: 'cmd', title: 'cmdc', cwd: '/home/user' })).toBe('')
+    expect(meaningfulTitle({ agent: 'cmd', title: 'Command Code', cwd: '/home/user' })).toBe('')
+    expect(meaningfulTitle({ agent: 'cmd', title: 'Migrate the parser', cwd: '/home/user' })).toBe('Migrate the parser')
   })
 })
 
