@@ -212,6 +212,7 @@ function onKey(e: KeyboardEvent) {
         </header>
         <p v-if="gone" class="muted review-gone" data-testid="review-gone">{{ tl(`Handled elsewhere: ${gone}`) }}</p>
         <div class="review-scroll">
+        <TaskReplied v-if="card.replied" :replied="card.replied" />
         <template v-if="approves">
           <LookAgainBanner v-if="card.state?.lookAgain" :look="card.state.lookAgain" />
           <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="answer()">

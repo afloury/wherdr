@@ -11,6 +11,7 @@ import { MAIN, cardTurn } from '../../shared/pm/coordinator'
 import { tellCardOutcome } from './cardOutcome'
 import { HerdrError } from './herdr'
 import { userStep } from './pmBoard'
+import { userActedOn } from './pmReply'
 import type { PmLaunchDeps } from './pmLaunch'
 import { resumeTask } from './pmStop'
 import type { PmStore } from './pmStore'
@@ -169,6 +170,7 @@ async function act(deps: ActDeps, id: unknown, cancel: boolean, choice?: CardCho
   // card stays open with its reason, as the task sheet shows it, for a retry.
   const turn = task.step?.yourTurn
   if (card.kind === 'step' && turn?.reason === 'action') return { ...card, refused: turn.badge }
+  if (card.kind === 'step') await userActedOn(deps.store, task.id, 'step').catch(() => {})
   const same = card.kind === 'step' && (await stampOf(deps.store, 'step', task)).stamp === card.stamp
   return save(deps.store, { ...card, state: 'done', outcome: { text: outcomeText(card, same ? task : undefined), at: Date.now() } })
 }

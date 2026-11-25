@@ -3212,6 +3212,7 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .msg-wake[data-kind="engine"] { --wake: var(--blocked); }
 .msg-wake[data-kind="health"] { --wake: var(--done); }
 .msg-wake[data-kind="incident"] { --wake: var(--danger); }
+.msg-wake[data-kind="reply"] { --wake: var(--accent); }
 /* The user's click on a card, told to the agent: the same muted row, not a button. */
 .card-note .wake-row { cursor: default; }
 .msg-wake[data-kind="card"] { --wake: var(--done); }
@@ -3325,6 +3326,7 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
    they wrap, never scroll; a tap sends the option. Once answered, or in an
    older message, greyed with the answer given pressed. */
 .w-choices { display: flex; flex-wrap: wrap; gap: 6px; max-width: 620px; margin: .2em 0 .9em; }
+.w-choices[data-note]::after { content: attr(data-note); flex: 1 0 100%; color: var(--muted); font: 12px/1.4 var(--mono); }
 .q-choice {
   min-height: 36px; max-width: 100%; padding: 6px 12px; font: inherit; font-size: 13px; line-height: 1.3; text-align: left;
   overflow-wrap: anywhere; color: var(--text); background: none; border: 1px solid var(--line); border-left: 2px solid var(--accent);

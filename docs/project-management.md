@@ -1235,6 +1235,24 @@ when it is long (open when there is no summary). *Open the task* stays. A questi
 coordinator's `tell`) leaves *Tasks to review* and *Tasks to handle* at once,
 without waiting for the engine's next pass.
 
+**Answering the agent directly.** You often answer a task's worker or reviewer in its own session
+(the conversation, its raw input or its terminal). That never changes the task's step, guards, state or
+the agent's labels, but it is told everywhere it matters: the task log gets `you replied to the worker:
+<first words>` (by you, with the time); in *Tasks to review* (and the task's sheet) the entry shows a muted
+*You replied to the agent at 14:32: <first words>*, until the agent reports again (a new report, verdict or
+question), when the line goes and the entry shows the new report; the task's coordinator is woken
+at once, in a wake of its own (kind *Reply*, about the task): `You replied to SRC-46's worker at 14:32: <first
+~120 characters>`, so it shows in its chat. Replies to the same task are one wake: it goes once you have paused
+15 seconds, a minute after the first at the latest. When the agent next reports, asks or gives a verdict, the
+coordinator gets a second *Reply* wake, once: `SRC-46's worker answered: <first lines>`. Your message to the
+agent through the coordinator (`pm tell`) never makes one, and a coordinator that is not running is not
+woken. Alfred gets one line in its next wake (`User replied directly to SRC-46's worker at 14:32: …`; no wake
+of its own). A reply never closes their open `choices` or `questions` cards: only your own pick or message
+in that chat answers them. A step button pressed in the task's sheet is told the same way,
+and their open card about that task then reads *Answered elsewhere*, buttons greyed, no answer pressed. A coordinator's or Alfred's pending workflow
+proposal that was applied or cancelled through another coordinator, or whose change is already applied,
+shows as *Answered elsewhere* too.
+
 While the window is open, its list keeps its order and the task on screen never
 changes by itself: a task that becomes ready goes at the end (*2 of 6*), one
 handled elsewhere (approved, merged, answered) drops out, and if it is the one

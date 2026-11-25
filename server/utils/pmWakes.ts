@@ -25,6 +25,7 @@ import { HerdrError } from './herdr'
 import { projectOf, shownKey, showIds } from '../../shared/pm/projectKey'
 import { coordinatorKey, handledBy } from '../../shared/pm/workspace'
 import { typingInto } from './terminalTurns'
+import { answerWake, noticeLines } from './pmReply'
 
 export interface WakeDeps extends CoreAdminDeps { store: PmStore, notify?: (title: string, body: string, project: string) => Promise<unknown> }
 const newId = () => randomUUID().replace(/-/g, '').slice(0, 8)
@@ -64,6 +65,8 @@ async function gather(deps: WakeDeps, now: number) {
     e.reasons.push(...r)
   }
   const projects = await store.projects(), tasks = await store.tasks(), runs = await store.runs()
+  // The user answered a task's agent in its session and it has since answered: its coordinator hears it (pmReply.ts).
+  for (const task of tasks) await answerWake(store, task, now)
   const templates = new Map<string, Template | null>()
   for (const p of projects) templates.set(p.key, p ? await store.workflow(p.key) : null)
   for (const task of tasks) {
@@ -185,11 +188,13 @@ export async function wakeTick(deps: WakeDeps, now = Date.now()) {
       await noteTurn(store, key, 'wake', undefined, r.deliver.reasons.some(x => x.includes(LOOK_REASON)))
       // Other coordinators' actions on this project since its last wake (reach.ts), said once.
       const visits = c?.visits ?? [], last = visits.at(-1)?.at ?? 0
-      const told = visits.length ? { ...r.deliver, reasons: [...r.deliver.reasons, `Other coordinators acted on your project since your last wake (each action is in its task's or the project's log): ${visits.map(v => `${v.by}: ${v.what}`).join('; ')}.`] } : r.deliver
+      // What the user did on tasks elsewhere than through it (the agent's session, a step button), said once.
+      const user = noticeLines(c?.elsewhere, c?.elsewhereTold), userAt = c?.elsewhere?.at(-1)?.at ?? 0
+      const told = visits.length || user.length ? { ...r.deliver, reasons: [...r.deliver.reasons, ...user, ...(visits.length ? [`Other coordinators acted on your project since your last wake (each action is in its task's or the project's log): ${visits.map(v => `${v.by}: ${v.what}`).join('; ')}.`] : [])] } : r.deliver
       try {
         await deps.call('terminal.send', { terminal: c!.terminal, text: showIds(projects, wakeText(told, key !== MAIN && !!c?.autopilot?.on)) }, 30000)
-        const fresh = last && await store.coordinator(key)
-        if (fresh) await store.saveCoordinator({ ...fresh, visits: fresh.visits?.filter(v => v.at > last) })
+        const fresh = (last || user.length) && await store.coordinator(key)
+        if (fresh) await store.saveCoordinator({ ...fresh, ...(last ? { visits: fresh.visits?.filter(v => v.at > last) } : {}), ...(user.length ? { elsewhereTold: userAt } : {}) })
       }
       catch { r.changed.splice(r.changed.indexOf(r.deliver), 1, { ...r.deliver, deliveredAt: undefined, tries: r.deliver.tries - 1 }) }
     }
