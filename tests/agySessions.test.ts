@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it } from 'vitest'
-import { agyConversationFlag, agyFdsSessions, agySession } from '../server/utils/agySessions'
+import { agyConversationFlag, agyFdIds, agyFdsSessions, agySession } from '../server/utils/agySessions'
 import { AGY_OTHER, AGY_SESSION } from './helpers/agy-fixture.mjs'
 import { type MachineFs, localFs } from '../server/utils/fsx'
 
@@ -68,4 +68,73 @@ it('fails closed when the descriptors point at two conversations', async () => {
   const fs: MachineFs = { ...localFs, readProcessFiles: async () => [`${base}/conversations/${AGY_SESSION}.db`, `${base}/presence/${AGY_OTHER}.lock`] }
   const guess = await agySession(fs, home, { pid: 100, argvExact: true, argv: ['agy', '--conversation', AGY_SESSION] }, false)
   expect(guess).toEqual({ id: null, ambiguous: true })
+})
+
+// A subagent only opens conversations/<subagent-uuid>.db*; the root conversation
+// keeps its own presence/<root>.lock and (while active) conversations/<root>.db*.
+const SUB_1 = '22222222-3333-4444-8555-666666666666'
+const SUB_2 = '33333333-4444-4555-8666-777777777777'
+
+it('resolves the root conversation while subagent databases are open', async () => {
+  const { home } = fixture()
+  const base = cli(home)
+  const fs: MachineFs = {
+    ...localFs,
+    readProcessFiles: async () => [
+      `${base}/presence/${AGY_SESSION}.lock`,
+      `${base}/conversations/${AGY_SESSION}.db`,
+      `${base}/conversations/${AGY_SESSION}.db-wal`,
+      `${base}/conversations/${SUB_1}.db`,
+      `${base}/conversations/${SUB_1}.db-wal`,
+      `${base}/conversations/${SUB_2}.db-shm`,
+    ],
+  }
+  const guess = await agySession(fs, home, { pid: 100, argvExact: true, argv: ['agy', '--conversation', AGY_OTHER] }, false)
+  expect(guess).toEqual({ id: AGY_SESSION, ambiguous: false })
+})
+
+it('resolves an idle resumed session that only holds its presence lock', async () => {
+  const { home } = fixture()
+  const base = cli(home)
+  const fs: MachineFs = { ...localFs, readProcessFiles: async () => [`${base}/presence/${AGY_SESSION}.lock`] }
+  expect(await agySession(fs, home, { pid: 100 }, false)).toEqual({ id: AGY_SESSION, ambiguous: false })
+})
+
+it('fails closed on two presence locks, even with their own databases open', async () => {
+  const { home } = fixture()
+  const base = cli(home)
+  const fs: MachineFs = {
+    ...localFs,
+    readProcessFiles: async () => [
+      `${base}/presence/${AGY_SESSION}.lock`,
+      `${base}/conversations/${AGY_SESSION}.db`,
+      `${base}/presence/${AGY_OTHER}.lock`,
+      `${base}/conversations/${AGY_OTHER}.db`,
+    ],
+  }
+  expect(await agySession(fs, home, { pid: 100 }, false)).toEqual({ id: null, ambiguous: true })
+})
+
+it('resolves a lone conversation database when no presence lock is open', async () => {
+  const { home } = fixture()
+  const base = cli(home)
+  const one: MachineFs = { ...localFs, readProcessFiles: async () => [`${base}/conversations/${AGY_SESSION}.db-wal`] }
+  expect(await agySession(one, home, { pid: 100 }, false)).toEqual({ id: AGY_SESSION, ambiguous: false })
+  const two: MachineFs = {
+    ...localFs,
+    readProcessFiles: async () => [`${base}/conversations/${AGY_SESSION}.db`, `${base}/conversations/${AGY_OTHER}.db`],
+  }
+  expect(await agySession(two, home, { pid: 100 }, false)).toEqual({ id: null, ambiguous: true })
+})
+
+it('splits presence locks from conversation databases', () => {
+  const { home } = fixture()
+  const base = cli(home)
+  const ids = agyFdIds([
+    `${base}/presence/${AGY_SESSION}.lock`,
+    `${base}/conversations/${AGY_SESSION}.db-wal`,
+    `${base}/conversations/${SUB_1}.db`,
+    '/etc/hosts',
+  ], home, false)
+  expect(ids).toEqual({ presence: [AGY_SESSION], conversations: [AGY_SESSION, SUB_1] })
 })
