@@ -16,6 +16,7 @@ import { proposeTerminalSize, terminalPixelWidth } from '~/utils/terminalSize'
 import { writeTerminalFrame } from '~/utils/terminalFrame'
 import { guardWebglCanvasSize } from '~/utils/terminalRenderer'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
+import { copyOnSelect } from './useCopyOnSelect'
 import { bindTerminalLinks, type TerminalLinks } from '~/utils/terminalLinks'
 import { bindTerminalKeys } from '~/utils/terminalKeys'
 import { bindTerminalImagePaste } from '~/utils/terminalPaste'
@@ -187,7 +188,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     term.open(host)
     mouse = bindTerminalMouse(term, () => mouseSupported && opts.input?.() !== false, event => sendTerm(event))
     // Selection of the visible text, copied on release or with ⌘C.
-    unbindSelection = bindTerminalSelection(term, () => toast(t('Copied')))
+    unbindSelection = bindTerminalSelection(term, () => toast(t('Copied')), () => copyOnSelect.value)
     // OSC 8 hyperlinks and http(s) URLs, opened in a new tab.
     links = bindTerminalLinks(term, t)
     // Pasted image: its path on the agent's machine, pasted through Herdr,

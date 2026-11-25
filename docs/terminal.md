@@ -21,7 +21,7 @@
   Claude Code's wheel acceleration, so a trackpad flick moves as far as the fingers and stops
   when they do. Other programs get one wheel event per row.
 - **Copy and links**: on a computer, drag over the text on screen to select it: releasing the
-  button copies it, as do `⌘C` / `Ctrl+Shift+C`. Links (OSC 8 hyperlinks and plain `http(s)://`
+  button copies it (**Settings › Conversation › Display › Copy on select**, on by default on a computer), as do `⌘C` / `Ctrl+Shift+C`. Links (OSC 8 hyperlinks and plain `http(s)://`
   URLs, even wrapped over several rows) open in a new tab with `⌘`+click / `Ctrl`+click, or a tap
   on a phone; only http and https open. A long line wrapped by the width is copied in one piece.
 - **Keep after restart** (agent's **…** menu): a kept terminal comes back as a shell when core
