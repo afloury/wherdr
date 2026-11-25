@@ -35,7 +35,7 @@ test('demo: home, board, task sheet, Tasks to review and Notes', async ({ page }
   page.on('pageerror', e => errors.push(e.message))
   await page.goto(base)
   await expect(page.getByTestId('alfred')).toBeVisible()
-  await expect(page.getByTestId('review-count')).toHaveText('2')
+  await expect(page.getByTestId('review-count')).toHaveText('3')
   await shot(page, 'home')
 
   await page.getByTestId('home-board').click()
@@ -47,6 +47,8 @@ test('demo: home, board, task sheet, Tasks to review and Notes', async ({ page }
   await card.click()
   await expect(page.getByTestId('task-sheet')).toContainText('Appearance')
   await shotsLoaded(page)
+  // Under the step's line: the screenshots (the image viewer) and the pull request.
+  await expect(page.getByTestId('task-review-row')).toHaveText([/Screenshots \(3\)/, /PR #41/])
   await shot(page, 'task')
   await page.locator('[data-tab="plan"]').click()
   await expect(page.getByTestId('task-plan')).toBeVisible()
@@ -62,6 +64,15 @@ test('demo: home, board, task sheet, Tasks to review and Notes', async ({ page }
   await expect(page.getByTestId('review-item')).toHaveCount(1)
   await shot(page, 'question')
   await page.getByTestId('review-choice').filter({ hasText: 'Two months free' }).click()
+  // The catalogue: its To review block lists the file the step names, the one the report names
+  // and the PR; the file is a plain download link, never a viewer of ours.
+  await expect(page.locator('[data-testid="review-item"][data-task="WEB-10"]')).toBeVisible()
+  const toReview = page.getByTestId('task-review-row')
+  await expect(toReview).toHaveText([/catalogue\.md/, /plan\.md/, /PR #43/])
+  await page.getByTestId('task-review').scrollIntoViewIfNeeded()
+  await shot(page, 'to-review')
+  await expect(toReview.filter({ hasText: 'catalogue.md' })).toHaveAttribute('href', /\/api\/files\/download\?task=WEB-10&in=worktree&path=catalogue\.md$/)
+  await page.getByTestId('step-user').click()
   await expect(page.getByTestId('review-done')).toBeVisible()
   await page.keyboard.press('Escape')
   await expect(page.getByTestId('tasks-to-review')).toHaveCount(0, { timeout: 15_000 })

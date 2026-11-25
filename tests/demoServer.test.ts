@@ -172,13 +172,32 @@ describe('demo server', () => {
     const s = new DemoServer(c)
     const handle = () => (s.handle('GET', '/api/pm/handle').body as ToHandle[]).map(x => x.id)
     const card = (id: string) => (s.handle('GET', '/api/pm/board').body as Board).cards.find(x => x.id === id)!
-    expect(handle()).toEqual(['WEB-7', 'WEB-8'])
+    expect(handle()).toEqual(['WEB-7', 'WEB-8', 'WEB-10'])
     expect(s.handle('POST', '/api/pm/step-user', { id: 'WEB-7' }).status).toBe(200)
     c.advance(5000)
     expect(card('WEB-7').phase).toBe('done')
     expect(s.handle('POST', '/api/pm/answer', { id: 'WEB-8', text: 'Two months free' }).status).toBe(200)
-    expect(handle()).toEqual([])
+    expect(handle()).toEqual(['WEB-10'])
     expect(card('WEB-8').asks).toBeUndefined()
+    // The catalogue to approve: a plain user step, so Approve ends it with no merge to wait for.
+    expect(s.handle('POST', '/api/pm/step-user', { id: 'WEB-10' }).status).toBe(200)
+    expect(handle()).toEqual([])
+    expect(card('WEB-10').phase).toBe('done')
+  })
+
+  it('answers the files a task\'s To review names: the two documents of WEB-10, and nothing else', () => {
+    const s = new DemoServer(clock())
+    const ask = (task: string, paths: string[]) => s.handle('POST', '/api/pm/task-files', { task, paths }).body
+    expect(ask('WEB-10', ['catalogue.md', './plan.md', 'missing.md', 'constructor'])).toEqual({
+      found: { 'catalogue.md': { root: 'worktree', rel: 'catalogue.md' }, './plan.md': { root: 'worktree', rel: 'plan.md' } },
+    })
+    expect(ask('WEB-7', ['catalogue.md'])).toEqual({ found: {} })
+    const read = (query: string) => s.handle('GET', `/api/files/read?${query}`)
+    expect(read('task=WEB-10&in=worktree&path=catalogue.md').body).toMatchObject({ path: 'catalogue.md', kind: 'text', truncated: false, text: expect.stringContaining('[plan.md](plan.md)') })
+    expect(read('task=WEB-10&in=task&path=catalogue.md').status).toBe(404)
+    expect(read('task=WEB-10&in=worktree&path=nope.md').status).toBe(404)
+    // A task's file is not read through a pane.
+    expect(read('pane=p1&path=catalogue.md').status).toBe(404)
   })
 
   it('stops a working agent on interrupt', () => {

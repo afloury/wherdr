@@ -10,8 +10,14 @@ import { wherdr as standard } from '../../shared/pm/examples'
 import type { Template } from '../../shared/pm/workflow'
 import { HOME } from './scenario'
 
-// wherdr's own example workflow, its pull requests aimed at main.
-export const TEMPLATE: Template = { ...standard, id: 'standard', steps: { ...standard.steps, pr: { id: 'pr', column: 'Review', ends: 'action', action: { kind: 'github.pr', base: 'main' } } } }
+// wherdr's own example workflow, its pull requests aimed at main, and a docs type: the
+// worker writes a document, the user reads it and approves (what WEB-10's To review shows).
+export const DOCS_BADGE = 'Read catalogue.md, then approve'
+export const TEMPLATE: Template = {
+  ...standard, id: 'standard',
+  steps: { ...standard.steps, pr: { id: 'pr', column: 'Review', ends: 'action', action: { kind: 'github.pr', base: 'main' } } },
+  taskTypes: { ...standard.taskTypes, docs: { steps: [{ id: 'todo', column: 'To do' }, 'work', { id: 'approve', column: 'Review', ends: 'user', userLabel: 'Approve', badge: DOCS_BADGE }, { id: 'done', column: 'Done' }] } },
+}
 // herdr-core addresses of the demo's coordinator and task agents (Pane.coreAddress).
 export const ALFRED_AT = 'demo/alfred'
 export const API_COORD_AT = 'demo/coord-api'
@@ -32,6 +38,8 @@ export function tasks(now: number): Task[] {
   const min = (n: number) => now - n * 60_000
   const at = (i: number, since: number, more: Partial<StepState> = {}): StepState => ({ at: i, started: true, since, proofs: {}, rounds: {}, ...more })
   const shots: Shot[] = SHOTS.map((file, i) => ({ file, phase: 'after', at: min(30 - i) }))
+  // What WEB-10's worker reported: it names two files, which its To review opens (taskFiles.ts).
+  const catalogueReport = 'Wrote `catalogue.md`: the four components the app is built from, the pages that use each, their status. `plan.md` says how the list stays up to date. Opened PR #43.'
   const task = (id: string, type: string, title: string, description: string, more: Partial<Task> = {}): Task =>
     ({ id, project: id.split('-')[0]!, type, title, description, state: 'working', createdAt: min(100), ...more })
   return [
@@ -57,6 +65,20 @@ export function tasks(now: number): Task[] {
       questionTldr: { key: 'demo', at: min(4), text: 'Which yearly discount should the price table show?' },
       step: at(1, min(35)),
       log: [{ at: min(36), by: 'Grace', text: 'Created from the plan "Billing page redesign"' }, { at: min(35), by: 'engine', text: 'Started: claude on task/WEB-8' }],
+    }),
+    task('WEB-10', 'docs', 'Write the component catalogue', 'One page listing the components the web app is built from, where each is used and its status, and how the list is kept up to date.', {
+      step: at(2, min(9), {
+        yourTurn: { reason: 'user', badge: DOCS_BADGE },
+        proofs: { work: { report: catalogueReport } },
+      }),
+      branch: 'task/WEB-10', tags: ['docs'], links: [{ label: 'PR', url: 'https://example.com/acme/acme-web/pull/43' }],
+      workReports: [{ step: 'work', text: catalogueReport }],
+      tldr: { key: 'demo', at: min(9), text: 'A new **component catalogue**: the four components the app is built from, the pages that use each, their status.\n\n- `plan.md` says how the list stays up to date.\n- Reviewed: no findings.\n\nRead `catalogue.md`, then **Approve**.' },
+      log: [
+        { at: min(34), by: 'Grace', text: 'Created from the request "a catalogue of our components"' },
+        { at: min(33), by: 'engine', text: 'Started: claude on task/WEB-10' },
+        { at: min(10), by: 'worker', text: 'Reported: catalogue.md and plan.md, PR #43' },
+      ],
     }),
     task('WEB-9', 'visual', 'Empty states for the dashboard', 'Each dashboard card says what to do when it has no data yet.', { state: 'todo', after: 'WEB-7' }),
     task('WEB-6', 'simple', 'Mobile menu covers the page title', 'On a phone the open menu hides the title: push the page down instead.', {

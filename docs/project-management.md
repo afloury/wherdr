@@ -1155,8 +1155,8 @@ passing verdict (check, green), a send-back (undo, orange), a merge (filled
 green), a failure (filled red), your own action (accent), a routine line (a
 small grey square). **Comments** uses the same timeline.
 
-<a id="tldr"></a>**TL;DR.** On a task waiting for you, **To do** starts with at
-most five lines in plain words, with no code names: **What changes for you**
+<a id="tldr"></a>**TL;DR.** On a task waiting for you, **To do** shows, under its
+[To review](#to-review) list, at most five lines in plain words, with no code names: **What changes for you**
 (what you will see or what now behaves differently), **What to look at** on
 the screenshots when there are some, and **Anything wrong** only when there is
 a reason to hesitate (a finding left open, a check that failed, something the
@@ -1199,6 +1199,29 @@ when you ask them to unblock a task.
 Open a task under *Your turn* and its sheet starts on **To do**: what the task
 needs from you and the buttons for it, before its Description, Plan, Comments and History.
 
+<a id="to-review"></a>**To review.** Right under the step's line and its
+[TL;DR](#tldr), before *Full reports in Comments* and the buttons, a step that
+waits for you lists everything the task has to look at as one chip each (icon,
+short name, the host or kind in grey, an arrow), wrapping in a row with no box
+around them; neither its agent nor its session has to be
+open. The addresses its badge, its instructions, the worker's last report and the
+task's links name open in a new tab (*PR #43* for a pull request, the page's host
+in grey beside the others). The files they name (`catalogue.md`, a plan, a
+screenshot) are plain links the operating system handles, with no viewer of
+wherdr's: from a browser on the task's computer a tap opens the file in that
+computer's default application, like a double-click; from a phone or another
+machine it downloads it ([Files](files.md#task-files)). wherdr looks for each on
+the task's machine, in its worktree and then in its own folder, and lists the
+ones it finds: a bare name (`catalogue.md`) the top of a folder does not have is
+looked for below it (up to five folders deep, never in `.git` or `node_modules`). **Screenshots (3)** opens the sheet's viewer on the step's whole
+set. The step's own names come first, then the screenshots, then the report's and
+the task's links, each thing once under a short name, with *Step*, *Report* or
+the host beside it. A file being looked for shows as a grey bar; a look that
+fails says so, with **Try again**. More than six rows show five, the rest behind
+*Show more*; a task with nothing to look at shows no block. It is under every
+step's line in **To do** and in [Tasks to review](#tasks-to-review) (a task to
+approve shows it below its TL;DR), except on a stop and a decision.
+
 A tap on a card under *Your turn* goes where you act: when the task's agent
 (worker or reviewer, on any machine) asks a question or a permission, it opens
 that agent's conversation, its question last; anything else opens the sheet on
@@ -1210,7 +1233,7 @@ few minutes, tap Home's **Tasks to review** card or the board's **To review**
 (a link: `#/review`; the former `#/decisions` and the grouped notification of
 what waits for you open it too, over the page you are on): it shows what waits for you
 one at a time. A task to approve shows its key (a tap copies it, as on the task
-sheet), title and project, its
+sheet), title and project, its [To review](#to-review) list, its
 [TL;DR](#tldr), its newest screenshots (the sheet's viewer, before and after
 side by side), its PR and the review's verdict in one line, then:
 

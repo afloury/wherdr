@@ -1,6 +1,6 @@
 <script setup lang="ts">
 // What To do shows before the user decides: the task's TL;DR by Claude Haiku
-// (pmSummary.ts), Markdown, then the slot (a visual merge's screenshots) and a
+// (pmSummary.ts), Markdown, then the `review` slot (the To review block, TaskReview), then the slot (a visual merge's screenshots) and a
 // link to the full reports in Comments. No TL;DR (none yet, or a new one
 // waiting for the pace): the worker's and the reviewer's notes, as before.
 import type { Card } from '#shared/pm/board'
@@ -20,6 +20,7 @@ const html = computed(() => (props.card.tldr ? md(props.card.tldr, { plain: true
     <p v-if="card.tldrWaits" class="mono-label muted" data-testid="todo-tldr-waits">{{ tl('TL;DR waits for the pace') }}</p>
     <TaskNotes v-if="worker || review" :worker="worker" :review="review" />
   </template>
+  <slot name="review" />
   <slot />
   <button v-if="html" type="button" class="tldr-more mono-label" data-testid="todo-comments" @click="emit('comments')">{{ tl('Full reports in Comments') }} →</button>
 </template>

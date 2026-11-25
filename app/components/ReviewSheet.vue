@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // Tasks to review, one at a time (a sheet on the phone, a window on a computer):
 // what waits for the user on the board (Your turn), under the filter at the top
-// (useReview.ts). A task to approve shows its key, title and project, its TL;DR
+// (useReview.ts). A task to approve shows its key, title and project, what to review
+// (TaskReview: its links, its files in the Files view, its screenshots), its TL;DR
 // (TaskTldr), its newest screenshots (TaskShots, the task sheet's viewer), its PR
 // and the review's verdict in one line, then Approve (the To do tab's Accept: it
 // leaves the list, the engine merges it in its own order) and Reject (ReviewReject:
@@ -31,6 +32,8 @@ import { projectOption, type ProjectOption } from '~/utils/projectOption'
 
 const emit = defineEmits<{ closed: [] }>()
 const open = ref(true)
+// Its own content, to tell its window from another one open over it (onKey).
+const sheet = ref<HTMLElement>()
 const data = ref<Board | null>(null)
 const load = () => api<Board>('/api/pm/board').then((b) => { data.value = b }, () => {})
 let timer: ReturnType<typeof setInterval> | undefined
@@ -186,8 +189,10 @@ function answer() {
 }
 
 function onKey(e: KeyboardEvent) {
-  // The screenshot viewer open over it has its own keys (← →).
-  if (e.defaultPrevented || lightboxSrc.value || e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement)?.closest?.('input, textarea, select, [contenteditable="true"], [role="listbox"]')) return
+  // A window open over it (the screenshot viewer with its ← →, a task's file in the Files
+  // view, a confirmation) has its own keys: never an approval or a next task behind it.
+  const covered = [...document.querySelectorAll('[role="dialog"], [role="alertdialog"]')].some(d => !d.contains(sheet.value ?? null))
+  if (e.defaultPrevented || lightboxSrc.value || covered || e.metaKey || e.ctrlKey || e.altKey || (e.target as HTMLElement)?.closest?.('input, textarea, select, [contenteditable="true"], [role="listbox"]')) return
   const k = e.key.toLowerCase()
   if (k === 'arrowright') go(1)
   else if (k === 'arrowleft') go(-1)
@@ -200,7 +205,7 @@ function onKey(e: KeyboardEvent) {
 
 <template>
   <AppSheet v-model:open="open" :title="tl('Tasks to review')" tall @closed="emit('closed')">
-    <div class="review review-sheet" data-testid="review-sheet">
+    <div ref="sheet" class="review review-sheet" data-testid="review-sheet">
       <ProjectSelect v-model="filter" :items="filterItems" size="lg" class="review-filter" :aria-label="tl('Tasks shown')" data-testid="review-filter" />
 
       <div class="review-stage" :data-motion="still ? 'fade' : 'slide'" data-testid="review-stage">
@@ -215,6 +220,7 @@ function onKey(e: KeyboardEvent) {
         <template v-if="approves">
           <LookAgainBanner v-if="card.state?.lookAgain" :look="card.state.lookAgain" />
           <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="answer()">
+            <template #review><TaskReview :card="card" /></template>
             <ShotsSince v-if="shotStep" :task="card.id" :state="state" :step="shotStep.id" />
             <TaskShots v-if="shots.length && shotStep" :task="card.id" :shots="shots" :mode="shotMode(shotStep)" :head="state?.shotsHead?.[shotStep.id]" />
           </TaskTldr>

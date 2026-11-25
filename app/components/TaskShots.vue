@@ -3,7 +3,7 @@
 // viewer on the whole set (full size, swipe or ← → between images). Before and
 // after are side by side on a computer, and toggled on the phone. head: the
 // step's newest commit, a shot of the result taken before it marked Earlier commit.
-import { earlierCommit, shotRows, shotUrl, type Shot, type ShotPhase } from '#shared/pm/shots'
+import { earlierCommit, shotRows, shotSet, shotUrl, type Shot, type ShotPhase } from '#shared/pm/shots'
 import type { ShotMode } from '#shared/pm/workflow'
 
 const props = defineProps<{ task: string, shots: Shot[], mode: ShotMode, head?: string }>()
@@ -11,8 +11,9 @@ const side = ref<ShotPhase>('after')
 const compare = computed(() => props.mode === 'before-after')
 const rows = computed(() => shotRows(props.shots, props.mode))
 const phases = computed<ShotPhase[]>(() => (compare.value ? ['before', 'after'] : ['after']))
-// The viewer's set, in the order shown: each row's before, then its after.
-const srcs = computed(() => rows.value.flatMap(r => phases.value.flatMap(p => (r[p] ? [shotUrl(props.task, r[p]!.file)] : []))))
+// The viewer's set, in the order shown: each row's before, then its after (the same set the
+// To review block's Screenshots row opens).
+const srcs = computed(() => shotSet(props.task, props.shots, props.mode))
 const open = (s: Shot) => openLightbox(srcs.value, srcs.value.indexOf(shotUrl(props.task, s.file)))
 const reworked = computed(() => props.shots.some(s => s.rework))
 const label = (p: ShotPhase) => (p === 'before' ? tl('Before', 'Avant') : tl('After', 'Après'))

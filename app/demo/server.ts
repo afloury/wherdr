@@ -5,6 +5,7 @@ import type { ChatItem, HerdrState, Pane, QueuedMessage } from '#shared/types'
 import { applySettingsPatch, cleanSettingsPatch, type SettingsMap } from '../../shared/settings'
 import * as S from './scenario'
 import { DemoPm } from './pm'
+import { readTaskFile } from './taskFiles'
 
 export const DEMO_REFUSAL = 'Demo — nothing runs here. Install wherdr to drive your own agents.'
 
@@ -369,6 +370,8 @@ export class DemoServer {
               { name: 'README.md', kind: 'file', size: 88, link: false },
             ] })
         case '/api/files/read': {
+          const file = readTaskFile(q.get('task'), q.get('in'), q.get('path'))
+          if (file) return ok(file)
           const text = DEMO_FILES[q.get('path') ?? '']
           return text === undefined ? fail(404, DEMO_REFUSAL) : ok({ path: q.get('path'), size: text.length, kind: 'text', text, truncated: false })
         }

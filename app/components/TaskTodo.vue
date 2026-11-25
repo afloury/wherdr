@@ -12,6 +12,8 @@
 // waits on the user says what waits, and Ask the coordinator sends it the user's message.
 // The button pressed alone shows it sends (loading) until the server answered, the others
 // disabled meanwhile; once through, a check on it for a moment (DONE_MS), Send back's says Sent back.
+// Under the step's line, below the TL;DR (its `review` slot), every step that is not a stop or a decision
+// shows TaskReview: the task's links, files and screenshots to look at, one tap each.
 import { adviceChoices } from '#shared/pm/decisions'
 import { canStart, coordinatorWait, mayAccept, mergeGoesNow, mergeStuck, mergeWaits, prLink, prUpdating, type Card } from '#shared/pm/board'
 import { stepLabels } from '#shared/pm/steps'
@@ -101,6 +103,7 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       <LookAgainBanner v-if="card.state?.lookAgain" :look="card.state.lookAgain" />
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
       <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="emit('comments')">
+        <template #review><TaskReview :card="card" /></template>
         <ShotsSince v-if="shotSteps(card)[0]" :task="card.id" :state="card.state" :step="shotSteps(card)[0]!.id" />
         <span v-if="reworked" class="mono-label muted" data-testid="todo-rework">{{ tl('Screenshots after rework') }}</span>
         <ul class="todo-shots" data-testid="todo-shots">
@@ -126,18 +129,25 @@ const ASK_LABEL: Record<WaitKind, [string, string]> = { question: ['Its agent as
       <p class="mono-label">{{ tl(...ASK_LABEL[card.asks!.kind]) }}</p>
       <p class="todo-say task-desc" data-testid="task-badge">{{ card.asks!.text }}</p>
       <p v-if="!pane" class="muted">{{ tl('Its agent is not on screen here: open it from its machine.') }}</p>
+      <TaskReview :card="card" />
     </template>
 
     <template v-else-if="kind === 'coordinator' && coord">
       <p class="todo-say" data-testid="task-badge">{{ tl(`Waiting for the coordinator to check the ${coord.step}`) }}</p>
       <p class="muted" data-testid="todo-coordinator-wait">{{ tl(`At this step for ${coordFor}`) }}<template v-if="coord.reason"> · {{ tl('Coordinator:') }} {{ coord.reason }}</template></p>
+      <TaskReview :card="card" />
     </template>
 
-    <p v-else-if="kind === 'review'" class="todo-say" data-testid="task-badge">{{ reviewSay }}</p>
+    <template v-else-if="kind === 'review'">
+      <p class="todo-say" data-testid="task-badge">{{ reviewSay }}</p>
+      <TaskReview :card="card" />
+    </template>
 
     <template v-else-if="!refused">
       <p class="todo-say" data-testid="task-badge">{{ badge }}</p>
-      <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="emit('comments')" />
+      <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="emit('comments')">
+        <template #review><TaskReview :card="card" /></template>
+      </TaskTldr>
     </template>
 
     <div class="todo-actions">

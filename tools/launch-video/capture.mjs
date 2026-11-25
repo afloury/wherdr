@@ -141,7 +141,7 @@ try {
   await page.setViewportSize(phone);
   await shot("phone-home", "Continue on a phone: Tasks to review shows WEB-8", async () => {
     await page.evaluate(() => { location.hash = "#/"; });
-    await until(async () => (await page.getByTestId("review-ids").allInnerTexts()).join().trim() === "WEB-8", "only WEB-8 left");
+    await until(async () => (await page.getByTestId("review-ids").allInnerTexts()).join().trim().startsWith("WEB-8"), "WEB-7 merged, WEB-8 first in line");
   });
   await shot("phone-question", "Open Tasks to review: the agent asks a question", async () => {
     await page.getByTestId("review-open").click();

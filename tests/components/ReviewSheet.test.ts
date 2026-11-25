@@ -6,7 +6,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { createError, readBody } from 'h3'
 import { mountSuspended, registerEndpoint } from '@nuxt/test-utils/runtime'
-import { defineComponent, h } from 'vue'
+import { defineComponent, h, nextTick } from 'vue'
 import ReviewCard from '~/components/ReviewCard.vue'
 import ReviewSheet from '~/components/ReviewSheet.vue'
 import { coordinators } from '~/composables/useCoordinators'
@@ -103,6 +103,46 @@ it('counts what waits on Home and reviews it one by one: Approve, Reject, the ot
   await expect.poll(shown).toBe('done')
   expect(sentBack).toEqual({ id: 'HO-1', note: 'The toggle is cut off', shots: ['aaaaaaaaaaaa.png'] })
   expect(q('review-done')!.textContent).toContain('The engine takes over')
+  w.unmount()
+})
+
+it('shows what to review once, below the TL;DR of a task to approve, and under the line of another step', async () => {
+  cards = [
+    card('HO-1', 'home'),
+    card('HO-2', 'home', { yourTurn: 'Read the notes, then pick', userLabel: 'Pick', links: [{ label: 'Notes', url: 'https://example.com/notes' }], plan: [plan[0], { id: 'pick', holder: 'user', ends: 'user' }] as Card['plan'], state: { at: 1, started: true, proofs: {}, rounds: {}, yourTurn: { reason: 'user', badge: 'Read the notes, then pick' } } }),
+  ]
+  reviewOpen.value = true
+  const w = await mountSuspended(Home)
+  await expect.poll(shown).toBe('HO-1')
+  const blocks = () => [...sheet()!.querySelectorAll('[data-testid="task-review"]')]
+  const labels = () => [...blocks()[0]!.querySelectorAll('.review-label')].map(l => l.textContent)
+  // A task to approve: its screenshots and its PR, below the TL;DR (it has no TaskTodo).
+  expect(blocks()).toHaveLength(1)
+  expect(labels()).toEqual(['Screenshots (1)', 'PR #4'])
+  expect(q('todo-tldr')!.compareDocumentPosition(blocks()[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  q('review-next')!.click()
+  await expect.poll(shown).toBe('HO-2')
+  // Another step of the user's: TaskTodo's, under its line.
+  expect(blocks()).toHaveLength(1)
+  expect(labels()).toEqual(['Notes'])
+  expect(q('task-badge')!.compareDocumentPosition(blocks()[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+  w.unmount()
+})
+
+it('leaves the keys to a window open over it: no next task and no approval behind a file', async () => {
+  cards = [card('HO-1', 'home'), card('HO-2', 'home')]
+  reviewOpen.value = true
+  const w = await mountSuspended(Home)
+  await expect.poll(shown).toBe('HO-1')
+  const over = document.createElement('div')
+  over.setAttribute('role', 'dialog')
+  document.body.append(over)
+  for (const key of ['ArrowRight', 'a']) over.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }))
+  await nextTick() // a key that acted would have moved the sheet by now
+  expect([shown(), accepted.length]).toEqual(['HO-1', 0])
+  over.remove()
+  document.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+  await expect.poll(shown).toBe('HO-2')
   w.unmount()
 })
 

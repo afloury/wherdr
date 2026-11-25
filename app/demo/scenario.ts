@@ -60,7 +60,7 @@ const pane = (p: Partial<Pane> & Pick<Pane, 'id' | 'workspace' | 'agent' | 'cwd'
 
 export function panes(now: number): Pane[] {
   return [
-    pane({ id: ALFRED, workspace: 'w0', agent: 'claude', cwd: `${HOME}/.wherdr/alfred`, status: 'idle', model: MODELS.claude, stateSeq: 3, bornAt: now - 5400_000, coreAddress: 'demo/alfred', preview: 'Two things wait for you in Tasks to review.' }),
+    pane({ id: ALFRED, workspace: 'w0', agent: 'claude', cwd: `${HOME}/.wherdr/alfred`, status: 'idle', model: MODELS.claude, stateSeq: 3, bornAt: now - 5400_000, coreAddress: 'demo/alfred', preview: 'Three things wait for you in Tasks to review.' }),
     pane({ id: COORD, workspace: 'w1', agent: 'claude', cwd: `${HOME}/.wherdr/coordinators/API`, status: 'idle', model: MODELS.claude, stateSeq: 4, bornAt: now - 3600_000, coreAddress: 'demo/coord-api', preview: 'API-12 and API-13 are under way. I will tell you when one is ready to review.' }),
     pane({ id: WEB_COORD, workspace: 'w5', agent: 'claude', cwd: `${HOME}/.wherdr/coordinators/WEB`, status: 'idle', model: MODELS.claude, stateSeq: 5, bornAt: now - 3000_000, coreAddress: 'demo/coord-web', preview: 'WEB-7 is reviewed: look at its screenshots, then merge.' }),
     pane({ id: CODEX, workspace: 'w2', agent: 'codex', cwd: `${WT}/API-12`, status: 'working', model: MODELS.codex, stateSeq: 7, bornAt: now - 1800_000, coreAddress: 'demo/codex', task: 'API-12', role: 'worker', since: now - 8 * 60_000 }),
@@ -125,16 +125,17 @@ export function conversations(now: number): Record<string, ChatItem[]> {
     [ALFRED]: [
       { role: 'user', text: 'Morning! What needs me today?', ts: at(8) },
       { role: 'tool', name: 'Bash', text: 'wherdr pm board --your-turn', ts: at(8) },
-      { role: 'assistant', text: 'Good morning. Two things wait for you in **Tasks to review**:\n\n1. **WEB-7 — Dark mode toggle**: reviewed with no findings. Look at its three screenshots, then merge.\n2. **WEB-8 — Price table**: its agent asks which yearly discount to show.\n\nOn acme-api, Ada has two agents at work (rate limits, the flaky export test) and the webhook retries are in review.', ts: at(7) },
+      { role: 'assistant', text: 'Good morning. Three things wait for you in **Tasks to review**:\n\n1. **WEB-7 — Dark mode toggle**: reviewed with no findings. Look at its three screenshots, then merge.\n2. **WEB-8 — Price table**: its agent asks which yearly discount to show.\n3. **WEB-10 — Component catalogue**: written and reviewed. Read `catalogue.md`, then approve.\n\nOn acme-api, Ada has two agents at work (rate limits, the flaky export test) and the webhook retries are in review.', ts: at(7) },
       { role: 'user', text: 'Remind me to write the 2.3 release notes on Friday.', ts: at(6) },
       { role: 'tool', name: 'Edit', text: 'notes/reminders.md', ts: at(6) },
       { role: 'assistant', text: 'Added to your **Reminders** note: release notes for 2.3, Friday.', ts: at(5) },
     ],
     [WEB_COORD]: [
-      { role: 'user', text: 'Add a dark mode toggle to the settings page, and start on the price table from the billing plan.', ts: at(96) },
+      { role: 'user', text: 'Add a dark mode toggle to the settings page, start on the price table from the billing plan, and write a catalogue of our components.', ts: at(96) },
       { role: 'tool', name: 'Bash', text: 'wherdr pm task add "Dark mode toggle on the settings page" --type visual --start', ts: at(95) },
       { role: 'tool', name: 'Bash', text: 'wherdr pm task add "Price table on the billing page" --type visual --start', ts: at(36) },
-      { role: 'assistant', text: 'Both are on the board: **WEB-7** (dark mode) is reviewed and waits for your merge; **WEB-8** (price table) has a question for you about the yearly discount.', ts: at(4) },
+      { role: 'tool', name: 'Bash', text: 'wherdr pm task add "Write the component catalogue" --type docs --start', ts: at(34) },
+      { role: 'assistant', text: 'All three are on the board: **WEB-7** (dark mode) is reviewed and waits for your merge; **WEB-8** (price table) has a question for you about the yearly discount; **WEB-10** (the catalogue) waits for your approval.', ts: at(4) },
     ],
     [COORD]: [
       { role: 'user', text: 'Plan the 2.3 release: per-key rate limits on the public API, and the CSV export test that fails one run in ten.', ts: at(62) },
