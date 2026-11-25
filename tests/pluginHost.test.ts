@@ -6,12 +6,20 @@ const info = (id: string): ClientPluginInfo => ({ id, name: id, version: '1', de
 
 function setup(plugins: Record<string, unknown>, prefs: PluginPrefs = { off: [], failed: {} }, enabled = true) {
   let saved = prefs
+  // The open conversation's draft as the page wires it: null when no conversation is open.
+  let draftText: string | null = 'initial'
   const navs = new Set<(p: string) => void>()
-  const insert = vi.fn()
+  const insert = vi.fn((t: string) => {
+    if (draftText !== null) draftText = draftText && !/\s$/.test(draftText) ? `${draftText} ${t}` : draftText + t
+  })
+  const focus = vi.fn()
   const deps: HostDeps = {
     list: async () => ({ plugins: Object.keys(plugins).map(info), enabled }),
     load: async i => ({ default: plugins[i.id] }),
+    getDraft: () => draftText,
+    setDraft: (t) => { if (draftText !== null) draftText = t },
     insertDraft: insert,
+    focusDraft: focus,
     currentAgent: () => ({ id: 'w1:p1', agent: 'claude', name: 'demo', machine: null }),
     subscribeNavigate: (cb) => { navs.add(cb); return () => navs.delete(cb) },
     prefs: () => saved,
@@ -20,7 +28,13 @@ function setup(plugins: Record<string, unknown>, prefs: PluginPrefs = { off: [],
     timeoutMs: 50,
   }
   const host = createPluginHost(deps)
-  return { host, deps, insert, navs, saved: () => saved, status: (id: string) => host.rows().find(r => r.id === id)?.status }
+  return {
+    host, deps, insert, focus, navs,
+    getDraft: () => draftText,
+    setDraftRaw: (v: string | null) => { draftText = v },
+    saved: () => saved,
+    status: (id: string) => host.rows().find(r => r.id === id)?.status,
+  }
 }
 
 describe('plugin host', () => {
@@ -253,6 +267,27 @@ describe('plugin host', () => {
     await s.host.init()
     expect(s.status('p')).toBe('failed')
     expect(s.host.rows()[0]!.error).toMatch(/expects a function/)
+  })
+
+  it('draft.get, draft.set and draft.focus read, fill and focus the draft of the open conversation', async () => {
+    type DraftApi = { draft: { get: () => string | null, set: (t: string) => void, insert: (t: string) => void, focus: () => void } }
+    let api!: DraftApi
+    const s = setup({ p: (w: DraftApi) => { api = w } })
+    await s.host.init()
+    expect(api.draft.get()).toBe('initial')
+    api.draft.set('replaced')
+    expect(api.draft.get()).toBe('replaced')
+    api.draft.set('')
+    expect(api.draft.get()).toBe('')
+    api.draft.insert('again')
+    expect(api.draft.get()).toBe('again')
+    api.draft.focus()
+    expect(s.focus).toHaveBeenCalledTimes(1)
+    // No conversation open: null reads, no-op writes and focuses.
+    s.setDraftRaw(null)
+    expect(api.draft.get()).toBeNull()
+    api.draft.set('ignored')
+    expect(s.getDraft()).toBeNull()
   })
 })
 

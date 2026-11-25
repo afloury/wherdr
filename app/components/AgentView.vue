@@ -164,6 +164,8 @@ const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void,
 // Questions of the agent's last message the draft does not answer yet (ChatView): the composer's reminder.
 const unanswered = ref(0)
 const composer = ref<{ focus: () => void, focusEnd: () => void, focusAnswer: (at: number) => void, blur: () => void, addImages: (files: File[]) => Promise<void>, addFiles: (files: File[]) => Promise<number>, stop: () => boolean, sendText: (text: string) => Promise<void> } | null>(null)
+// A plugin's draft.focus() focuses this composer while this view is the live one of the open pane.
+useDraftFocus(() => props.paneId, () => live.value, () => composer.value?.focus())
 const searchOpen = ref(typeof route.query.q === 'string' && typeof route.query.hit === 'string')
 
 // Pane closed while being viewed. A pane just created may be missing
