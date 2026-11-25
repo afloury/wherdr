@@ -137,6 +137,25 @@ describe('core previews', () => {
       expect(reads).toBe(n)
     } finally { vi.useRealTimers() }
   })
+  it('reads no conversation for an unviewed database-backed agent, and keeps reading the others', async () => {
+    const replied: string[] = []
+    const p = createCorePreviews({
+      reply: async x => { replied.push(x.id); return { text: 'All done.' } },
+      read: async () => 'Indexing\nlast line\n',
+      viewed: id => id === 'seen',
+    })
+    const list = () => [
+      pane('seen', { agent: 'agy', stateSeq: 1 }),
+      pane('away', { agent: 'agy', stateSeq: 1 }),
+      pane('claude', { agent: 'claude', stateSeq: 1 }),
+    ]
+    p.apply(list())
+    await settle()
+    const shown = list()
+    p.apply(shown)
+    expect(shown.map(x => x.preview)).toEqual(['All done.', 'last line', 'All done.'])
+    expect(replied.sort()).toEqual(['claude', 'seen'])
+  })
   it('limits the readings in flight and forgets gone panes', async () => {
     let active = 0, peak = 0
     const p = createCorePreviews({ reply: async () => null, read: async () => { peak = Math.max(peak, ++active); await settle(); active--; return 'x' } })

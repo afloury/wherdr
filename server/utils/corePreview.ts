@@ -4,6 +4,11 @@
 import type { Pane } from '../../shared/types'
 import { ompPreviewText } from '../../shared/ompStatus'
 
+// Agents whose reply lives in a conversation database: reading one copies or
+// queries it (Antigravity, Devin, Hermes), so an unviewed pane takes its preview
+// from the screen instead. Claude and Codex conversations are appended files.
+const NO_UNVIEWED_DB_PREVIEW = new Set(['agy', 'devin', 'hermes'])
+
 const MAX = 200
 const MAX_BUSY = 4
 const WORKING_MS = 10_000
@@ -45,6 +50,8 @@ export function lastLine(text: string): string | null {
 export interface CorePreviewDeps {
   reply: (pane: Pane) => Promise<{ text: string } | null>
   read: (address: string) => Promise<string>
+  // Some device is showing this pane: only then is its conversation read.
+  viewed?: (id: string) => boolean
   now?: () => number
   // Asks for another apply(): a preview text changed, or a settling re-read is due.
   wake?: () => void
@@ -68,7 +75,8 @@ export function createCorePreviews(deps: CorePreviewDeps) {
   }
   async function load(p: Pane): Promise<string | null> {
     if (p.error) return p.error.length > MAX ? `${p.error.slice(0, MAX - 1)}…` : p.error
-    if (p.agent) {
+    const allowReply = !p.agent || !NO_UNVIEWED_DB_PREVIEW.has(p.agent) || !deps.viewed || deps.viewed(p.id)
+    if (p.agent && allowReply) {
       const reply = await deps.reply(p).catch(() => null)
       if (reply?.text) return reply.text.length > MAX ? `${reply.text.slice(0, MAX - 1)}…` : reply.text
     }

@@ -113,8 +113,29 @@ export async function machineHome(shell: ShellExec): Promise<string> {
   return s
 }
 
+const PS_TTL_MS = 10_000
+
 export function createCoreTranscripts(deps: CoreTranscriptDeps) {
   const details = new Map<string, { at: number, d: CoreDetail }>()
+  // One process table per machine at a time, reused for 10 s: the panes of a
+  // machine are looked up within the same poll, and an SSH `ps` is not cheap.
+  const psCache = new Map<string, { at: number, busy: boolean, p: Promise<string> }>()
+  const cachedPs = (machine: string): Promise<string> => {
+    const hit = psCache.get(machine)
+    if (hit && (hit.busy || Date.now() - hit.at < PS_TTL_MS)) return hit.p
+    const rec = {
+      at: 0,
+      busy: true,
+      p: deps.call<{ stdout?: string }>('machine.exec', {
+        argv: ['ps', '-e', '-o', 'pid=,ppid=,args='], ...(machine ? { on: machine } : {}), timeout: 5,
+      }, 8000)
+        .catch(() => null)
+        .then(ps => Buffer.from(ps?.stdout || '', 'base64').toString('utf8'))
+        .finally(() => { rec.busy = false; rec.at = Date.now() }),
+    }
+    psCache.set(machine, rec)
+    return rec.p
+  }
   async function detail(address: string): Promise<CoreDetail> {
     const hit = details.get(address)
     if (hit && Date.now() - hit.at < 1500) return hit.d
@@ -130,11 +151,7 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
     const d = await detail(address)
     const info = processInfo(d)
     const procs = info.process_info.foreground_processes
-    // One process table per lookup, read only when something needs it.
-    let table: Promise<string> | null = null
-    const psTable = () => table ??= deps.call<{ stdout?: string }>('machine.exec', {
-      argv: ['ps', '-e', '-o', 'pid=,ppid=,args='], ...(machineOfAddress(address) ? { on: machineOfAddress(address) } : {}), timeout: 5,
-    }, 8000).catch(() => null).then(ps => Buffer.from(ps?.stdout || '', 'base64').toString('utf8'))
+    const psTable = () => cachedPs(machineOfAddress(address))
     if (!procs.some(p => AGENT_PROGRAMS.has(baseName(p.argv?.[0] || p.name))) && typeof d.pid === 'number') {
       procs.unshift(...agentDescendants(await psTable(), d.pid))
     }
