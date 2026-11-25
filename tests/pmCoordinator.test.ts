@@ -12,7 +12,7 @@ import { execFileSync } from 'node:child_process'
 import { trustKeys } from '../shared/pm/run'
 import { coordinatorStart, setupDone } from '../shared/pm/setup'
 import { WORKSPACE_FIRST } from '../shared/pm/workspace'
-import { FIRST_REPLY, MAIN, OMP_COORDINATOR_ROLE, OMP_COORDINATOR_TOOLS, canResume, canRunCoordinator, defaultProjectProgram, parseCommand, promptAsArg, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
+import { FIRST_REPLY, MAIN, OMP_COORDINATOR_ROLE, OMP_COORDINATOR_TOOLS, canResume, canRunCoordinator, commandList, defaultProjectProgram, parseCommand, promptAsArg, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
 import { EXAMPLES, common, company as example, github } from '../shared/pm/examples'
 import { DONE_CMD, reviewFile } from '../shared/pm/advance'
@@ -291,6 +291,14 @@ describe('the main coordinator (WHR-398)', () => {
     expect(parseCommand(['show', 'CO-1', '--project', 'CO'])).toEqual({ error: expect.stringContaining('--project is for') })
   })
 
+  // Alfred's AGENTS.md points to `wherdr pm help` instead of listing the commands.
+  it('answers help with the whole command list, the notes commands and their rule', async () => {
+    const { commands } = await cli(['help'], undefined, await issueToken(store, MAIN)) as { commands: string[] }
+    expect(commands).toEqual(commandList())
+    for (const usage of ['task add ', 'step done ', 'automation propose ', 'notes add ']) expect(commands.some(l => l.startsWith(`- \`wherdr pm ${usage}`)), usage).toBe(true)
+    expect(commands.at(-1)).toContain('Notes are the user\'s whiteboard')
+  })
+
   it('has no autopilot (WHR-51): no wake, none in its view, the route refuses it, a wake turn starts or adds nothing', async () => {
     const main = await issueToken(store, MAIN)
     const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
@@ -345,7 +353,7 @@ describe('the main coordinator (WHR-398)', () => {
     // A program only: its own default model, no --model (the model given is ignored).
     expect(r.folder).toBe(home)
     expect(await fs.readFile(path.join(home, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n')
-    expect(await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')).toContain('only through the board')
+    expect(await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')).toContain('never type into its terminal')
     expect(runs[0]).toMatchObject({ cwd: home, labels: { 'wherdr.coordinator': MAIN }, env: { WHERDR_URL: 'http://127.0.0.1:7690' } })
     expect(runs[0]!.on).toBeUndefined()
     expect(runs[0]!.line).toMatch(/exec 'claude' 'Follow .*give me another name\?"'$/)
