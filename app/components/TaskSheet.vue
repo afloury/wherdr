@@ -146,6 +146,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
     </template>
     <div class="task-sheet" data-testid="task-sheet">
       <div class="task-sheet-top">
+        <TaskReplied v-if="card.replied" :replied="card.replied" />
         <p v-if="status" class="task-status" :class="status.tone" data-testid="task-status">{{ status.text }}</p>
         <div v-if="branch || pr" ref="branchRow" class="task-branch-row" data-testid="task-branch-row">
           <BranchLine v-if="branch" :line="branch" />

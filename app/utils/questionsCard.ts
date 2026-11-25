@@ -43,9 +43,10 @@ export function readQuestionsReply(items: WherdrQuestion[], reply: string): Ques
 
 // What a view gives its `questions` cards (provided by ChatView and
 // ReviewQuestion, injected in ChatMarkdown): for the card's place, whether it
-// can be answered and the reply it got; and sending the reply.
+// can be answered, the reply it got (or note: why it is closed, answered
+// elsewhere) and sending the reply.
 export interface QuestionsHost {
-  state: (el: HTMLElement) => { live: boolean, given: string | null }
+  state: (el: HTMLElement) => { live: boolean, given: string | null, note?: string | null }
   send: (el: HTMLElement, text: string) => void
 }
 export const QUESTIONS_HOST = 'questionsHost'

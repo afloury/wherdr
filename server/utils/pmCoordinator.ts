@@ -14,6 +14,8 @@ import { FEATURE, WORKSPACE_FIRST, coordinatorKey, handledBy, isWorkspace, membe
 import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
 import { changeSummary, changeTitle, workflowChanges } from '../../shared/pm/workflowChanges'
+import { ELSEWHERE_MAX_AGE } from '../../shared/pm/elsewhere'
+import { proposalMoot } from '../../shared/pm/proposalMoot'
 import { isDefaultWorkflow, validModel, validateTemplate } from '../../shared/pm/workflow'
 import { weightOf, weightText, weightsLine } from '../../shared/pm/weight'
 import { EXAMPLES } from '../../shared/pm/examples'
@@ -787,6 +789,8 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
     const c = await store.coordinator(p.key)
     const current = c?.proposal ? await store.workflow(p.key) : null
     const changes = c?.proposal ? c.proposal.changes ?? workflowChanges(current, c.proposal.template) : undefined
+    const moot = c?.proposal && p.key !== MAIN ? proposalMoot(c.proposal, current, await store.workflowLog(p.key), answersOf(c), p.key) : undefined
+    const elsewhere = (c?.elsewhere ?? []).filter(e => now - e.at <= ELSEWHERE_MAX_AGE)
     const held = handledBy(p.key, projects), autopilot = c?.autopilot ?? DEFAULT_AUTOPILOT, mine = tasks.filter(t => held.some(x => x.key === t.project))
     const next = nextWakeAt(c?.autopilot, c?.ranAt, { ...(c?.atRan ? { at: c.atRan } : {}), ...c?.routineRan }, now)
     const paused = 'paused' in p ? p.paused ?? [] : []
@@ -809,6 +813,8 @@ export async function coordinatorsView(store: PmStore): Promise<CoordinatorView[
       ...(c?.proposal ? { proposal: { diff: c.proposal.diff, at: c.proposal.at, changes, template: c.proposal.template, by: c.proposal.by ?? (p.key === MAIN ? 'main' : p.key), ...(c.proposal.said ? { said: c.proposal.said } : {}), ...(c.proposal.saidAt ? { saidAt: c.proposal.saidAt } : {}) } } : {}),
       ...('label' in p && p.label ? { label: p.label } : {}), ...('color' in p && p.color ? { color: p.color } : {}),
       ...(answersOf(c).length ? { answers: answersOf(c) } : {}),
+      ...(moot ? { proposalElsewhere: moot } : {}),
+      ...(elsewhere.length ? { elsewhere } : {}),
       ...('kind' in p && isWorkspace(p) ? { workspace: workspaceView(p, projects, tasks) } : {}),
       ...(autoProps.some(x => x.by === byOf(p.key)) ? { automationProposals: autoProps.filter(x => x.by === byOf(p.key)) } : {}),
     }

@@ -10,7 +10,7 @@
 import type { WherdrQuestion } from '~/utils/markdown'
 import { optionLetter, questionsReply, readQuestionsReply, SKIP, type QuestionPick } from '~/utils/questionsCard'
 
-const props = defineProps<{ items: WherdrQuestion[], live: boolean, given: string | null }>()
+const props = defineProps<{ items: WherdrQuestion[], live: boolean, given: string | null, note?: string | null }>()
 const emit = defineEmits<{ send: [text: string] }>()
 // Sent from here: no second Send while the reply reaches the conversation.
 const sent = ref(false)
@@ -77,6 +77,7 @@ function onKey(e: KeyboardEvent) {
       <p v-else-if="isText(picks[i])" class="qs-given">↳ {{ (picks[i] as { text: string }).text }}</p>
       <p v-else-if="given !== null && !answered(picks[i])" class="qs-given">{{ SKIP }}</p>
     </div>
+    <p v-if="note && !live" class="qs-note" data-testid="questions-note">{{ note }}</p>
     <div v-if="live" class="qs-foot">
       <span class="qs-left">{{ left ? tl(`${left} unanswered, sent as skip`) : '' }}</span>
       <button type="button" class="qs-send mono-btn" :disabled="!canSend" data-testid="questions-send" @click="send">
@@ -110,6 +111,7 @@ function onKey(e: KeyboardEvent) {
 .qs-input { width: min(100%, 420px); min-height: 36px; padding: 6px 10px; font: inherit; font-size: 13px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 0; outline: 0; }
 .qs-input:focus { border-color: var(--accent); }
 .qs-given { margin: 0; color: var(--text-2); font-size: 13px; overflow-wrap: anywhere; }
+.qs-note { margin: 0; color: var(--muted); font: 12px/1.4 var(--mono); }
 .qs-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; min-width: 0; }
 .qs-left { color: var(--muted); font-size: 12px; }
 .qs-send {

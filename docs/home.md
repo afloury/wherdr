@@ -157,7 +157,9 @@ review** card with its count: tasks to approve, an agent's question, a failure t
 decision. Under its title, the ids of the first ones as their project's key badge, in its color, on
 one line (… when they do not all fit). A tap opens them one at a time (a sheet on the phone), with Approve, Reject and each
 item's own answers
-([Tasks to review](project-management.md#tasks-to-review)).
+([Tasks to review](project-management.md#tasks-to-review)). When you answered a task's agent in its own session, its entry
+says *You replied to the agent at 14:32* until the agent reports again
+([answering the agent directly](project-management.md#tasks-to-review)).
 
 ### Offered agents
 

@@ -17,6 +17,7 @@ import { FIXES_PER_STEP, FIX_KINDS, FIX_TEXT, taskStatus, type Autopilot, type F
 import type { Wake, WakeSkip } from './wakes'
 import type { PaceGauge } from './pace'
 import type { AutomationProposal } from './automations'
+import type { Elsewhere } from './elsewhere'
 import { CAUSE_RULE } from './incidentWake'
 import { CHOICES, type Choice } from './verdict'
 import { currentStep, onEvent, planSteps, type PlannedStep, type StepEvent, type StepState } from './steps'
@@ -114,6 +115,9 @@ export interface CoordinatorView {
   proposal?: Omit<Proposal, 'template' | 'base'> & { template?: Template }, answers?: ProposalAnswer[]
   // The automation changes it proposed (`automation propose`), waiting or answered.
   automationProposals?: AutomationProposal[]
+  // What the user did on its tasks elsewhere (their agent's session, a step button), newest last;
+  // proposalElsewhere: its pending proposal is moot: where it was answered (applied or cancelled through another coordinator, already applied).
+  elsewhere?: Elsewhere[], proposalElsewhere?: string
   // Its autopilot, what is left of today's limits, and its latest wakes (newest first).
   autopilot?: Autopilot, limits?: ReturnType<typeof limitsLeft>, wakes?: Wake[]
   // Nothing to do: its scheduled wakes are skipped (asleep), since its last wake.

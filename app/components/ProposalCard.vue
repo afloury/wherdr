@@ -15,15 +15,20 @@ const props = defineProps<{ c: CoordinatorView, answer?: ProposalAnswer, canGoto
 const emit = defineEmits<{ goto: [] }>()
 const review = ref(false)
 const { busy, error, answer: send } = useProposalAnswer(() => props.c.project)
-const pending = computed(() => (props.answer ? undefined : props.c.proposal))
+// Moot: answered elsewhere (applied or cancelled through another coordinator, already applied): shown as answered.
+const moot = computed(() => (props.answer ? undefined : props.c.proposalElsewhere))
+const pending = computed(() => (props.answer || moot.value ? undefined : props.c.proposal))
 // An answer made before titles were kept: 'Workflow change'.
-const title = computed(() => (pending.value ? changeTitle(pending.value.changes) : props.answer?.title ?? 'Workflow change'))
-const summary = computed(() => (pending.value ? [changeHeadline(pending.value.changes ?? { all: [], types: [] })].filter(Boolean) : props.answer?.summary ?? []))
+const title = computed(() => (pending.value || moot.value ? changeTitle((pending.value ?? props.c.proposal)?.changes) : props.answer?.title ?? 'Workflow change'))
+const summary = computed(() => {
+  const p = pending.value ?? (moot.value ? props.c.proposal : undefined)
+  return p ? [changeHeadline(p.changes ?? { all: [], types: [] })].filter(Boolean) : props.answer?.summary ?? []
+})
 // The task type drawn: the first one changed.
 const drawn = computed(() => pending.value?.changes?.types[0]?.type ?? Object.keys(pending.value?.template?.taskTypes ?? {})[0])
 const outcome = computed(() => {
   const a = props.answer
-  if (!a) return ''
+  if (!a) return moot.value ? tl(`Answered elsewhere: ${moot.value}`) : ''
   const what = ({ accepted: tl('Accepted'), refused: tl('Refused'), replaced: tl('Replaced') } as Record<string, string>)[a.outcome] ?? tl('Refused: the workflow changed since')
   return `${what} ${a.by === 'user' || !a.by ? tl('by you') : `${tl('by')} ${a.by}`} · ${fmtDateTime(a.at)}`
 })

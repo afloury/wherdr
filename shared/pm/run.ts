@@ -18,6 +18,7 @@ import type { Recovery } from './incident'
 import type { Parked } from './park'
 import { uiGuide } from './uiGuide'
 import type { StateEvent } from './onState'
+import type { RepliedMark } from './elsewhere'
 
 // Who made a task: the user (the board, their turn), the coordinator in a
 // wake, an automation, a mission.
@@ -95,6 +96,7 @@ export interface Task {
   tldrHeld?: true // a new one waits for the pace of the Claude account
   question?: string // its agent's last message while it waits on a question, whole (Markdown)
   questionTldr?: TaskTldr // that question in a few plain lines, per question (summary.ts)
+  replied?: RepliedMark // the user answered its agent in its session (pmReply.ts): the review entry says so until the agent reports, gives a verdict or asks again (repliedOpen); never moves the task
   recovery?: Recovery // its agent gone with an incident: the engine resumes it (recovery.ts)
   archived?: number // when the engine archived it, done for its project's delay: off the board (archive.ts)
   unarchived?: number // when the user brought it back to Done: its delay runs again from then
