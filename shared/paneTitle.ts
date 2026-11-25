@@ -1,4 +1,5 @@
 import type { Pane } from './types'
+import { CMD_GENERIC_TITLES } from './cmdAliases'
 
 // A URI carrying credentials ("http://user:pass@host:3128", a proxy
 // export pasted as a name) leaks the password onto every surface the
@@ -10,7 +11,7 @@ export const cleanTitle = (title: string | null | undefined) =>
   maskCreds((title || '').replace(/^[^\p{L}\p{N}~/]+/u, '').trim())
 
 const SHELLS = new Set(['sh', 'bash', 'zsh', 'fish', 'dash', 'ksh', 'tcsh', 'csh', 'nu', 'pwsh', 'login', 'tmux', 'screen'])
-const GENERIC_AGENTS = new Set(['claude', 'claude code', 'codex', 'gemini', 'gemini cli', 'opencode', 'kimi', 'agent', 'agy', 'antigravity'])
+const GENERIC_AGENTS = new Set(['claude', 'claude code', 'codex', 'gemini', 'gemini cli', 'opencode', 'kimi', 'agent', 'agy', 'antigravity', ...CMD_GENERIC_TITLES])
 
 const baseName = (dir: string | null | undefined) =>
   (dir || '').replace(/\\/g, '/').replace(/\/+$/, '').split('/').pop() || ''
@@ -68,7 +69,13 @@ function titleOf(p: Pane, agentFallback: (kind: string) => string): string {
   if (p.agent && shown && !GENERIC_AGENTS.has(shown.toLocaleLowerCase()) && shown.toLocaleLowerCase() !== p.agent.toLocaleLowerCase()) return shown
   const title = meaningfulTitle(p)
   if (title) return title
-  if (p.agent) return p.name && p.name !== p.agent ? p.name : agentFallback(p.agent)
+  if (p.agent) {
+    const name = p.name
+    // A Command Code pane is often named after the agent itself ("cmd",
+    // "Command Code"): that name says nothing, its kind label does.
+    if (name && name !== p.agent && !(p.agent === 'cmd' && CMD_GENERIC_TITLES.includes(name.toLocaleLowerCase()))) return name
+    return agentFallback(p.agent)
+  }
   if (p.command) return p.command
   return baseName(p.cwd) || (p.cwd ? '/' : 'Shell')
 }
@@ -79,6 +86,7 @@ function kindLabel(kind: string | null) {
   if (kind === 'opencode') return 'OpenCode'
   if (kind === 'gemini') return 'Gemini CLI'
   if (kind === 'kimi') return 'Kimi'
+  if (kind === 'cmd') return 'Command Code'
   if (kind === 'agy') return 'Antigravity'
   return kind ? kind[0]!.toUpperCase() + kind.slice(1) : 'Shell'
 }
