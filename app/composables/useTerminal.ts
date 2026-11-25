@@ -28,8 +28,11 @@ import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
 import { createWheelPacer, trackSgrMouse, wheelReports, type SgrMouse } from '~/utils/terminalWheel'
 import { virtualNavigationBytes, virtualNavigationKeys } from '~/utils/keybarKeys'
 import { createCompositionTracker, toggleVirtualModifier, virtualChord, virtualInputKey, type VirtualModifier } from '~/utils/terminalModifiers'
+import { kbOpen } from './useViewport'
 
 const CORE_SCROLLBACK = 5000
+// Coalesce resize bursts into one WebGL atlas + viewport rebuild after they settle.
+export const REPAINT_SETTLE_MS = 150
 
 export interface Banner { text: string, btn: string, fn: () => void }
 
@@ -332,6 +335,33 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     await sendKeys([chord])
   }
 
+  let repaintTimer: ReturnType<typeof setTimeout> | undefined
+  let kbRepaintRaf = 0
+  function cancelRepaint() {
+    clearTimeout(repaintTimer)
+    repaintTimer = undefined
+    if (kbRepaintRaf) {
+      cancelAnimationFrame(kbRepaintRaf)
+      kbRepaintRaf = 0
+    }
+  }
+  // A resize reallocates the WebGL canvas, and opening/closing the phone
+  // keyboard clips or uncovers it; on some mobile GPUs (Adreno 830, Chrome
+  // Android) the glyph atlas or drawing buffer holds noise/blank tiles until
+  // rebuilt once after the change settles.
+  function repaintNow() {
+    clearTimeout(repaintTimer)
+    repaintTimer = undefined
+    if (!term || !webgl || disposed) return
+    term.clearTextureAtlas()
+    if (term.rows > 0) term.refresh(0, term.rows - 1)
+  }
+  function scheduleRepaint() {
+    if (!term || !webgl || disposed) return
+    clearTimeout(repaintTimer)
+    repaintTimer = setTimeout(repaintNow, REPAINT_SETTLE_MS)
+  }
+
   function fitNow(send: boolean) {
     if (!term || !fit || !el || !el.parentElement) return
     // Measured on the parent of .xterm (#term), not .xterm itself (as FitAddon does).
@@ -341,7 +371,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     const p = proposeTerminalSize(term)
     if (!p || !p.cols || !p.rows) return
     const d = { cols: p.cols, rows: p.rows }
-    if (!coreStream && (d.cols !== term.cols || d.rows !== term.rows)) term.resize(d.cols, d.rows)
+    if (!coreStream && (d.cols !== term.cols || d.rows !== term.rows)) {
+      term.resize(d.cols, d.rows)
+      scheduleRepaint()
+    }
     if (send && (d.cols !== lastSize.cols || d.rows !== lastSize.rows)) {
       if (sendTerm({ type: 'terminal.resize', cols: d.cols, rows: d.rows })) lastSize = { cols: d.cols, rows: d.rows }
     }
@@ -351,6 +384,16 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   // Theme change while the terminal is shown.
   watch(terminalTheme, (th) => { if (term) term.options.theme = th })
+  // Keyboard open/close clips or uncovers the WebGL canvas: rebuild once the
+  // layout has settled, whatever the grid did.
+  watch(kbOpen, (open, wasOpen) => {
+    if (open === wasOpen || !term || disposed) return
+    if (kbRepaintRaf) cancelAnimationFrame(kbRepaintRaf)
+    kbRepaintRaf = requestAnimationFrame(() => {
+      kbRepaintRaf = 0
+      repaintNow()
+    })
+  }, { flush: 'post' })
   // The preference changes the width in pixels, then FitAddon re-measures.
   watch(contentWidth, () => nextTick(() => fitNow(true)))
 
@@ -442,7 +485,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         })
         term.loadAddon(addon)
         // Backing store at CSS size × devicePixelRatio, whatever the browser reports.
-        guardWebglCanvasSize(addon)
+        guardWebglCanvasSize(addon, undefined, scheduleRepaint)
         webgl = addon
         webglDropped = false
         webglDroppedAt = null
@@ -547,6 +590,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
           resized: () => {
             if (term !== current) return
             if (smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
+            scheduleRepaint()
             if (coreStream) offerFit()
             syncWebgl()
           },
@@ -697,6 +741,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   function dispose() {
     el?.removeEventListener('paste', clearVirtualModifiers, true)
     disposed = true
+    cancelRepaint()
     if (mounting) loading.value = false
     mounting = false
     takeoverQueued = false
