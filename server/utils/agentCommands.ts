@@ -174,8 +174,8 @@ export function createAgentCommands(deps: AgentCommandsDeps): AgentCommands {
     const key = [machine, agent, cwd].join('\0')
     const hit = entries.get(key)
     if (hit && now() - hit.at < hit.ttl) return hit.list
-    // `coreShell` without a machine name runs on the machine of herdr-core itself.
-    const asked = ask(coreShell(deps.call, machine), agent, cwd).catch((): SlashList => ({ agent, commands: [], error: 'unavailable' }))
+    // A local terminal (no machine in its address) runs on the machine of herdr-core itself.
+    const asked = ask(coreShell(deps.call, machine || null), agent, cwd).catch((): SlashList => ({ agent, commands: [], error: 'unavailable' }))
     const entry = { at: now(), ttl: Infinity, list: asked }
     void entry.list.then((l) => { entry.at = now(); entry.ttl = l.error ? FAIL_TTL_MS : OK_TTL_MS })
     entries.delete(key)
