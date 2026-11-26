@@ -69,6 +69,22 @@ describe('declared files', () => {
     finally { fs.rmSync(dir, { recursive: true, force: true }) }
   })
 
+  it('a worktree\'s changes leave out what merging another branch (staging) brought in', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-files-'))
+    const git = (...a: string[]) => execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=user@example.com', ...a], { stdio: 'pipe' }).toString().trim()
+    const put = (f: string) => fs.writeFileSync(path.join(dir, f), f)
+    try {
+      git('init', '-q', '-b', 'main'); put('a'); git('add', '.'); git('commit', '-qm', 'a')
+      git('switch', '-qc', 'staging'); put('infra'); git('add', '.'); git('commit', '-qm', 'infra')
+      git('switch', '-q', 'main'); git('switch', '-qc', 'task/X-1'); git('config', 'branch.task/X-1.wherdrstart', git('rev-parse', 'HEAD'))
+      put('mine'); git('add', '.'); git('commit', '-qm', 'mine')
+      git('merge', '-q', '--no-edit', 'staging'); put('new')
+      const out = execFileSync('sh', ['-c', FILES_SCRIPT, 'sh', dir, 'task/X-1', path.join(dir, 'none.txt'), 'main']).toString()
+      expect(parseFilesRead(out).changed).toEqual(['mine', 'new'])
+    }
+    finally { fs.rmSync(dir, { recursive: true, force: true }) }
+  })
+
   it('counts only what differs from origin\'s base, fetched now, even from a stale local base and with no base named', () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pm-files-'))
     const origin = path.join(root, 'origin.git'), up = path.join(root, 'up'), dir = path.join(root, 'wt')
