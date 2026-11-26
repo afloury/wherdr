@@ -19,11 +19,11 @@ import { SNOOZE_MAX_MS, dismiss, hideOf, readHidden, reviewKey, show, snooze, sn
 
 afterAll(() => fs.rm(dir, { recursive: true, force: true }))
 
-const card = (over = {}) => ({ id: 'CO-1', step: 'work', yourTurn: 'Check work: over 3h', state: { at: 1, started: true, since: 10, deadline: 20, proofs: {}, rounds: {} }, ...over })
+const card = (over = {}) => ({ id: 'CO-1', step: 'work', yourTurn: 'Check work: over 3h', state: { at: 1, started: true, since: 10, deadline: 20, proofs: {}, rounds: {}, yourTurn: { reason: 'timeout' as const, badge: 'Check work: over 3h' } }, ...over })
 
 it('a snooze ends at its time; a dismissal ends when something new happens on the task', () => {
   const c = card()
-  const snoozed = snooze({}, 'CO-1', 5000, 1000)
+  const snoozed = snooze({}, c, 5000, 1000)
   expect(hideOf(snoozed, c, 4999)).toEqual({ kind: 'snoozed', until: 5000 })
   expect(hideOf(snoozed, c, 5000)).toBeUndefined()
   const dismissed = dismiss({}, c, 1000)
@@ -34,6 +34,16 @@ it('a snooze ends at its time; a dismissal ends when something new happens on th
   expect(hideOf(dismissed, card({ asks: { kind: 'question', text: 'Which one?' } }), 1)).toBeUndefined()
   expect(reviewKey(c)).toBe(reviewKey(card()))
   expect(hideOf(show(dismissed, 'CO-1'), c, 1)).toBeUndefined()
+})
+
+it('a pause that moves the deadline is nothing new; a snooze ends early on something new', () => {
+  const waits = card({ yourTurn: 'Approve the plan', state: { at: 1, started: true, since: 10, deadline: 20, proofs: {}, rounds: {}, yourTurn: { reason: 'user' as const, badge: 'Approve the plan' } } })
+  const dismissed = dismiss({}, waits, 1000)
+  expect(hideOf(dismissed, { ...waits, state: { ...waits.state, deadline: 80 } }, 2000)).toEqual({ kind: 'dismissed' })
+  const snoozed = snooze({}, waits, 5000, 1000)
+  expect(hideOf(snoozed, { ...waits, state: { ...waits.state, deadline: 80 } }, 2000)).toEqual({ kind: 'snoozed', until: 5000 })
+  expect(hideOf(snoozed, { ...waits, asks: { kind: 'question', text: 'Which one?' } }, 2000)).toBeUndefined()
+  expect(readHidden(JSON.stringify(snoozed))).toEqual(snoozed)
 })
 
 it('keeps what is stored small and valid', () => {

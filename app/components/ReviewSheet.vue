@@ -65,7 +65,8 @@ const fixing = ref<Record<string, string>>({})
 // Answered here from its To do (Try again, a choice): it leaves as the board says, not as handled
 // elsewhere. Only the task on screen, after an action that went through (a refusal clears it).
 let acted = ''
-const waiting = computed(() => (data.value?.cards ?? []).filter(c => reviewWaits(c) && !handled.value.includes(c.id) && fixing.value[c.id] !== c.yourTurn))
+// Tasks that need the user now (a login, a payment… NeedsYouCard) come first, the rest keep the board's order.
+const waiting = computed(() => (data.value?.cards ?? []).filter(c => reviewWaits(c) && !handled.value.includes(c.id) && fixing.value[c.id] !== c.yourTurn).sort((a, b) => +!!b.needsHuman - +!!a.needsHuman))
 const live = computed(() => waiting.value.filter(c => reviewShows(filter.value, c.project)))
 // What the user hid under this filter (Card.hidden): off the list and the counts, one tap to bring back.
 const hiddenCards = computed(() => (data.value?.cards ?? []).filter(c => c.yourTurn && !c.state?.done && c.hidden && reviewShows(filter.value, c.project)))
@@ -263,6 +264,10 @@ function onKey(e: KeyboardEvent) {
           <UButton v-if="!gone" icon="i-lucide-eye-off" color="neutral" variant="ghost" size="lg" class="icon-btn" :disabled="hiding" :aria-label="tl('Dismiss')" :title="tl('Dismiss until something new happens')" data-testid="review-dismiss" @click="hide({ dismiss: true })" />
         </header>
         <p v-if="gone" class="muted review-gone" data-testid="review-gone">{{ tl(`Handled elsewhere: ${gone}`) }}</p>
+        <p v-if="card.needsHuman" class="review-needs" data-testid="review-needs">
+          <b>{{ tl(`Needs you now: ${card.needsHuman.kind}`) }}</b>
+          <a v-if="/^https?:\/\//.test(card.needsHuman.url ?? '')" :href="card.needsHuman.url" target="_blank" rel="noopener" data-testid="review-needs-url">{{ card.needsHuman.url }}</a>
+        </p>
         <div class="review-scroll">
         <template v-if="approves">
           <LookAgainBanner v-if="card.state?.lookAgain" :look="card.state.lookAgain" />
@@ -341,6 +346,8 @@ function onKey(e: KeyboardEvent) {
 @media (pointer: coarse) { .review-head .icon-btn { width: 44px; height: 44px; } .review-hidden button { min-height: 44px; min-width: 44px; } }
 .review-hidden { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 12px/1.4 var(--mono); }
 .review-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font: 12px/1.4 var(--mono); }
+.review-needs { display: flex; flex-wrap: wrap; gap: 4px 12px; min-width: 0; color: var(--blocked); font: 12px/1.4 var(--mono); overflow-wrap: anywhere; }
+.review-needs a { color: var(--accent); }
 .review-meta a { color: var(--accent); }
 /* All done: icon, title, line and button grouped, centred in the body; the button at its own size. */
 .review-done { display: flex; flex-direction: column; align-items: center; justify-content: center; align-self: center; gap: 8px; padding: 32px 0; text-align: center; }

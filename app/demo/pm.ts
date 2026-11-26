@@ -72,7 +72,7 @@ export class DemoPm {
     const until = snoozeEnd(body.until, now)
     if (body.show) this.hidden = show(this.hidden, t.id)
     else if (body.dismiss) this.hidden = dismiss(this.hidden, this.board().cards.find(c => c.id === t.id)!, now)
-    else if (until !== undefined) this.hidden = snooze(this.hidden, t.id, until, now)
+    else if (until !== undefined) this.hidden = snooze(this.hidden, this.board().cards.find(c => c.id === t.id)!, until, now)
     else return { status: 400, body: { error: 'until, dismiss or show', code: 'bad_input' } }
     return ok({ ok: true })
   }

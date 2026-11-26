@@ -1237,9 +1237,10 @@ without waiting for the engine's next pass.
 
 Each item has a clock (**Snooze**: 1 hour, 4 hours, until tomorrow at 8:00) and an eye
 (**Dismiss**). Both act on the entry only, never on the task, its step or its agent. A
-snoozed item comes back when its time ends, if it still waits for you. A dismissed one
-stays away until something new happens on the task: a new step, a new block or
-question, a new timeout. They are kept on the server, so every device and every count
+snoozed item comes back when its time ends, if it still waits for you, or sooner when
+something new happens on the task. A dismissed one stays away until something new
+happens on the task: a new step, a new block or question, a new timeout. A pause that
+only moves the step's deadline is nothing new. They are kept on the server, so every device and every count
 (Home's card, the board's *To review*) follows. *N hidden* under the filter
 has **Show**, which brings them all back.
 
@@ -1288,6 +1289,7 @@ it follows you across devices like the Board's picker.
   the screenshots follow the same rules as *Send back*, and the task leaves
   Tasks to review at once, back when its next review is done; the log keeps
   your words.
+  Every other step that waits for you (*It works*, *Approve design*…) has the same note field and *Send back* under its button, in the sheet's To do and in Tasks to review, with the same effect.
   With no TL;DR yet, the **Worker's note** (its closing report: what
   was done, why it is done, what was tested) and the **Reviewer's note** (the
   verdict, what it sent back and was fixed during the rounds, what it left as
@@ -1597,6 +1599,21 @@ its clock stops: such a task never shows *over 3h*, it shows what it waits
 for, and the limit goes on from where it stopped once the agent can work
 again. The time in step shown on the card stays the real time.
 
+### A task that needs a person
+
+A worker that cannot go on without you (a login, a passkey, 2FA, a payment, an
+admin's approval) says so: `hc label "$HC_TERMINAL_ID" "wherdr.report=needs-human: login https://example.com/sign-in"`
+(`needs-human: <kind> <url>`; its instructions say how). Unlike `blocked:on`,
+the task is not parked: its worker stays where it is.
+
+- You get a push straight away, whatever conversation is on screen, with a link
+  to the task (subject to the *Needs you* notification rule), and again 5 and 15
+  minutes later if it is still open;
+- the task shows in **Needs you now**, its own card on Home above *Tasks to
+  review*, and first in Tasks to review, with the kind and the link;
+- the worker ends it with `wherdr.report=needs-human: clear` once you are through
+  and it works again; the task being done or stopped ends it too.
+
 ### A task waiting for another task
 
 A worker that finds halfway that it needs something from another task or
@@ -1619,6 +1636,13 @@ worker is told, and the coordinator gets one wake with a decision: pull the
 shared contract (proto, API, schema) into its own task both wait for, or merge
 the two tasks into one. If it cannot decide, it tells you both options and leaves the wake unanswered:
 you also get the *coordinator is not answering* notification.
+
+A coordinator can park a started task **stopped at its worker's step** the same
+way: `wherdr pm task edit <task> --after <task> --reason "…"`. Use it to defer
+work ("do X after Y") instead of `task stop`, which lands the task in your Tasks
+to review. Refused for a working task, one waiting on an agent's question or a
+permission (that stays yours), one stopped at another step (the review), and,
+in a wake, one you stopped yourself.
 
 ### A task paused for room
 

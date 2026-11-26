@@ -4,13 +4,20 @@
 
 - **Terminal view**: the real terminal of the hc terminal (xterm.js, WebGL or DOM renderer),
   attached through core's `terminal.attach` on a connection of its own. Every agent has it;
-  `` Ctrl+` `` switches between conversation and terminal.
+  `` Ctrl+` `` switches between conversation and terminal. With the WebGL renderer, the glyph
+  atlas is rebuilt once after resizes settle (a divider drag gives one repaint) and once after
+  the phone keyboard opens or closes: some mobile GPUs otherwise keep garbled or blank glyphs
+  until then.
 - **Shared with other viewers**: each viewer (phone, computer, herdr-app) has its own
   connection, so several work at once. A viewer opens at the terminal's current size and does
-  not resize it until you **take control**: by typing in the terminal or the message field,
-  pressing a key of the key bar, or **Fit to this screen** in the banner ("Shown at the size of
-  another screen."). When another viewer then sets its size, the banner comes back. **Take
-  control of this terminal** and **Reconnect** are also in the agent's **…** menu.
+  not resize it until you **take control**: by typing in the terminal (or in the message field
+  from the conversation view, never under the terminal), pressing a key of the key bar, or
+  **Fit to this screen** in the banner ("Shown at the size of another screen."). When another
+  viewer then sets its size, the banner comes back. A grid whose WebGL canvas is too large for
+  a drawing buffer (for instance, a 200×120 pane on a high-density phone) is drawn by xterm's
+  DOM renderer instead, so its text stays visible; **Fit to this screen** shrinks it and WebGL
+  comes back. **Take control of this terminal** and
+  **Reconnect** are also in the agent's **…** menu.
 - **Input**: keys go to core with `terminal.keys`, text with `terminal.send` (never retried),
   Stop with `terminal.interrupt`. The history the terminal received is scrolled locally, with the
   wheel or by touch. A program that tracks the mouse in its own full screen (Claude Code's
@@ -21,7 +28,7 @@
   Claude Code's wheel acceleration, so a trackpad flick moves as far as the fingers and stops
   when they do. Other programs get one wheel event per row.
 - **Copy and links**: on a computer, drag over the text on screen to select it: releasing the
-  button copies it, as do `⌘C` / `Ctrl+Shift+C`. Links (OSC 8 hyperlinks and plain `http(s)://`
+  button copies it (**Settings › Conversation › Display › Copy on select**, on by default on a computer), as do `⌘C` / `Ctrl+Shift+C`. Links (OSC 8 hyperlinks and plain `http(s)://`
   URLs, even wrapped over several rows) open in a new tab with `⌘`+click / `Ctrl`+click, or a tap
   on a phone; only http and https open. A long line wrapped by the width is copied in one piece.
 - **Keep after restart** (agent's **…** menu): a kept terminal comes back as a shell when core

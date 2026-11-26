@@ -415,15 +415,15 @@ export async function reviewHide(store: PmStore, body: { id?: unknown, until?: u
   const id = typeof body.id === 'string' ? body.id : ''
   const task = id ? await store.task(id) : undefined
   if (!task) throw new HerdrError('not_found', `No task ${id || ''}`.trim())
-  const card = body.dismiss ? (await board(store)).cards.find(c => c.id === id) : undefined
-  if (body.dismiss && !card?.yourTurn) throw new HerdrError('bad_input', 'Nothing waits for you on this task')
+  const card = body.show ? undefined : (await board(store)).cards.find(c => c.id === id)
+  if (!body.show && !card?.yourTurn) throw new HerdrError('bad_input', 'Nothing waits for you on this task')
   const until = body.until === undefined ? undefined : snoozeEnd(body.until, now)
   if (body.until !== undefined && until === undefined) throw new HerdrError('bad_input', 'until: a time in the future, within a month')
   if (!body.show && !body.dismiss && until === undefined) throw new HerdrError('bad_input', 'until, dismiss or show')
   const known = new Set((await store.tasks()).map(t => t.id))
   await patchSettings((cur) => {
     const h = readHidden(cur.reviewHidden)
-    const next = body.show ? showHidden(h, id) : body.dismiss ? dismiss(h, card!, now) : snooze(h, id, until!, now)
+    const next = body.show ? showHidden(h, id) : body.dismiss ? dismiss(h, card!, now) : snooze(h, card!, until!, now)
     return { reviewHidden: writeHidden(next, now, k => known.has(k)) }
   })
 }

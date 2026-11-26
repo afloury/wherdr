@@ -26,9 +26,11 @@ export interface PromptDetail {
 }
 // `multi`: checkboxes (omp); a choice checks or unchecks, Enter moves on.
 // `typing`: omp's free-text answer field is open (single option: `free`).
+// `form`: read from omp's HTML-form ask: a free row (Other, a text field) takes its text where the
+// cursor stands, no Enter before it.
 // `tabs`: tabs of omp's multi-question "Ask" box (the last one is Submit),
 // `tab` the one shown; ←/→ move between them.
-export interface Choices { identity?: string, unavailable?: boolean, question: string | null, cursor: number, options: ChoiceOption[], kind?: 'self-update', detail?: PromptDetail, multi?: boolean, typing?: boolean, tabs?: string[], tab?: number }
+export interface Choices { identity?: string, unavailable?: boolean, question: string | null, cursor: number, options: ChoiceOption[], kind?: 'self-update', detail?: PromptDetail, multi?: boolean, typing?: boolean, form?: boolean, tabs?: string[], tab?: number }
 
 // Waiting screen of an agent (Codex at startup: hooks, folder trust,
 // login…). `other`: unrecognized screen,
@@ -264,6 +266,12 @@ export interface ChatItem {
   text: string
   ts: string | null
   name?: string
+  // Tool call id: lets a result appended after the page was loaded update
+  // the item already shown (see toolUpdates).
+  toolId?: string
+  // Revision (absolute result byte offset) of the outcome applied to this
+  // tool call — compared when late outcomes arrive.
+  toolAt?: number
   // Output of a 'bash' or 'cmd' command (stdout / stderr).
   out?: string
   err?: string
@@ -314,6 +322,21 @@ export interface OmpToolView {
 // the entry is one of wherdr's messages with photos.
 export interface ClaudeQueueEntry { text: string, ts: string | null, images?: number, sent?: string }
 
+// Outcome of a tool call appended after its call was served (see
+// ChatResponse.toolUpdates). Not specific to one reader: any transcript that
+// can report a late result by call id can reuse it.
+export interface ToolUpdate {
+  id: string
+  // Absolute byte offset of the result this outcome comes from: its
+  // revision — an older offset arriving later must not replace a newer one.
+  at?: number
+  out?: string
+  error?: boolean
+  images?: number
+  ref?: string
+  imageAt?: number
+}
+
 export interface ChatResponse {
   available: boolean
   // 'no_integration': not found, and Herdr's integration of this agent is
@@ -347,6 +370,9 @@ export interface ChatResponse {
   // Claude: entries of the most recent window pulled back out of its queue
   // into the input field and not queued again.
   popped?: ClaudeQueueEntry[]
+  // Results appended after a tool page was loaded, matched by `toolId`, so
+  // the client can update items already on screen.
+  toolUpdates?: ToolUpdate[]
   model?: ModelInfo | null
 }
 
