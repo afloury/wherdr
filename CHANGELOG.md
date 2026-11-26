@@ -18,6 +18,10 @@ All notable changes to this project are documented here. The format follows
 - **omp takes a role alias as its model.** `prefs.model`, `reviewModel` and `reviewFallbackModel` accept an omp role alias of its own config (`@standard`, `@plan:high`) when the agent is omp, so a workflow follows the user's role setup instead of a pinned model id. Other agents still need a model name.
 - **A missing omp browser relay is a machine problem.** A task whose workflow sets `prefs.browser` to `"relay"` now checks, before it starts, that the relay's native host is registered in Chrome, Chromium or Brave. When it is not (an omp update can unregister it), the start is refused with "browser relay: …" like any other machine readiness failure, instead of the agent asking whether the relay is on.
 
+### Improved
+
+- **A coordinator can defer a started task.** `wherdr pm task edit <task> --after <task>` now works on a task stopped at its worker's step: it is parked behind those tasks, leaves Tasks to review, and goes on in the same conversation once they are done. The coordinator's role text and `task stop`'s help now say that a stop lands in Tasks to review, and that "do X after Y" is an `--after`.
+
 ### Fixed
 
 - **An incident says offline, not unknown, when the machine is unreachable.** A "terminal not found" on a remote machine whose connection wherdr's own check had already lost was classed unknown while herdr-core's list still said connected. It is now offline, with the failed check as evidence.
