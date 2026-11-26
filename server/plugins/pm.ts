@@ -22,6 +22,7 @@ import { wakeTick } from '../utils/pmWakes'
 import { mechanicTick } from '../utils/pmMechanic'
 import { pmStore } from '../utils/pmStore'
 import { decisionsTick } from '../utils/pmDecisions'
+import { needsHumanTick } from '../utils/pmNeedsHuman'
 import { automationTick } from '../utils/pmAutomations'
 import { resumeMerges } from '../utils/pmBoard'
 import { mergesSettled } from '../utils/pmActions'
@@ -72,11 +73,12 @@ export default defineNitroPlugin((nitroApp) => {
   const wakes = every('wakes', 30_000, () => wakeTick({ ...coreAdminDeps(), store: pmStore() }))
   const mechanic = every('mechanic', 60_000, doing => mechanicTick({ ...coreAdminDeps(), store: pmStore() }, Date.now(), doing))
   const decisions = every('decisions', 30_000, () => decisionsTick(pmStore()))
+  const needsHuman = every('needs-human', 30_000, () => needsHumanTick(pmStore()))
   const automations = every('automations', 30_000, () => automationTick({ ...coreAdminDeps(), store: pmStore() }))
   const summaries = every('summaries', 60_000, () => summaryTick({ store: pmStore() }))
   const orphans = every('orphans', 300_000, () => sweepOrphans({ ...coreAdminDeps(), store: pmStore() }))
   nitroApp.hooks.hook('close', async () => {
-    clearInterval(timer); clearInterval(wakes); clearInterval(mechanic); clearInterval(decisions); clearInterval(automations); clearInterval(summaries); clearInterval(orphans)
+    clearInterval(timer); clearInterval(wakes); clearInterval(mechanic); clearInterval(decisions); clearInterval(needsHuman); clearInterval(automations); clearInterval(summaries); clearInterval(orphans)
     await mergesSettled(MERGE_WAIT_MS)
   })
 })
