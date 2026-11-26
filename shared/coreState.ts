@@ -6,10 +6,30 @@ import type { HerdrState, MachineInfo, Pane } from './types'
 import { cleanTitle, maskCreds } from './paneTitle'
 import { LABEL } from './pm/run'
 import { CODEX_UPDATED_LABEL, codexInstalling } from './codexLaunch'
+import { canonicalCmdAgent, cmdProgramFromArgv } from './cmdAliases'
 
 export interface CoreMachine { name: string; state: string; why?: string }
 // Lossless encoding keeps IDs stable across inventory order and core restarts.
 const key = (value: string) => Array.from(new TextEncoder().encode(value), b => b.toString(16).padStart(2, '0')).join('')
+const KNOWN_AGENTS = ['claude', 'codex', 'omp', 'devin', 'opencode', 'gemini', 'aider', 'agy', 'hermes']
+const baseName = (c: string | null | undefined) => c?.split('/').pop() || undefined
+const canonical = (s: string) => s.replace(/^claude-code$/, 'claude').replace(/^gemini-cli$/, 'gemini')
+  .replace(/^antigravity(?:-cli)?$/, 'agy')
+// Core's agent field is an opaque kind, not an argv path: known aliases are
+// normalized, an unknown "custom/tool" stays exactly as declared.
+const canonicalAgent = (c: string | null | undefined) => (c ? canonicalCmdAgent(c) ?? canonical(c) : undefined)
+const commandAgent = (c: string | null | undefined) => {
+  const name = baseName(c)
+  return name ? canonicalCmdAgent(name) ?? canonical(name) : undefined
+}
+// The launch template and the app a status reports declare a kind too: a bare
+// `cmd` there is Command Code, while the same word inside a command line below
+// never is.
+const declaredAgent = (c: string | null | undefined) => {
+  const name = commandAgent(c)
+  return name && (KNOWN_AGENTS.includes(name) || name === 'cmd') ? name : null
+}
+
 // Placement of a terminal, in this order: its herdr.space / herdr.tab labels, the tab
 // of the machine's herdr-app document whose layout holds it, then its folder
 // (one workspace per folder, one tab per terminal, or one tab per wherdr.tab
@@ -53,7 +73,11 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], do
     const commands = [terminal.template, terminal.status?.app, ...(terminal.foreground?.argv ?? []), ...(terminal.argv ?? [])]
     // Codex exited after updating itself: a shell now, kept for its restart card.
     const updated = Boolean(terminal.labels?.[CODEX_UPDATED_LABEL]) && !terminal.agent
-    const agent = updated ? 'codex' : (terminal.agent === 'antigravity' || terminal.agent === 'antigravity-cli' ? 'agy' : terminal.agent) || (commands.map(c => c?.split('/').pop()?.replace(/^claude-code$/, 'claude').replace(/^gemini-cli$/, 'gemini').replace(/^antigravity(-cli)?$/, 'agy')).find(c => c && ['claude', 'codex', 'omp', 'devin', 'opencode', 'gemini', 'aider', 'agy', 'hermes'].includes(c)) ?? null)
+    const agent = updated ? 'codex'
+      : canonicalAgent(terminal.agent)
+        ?? declaredAgent(terminal.template) ?? declaredAgent(terminal.status?.app)
+        ?? cmdProgramFromArgv(terminal.foreground?.argv) ?? cmdProgramFromArgv(terminal.argv)
+        ?? (commands.map(commandAgent).find(c => c && KNOWN_AGENTS.includes(c)) ?? null)
     if (!result.tabs!.some(t => t.id === tab)) {
       result.tabs!.push({ id: tab, workspace, machine, label: maskCreds(docTab?.name || coreTitle(terminal)), ...(docTab?.name ? { docName: true as const } : {}), number: result.tabs!.length + 1, layout: null })
       if (docTab) order.set(tab, space!.tabs!.indexOf(docTab))
