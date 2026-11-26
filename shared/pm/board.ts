@@ -21,6 +21,7 @@ import { needsHumanOpen, needsHumanTurn, type NeedsHuman } from './needsHuman'
 import { showIds } from './projectKey'
 import { questionKey } from './summary'
 import { MERGE_KINDS, mergedByStep } from './cleanup'
+import type { CardHide } from './reviewHide'
 
 export type Phase = 'todo' | 'working' | 'done'
 export const PHASES: Phase[] = ['todo', 'working', 'done']
@@ -43,6 +44,7 @@ export interface Card {
   starts?: AgentStart[] // each run of its worker and reviewer: when it started and its agent by name (History)
   released?: number // its worker was released to free memory, at (0: unknown): opening it starts it again (release.ts)
   yourTurn?: string // the badge
+  hidden?: CardHide // the user snoozed or dismissed its entry in Tasks to review: off the lists and counts, the task unchanged (reviewHide.ts)
   needsHuman?: Pick<NeedsHuman, 'kind' | 'url' | 'at'> // its worker cannot go on without a person: the *Needs you now* list (needsHuman.ts)
   stall?: Stall // stalled, the machine may still fix it (blocked.ts); past HANDLE_AFTER_MS, also its yourTurn
   userLabel?: string // the button of a step that waits for the user
@@ -221,7 +223,7 @@ export function shownTexts(projects: Parameters<typeof showIds>[0], c: Card): Ca
 }
 
 export interface ToHandle { id: string, shown: string, project: string, color?: string, title: string, action: string, label: string, terminal?: string, needsHuman?: Card['needsHuman'] }
-export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn).map(taskRow)
+export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn && !c.hidden).map(taskRow)
 // Any task as that row (a `task <ID>` block in a chat, ChatTaskCard.vue): in
 // Your turn, what to do and its short action; else where it stands and its column.
 export function taskRow(c: Card): ToHandle {

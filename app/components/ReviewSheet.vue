@@ -24,9 +24,15 @@
 // On a computer: one fixed size, only the task's content scrolls. While open,
 // the list keeps its order: what arrives goes at the end, and the task on screen
 // never changes by itself (handled elsewhere, it stays with a muted line).
+// Snooze (a clock: 1 hour, 4 hours, until tomorrow) and Dismiss (an eye) hide an
+// item for the user only, never the task, its step or its agent: kept on the
+// server (POST /api/pm/review-hide), so the counts and every device follow. A
+// snooze ends at its time; a dismissal until something new happens on the task.
+// Under the filter, "N hidden: Show" brings them all back.
 import { linkLabel, mayAccept, prLink, taskRow, type Board, type Card, type ToHandle } from '#shared/pm/board'
 import { reviewLine, reviewNote, workerNote } from '#shared/pm/report'
 import { shotMode } from '#shared/pm/shots'
+import type { MenuItem } from '~/composables/useUi'
 import { projectOption, type ProjectOption } from '~/utils/projectOption'
 
 const emit = defineEmits<{ closed: [] }>()
@@ -62,6 +68,8 @@ let acted = ''
 // Tasks that need the user now (a login, a payment… NeedsYouCard) come first, the rest keep the board's order.
 const waiting = computed(() => (data.value?.cards ?? []).filter(c => reviewWaits(c) && !handled.value.includes(c.id) && fixing.value[c.id] !== c.yourTurn).sort((a, b) => +!!b.needsHuman - +!!a.needsHuman))
 const live = computed(() => waiting.value.filter(c => reviewShows(filter.value, c.project)))
+// What the user hid under this filter (Card.hidden): off the list and the counts, one tap to bring back.
+const hiddenCards = computed(() => (data.value?.cards ?? []).filter(c => c.yourTurn && !c.state?.done && c.hidden && reviewShows(filter.value, c.project)))
 // The list while the sheet is open, in a stable order (the board's again once
 // closed): a task that arrives goes at the end, one that leaves drops out, but
 // the one on screen stays, as last read, with its Handled elsewhere line until
@@ -151,6 +159,43 @@ async function reject(note: string, shots: string[]) {
   if (!error.value) rejecting.value = false
   await leave(c, 'sent')
 }
+// Snooze or dismiss the one on screen: off the list at once, the server keeps it.
+const hiding = ref(false)
+function tomorrow() {
+  const d = new Date()
+  d.setDate(d.getDate() + 1)
+  d.setHours(8, 0, 0, 0)
+  return d.getTime()
+}
+const snoozes = [
+  { label: tl('1 hour'), until: () => Date.now() + 3_600_000 },
+  { label: tl('4 hours'), until: () => Date.now() + 4 * 3_600_000 },
+  { label: tl('Until tomorrow'), until: tomorrow },
+]
+const snoozeItems = (): MenuItem[] => snoozes.map(s => ({ label: s.label, icon: 'i-lucide-alarm-clock', run: () => hide({ until: s.until() }) }))
+async function hide(how: { until: number } | { dismiss: true }) {
+  const c = card.value
+  if (!c || hiding.value || busy.value || done.value || answering.value) return
+  hiding.value = true
+  error.value = ''
+  try {
+    await api('/api/pm/review-hide', { id: c.id, ...how })
+    dir.value = 1
+    handled.value = [...handled.value, c.id]
+    taskChanged()
+  }
+  catch (e) { error.value = (e as Error).message }
+  finally { hiding.value = false }
+}
+async function showHidden() {
+  const list = hiddenCards.value
+  try {
+    await Promise.all(list.map(c => api('/api/pm/review-hide', { id: c.id, show: true })))
+    handled.value = handled.value.filter(id => !list.some(c => c.id === id))
+  }
+  catch (e) { error.value = (e as Error).message }
+  taskChanged()
+}
 async function fix() {
   const c = card.value
   if (!c || busy.value || done.value || gone.value) return
@@ -204,12 +249,19 @@ function onKey(e: KeyboardEvent) {
     <div class="review review-sheet" data-testid="review-sheet">
       <ProjectSelect v-model="filter" :items="filterItems" size="lg" class="review-filter" :aria-label="tl('Tasks shown')" data-testid="review-filter" />
 
+      <p v-if="hiddenCards.length" class="muted review-hidden" data-testid="review-hidden">
+        <span>{{ tl(`${hiddenCards.length} hidden`) }}</span>
+        <UButton color="neutral" variant="link" size="lg" data-testid="review-show-hidden" @click="showHidden">{{ tl('Show') }}</UButton>
+      </p>
+
       <div class="review-stage" :data-motion="still ? 'fade' : 'slide'" data-testid="review-stage">
         <Transition :name="motion">
       <article v-if="card && row" :key="card.id" class="review-item" :data-task="card.id" :data-kind="approves ? 'approve' : 'answer'" data-testid="review-item">
         <header class="review-head">
           <ProjectBadge :text="card.shown" :color="card.color" copy />
           <h3>{{ card.title }}</h3>
+          <SpaceMenu v-if="!gone" :items="snoozeItems" :title="tl('Snooze')" icon="i-lucide-alarm-clock" :label="tl('Snooze')" size="lg" data-testid="review-snooze" />
+          <UButton v-if="!gone" icon="i-lucide-eye-off" color="neutral" variant="ghost" size="lg" class="icon-btn" :disabled="hiding" :aria-label="tl('Dismiss')" :title="tl('Dismiss until something new happens')" data-testid="review-dismiss" @click="hide({ dismiss: true })" />
         </header>
         <p v-if="gone" class="muted review-gone" data-testid="review-gone">{{ tl(`Handled elsewhere: ${gone}`) }}</p>
         <p v-if="card.needsHuman" class="review-needs" data-testid="review-needs">
@@ -290,6 +342,9 @@ function onKey(e: KeyboardEvent) {
 .review-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .review-head h3 { flex: 1; min-width: 0; margin: 0; font: 600 16px/1.3 var(--display); overflow-wrap: anywhere; }
 .review-gone { font: 12px/1.4 var(--mono); }
+.review-head .icon-btn { flex: none; }
+@media (pointer: coarse) { .review-head .icon-btn { width: 44px; height: 44px; } .review-hidden button { min-height: 44px; min-width: 44px; } }
+.review-hidden { display: flex; align-items: center; justify-content: space-between; gap: 8px; font: 12px/1.4 var(--mono); }
 .review-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font: 12px/1.4 var(--mono); }
 .review-needs { display: flex; flex-wrap: wrap; gap: 4px 12px; min-width: 0; color: var(--blocked); font: 12px/1.4 var(--mono); overflow-wrap: anywhere; }
 .review-needs a { color: var(--accent); }

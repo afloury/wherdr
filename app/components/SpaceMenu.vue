@@ -2,7 +2,7 @@
 // "…" button of a space, tab or pane: dropdown menu on a
 // computer with a mouse, sheet on a touch or narrow screen (`sheetMenus`). The
 // entries are computed on opening.
-const props = defineProps<{ items: () => MenuItem[], title?: string, label?: string, size?: 'sm' | 'md' | 'lg' }>()
+const props = defineProps<{ items: () => MenuItem[], title?: string, label?: string, size?: 'sm' | 'md' | 'lg', icon?: string }>()
 const dropdown = ref<ReturnType<typeof toDropdown>>([])
 function onOpen(o: boolean) {
   if (o) dropdown.value = toDropdown(props.items())
@@ -15,7 +15,7 @@ function openSheet() {
 
 <template>
   <UDropdownMenu v-if="!sheetMenus" :items="dropdown" :content="{ align: 'end', sideOffset: 6 }" :ui="{ content: 'hw-dropdown' }" @update:open="onOpen">
-    <UButton icon="i-lucide-ellipsis" color="neutral" variant="ghost" :size="size || 'md'" class="icon-btn space-menu" :aria-label="label || t('Options')" @click.stop />
+    <UButton :icon="icon || 'i-lucide-ellipsis'" color="neutral" variant="ghost" :size="size || 'md'" class="icon-btn space-menu" :aria-label="label || t('Options')" @click.stop />
   </UDropdownMenu>
-  <UButton v-else icon="i-lucide-ellipsis" color="neutral" variant="ghost" :size="size || 'md'" class="icon-btn space-menu" :aria-label="label || t('Options')" @click.stop="openSheet" />
+  <UButton v-else :icon="icon || 'i-lucide-ellipsis'" color="neutral" variant="ghost" :size="size || 'md'" class="icon-btn space-menu" :aria-label="label || t('Options')" @click.stop="openSheet" />
 </template>

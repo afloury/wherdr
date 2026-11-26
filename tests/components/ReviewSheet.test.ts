@@ -12,7 +12,7 @@ import ReviewSheet from '~/components/ReviewSheet.vue'
 import { coordinators } from '~/composables/useCoordinators'
 import { machineBarSaved, machineGroups } from '~/composables/useMachineBar'
 import { reviewFilter, reviewOpen, showReview } from '~/composables/useReview'
-import { lightboxSrc } from '~/composables/useUi'
+import { lightboxSrc, menuState } from '~/composables/useUi'
 import { taskSheetTick } from '~/composables/useTaskSheet'
 import { setToaster } from '~/composables/useHerdr'
 import { toHandle, type Card } from '#shared/pm/board'
@@ -39,9 +39,16 @@ registerEndpoint('/api/pm/step-user', { method: 'POST', handler: async (e) => {
   cards = cards.filter(c => c.id !== id)
   return { task: { id } }
 } })
+const hid: Record<string, unknown>[] = []
+registerEndpoint('/api/pm/review-hide', { method: 'POST', handler: async (e) => {
+  const b = await readBody(e) as { id: string, until?: number, dismiss?: boolean, show?: boolean }
+  hid.push(b)
+  cards = cards.map(c => (c.id !== b.id ? c : b.show ? { ...c, hidden: undefined } : { ...c, hidden: b.dismiss ? { kind: 'dismissed' as const } : { kind: 'snoozed' as const, until: b.until! } }))
+  return { ok: true }
+} })
 let sentBack: unknown
 registerEndpoint('/api/pm/step-back', { method: 'POST', handler: async (e) => { sentBack = await readBody(e); return { task: {} } } })
-afterEach(() => { reviewOpen.value = false; reviewFilter.value = null; accepted.length = 0 })
+afterEach(() => { hid.length = 0; reviewOpen.value = false; reviewFilter.value = null; accepted.length = 0 })
 
 const sheet = () => document.querySelector('[data-testid="review-sheet"]')
 const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`)
@@ -273,5 +280,36 @@ it('copies the task id from its badge, with the Copied toast, and the task stays
   expect(shown()).toBe('HO-1')
   setToaster(null as unknown as Parameters<typeof setToaster>[0])
   vi.unstubAllGlobals()
+  w.unmount()
+})
+
+it('snoozes or dismisses an item for the user only: it leaves the list and the counts, Show brings it back', async () => {
+  cards = [card('HO-1', 'home'), card('HO-2', 'home'), card('HO-3', 'home')]
+  const w = await mountSuspended(Home)
+  await expect.poll(() => w.find('[data-testid="review-count"]').exists() && w.find('[data-testid="review-count"]').text()).toBe('3')
+  await w.find('[data-testid="review-open"]').trigger('click')
+  await expect.poll(shown).toBe('HO-1')
+  expect(q('review-hidden')).toBeNull()
+  q('review-dismiss')!.click()
+  await expect.poll(shown).toBe('HO-2') // off the list at once
+  expect(hid).toEqual([{ id: 'HO-1', dismiss: true }])
+  await expect.poll(() => q('review-hidden')?.textContent).toContain('1 hidden')
+  expect(progress()).toBe('1 of 2')
+  await expect.poll(() => w.find('[data-testid="review-count"]').text()).toBe('2') // Home's count follows
+
+  q('review-snooze')!.click() // a clock: 1 hour, 4 hours, until tomorrow
+  await expect.poll(() => menuState.items.map(i => i.label)).toEqual(['1 hour', '4 hours', 'Until tomorrow'])
+  const before = Date.now()
+  menuState.items[1]!.run!()
+  await expect.poll(shown).toBe('HO-3')
+  const snoozed = hid[1] as { id: string, until: number }
+  expect(snoozed.id).toBe('HO-2')
+  expect(snoozed.until).toBeGreaterThanOrEqual(before + 4 * 3_600_000)
+  await expect.poll(() => q('review-hidden')?.textContent).toContain('2 hidden')
+
+  q('review-show-hidden')!.click()
+  await expect.poll(() => q('review-hidden')).toBeNull()
+  expect(hid.slice(2).map(h => h.show)).toEqual([true, true])
+  await expect.poll(() => w.find('[data-testid="review-count"]').text()).toBe('3')
   w.unmount()
 })
