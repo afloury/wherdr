@@ -17,6 +17,7 @@ import { MERGE_REFUSED, ordinal } from './mergeQueue'
 import { agentCatchingUp, refusalSaid, turnText, type Told } from './refusal'
 import { AGENT_ENDED, retriesAction, waitsShort, wasReleased } from './release'
 import { recovering } from './incident'
+import { needsHumanOpen, needsHumanTurn, type NeedsHuman } from './needsHuman'
 import { showIds } from './projectKey'
 import { questionKey } from './summary'
 import { MERGE_KINDS, mergedByStep } from './cleanup'
@@ -42,6 +43,7 @@ export interface Card {
   starts?: AgentStart[] // each run of its worker and reviewer: when it started and its agent by name (History)
   released?: number // its worker was released to free memory, at (0: unknown): opening it starts it again (release.ts)
   yourTurn?: string // the badge
+  needsHuman?: Pick<NeedsHuman, 'kind' | 'url' | 'at'> // its worker cannot go on without a person: the *Needs you now* list (needsHuman.ts)
   stall?: Stall // stalled, the machine may still fix it (blocked.ts); past HANDLE_AFTER_MS, also its yourTurn
   userLabel?: string // the button of a step that waits for the user
   tags: string[]
@@ -134,7 +136,8 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
   const queued = (queue ?? 0) > 1 || (!!queueOut && !queueOut.startsWith(MERGE_REFUSED))
   // Just updated with its base: the user's turn waits for GitHub's read of the new commit (prUpdating).
   const settling = !!s?.caughtUp && !caughtUpSettled(s.caughtUp, undefined, now)
-  const yourTurn = s?.done ? undefined : ((queued && s?.yourTurn?.reason === 'action') || settling ? undefined : s?.yourTurn?.badge) || (task.state === 'waiting' && !recovering(task) ? task.waiting || 'Waiting' : undefined)
+  const needsHuman = s?.done || task.stopped ? undefined : needsHumanOpen(task)
+  const yourTurn = s?.done ? undefined : (needsHuman ? needsHumanTurn(needsHuman) : undefined) || ((queued && s?.yourTurn?.reason === 'action') || settling ? undefined : s?.yourTurn?.badge) || (task.state === 'waiting' && !recovering(task) ? task.waiting || 'Waiting' : undefined)
     || (stall && now - stall.since >= HANDLE_AFTER_MS ? stallTurn(stall) : undefined)
     // Work handed to an agent that cannot do it, no coordinator woken for it: the user's.
     || (s?.agent?.waits && s.agent.told === 'user' && !s.done ? s.agent.waits : undefined)
@@ -152,6 +155,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     ...(branch ? { branch } : {}),
     ...(task.prBase ? { pr: task.prBase } : {}),
     ...(yourTurn ? { yourTurn } : {}),
+    ...(needsHuman ? { needsHuman: { kind: needsHuman.kind, ...(needsHuman.url ? { url: needsHuman.url } : {}), at: needsHuman.at } } : {}),
     ...(stall ? { stall } : {}),
     ...(queue ? { queue } : {}),
     ...(queueOut ? { queueOut } : {}),
@@ -216,14 +220,14 @@ export function shownTexts(projects: Parameters<typeof showIds>[0], c: Card): Ca
   }
 }
 
-export interface ToHandle { id: string, shown: string, project: string, color?: string, title: string, action: string, label: string, terminal?: string }
+export interface ToHandle { id: string, shown: string, project: string, color?: string, title: string, action: string, label: string, terminal?: string, needsHuman?: Card['needsHuman'] }
 export const toHandle = (cards: Card[]): ToHandle[] => cards.filter(c => c.yourTurn).map(taskRow)
 // Any task as that row (a `task <ID>` block in a chat, ChatTaskCard.vue): in
 // Your turn, what to do and its short action; else where it stands and its column.
 export function taskRow(c: Card): ToHandle {
   const turn = c.yourTurn?.split('\n')[0]
   const action = turn ?? (c.stopped ? `Stopped: ${c.stopped.why}` : c.held || c.sameFiles || (c.phase === 'done' ? 'Finished' : c.phase === 'todo' ? 'Not started yet' : c.holder === 'reviewer' ? 'Being reviewed' : 'Being worked on'))
-  return { id: c.id, shown: c.shown, project: c.project, ...(c.color ? { color: c.color } : {}), title: c.title, action, label: turn ? handleLabel(c) : c.column, ...(asker(c) ? { terminal: asker(c) } : {}) }
+  return { id: c.id, shown: c.shown, project: c.project, ...(c.color ? { color: c.color } : {}), title: c.title, action, label: turn ? handleLabel(c) : c.column, ...(c.needsHuman ? { needsHuman: c.needsHuman } : {}), ...(asker(c) ? { terminal: asker(c) } : {}) }
 }
 // The agent a task waits on, when what it waits for is that agent's question or permission.
 export const asker = (c: Pick<Card, 'asks' | 'stopped' | 'terminal'>) => (c.asks && !c.stopped ? c.terminal : undefined)

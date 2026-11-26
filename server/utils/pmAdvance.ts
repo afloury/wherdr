@@ -37,6 +37,8 @@ import { killTerminal } from './pmProcs'
 import { noteTaskError } from './pmSentinel'
 import { loginRestartText } from '../../shared/pm/recovery'
 import { isBlockedOn } from '../../shared/pm/park'
+import { isNeedsHuman } from '../../shared/pm/needsHuman'
+import { needsHumanReport } from './pmNeedsHuman'
 import { blockedOn } from './pmPark'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file,
@@ -125,6 +127,7 @@ export async function advanceTick(deps: PmLaunchDeps, now = Date.now()) {
     const said = alive(run)?.labels?.[LABEL.report]
     // Blocked on another task or repository: parked (park.ts), its signal cleared once handled.
     if (isBlockedOn(said)) { if (await blockedOn(deps, run, said!, now).then(() => true, () => false)) await clearSignal(deps, run.terminal!); continue }
+    if (isNeedsHuman(said)) { if (await needsHumanReport(deps, run, said!, now).then(() => true, () => false)) await clearSignal(deps, run.terminal!); continue }
     if (said !== 'done') continue
     // Cleared once handled; a failure leaves it for the next tick.
     if (await signal(deps, run, now).then(() => true, () => false)) await clearSignal(deps, run.terminal!)
@@ -151,7 +154,7 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   const work = c.task.step!.agent
   if (!ev && work && run.role === 'worker') {
     const retry = retriesAction(c.plan, c.task.step!)
-    await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!) }, 'engine', `${work.kind}: the worker says it is done${retry ? `, ${step!.id} is tried again` : ''}`)
+    await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!), needsHuman: undefined }, 'engine', `${work.kind}: the worker says it is done${retry ? `, ${step!.id} is tried again` : ''}`)
     // A failed action it fixed: tried again now; failing again, it is back in Your turn with the new error.
     if (retry) startAction(deps, run.task, () => {})
     return
@@ -170,7 +173,7 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   if (res.refused) return void await Promise.all([tell(`${res.refused}\n\nWhen done: ${DONE_CMD}`), deps.store.logTask(c.task, 'engine', `${step!.id}: ${res.refused}`)])
   const what = ev.kind === 'verdict' ? `verdict, ${ev.findings.length} finding(s)` : 'done'
   const fresh = await deps.store.task(run.task)
-  await deps.store.logTask({ ...fresh!, step: res.state, ...signalKept(fresh!, step!.id, ev, read) }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
+  await deps.store.logTask({ ...fresh!, step: res.state, needsHuman: undefined, ...signalKept(fresh!, step!.id, ev, read) }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
 }
 
 // The worker pushed another branch than the task's: the engine pushes, opens
