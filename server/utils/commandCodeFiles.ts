@@ -1,6 +1,6 @@
 // Bounded Command Code transcript metadata discovery, for the display-only
 // Command Code session locator. One bounded script round trip through
-// ShellExec (machine.exec on a remote core host, localShell locally) lists
+// ShellExec (machine.exec through herdr-core, on the pane's machine or this one) lists
 // every root/<one project dir>/<UUID>.jsonl with its file stat. No find, no
 // per-file RPC and no per-file fork: the script walks the two fixed levels
 // with builtins only and runs ONE `stat` per project directory over that

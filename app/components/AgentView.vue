@@ -605,7 +605,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         />
         <PhoneIdentity v-if="compactPhone && pane" :pane="pane" :workspace="workspace" @overview="openPlan" />
         <div v-else class="agent-head">
-          <div class="agent-title"><AlfredEmblem v-if="isAlfredPane(pane)" class="head-emblem" /><ProjectBadge v-if="badge" class="head-badge" :text="badge.text" :color="badge.color" />{{ headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
+          <div class="agent-title"><AlfredEmblem v-if="isAlfredPane(pane)" class="head-emblem" /><TaskPill v-if="badge && !badge.coordinator && pane?.task" :task="pane.task" :text="badge.text" :color="badge.color" /><ProjectBadge v-else-if="badge" class="head-badge" :text="badge.text" :color="badge.color" />{{ headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
           <div class="agent-meta">
             <!-- No state known yet (startup): nothing rather than "closed". -->
             <StatusPill v-if="pane || herdrState.ok" :pane="pane" kind />

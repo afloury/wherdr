@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it, vi } from 'vitest'
-import { agentChildren, agentDescendants, coreFailureKind, coreLocalShell, coreShell, createCoreTranscripts, machineHome, machineOfAddress, processInfo } from '../server/utils/coreTranscripts'
+import { agentChildren, agentDescendants, coreFailureKind, coreShell, createCoreTranscripts, machineHome, machineOfAddress, processInfo } from '../server/utils/coreTranscripts'
 import { createShellFs, READ_CHUNK, type ExecResult, type ShellExec } from '../server/utils/fsx'
 import { DEVIN_PROCESS_SCRIPT } from '../server/utils/devinProcesses'
 import { CoreError } from '../server/utils/core'
@@ -182,8 +182,8 @@ describe('remote shell', () => {
     expect(sent[0]).toHaveProperty('on', '')
     await coreShell(call, 'box')('true')
     expect(sent[1]).toHaveProperty('on', 'box')
-    // A local exec says so on purpose: no `on` field at all, never an empty name.
-    await coreLocalShell(call)('true')
+    // null: herdr-core's own machine, on purpose (a local terminal).
+    await coreShell(call, null)('true')
     expect(sent[2]).not.toHaveProperty('on')
   })
 })

@@ -72,23 +72,14 @@ export const coreFailure = (e: unknown) => `herdr-core: ${e instanceof CoreError
 // The core's error kind of a failed remote read, from its reason, else null.
 export const coreFailureKind = (e: unknown) => /^herdr-core: ([a-z_]+)$/.exec(String((e as { message?: unknown } | null)?.message ?? ''))?.[1] ?? null
 
-export function coreShell(call: Call, on: string): ShellExec {
-  return shellWith(call, () => ({ on }))
-}
-
-// This core's own machine, asked for on purpose: a local exec sends no `on`
-// field at all, so an empty machine name can never reach machine.exec and be
-// read as "run it here".
-export function coreLocalShell(call: Call): ShellExec {
-  return shellWith(call, () => ({}))
-}
-
-function shellWith(call: Call, target: () => object): ShellExec {
+// `on`: the core machine to run on, always named, so an empty name fails instead of running
+// on this core; null: herdr-core's own machine, on purpose (a local terminal's commands).
+export function coreShell(call: Call, on: string | null): ShellExec {
   return async (script, args = [], opts = {}): Promise<ExecResult> => {
     const seconds = Math.max(1, Math.ceil((opts.timeoutMs ?? 15000) / 1000))
     try {
       const r = await call<{ code: number | null, stdout?: string, stderr?: string, timed_out?: boolean, truncated?: boolean }>('machine.exec', {
-        argv: ['sh', '-c', script, 'sh', ...args], ...target(), timeout: seconds,
+        argv: ['sh', '-c', script, 'sh', ...args], ...(on === null ? {} : { on }), timeout: seconds,
         ...(opts.input ? { input: opts.input.toString('base64') } : {}),
       }, seconds * 1000 + 5000)
       // A timed-out reply is a failure: its partial stdout is discarded,
@@ -189,9 +180,9 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
     if (!t) {
       t = (async () => {
         // Census/discovery/header work goes through machine.exec, on this core
-        // for a local pane (coreLocalShell: no `on` field, by intent, never an
-        // empty name); only transcript file reads use localFs directly.
-        const shell = name ? coreShell(deps.call, name) : coreLocalShell(deps.call)
+        // for a local pane (null: no `on` field, by intent, never an empty
+        // name); only transcript file reads use localFs directly.
+        const shell = coreShell(deps.call, name || null)
         const home = name ? await machineHome(shell) : deps.localHome
         if (!home.startsWith('/') || home.includes('\0')) throw new CoreError('unreachable', 'machine home unknown')
         const fs: MachineFs = name ? createShellFs(shell) : localFs

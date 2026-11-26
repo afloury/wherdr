@@ -207,7 +207,11 @@ Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent terminals 
   never its file path, also when the message was sent again (**Send now**, **Retry**) or waited
   in the agent's queue.
   Slash commands typed in the field (`/compact`, `/clear`…) are sent as text; **+** also lists
-  the common ones of Claude Code, Codex, omp and Antigravity. A command that opens a panel or a
+  the common ones of Claude Code, Codex, omp and Antigravity. Typing `/` at the start of an omp or
+  Claude Code field lists the commands and skills that agent has, so that a skill is found without
+  knowing its name (`/ret` offers `/skill:retro`): the list narrows as you type, `↑` `↓` move, `Tab`
+  or `Enter` complete the highlighted one, `Esc` closes it, a tap picks on a phone, and **+** opens it
+  too. It is read from the agent itself, on the pane's own machine and in its folder, followed by a short fixed list of the commands the agent keeps to its screen (`/new`, `/resume`, `/permissions`…; the agent's own entry wins). A command that opens a panel or a
   picker (`/context`, `/model`…) shows the interactive terminal over the conversation. **Stop** (or `Esc`
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
@@ -223,7 +227,7 @@ Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent terminals 
   the last one.
 - **Composer and terminal together** on a computer: under an agent's terminal, the composer stays
   available without taking control of the terminal's size ([Terminal](terminal.md)).
-- The model and effort pickers, the slash-command list and Codex update cards are v2 only.
+- The model and effort pickers and Codex update cards are v2 only.
 
 An agent's reply can be quoted in the field question by question and point by point (a list
 item or a paragraph that asks nothing), so that one message answers them all:
@@ -355,6 +359,8 @@ field, so nothing moves when it comes or goes.
 **Settings › Conversation** has three tabs, each kept in the address so a link opens it:
 
 - **Display** (`#/settings?section=conversation&tab=display`, the default): default pane view,
+  **Copy on select** (selecting text with the mouse, in a conversation or the terminal, copies it at
+  once and shows *Copied*; never in a text field; on by default on a computer, off on a phone),
   typewriter, reply style and quoted replies. The typewriter's sample reply sits under **Show me**
   (closed by default; it plays once on opening, ↻ replays it, **Hide** folds it).
 - **Dictation** (`#/settings?section=conversation&tab=dictation`): off, on this device (its
