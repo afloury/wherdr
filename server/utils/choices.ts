@@ -304,6 +304,8 @@ export function keysFor(choices: Choices, index: number): string[] {
   const d = from && to ? to - from : index - choices.cursor
   const keys: string[] = []
   for (let i = 0; i < Math.abs(d); i++) keys.push(d > 0 ? 'down' : 'up')
+  // A form's free row (Other, a text field) takes its text where the cursor stands: no Enter before it.
+  if (choices.form && choices.options[index]?.free) return keys
   keys.push(choices.multi && choices.options[index]?.checked !== undefined ? 'space' : 'enter')
   return keys
 }
@@ -405,7 +407,7 @@ export function parseOmpAsk(text: string | null | undefined, full = false): Choi
     if (s === null) break
     sections[sections.length - 1]!.push(s)
   }
-  if (sections.length < 3) return null
+  if (sections.length < 3) return readOmpForm(lines, top, full)
   const header = sections[0]!.filter(l => l.trim())
   // Tabs (several questions, or checkboxes): "color    size    Submit", on
   // several rows in a narrow pane, always ending with Submit.
@@ -436,6 +438,115 @@ export function parseOmpAsk(text: string | null | undefined, full = false): Choi
   const shown = multi ? options.map(o => ({ ...o, checked: Boolean(o.checked) })) : options
   // Tab shown: only the ANSI screen tells (see ompActiveTab).
   return { question, cursor, options: shown, ...(multi ? { multi: true } : {}), ...(tabs ? { tabs } : {}) }
+}
+
+// omp 19.1+ asks with one HTML <form> (its `html` argument), drawn in a box with no rules and no key
+// legend: the question (intro paragraph, blank row, legend), then the options of the field the
+// cursor is in, then "Submit". The other fields are folded to a title with their answers:
+//
+//   ╭─ Ask · 1 of 3 answered ──────────╮
+//   │ Intro paragraph of the form      │   <p> before the first fieldset
+//   │                                  │
+//   │ ✓ Which database?                │   a field already answered, folded
+//   │    ✓ Postgres   SQLite           │
+//   │                                  │
+//   │ Which auth flows?                │   the field the cursor is in: <legend>
+//   │   ☑ Email + password             │   ○ ◉ radios, ☐ ☑ checkboxes
+//   │ ❯ ☐ Other:  type your own        │   free answer, typed where the cursor is
+//   │                                  │
+//   │ ○ Name                           │   a field not answered yet
+//   │   your name                      │
+//   │                                  │
+//   │   Submit                         │   ❯ Submit once every field has been through
+//   ╰──────────────────────────────────╯
+//
+// Enter on a radio chooses it and goes to the next field (or submits a form of one field); Space
+// checks a box; Enter with a box checked goes on. A text field has the cursor on its title.
+const OMP_FORM_CURSOR = new RegExp(`^${ompAlt(OMP_CURSOR)} (\\S.*)$`)
+const OMP_FORM_DONE = /^[✓✔] (\S.*)$/
+const OMP_FORM_OTHER = /^Other:\s+(.*)$/
+const OMP_FORM_PLACEHOLDER = 'type your own'
+const OMP_FORM_TEXT = 'Your answer'
+function readOmpForm(lines: string[], top: number, full: boolean): Choices | null {
+  const body: string[] = []
+  for (const line of lines.slice(top + 1)) {
+    const s = ompBoxText(line)
+    if (s === null) break
+    body.push(s)
+  }
+  while (body.length && !body[body.length - 1]!.trim()) body.pop()
+  const rows = body.map(l => OMP_OPTION.exec(l))
+  const cut = (s: string, n: number) => full ? s : s.slice(0, n)
+  // The question: the form's intro (its first paragraph, unless that is a folded field) and the
+  // legend lines [from, to].
+  const questionOf = (from: number, to: number) => {
+    const parts: string[] = []
+    let end = 0
+    while (end < body.length && body[end]!.trim()) end++
+    if (end > 0 && from > 0 && !/^[✓✔○] /.test(body[0]!)) parts.push(...body.slice(0, end))
+    if (to >= from) parts.push(...body.slice(from, to + 1))
+    return cut(parts.map(l => l.trim()).join(' '), 300) || null
+  }
+  const at = rows.findIndex(m => m && m[1])
+  if (at < 0) {
+    const h = body.findIndex(l => OMP_FORM_CURSOR.test(l))
+    if (h < 0) return null
+    const title = OMP_FORM_CURSOR.exec(body[h]!)![1]!
+    if (title === 'Submit') {
+      // Every field went through: their answers as Submit's description.
+      const answers: string[] = []
+      body.forEach((l, i) => {
+        const done = OMP_FORM_DONE.exec(l)
+        if (!done) return
+        const chips = (body[i + 1] ?? '').trim().split(/ {3,}/)
+        const chosen = chips.filter(c => /^[✓✔] /.test(c)).map(c => c.slice(2))
+        answers.push(`${done[1]}: ${chosen.length ? chosen.join(', ') : chips.join(' ')}`)
+      })
+      return { question: null, cursor: 0, options: [{ label: 'Submit', hint: answers.join(' · ').slice(0, full ? undefined : 200) || null }], form: true }
+    }
+    // A text field: its title has the cursor, its box (│) is under it.
+    if (!/^ {2}[│|]/.test(body[h + 1] ?? '')) return null
+    body[h] = title
+    return { question: questionOf(h, h), cursor: 0, options: [{ label: OMP_FORM_TEXT, hint: null, free: true }], form: true }
+  }
+  const cont = (i: number) => i < body.length && !rows[i] && /^ {4,}\S/.test(body[i]!)
+  let start = at
+  while (start > 0 && (rows[start - 1] || cont(start - 1))) start--
+  let end = at
+  while (end + 1 < body.length && (rows[end + 1] || cont(end + 1))) end++
+  const options: ChoiceOption[] = []
+  let cursor = -1
+  let multi = false
+  for (let i = start; i <= end; i++) {
+    const m = rows[i]
+    if (!m) {
+      const o = options[options.length - 1]!
+      o.label = cut(`${o.label} ${body[i]!.trim()}`, 200)
+      continue
+    }
+    if (m[1]) cursor = options.length
+    multi ||= OMP_CHECK.includes(m[2]!)
+    const checked = OMP_CHECKED.has(m[2]!) ? { checked: true } : {}
+    const other = OMP_FORM_OTHER.exec(m[3]!)
+    if (other) {
+      const typed = other[1]!.trim()
+      options.push({ label: OMP_OTHER, hint: typed && typed !== OMP_FORM_PLACEHOLDER ? cut(typed, 200) : null, free: true, ...checked })
+    } else options.push({ label: cut(m[3]!, 200), hint: null, ...checked })
+  }
+  // The legend: the paragraph just above the options.
+  const legendEnd = start - 1
+  let legendStart = start
+  if (legendEnd >= 0 && body[legendEnd]!.trim()) {
+    legendStart = legendEnd
+    while (legendStart > 0 && body[legendStart - 1]!.trim()) legendStart--
+  }
+  return {
+    question: questionOf(legendStart, legendEnd),
+    cursor,
+    options: multi ? options.map(o => ({ ...o, checked: Boolean(o.checked) })) : options,
+    form: true,
+    ...(multi ? { multi: true } : {}),
+  }
 }
 
 // omp's select dialog (tool approval, "Always for this session"…), a box
@@ -679,8 +790,9 @@ export function pendingOmpAsk(lines: string[]): OmpAsked[] {
     else if (m.role === 'assistant' && Array.isArray(m.content)) {
       for (const part of m.content) {
         if (!part || part.type !== 'toolCall' || part.name !== 'ask' || !part.id) continue
-        const qs: Json[] = part.arguments && Array.isArray(part.arguments.questions) ? part.arguments.questions : []
-        pending.set(part.id, qs.filter(q => q && typeof q.question === 'string').map(q => ({
+        const args = part.arguments
+        const qs: Json[] = args && Array.isArray(args.questions) ? args.questions : []
+        pending.set(part.id, args && typeof args.html === 'string' ? askedFromHtml(args.html) : qs.filter(q => q && typeof q.question === 'string').map(q => ({
           question: q.question.trim(),
           options: (Array.isArray(q.options) ? q.options : []).filter((o: Json) => o && typeof o.label === 'string')
             .map((o: Json) => ({ label: o.label, description: typeof o.description === 'string' && o.description.trim() ? o.description.trim() : null })),
@@ -689,6 +801,33 @@ export function pendingOmpAsk(lines: string[]): OmpAsked[] {
     }
   }
   return [...pending.values()].pop() || []
+}
+
+// omp 19.1+ passes one HTML <form> (`html`) instead of `questions`: a question per fieldset
+// (the <legend> after the form's first <p>, as the box shows them, options are the <label>s of
+// its radios and checkboxes) and per text field outside a fieldset (its label, no options).
+const HTML_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: '\'', nbsp: ' ' }
+function htmlText(html: string): string {
+  return html.replace(/<[^>]*>/g, ' ').replace(/&(?:#(\d+)|#x([0-9a-f]+)|(\w+));/gi, (m, dec, hex, name) =>
+    dec ? String.fromCodePoint(Number(dec)) : hex ? String.fromCodePoint(parseInt(hex, 16)) : HTML_ENTITIES[String(name).toLowerCase()] ?? m).replace(/\s+/g, ' ').trim()
+}
+export function askedFromHtml(html: string): OmpAsked[] {
+  const form = html.replace(/<!--[\s\S]*?-->/g, '')
+  const intro = /<p\b[^>]*>([\s\S]*?)<\/p>/i.exec(form.split(/<fieldset\b/i)[0]!)
+  const lead = intro ? htmlText(intro[1]!) : ''
+  const asked = (title: string, options: OmpAsked['options']) => ({ question: [lead, title].filter(Boolean).join(' '), options })
+  const out: OmpAsked[] = []
+  for (const f of form.matchAll(/<fieldset\b[^>]*>([\s\S]*?)<\/fieldset>/gi)) {
+    const legend = /<legend\b[^>]*>([\s\S]*?)<\/legend>/i.exec(f[1]!)
+    const options = [...f[1]!.matchAll(/<label\b[^>]*>([\s\S]*?)<\/label>/gi)]
+      .filter(l => /<input\b[^>]*\btype\s*=\s*["']?(?:radio|checkbox)\b/i.test(l[1]!))
+      .map(l => ({ label: htmlText(l[1]!), description: null }))
+    out.push(asked(legend ? htmlText(legend[1]!) : '', options))
+  }
+  for (const l of form.replace(/<fieldset\b[\s\S]*?<\/fieldset>/gi, '').matchAll(/<label\b[^>]*>([\s\S]*?)<\/label>/gi)) {
+    if (/<(?:input\b(?![^>]*\btype\s*=\s*["']?(?:radio|checkbox|hidden|submit|button)\b)|textarea\b|select\b)/i.test(l[1]!)) out.push(asked(htmlText(l[1]!.replace(/<(textarea|select)\b[\s\S]*?<\/\1>/gi, '')), []))
+  }
+  return out
 }
 
 // Question recognized by its start, ignoring whitespace: omp joins the

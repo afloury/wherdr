@@ -494,6 +494,10 @@ body.short-bottom { --safe-bottom: 0px; }
 .group-title .group-sort:hover { color: var(--text); }
 .agent-group.blocked .group-title { color: var(--rose); }
 .agent-group.blocked .group-title::before { background: var(--rose); }
+/* Home's attention cards (ReviewCard, NeedsYouCard): a full-width row with a blocked-colored left rule. */
+.review-card { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 56px; padding: 10px 12px; border: 1px solid var(--line); border-left: 2px solid var(--blocked); background: var(--surface); color: var(--text); text-align: left; cursor: pointer; }
+.review-card:hover { background: var(--surface-2); }
+.review-card:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 
 /* Small mono tag on a card (usage limit). */
 .card-tag {
@@ -1032,6 +1036,9 @@ body.short-bottom { --safe-bottom: 0px; }
 
 /* ---------- Terminal ---------- */
 #termWrap { position: relative; flex: 1; min-height: 0; padding: 6px 4px 0 6px; background: var(--bg); }
+/* Keyboard open: the pane keeps its size (useTerminal), the canvas overflows
+   the shortened window — clip it instead of letting it paint over the row below. */
+body.kb #termWrap { overflow: hidden; }
 /* The layer receives touch gestures; on a computer, the mouse must reach
    xterm for selection and the programs' mouse mode. */
 #term { position: absolute; inset: 6px 4px 0 6px; z-index: 0; }
@@ -1807,6 +1814,11 @@ body.kb .composer { padding-bottom: 8px; }
   /* Past the max height the field scrolls (autoresize sets overflow: hidden). */
   overflow-y: auto !important;
 }
+/* Chrome 123+ sizes the field to its content itself: no JS resize pass, whose
+   one-row collapse used to chop the conversation's bottom on every keystroke
+   (Composer.vue). With autoresize off, keep the 7-row cap (7lh + vertical
+   padding) alongside the viewport cap; the field scrolls past it. */
+.prompt.sized-content .prompt-input { field-sizing: content; resize: none; max-height: min(40vh, calc(7lh + 12px)); }
 .prompt-input::placeholder { color: var(--dim); }
 .prompt-foot { display: flex; align-items: center; min-width: 0; gap: 8px; }
 .prompt-plus { flex: none; width: 32px; height: 32px; justify-content: center; color: var(--text-2); border-color: var(--line); }
@@ -1870,7 +1882,8 @@ body.kb .composer { padding-bottom: 8px; }
   .prompt.expanded { display: flex; align-items: stretch; }
   .prompt.expanded .prompt-foot { display: flex; }
   .prompt.expanded .prompt-send { margin-left: auto; }
-  .prompt .prompt-input {
+  .prompt .prompt-input,
+  .prompt.sized-content .prompt-input {
     min-height: 40px; padding: 8px 6px;
     max-height: min(176px, calc(var(--vv-h, 100dvh) * .3));
   }
@@ -2011,6 +2024,10 @@ body.kb .composer { padding-bottom: 8px; }
 /* A two-line title (a task's): the close cross stays at the top right, beside its first line.
    Its block margins keep it from making the header taller than the badge (one-line, compact). */
 .hw-sheet-head:has(> .hw-sheet-title.clamp) > .hw-sheet-close { align-self: flex-start; flex: none; margin: -4px 0 -4px 6px; }
+/* The sheet's own controls (a project's ⋯ menu): at the header's right, just before the cross.
+   Their block margins keep the 44 px button from making the header taller. */
+.hw-sheet-actions { flex: none; display: flex; align-items: center; margin: -4px 4px -4px auto; }
+.hw-sheet-actions + .hw-sheet-close { flex: none; }
 /* Before the title (a task's id badge): the title follows it. */
 .hw-sheet-lead { flex: none; align-self: flex-start; margin: 3px 10px 0 0; }
 .hw-sheet-lead + .hw-sheet-title { flex: 1; }
@@ -3338,10 +3355,53 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 .composer-ask .iconify, .composer-ask svg { width: 11px; height: 11px; color: var(--accent); }
 .composer-ask:is(:hover, :focus-visible) { color: var(--text); border-color: var(--accent); outline: 0; }
 @keyframes composer-ask-in { from { opacity: 0; transform: translateY(3px); } }
+/* What the agent offers after "/" (Composer.vue): over the conversation, above the field, out of the
+   flow like the tab above. The highlighted row is the one Tab or Enter completes. */
+.composer-slash-anchor { position: relative; height: 0; z-index: 4; }
+/* Over the conversation's floating button (scroll to the end) while the list is open. */
+.composer:has(.composer-slash) { z-index: 20; }
+.composer-slash {
+  position: absolute; left: 0; right: 0; bottom: 6px; max-height: min(320px, calc(var(--vv-h, 100dvh) * .45));
+  overflow-y: auto; overscroll-behavior: contain; background: var(--bg-2); color: var(--text);
+  border: 1px solid var(--line); border-radius: 0; box-shadow: 0 30px 80px var(--shadow);
+  animation: composer-ask-in 160ms ease-out;
+}
+.slash-row {
+  position: relative; display: flex; align-items: baseline; gap: 12px; width: 100%; min-width: 0; padding: 10px 12px;
+  text-align: left; color: var(--text-2); background: none; border: 0; border-radius: 0; cursor: pointer;
+}
+.slash-row + .slash-row { border-top: 1px solid var(--line-soft); }
+.slash-row::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 2px; background: transparent; }
+.slash-row.active { color: var(--text); background: var(--surface-2); }
+.slash-row.active::before { background: var(--mauve); }
+.slash-name { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 500 13px/1.4 var(--mono); color: var(--text); }
+.slash-hint { flex: none; font: 11px/1.4 var(--mono); color: var(--dim); }
+.slash-desc { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: 12.5px/1.4 var(--sans); color: var(--text-3); }
+.slash-kind { flex: none; margin-left: auto; font: 400 10.5px/1.2 var(--mono); letter-spacing: .12em; text-transform: uppercase; color: var(--dim); }
+.slash-state { display: flex; flex-direction: column; gap: 9px; padding: 12px 14px; }
+.slash-state.failed { flex-direction: row; align-items: center; justify-content: space-between; gap: 12px; font: 12.5px/1.4 var(--sans); color: var(--rose); }
+.slash-skel { height: 12px; }
+.slash-retry {
+  flex: none; padding: 1px 6px; font: 500 10.5px/1.4 var(--mono); text-transform: uppercase; letter-spacing: .04em;
+  color: inherit; background: none; border: 1px solid currentColor; border-radius: 0; cursor: pointer;
+}
+.slash-retry:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
+/* Phone: the name and its kind on one line, the description under them; rows at the touch size. */
+@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-height: 699px), (max-width: 899px) and (max-height: 699px) and (pointer: fine), (max-width: 899px) and (max-height: 699px) and (pointer: none) {
+  .slash-row { flex-wrap: wrap; row-gap: 2px; padding: 8px 12px; }
+  .slash-kind { order: 2; }
+  .slash-desc { order: 3; flex: 1 0 100%; }
+}
+@media (pointer: coarse) {
+  .slash-row { flex-wrap: wrap; row-gap: 2px; padding: 8px 12px; min-height: 44px; }
+  .slash-kind { order: 2; }
+  .slash-desc { order: 3; flex: 1 0 100%; }
+  .slash-retry { min-height: 44px; padding: 0 12px; }
+}
 /* The question the reminder scrolled to. */
 .q-flash { animation: msg-flash 1.6s ease-out; }
 @media (prefers-reduced-motion: reduce) {
-  .composer-ask { animation: none; }
+  .composer-ask, .composer-slash { animation: none; }
   .q-flash { animation: none; outline: 1px solid var(--accent); }
 }
 /* Quotes in the field: one chip each, to remove it; on one scrolling line. */

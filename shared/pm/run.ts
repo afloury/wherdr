@@ -1,7 +1,8 @@
 // Tasks and the agent runs that work on them. A run's terminal carries
 // wherdr.* labels on herdr-core, so the engine finds it again after a restart.
+import type { NeedsHuman } from './needsHuman'
 import type { Project } from './project'
-import { MODEL_RE, checkPrefs, reviewerCheck, type ContextSpec, type WorkflowError, type Prefs, type Step, type Template, type Weight } from './workflow'
+import { checkPrefs, reviewerCheck, validModel, type ContextSpec, type WorkflowError, type Prefs, type Step, type Template, type Weight } from './workflow'
 import { commandWords, resolveAgent, type AgentRef, type NamedAgent } from './namedAgents'
 import type { ContextFolder } from './context'
 import { fillBase, planSteps, type StepState } from './steps'
@@ -31,6 +32,7 @@ export interface Task {
   type: string // a task type of the project's template
   state: 'todo' | 'working' | 'waiting'
   waiting?: string // why it waits for the user
+  needsHuman?: NeedsHuman // its worker cannot go on without a person (needsHuman.ts): a push now and again, its own list
   waitKind?: 'question' | 'permission' | 'auth' // what it waits for
   answered?: number // when a coordinator's tell answered its question; cleared once the agent's question is gone (no second wake: autopilot.ts)
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
@@ -293,7 +295,7 @@ export function workerPlan(t: Template, task: Task, named: readonly NamedAgent[]
   if (!agent) return { reason: 'No agent set: add prefs.agent to the template' }
   const ref = resolveAgent(agent, named)
   if (!('program' in ref)) return { reason: 'reason' in ref ? ref.reason : agent }
-  if (!MODEL_RE.test(model)) return { reason: model ? `Invalid model "${model}"` : 'No model set: add prefs.model to the template (the model is always pinned)' }
+  if (!validModel(ref.program, model)) return { reason: model ? `Invalid model "${model}"` : 'No model set: add prefs.model to the template (the model is always pinned)' }
   return { ...ref, model }
 }
 

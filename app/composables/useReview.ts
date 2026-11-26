@@ -10,7 +10,8 @@ export const REVIEW_ALL = 'all'
 export const reviewOpen = ref(false)
 export const showReview = (v = true) => { reviewOpen.value = v }
 // A card the sheet lists (before what it handled itself): the board's To review counts the same.
-export const reviewWaits = (c: Card) => !!c.yourTurn && !c.state?.done
+// What the user snoozed or dismissed (Card.hidden) is not counted.
+export const reviewWaits = (c: Card) => !!c.yourTurn && !c.state?.done && !c.hidden
 export const reviewFilter = syncedRef<string | null>('reviewFilter', raw => raw || null, v => v || null)
 
 // The filter as it applies: a group or project removed since it was picked falls back to the default.

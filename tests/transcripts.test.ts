@@ -490,12 +490,12 @@ describe('omp', () => {
 
     // omp asked to continue a session keeps the file it finds, unchanged, so older than the terminal.
     crumb(3_600_000)
-    for (const args of [['omp', '-c'], ['omp', '--continue'], ['omp', '-r', 'abc'], ['omp', '--resume=abc'], ['omp', '--restore', previous]]) {
+    for (const args of [['omp', '-c'], ['omp', '--continue'], ['omp', '-r', 'abc'], ['omp', '--resume=abc'], ['omp', '--restore', previous], ['omp', '--session', previous]]) {
       argv = args
       expect(await t.locate(pane()), args.join(' ')).toEqual(found)
     }
     // Other launches (a prompt, other flags, no session at all) have nothing of the previous omp's.
-    for (const args of [['omp'], ['omp', '--model', 'opus'], ['omp', 'continue the work'], ['omp', '--no-session']]) {
+    for (const args of [['omp'], ['omp', '--model', 'opus'], ['omp', 'continue the work'], ['omp', '--no-session'], ['omp', '--session-dir', '/tmp/s']]) {
       argv = args
       expect(await t.locate(pane()), args.join(' ')).toBeNull()
     }

@@ -2,13 +2,14 @@
 
 [Documentation](README.md) · [Project](../README.md)
 
-Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conversation mode; any other terminal shows only its
-[terminal](terminal.md). How wherdr finds the conversation file on herdr-core is described in
+Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent terminals open in conversation mode; any other terminal shows only its
+[terminal](terminal.md). Command Code conversations are Linux-only for now. How wherdr finds the conversation file on herdr-core is described in
 [herdr-core › Conversations](core.md#conversations).
 
-- **Conversation view**: the agent's real transcript (Claude Code, Codex, Devin, Antigravity and Hermes Agent), rendered as
+- **Conversation view**: the agent's real transcript (Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan),
-  timestamps, search and infinite scroll back to the first message. Every message shows its time,
+  timestamps, search and infinite scroll back to the first message (Command Code follows the bounded
+  reads described under [herdr-core › Conversations](core.md#conversations)). Every message shows its time,
   muted and always on the right: under your messages, at the end of the agent reply's action
   row or of its end-of-turn line (`✓ 27 s · 1 action … 21:39`), with the day for an earlier one (*Yesterday 21:39*, then a short
   date); hover or tap it for the full date and time. Reading a conversation never
@@ -62,11 +63,17 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   Settings › Projects › KEY › Guards*, *Open Task KEY-12*, *Open Board › KEY › ui*). A tap opens
   the place in the app, on a computer and a phone,
   without reloading; Back returns to the conversation. Other links open in a new tab, other
-  inline code stays plain. The addresses: `#/`, `#/review` (Tasks to review; the former `#/decisions` opens it too), `#/board` (with `?project=KEY`,
-  `?tag=TAG` or `?task=ID`), `#/settings?section=<section>`, a tab of Settings › Conversation
-  `#/settings?section=conversation&tab=<tab>` (`display`, `dictation`, `read-aloud`) and a
-  project's sheet `#/settings?section=projects&project=KEY&tab=<tab>`; Alfred and coordinators get the list in
-  their instructions.
+  inline code stays plain. The addresses an agent gives, and no others (a coordinator has this list
+  in its instructions, Alfred reads it here):
+  - `#/` is Home; `#/review` is Tasks to review (the former `#/decisions` opens it too).
+  - `#/board`, with `?project=KEY`, `?tag=TAG` or `?task=ID` (a task's sheet over the page).
+  - `#/settings?section=<section>`, one of `appearance`, `conversation`, `terminal`, `agents`,
+    `machines`, `projects`, `plugins`, `phone`, `notifications`, `security`, `shortcuts` or
+    `about`; `section=pacing` opens Agents at its Pace group.
+  - A tab of Settings › Conversation: `#/settings?section=conversation&tab=<tab>`, with `display`,
+    `dictation` or `read-aloud`.
+  - A project's sheet: `#/settings?section=projects&project=KEY&tab=<tab>`, with `general`,
+    `workflow`, `guards`, `automations` or `autopilot` (the coordinator's autopilot panel).
 - **Task cards**: an agent shows a task where it stands with a code fence labelled `wherdr`, one
   line `task KEY-12` per task. Each line shows the task's row as in the sidebar's Tasks to
   handle: its key, title, step and what to do, read live from the board (every 15 s, and after
@@ -200,7 +207,11 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   never its file path, also when the message was sent again (**Send now**, **Retry**) or waited
   in the agent's queue.
   Slash commands typed in the field (`/compact`, `/clear`…) are sent as text; **+** also lists
-  the common ones of Claude Code, Codex, omp and Antigravity. A command that opens a panel or a
+  the common ones of Claude Code, Codex, omp and Antigravity. Typing `/` at the start of an omp or
+  Claude Code field lists the commands and skills that agent has, so that a skill is found without
+  knowing its name (`/ret` offers `/skill:retro`): the list narrows as you type, `↑` `↓` move, `Tab`
+  or `Enter` complete the highlighted one, `Esc` closes it, a tap picks on a phone, and **+** opens it
+  too. It is read from the agent itself, on the pane's own machine and in its folder, followed by a short fixed list of the commands the agent keeps to its screen (`/new`, `/resume`, `/permissions`…; the agent's own entry wins). A command that opens a panel or a
   picker (`/context`, `/model`…) shows the interactive terminal over the conversation. **Stop** (or `Esc`
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
@@ -215,8 +226,8 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   hidden; a reading taken while omp rests, or before its panel hid the gauge, is marked as
   the last one.
 - **Composer and terminal together** on a computer: under an agent's terminal, the composer stays
-  available; typing in it takes control of the terminal's size ([Terminal](terminal.md)).
-- The model and effort pickers, the slash-command list and Codex update cards are v2 only.
+  available without taking control of the terminal's size ([Terminal](terminal.md)).
+- The model and effort pickers and Codex update cards are v2 only.
 
 An agent's reply can be quoted in the field question by question and point by point (a list
 item or a paragraph that asks nothing), so that one message answers them all:
@@ -308,12 +319,12 @@ A tap sends that option at once as your reply, quoted to the last question writt
 block (to the whole message when there is none), the same as typing it. The buttons stay live
 until a sent message answers them, even when the agent wrote another message below (a wake, a
 report); then they are greyed, the answer given marked. A `wherdr` block with a line wherdr does not understand (a
-missing quote, no option or more than four, an unknown kind) shows as ordinary code.
+missing quote, no option or more than four, an option over 80 characters, an unknown kind) shows as ordinary code.
 
 **Several questions in one card.** When an agent has several questions at once (a plan to
 settle, say), it asks them in one `questions` card instead of a numbered list or one message
-each: a `questions` line, then one numbered line per question (up to 8), the question then its
-2 to 4 options:
+each: a `questions` line, then one numbered line per question (up to 8), the question (up to
+200 characters) then its 2 to 4 options (up to 80 characters each):
 
 ````md
 A few things before I start:
@@ -348,6 +359,8 @@ field, so nothing moves when it comes or goes.
 **Settings › Conversation** has three tabs, each kept in the address so a link opens it:
 
 - **Display** (`#/settings?section=conversation&tab=display`, the default): default pane view,
+  **Copy on select** (selecting text with the mouse, in a conversation or the terminal, copies it at
+  once and shows *Copied*; never in a text field; on by default on a computer, off on a phone),
   typewriter, reply style and quoted replies. The typewriter's sample reply sits under **Show me**
   (closed by default; it plays once on opening, ↻ replays it, **Hide** folds it).
 - **Dictation** (`#/settings?section=conversation&tab=dictation`): off, on this device (its

@@ -248,12 +248,12 @@ async function remove() {
 </script>
 
 <template>
-  <AppSheet v-model:open="open" :title="p.name" tall wide hide-close @closed="emit('close')">
+  <AppSheet v-model:open="open" :title="p.name" tall wide @closed="emit('close')">
+    <template #actions>
+      <SpaceMenu :items="menu" :title="p.name" :label="tl(`Options of ${p.name}`)" />
+    </template>
     <div ref="sheet" class="project-sheet" data-testid="project-sheet">
-      <div class="project-head">
-        <span class="pm-id"><small class="mono-label">{{ shownKey(p) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
-        <SpaceMenu :items="menu" :title="p.name" :label="tl(`Options of ${p.name}`)" />
-      </div>
+      <span class="pm-id"><small class="mono-label">{{ shownKey(p) }}</small><small class="pm-path">{{ ltr(shortPath(p.path)) }}</small></span>
       <div class="segmented project-tabs" role="tablist" :style="{ '--segment-count': PROJECT_TABS.length }">
         <button v-for="k in PROJECT_TABS" :id="`project-tab-${k}`" :key="k" type="button" role="tab" :class="{ on: tab === k }" :aria-selected="tab === k" :data-tab="k" @click="pickTab(k)">
           <span>{{ tl(TAB_LABEL[k]) }}</span>
@@ -512,7 +512,6 @@ async function remove() {
 /* The global hint pulls itself up under a settings group's heading (-20px):
    under the tab bar, and in the tabs' own content, it flows like the rest. */
 .project-panel :deep(.settings-hint) { margin: 0 2px 12px; }
-.project-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .pm-id { display: grid; gap: 2px; min-width: 0; overflow-wrap: anywhere; }
 .pm-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; }
 .pm-base-pick { width: min(100%, 320px); }

@@ -31,11 +31,11 @@ const view = (project: string, more: Partial<CoordinatorView> = {}): Coordinator
 let w: Awaited<ReturnType<typeof mountSuspended>> | null = null
 // A coordinators read still in flight would answer the next test's first one
 // with this test's views (loadCoordinators shares it): let it end first.
-afterEach(async () => { w?.unmount(); w = null; coordinatorOrder.value = []; coordinatorsHidden.value = []; posts.length = 0; navigate.mockReset(); document.body.innerHTML = ''; await loadCoordinators() })
+afterEach(async () => { w?.unmount(); w = null; coordinatorOrder.value = []; coordinatorsHidden.value = []; posts.length = 0; navigate.mockReset(); document.body.innerHTML = ''; await loadCoordinators(); coordinators.value = [] })
 
-it('lists the running project coordinators only (Alfred, the main one, has its own row)', async () => {
+it('lists the running project coordinators (Alfred, the main one, has its own row)', async () => {
   herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1')] }
-  views = [view(MAIN, { main: true, terminal: 'host/t1' }), view('CO', { terminal: 'host/t1' }), view('ST')]
+  views = [view(MAIN, { main: true, terminal: 'host/t1' }), view('CO', { terminal: 'host/t1' })]
   w = await mountSuspended(CoordinatorsSection)
   await vi.waitFor(() => expect(w!.findAll('[data-testid="coordinator-row"]')).toHaveLength(1))
   const co = w.find('[data-testid="coordinator-row"]')
@@ -46,6 +46,19 @@ it('lists the running project coordinators only (Alfred, the main one, has its o
   await co.trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w%3Ap1'))
   expect(posts).toEqual([])
+})
+
+it('shows a coordinator that never started with Start, which launches its saved agent (WHR-570)', async () => {
+  herdrState.value = { ok: true, workspaces: [], panes: [] }
+  views = [view('NEW', { agent: { program: 'codex' } })]
+  w = await mountSuspended(CoordinatorsSection)
+  // The test before's list shows until this one's is read.
+  await vi.waitFor(() => expect(w!.find('[data-testid="coordinator-name"]').text()).toBe('new app'))
+  const row = w.find('[data-testid="coordinator-row"]')
+  expect(row.text()).toContain('Not started')
+  expect(w.find('[data-testid="coordinator-start"]').text()).toBe('Start')
+  await row.trigger('click')
+  await vi.waitFor(() => expect(posts).toEqual([{ project: 'NEW', program: 'codex' }]))
 })
 
 it('shows a coordinator whose terminal ended as stopped, and resumes its conversation on demand (WHR-136)', async () => {
@@ -138,6 +151,23 @@ it('no ••• button: right click (computer) and long press (touch) open its 
     ;(document.querySelector('[data-testid="coordinator-restart"]') as HTMLElement).click()
     await vi.waitFor(() => expect(posts).toEqual([{ agent: { project: 'CO', program: 'codex' } }, { project: 'CO', program: 'codex' }]))
   } finally { desk.value = false; coarse.value = false; menuState.open = false }
+})
+
+it('Restart with… the agent that ran its conversation resumes it, keeping its model', async () => {
+  herdrState.value = { ok: true, workspaces: [], panes: [pane('w:p1', 'host/t1')] }
+  appConfig.value = { ...appConfig.value, kinds: ['claude', 'codex'] }
+  views = [view('CO', { terminal: 'host/t1', agent: { program: 'claude', model: 'm' }, ran: { program: 'claude', model: 'm' } })]
+  desk.value = true
+  coarse.value = false
+  try {
+    w = await mountSuspended(CoordinatorsSection, { attachTo: document.body })
+    await vi.waitFor(() => expect(w!.findAll('[data-testid="coordinator-row"]')).toHaveLength(1))
+    await vi.waitFor(() => expect(coordinators.value[0]?.ran?.program).toBe('claude'))
+    ;(w.findComponent({ name: 'UContextMenu' }).props('items').flat() as { label: string, onSelect: () => void }[]).find(i => i.label === 'Restart with…')!.onSelect()
+    await vi.waitFor(() => expect(document.querySelector('[data-testid="coordinator-restart"]')).not.toBeNull())
+    ;(document.querySelector('[data-testid="coordinator-restart"]') as HTMLElement).click()
+    await vi.waitFor(() => expect(posts).toEqual([{ agent: { project: 'CO', program: 'claude', model: 'm' } }, { project: 'CO', resume: true }]))
+  } finally { desk.value = false; coarse.value = false }
 })
 
 it('its menu opens the board, settings and autopilot, renames it inline, mutes it and stops it after a confirm (WHR-325)', async () => {

@@ -193,6 +193,8 @@ const widthItems = computed(() => [
 ])
 // What an agent pane opens on: the Conversation, or the Terminal.
 const defaultPane = defaultViewMode
+// A local binding: v-model cannot write to an auto-imported ref.
+const copyOnSelectOn = copyOnSelect
 const defaultPaneItems = [
   { label: t('Conversation'), description: t('Read the transcript first.'), value: 'chat', icon: 'i-lucide-message-square' },
   { label: t('Terminal'), description: t('Type straight into the pane.'), value: 'term', icon: 'i-lucide-square-terminal' },
@@ -453,7 +455,7 @@ onMounted(() => {
             </div>
           </div>
           <ThemeEditor v-model:open="editorOpen" :base="editorBase" />
-          <AppSheet v-model:open="importOpen" :title="tl('Import theme')" hide-close>
+          <AppSheet v-model:open="importOpen" :title="tl('Import theme')">
             <form class="sheet-form" @submit.prevent="importTheme">
               <label class="field-label" for="themeImport">{{ tl('Theme JSON') }}</label>
               <UTextarea id="themeImport" v-model="importText" :rows="8" class="w-full mono" :placeholder="tl('Paste a theme file, or pick one')" />
@@ -509,6 +511,13 @@ onMounted(() => {
               <h3>{{ t('Default pane view') }}</h3>
               <SettingsChoice v-model="defaultPane" :items="defaultPaneItems" :label="t('Default pane view')" />
               <p class="muted settings-hint">{{ t('What an agent pane opens on. A pane you switched to Terminal stays there. Follows you on every device.') }}</p>
+            </div>
+            <div data-ui-target="conversation.copy-on-select" class="settings-group">
+              <h3>{{ t('Copy on select') }}</h3>
+              <label class="settings-toggle">
+                <span><b>{{ t('Copy text as soon as you select it') }}</b><small>{{ t('Selecting text with the mouse, in a conversation or a terminal, copies it at once and shows Copied. Never in a text field. On by default on a computer, off on a phone. Follows you on every device.') }}</small></span>
+                <USwitch v-model="copyOnSelectOn" size="xl" />
+              </label>
             </div>
             <div data-ui-target="conversation.typewriter" class="settings-group settings-typing">
               <h3>{{ t('Typewriter') }}</h3>

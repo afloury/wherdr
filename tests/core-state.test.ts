@@ -57,6 +57,39 @@ it('recognizes a Devin command when core supplies no agent field', () => {
   expect(coreState([terminal('t1', { argv: ['/opt/bin/devin', '-r', 'session-a'] })], []).panes[0]?.agent).toBe('devin')
 })
 
+describe('Command Code in core terminals', () => {
+  const agentOf = (extra: object) => coreState([terminal('t1', extra)], []).panes[0]?.agent
+
+  it('reads a declared Command Code name, whatever its spelling', () => {
+    expect(agentOf({ agent: 'command-code' })).toBe('cmd')
+    expect(agentOf({ agent: 'cmd' })).toBe('cmd')
+    expect(agentOf({ agent: 'cmdc' })).toBe('cmd')
+    expect(agentOf({ template: 'command-code' })).toBe('cmd')
+    expect(agentOf({ status: { state: 'working', app: 'Command Code' } })).toBe('cmd')
+  })
+
+  it('recognizes its launch argv and the package entrypoint', () => {
+    expect(agentOf({ argv: ['command-code'] })).toBe('cmd')
+    expect(agentOf({ argv: ['cmdc', '--resume', 'session-a'] })).toBe('cmd')
+    expect(agentOf({ foreground: { argv: ['npx', 'command-code'] } })).toBe('cmd')
+    expect(agentOf({ argv: ['node', '/usr/lib/node_modules/command-code/dist/cli.mjs'] })).toBe('cmd')
+    expect(agentOf({ argv: ['/opt/command-code/bin/cmd'] })).toBe('cmd')
+  })
+
+  it('never takes a bare cmd, nor a word that only mentions it, for the agent', () => {
+    for (const extra of [
+      { argv: ['cmd'] },
+      { argv: ['cmd.exe'] },
+      { argv: ['cmd', '/c', 'dir'] },
+      { argv: ['/usr/bin/cmd'] },
+      { argv: ['vim', 'cmd'] },
+      { argv: ['ls', 'cmd'] },
+      { argv: ['node', 'build.js', 'cmd'] },
+      { argv: ['sh', '-c', 'cmd'] },
+    ]) expect(agentOf(extra), JSON.stringify(extra)).toBeNull()
+  })
+})
+
 it('keeps a Codex stopped by its update as a Codex waiting for a restart, and tells an installing one', () => {
   const state = coreState([
     terminal('t1', { labels: { 'wherdr.codex-updated': '1' } }),
