@@ -37,8 +37,21 @@ export async function coreChoose(deps: CoreChooseDeps, b: Body) {
       || option.label !== b.label || (answer && !option.free)
       || (option.free && !sameQuestion(now.choices.question, typeof b.question === 'string' ? b.question : null))) throw stale()
     if (option.free && !answer) throw new HerdrError('bad_text', 'Write your answer before sending it.')
-    await deps.call('terminal.keys', { terminal: p.coreAddress, keys: keysFor(now.choices, i) }, 10000)
-    if (option.free) {
+    const keys = keysFor(now.choices, i)
+    if (keys.length) await deps.call('terminal.keys', { terminal: p.coreAddress, keys }, 10000)
+    if (option.free && now.choices.form) {
+      // omp's form types in place: wait for the cursor to reach the row, then send the text.
+      // omp is blocked on its question, which core refuses to type into without `force`;
+      // terminal.send presses Enter itself, so the answer is confirmed (or, in a checkbox
+      // group, checked and gone on from) by that send.
+      for (let tries = 0; ; tries++) {
+        if (tries) await sleep(150)
+        const after = await screen()
+        if (after.choices?.identity === now.choices.identity && after.choices.cursor === i) break
+        if (tries >= 6) throw new HerdrError('stale', 'The answer field did not open — check the current screen.')
+      }
+      await deps.call('terminal.send', { terminal: p.coreAddress, text: answer, force: true }, 30000)
+    } else if (option.free) {
       // The text goes to the field the option opens, never to the question itself.
       for (let tries = 0; ; tries++) {
         await sleep(300)

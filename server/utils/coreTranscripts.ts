@@ -70,17 +70,27 @@ export const coreFailure = (e: unknown) => `herdr-core: ${e instanceof CoreError
 // The core's error kind of a failed remote read, from its reason, else null.
 export const coreFailureKind = (e: unknown) => /^herdr-core: ([a-z_]+)$/.exec(String((e as { message?: unknown } | null)?.message ?? ''))?.[1] ?? null
 
-export function coreShell(call: Call, on: string): ShellExec {
+// `on`: the core machine to run on, always named, so an empty name fails instead of running
+// on this core; null: herdr-core's own machine, on purpose (a local terminal's commands).
+export function coreShell(call: Call, on: string | null): ShellExec {
   return async (script, args = [], opts = {}): Promise<ExecResult> => {
     const seconds = Math.max(1, Math.ceil((opts.timeoutMs ?? 15000) / 1000))
     try {
       const r = await call<{ code: number | null, stdout?: string, stderr?: string, timed_out?: boolean, truncated?: boolean }>('machine.exec', {
-        argv: ['sh', '-c', script, 'sh', ...args], on, timeout: seconds,
+        argv: ['sh', '-c', script, 'sh', ...args], ...(on === null ? {} : { on }), timeout: seconds,
         ...(opts.input ? { input: opts.input.toString('base64') } : {}),
       }, seconds * 1000 + 5000)
-      const stdout = Buffer.from(r.stdout || '', 'base64')
-      if (r.timed_out) return { code: 124, stdout, stderr: 'timed out' }
-      if (opts.maxBytes && (r.truncated || stdout.length > opts.maxBytes)) return { code: 125, stdout: Buffer.alloc(0), stderr: 'output too large' }
+      // A timed-out reply is a failure: its partial stdout is discarded,
+      // never decoded into a buffer.
+      if (r.timed_out) return { code: 124, stdout: Buffer.alloc(0), stderr: 'timed out' }
+      // base64 emits exactly 4*ceil(n/3) chars for n bytes: more than that for
+      // the bound means over-budget or cut output — reject before decoding.
+      const enc = r.stdout || ''
+      if (r.truncated || (opts.maxBytes && enc.length > Math.ceil(opts.maxBytes / 3) * 4)) {
+        return { code: 125, stdout: Buffer.alloc(0), stderr: 'output too large' }
+      }
+      const stdout = Buffer.from(enc, 'base64')
+      if (opts.maxBytes && stdout.length > opts.maxBytes) return { code: 125, stdout: Buffer.alloc(0), stderr: 'output too large' }
       return { code: r.code, stdout, stderr: Buffer.from(r.stderr || '', 'base64').toString('utf8') }
     } catch (e) {
       // An unreachable machine reads as the SSH failure code (the file's state is unknown).
@@ -88,6 +98,21 @@ export function coreShell(call: Call, on: string): ShellExec {
       return { code: 255, stdout: Buffer.alloc(0), stderr: coreFailure(e) }
     }
   }
+}
+
+// The home folder of a remote machine, exactly as the shell printed it: a
+// timed-out partial (/home/al) or a mangled path would point the remote
+// Claude and Codex readers at another directory, so anything less than a
+// clean absolute path is refused (never trimmed into shape).
+export async function machineHome(shell: ShellExec): Promise<string> {
+  const r = await shell('printf %s "$HOME"', [], { maxBytes: 4096 })
+  const s = r.code === 0 && r.stdout.length <= 4096 ? r.stdout.toString('utf8') : ''
+  // Roundtrip: bytes that are not valid UTF-8 would silently decode into
+  // another directory, so they are refused like any other failed lookup.
+  if (!s.startsWith('/') || /[\r\n\0]/.test(s) || !Buffer.from(s, 'utf8').equals(r.stdout)) {
+    throw new CoreError('unreachable', 'machine home unknown')
+  }
+  return s
 }
 
 export function createCoreTranscripts(deps: CoreTranscriptDeps) {
@@ -148,8 +173,7 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
       t = (async () => {
         if (!name) return createTranscripts({ home: deps.localHome, herdr, fs: localFs, codexHistory: deps.codexHistory })
         const shell = coreShell(deps.call, name)
-        const home = (await shell('printf %s "$HOME"')).stdout.toString('utf8').trim()
-        if (!home.startsWith('/')) throw new CoreError('unreachable', 'machine home unknown')
+        const home = await machineHome(shell)
         const fs: MachineFs = createShellFs(shell)
         return createTranscripts({ home, herdr, fs })
       })()

@@ -59,7 +59,8 @@ const fixing = ref<Record<string, string>>({})
 // Answered here from its To do (Try again, a choice): it leaves as the board says, not as handled
 // elsewhere. Only the task on screen, after an action that went through (a refusal clears it).
 let acted = ''
-const waiting = computed(() => (data.value?.cards ?? []).filter(c => reviewWaits(c) && !handled.value.includes(c.id) && fixing.value[c.id] !== c.yourTurn))
+// Tasks that need the user now (a login, a payment… NeedsYouCard) come first, the rest keep the board's order.
+const waiting = computed(() => (data.value?.cards ?? []).filter(c => reviewWaits(c) && !handled.value.includes(c.id) && fixing.value[c.id] !== c.yourTurn).sort((a, b) => +!!b.needsHuman - +!!a.needsHuman))
 const live = computed(() => waiting.value.filter(c => reviewShows(filter.value, c.project)))
 // The list while the sheet is open, in a stable order (the board's again once
 // closed): a task that arrives goes at the end, one that leaves drops out, but
@@ -211,6 +212,10 @@ function onKey(e: KeyboardEvent) {
           <h3>{{ card.title }}</h3>
         </header>
         <p v-if="gone" class="muted review-gone" data-testid="review-gone">{{ tl(`Handled elsewhere: ${gone}`) }}</p>
+        <p v-if="card.needsHuman" class="review-needs" data-testid="review-needs">
+          <b>{{ tl(`Needs you now: ${card.needsHuman.kind}`) }}</b>
+          <a v-if="/^https?:\/\//.test(card.needsHuman.url ?? '')" :href="card.needsHuman.url" target="_blank" rel="noopener" data-testid="review-needs-url">{{ card.needsHuman.url }}</a>
+        </p>
         <div class="review-scroll">
         <template v-if="approves">
           <LookAgainBanner v-if="card.state?.lookAgain" :look="card.state.lookAgain" />
@@ -286,6 +291,8 @@ function onKey(e: KeyboardEvent) {
 .review-head h3 { flex: 1; min-width: 0; margin: 0; font: 600 16px/1.3 var(--display); overflow-wrap: anywhere; }
 .review-gone { font: 12px/1.4 var(--mono); }
 .review-meta { display: flex; flex-wrap: wrap; gap: 4px 12px; color: var(--muted); font: 12px/1.4 var(--mono); }
+.review-needs { display: flex; flex-wrap: wrap; gap: 4px 12px; min-width: 0; color: var(--blocked); font: 12px/1.4 var(--mono); overflow-wrap: anywhere; }
+.review-needs a { color: var(--accent); }
 .review-meta a { color: var(--accent); }
 /* All done: icon, title, line and button grouped, centred in the body; the button at its own size. */
 .review-done { display: flex; flex-direction: column; align-items: center; justify-content: center; align-self: center; gap: 8px; padding: 32px 0; text-align: center; }

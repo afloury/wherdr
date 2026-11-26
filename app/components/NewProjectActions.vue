@@ -23,11 +23,16 @@ async function add(d: ProjectDraft) {
 }
 async function start() {
   const d = props.draft
-  if ((!d && !c.value) || !chosen.value) return
+  // Read before add(): saving switches the form to the new project, which resets the agent.
+  const how = chosen.value
+  if ((!d && !c.value) || !how) return
   busy.value = true
   error.value = ''
   try {
-    const p = await launchCoordinator(d ? await add(d) : c.value!.project, chosen.value)
+    const project = d ? await add(d) : c.value!.project
+    // A new project keeps the agent it was started with as its default.
+    if (d) await api('/api/pm/coordinator-agent', { project, ...how })
+    const p = await launchCoordinator(project, how)
     emit('done')
     if (p) { haptic(); navigateTo(panePath(p.id)) }
   } catch (e) { error.value = (e as Error).message }
