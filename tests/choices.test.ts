@@ -4,7 +4,7 @@
 // (claude-trust, claude-security-guide, codex-trust: the machine already trusts ~).
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { completeOmpAsk, keysFor, ompActiveTab, parseChoices, parseOmpAsk, pendingOmpAsk, sameQuestion, screenChoices } from '../server/utils/choices'
+import { askedFromHtml, completeOmpAsk, keysFor, ompActiveTab, parseChoices, parseOmpAsk, pendingOmpAsk, sameQuestion, screenChoices } from '../server/utils/choices'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 
@@ -275,5 +275,102 @@ describe('completeOmpAsk', () => {
     const answered = JSON.stringify({ type: 'message', message: { role: 'toolResult', toolCallId: 't1', toolName: 'ask' } })
     expect(pendingOmpAsk([call('t1', question), answered])).toEqual([])
     expect(completeOmpAsk(shown, pendingOmpAsk([call('t2', 'Something else entirely?')]))).toEqual(shown)
+  })
+})
+
+describe('omp HTML-form ask (omp 19.1+)', () => {
+  // Real screens of the ask tool's <form> box (captured from omp 19.1.1 in a tmux pane, unicode and
+  // ascii symbol sets) and the shape of its transcript call; the texts are made up.
+  const intro = 'The service needs a datastore before the first release. Which one should the team provision first? Datastore'
+
+  it('reads a radio field: intro and legend as the question, wrapped option joined, Other as the free row', () => {
+    const c = parseOmpAsk(fx('omp-ask-form-single.txt'))!
+    expect(c.question).toBe(intro)
+    expect(c.options.map(o => o.label)).toEqual([
+      'Postgres: relational, JSONB support, the team already runs it in production and knows how to back it up (recommended)',
+      'SQLite: embedded, zero-ops',
+      'MongoDB: document store',
+      'Other (type your own)',
+    ])
+    expect(c.options[3]).toEqual({ label: 'Other (type your own)', hint: null, free: true })
+    expect(c.cursor).toBe(0)
+    expect(c.form).toBe(true)
+    expect(c.multi).toBeUndefined()
+    expect(keysFor(c, 1)).toEqual(['down', 'enter'])
+    // Other takes its text where the cursor stands: only the way there, no Enter.
+    expect(keysFor(c, 3)).toEqual(['down', 'down', 'down'])
+  })
+
+  it('reads the Other row with the cursor on it, empty then typed', () => {
+    const empty = parseOmpAsk(fx('omp-ask-form-single-other.txt'))!
+    expect(empty.cursor).toBe(3)
+    expect(empty.options[3]).toEqual({ label: 'Other (type your own)', hint: null, free: true })
+    expect(keysFor(empty, 0)).toEqual(['up', 'up', 'up', 'enter'])
+    const typed = parseOmpAsk(fx('omp-ask-form-single-other-typed.txt'))!
+    expect(typed.options[3]).toEqual({ label: 'Other (type your own)', hint: 'Cats', free: true })
+  })
+
+  it('reads the ascii symbol set', () => {
+    const c = parseOmpAsk(fx('omp-ask-form-ascii.txt'))!
+    expect(c.question).toBe(intro)
+    expect(c.options).toHaveLength(4)
+    expect(c.options[0]!.label).toMatch(/^Postgres: .* \(recommended\)$/)
+    expect(c.cursor).toBe(0)
+  })
+
+  it('reads checkboxes: checked state, Space to toggle, no intro', () => {
+    const c = parseOmpAsk(fx('omp-ask-form-checkbox.txt'))!
+    expect(c.question).toBe('Which auth flows should ship in v1?')
+    expect(c.multi).toBe(true)
+    expect(c.options.map(o => [o.label, o.checked])).toEqual([
+      ['Email + password', true], ['OAuth (Google, GitHub)', false], ['Magic links', false], ['Other (type your own)', false],
+    ])
+    expect(keysFor(c, 1)).toEqual(['down', 'space'])
+  })
+
+  it('reads the field the cursor is in of a form with several fields, the folded ones apart', () => {
+    const radio = parseOmpAsk(fx('omp-ask-form-fields-radio.txt'))!
+    expect(radio.question).toBe('Which database?')
+    expect(radio.options.map(o => o.label)).toEqual(['Postgres', 'SQLite', 'Other (type your own)'])
+    const boxes = parseOmpAsk(fx('omp-ask-form-fields-checkbox.txt'))!
+    expect(boxes.question).toBe('Which auth flows?')
+    expect(boxes.multi).toBe(true)
+    expect(boxes.options.map(o => o.label)).toEqual(['Email + password', 'OAuth', 'Other (type your own)'])
+    expect(parseOmpAsk(fx('omp-ask-form-fields-other.txt'))!.cursor).toBe(2)
+  })
+
+  it('reads a text field as one free row, and the Submit row with the answers given', () => {
+    const text = parseOmpAsk(fx('omp-ask-form-fields-text.txt'))!
+    expect(text.question).toBe('Name')
+    expect(text.options).toEqual([{ label: 'Your answer', hint: null, free: true }])
+    expect(keysFor(text, 0)).toEqual([])
+    const submit = parseOmpAsk(fx('omp-ask-form-fields-submit.txt'))!
+    expect(submit.options).toEqual([{ label: 'Submit', hint: 'Which database?: Postgres · Name: Bob' }])
+    expect(keysFor(submit, 0)).toEqual(['enter'])
+  })
+
+  it('takes the form of the pending call: one question per fieldset, same text as the box', () => {
+    const lines = fx('omp-ask-form.jsonl').trim().split('\n')
+    const pending = pendingOmpAsk(lines.slice(0, 1))
+    expect(pending).toHaveLength(1)
+    expect(pending[0]!.question).toBe(intro)
+    expect(pending[0]!.options.map(o => o.label)).toEqual([
+      'Postgres: relational, JSONB support, the team already runs it in production and knows how to back it up (recommended)',
+      'SQLite: embedded, zero-ops',
+      'MongoDB: document store',
+    ])
+    const shown = parseOmpAsk(fx('omp-ask-form-single.txt'))!
+    expect(completeOmpAsk(shown, pending).question).toBe(pending[0]!.question)
+    expect(pendingOmpAsk(lines)).toEqual([])
+  })
+
+  it('reads several fieldsets and a text field of a call, with entities decoded', () => {
+    const html = '<form><fieldset><legend>Pick &amp; choose</legend><label><input type="radio" name="a" value="1" checked> One &lt;1&gt;</label></fieldset>'
+      + '<fieldset><legend>Boxes</legend><label><input type="checkbox" name="b" value="x"> Ex</label></fieldset><label>Name <input type="text" name="n"></label></form>'
+    expect(askedFromHtml(html)).toEqual([
+      { question: 'Pick & choose', options: [{ label: 'One <1>', description: null }] },
+      { question: 'Boxes', options: [{ label: 'Ex', description: null }] },
+      { question: 'Name', options: [] },
+    ])
   })
 })

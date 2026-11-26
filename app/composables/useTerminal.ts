@@ -14,7 +14,7 @@ import { loadWebgl, loadXterm } from '~/utils/xtermLoader'
 import { offerNewBuild } from '~/composables/useAppVersion'
 import { proposeTerminalSize, terminalPixelWidth } from '~/utils/terminalSize'
 import { writeTerminalFrame } from '~/utils/terminalFrame'
-import { guardWebglCanvasSize } from '~/utils/terminalRenderer'
+import { guardWebglCanvasSize, MAX_WEBGL_PIXELS, webglBufferOf, webglBufferUnusable } from '~/utils/terminalRenderer'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
 import { bindTerminalLinks, type TerminalLinks } from '~/utils/terminalLinks'
 import { bindTerminalKeys } from '~/utils/terminalKeys'
@@ -28,8 +28,11 @@ import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
 import { createWheelPacer, trackSgrMouse, wheelReports, type SgrMouse } from '~/utils/terminalWheel'
 import { virtualNavigationBytes, virtualNavigationKeys } from '~/utils/keybarKeys'
 import { createCompositionTracker, toggleVirtualModifier, virtualChord, virtualInputKey, type VirtualModifier } from '~/utils/terminalModifiers'
+import { kbOpen } from './useViewport'
 
 const CORE_SCROLLBACK = 5000
+// Coalesce resize bursts into one WebGL atlas + viewport rebuild after they settle.
+export const REPAINT_SETTLE_MS = 150
 
 export interface Banner { text: string, btn: string, fn: () => void }
 
@@ -96,18 +99,50 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   // coreStream would skip the next fit and attach at xterm's default 80×24.
   function forgetStream() {
     wheel.cancel()
+    cancelFollowSettle()
     mouseSupported = false
     coreStream = false
     coreControl = true
     if (sizeBanner) { sizeBanner = null; opts.setBanner(null) }
   }
-  // Watching a terminal taller than this screen: shift it so the cursor row,
-  // where the newest output is, stays in view.
+  // Watching a terminal taller than this screen (another viewer owns the size,
+  // or the keyboard covers the bottom while typing elsewhere): shift it so the
+  // cursor row, where the newest output is, stays in view.
+  let followRaf1 = 0
+  let followRaf2 = 0
+  function cancelFollowSettle() {
+    if (followRaf1) { cancelAnimationFrame(followRaf1); followRaf1 = 0 }
+    if (followRaf2) { cancelAnimationFrame(followRaf2); followRaf2 = 0 }
+  }
+  // The host's box lands on the layout pass, not in the tick that flips
+  // kbOpen: re-measure on the next two frames so a shift is never computed
+  // from a height that is still settling.
+  function scheduleFollowSettle() {
+    cancelFollowSettle()
+    followRaf1 = requestAnimationFrame(() => {
+      followRaf1 = 0
+      followCursor()
+      followRaf2 = requestAnimationFrame(() => {
+        followRaf2 = 0
+        followCursor()
+      })
+    })
+  }
+  const isWatching = () => (coreStream && !coreControl) || (kbOpen.value && !kbdOn.value)
   function followCursor() {
     const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
-    if (!term || !screen || !el) return
-    const shown = el.clientHeight - (screen.offsetTop || 0)
-    const over = coreStream && !coreControl ? (term.buffer.active.cursorY + 1) * (screen.offsetHeight / term.rows) - shown : 0
+    if (!term || !screen || !el || !term.rows) return
+    const rowPx = screen.offsetHeight / term.rows
+    // Never project a lift from a zero, negative or disconnected host: layout
+    // has not given the terminal a real height yet (the keyboard is still
+    // sliding, the view is parked), and the lift it implies would move the
+    // whole grid off screen.
+    const shown = el.isConnected ? el.clientHeight - (screen.offsetTop || 0) : 0
+    if (rowPx > 0 && shown <= 0) {
+      if (screen.style.transform) screen.style.transform = ''
+      return
+    }
+    const over = isWatching() ? (term.buffer.active.cursorY + 1) * rowPx - shown : 0
     screen.style.transform = over > 0 ? `translateY(${-Math.ceil(over)}px)` : ''
   }
   function offerFit() {
@@ -138,6 +173,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // Clear before xterm handles paste, including a one-character paste.
     host.addEventListener('paste', clearVirtualModifiers, true)
     disposed = false
+    webglDropped = false
+    webglDroppedAt = null
     twsRetry = 0
     const seq = ++mountSeq
     mounting = true
@@ -330,6 +367,33 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     await sendKeys([chord])
   }
 
+  let repaintTimer: ReturnType<typeof setTimeout> | undefined
+  let kbRepaintRaf = 0
+  function cancelRepaint() {
+    clearTimeout(repaintTimer)
+    repaintTimer = undefined
+    if (kbRepaintRaf) {
+      cancelAnimationFrame(kbRepaintRaf)
+      kbRepaintRaf = 0
+    }
+  }
+  // A resize reallocates the WebGL canvas, and opening/closing the phone
+  // keyboard clips or uncovers it; on some mobile GPUs (Adreno 830, Chrome
+  // Android) the glyph atlas or drawing buffer holds noise/blank tiles until
+  // rebuilt once after the change settles.
+  function repaintNow() {
+    clearTimeout(repaintTimer)
+    repaintTimer = undefined
+    if (!term || !webgl || disposed) return
+    term.clearTextureAtlas()
+    if (term.rows > 0) term.refresh(0, term.rows - 1)
+  }
+  function scheduleRepaint() {
+    if (!term || !webgl || disposed) return
+    clearTimeout(repaintTimer)
+    repaintTimer = setTimeout(repaintNow, REPAINT_SETTLE_MS)
+  }
+
   function fitNow(send: boolean) {
     if (!term || !fit || !el || !el.parentElement) return
     // Measured on the parent of .xterm (#term), not .xterm itself (as FitAddon does).
@@ -337,23 +401,94 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     const desktop = matchMedia(DESK_QUERY).matches && !opts.fill?.()
     el.style.width = desktop ? `${terminalPixelWidth(el.parentElement.clientWidth, contentWidth.value)}px` : ''
     const p = proposeTerminalSize(term)
-    if (!p || !p.cols || !p.rows) return
+    if (!p || !p.cols || !p.rows) { followCursor(); return }
     const d = { cols: p.cols, rows: p.rows }
-    if (!coreStream && (d.cols !== term.cols || d.rows !== term.rows)) term.resize(d.cols, d.rows)
-    if (send && (d.cols !== lastSize.cols || d.rows !== lastSize.rows)) {
+    // The keyboard covering the window is a rows-only change: while it is
+    // open and the terminal is not what is being typed in, resizing is pure
+    // churn — a SIGWINCH and a full repaint for rows the keyboard hides. The
+    // pane keeps its size, and the close fits back to it as a no-op. Typing
+    // into the terminal itself still resizes: the prompt must stay visible.
+    const covered = kbOpen.value && !kbdOn.value && d.cols === lastSize.cols
+    if (!coreStream && !covered && (d.cols !== term.cols || d.rows !== term.rows)) {
+      term.resize(d.cols, d.rows)
+      scheduleRepaint()
+    }
+    if (send && !covered && (d.cols !== lastSize.cols || d.rows !== lastSize.rows)) {
       if (sendTerm({ type: 'terminal.resize', cols: d.cols, rows: d.rows })) lastSize = { cols: d.cols, rows: d.rows }
     }
-    if (coreStream) offerFit()
+    if (coreStream && !covered) offerFit()
+    else followCursor()
+    syncWebgl()
   }
 
   // Theme change while the terminal is shown.
   watch(terminalTheme, (th) => { if (term) term.options.theme = th })
+  // Keyboard open/close clips or uncovers the WebGL canvas: rebuild once the
+  // layout has settled, whatever the grid did.
+  watch(kbOpen, (open, wasOpen) => {
+    if (open === wasOpen || !term || disposed) return
+    if (kbRepaintRaf) cancelAnimationFrame(kbRepaintRaf)
+    kbRepaintRaf = requestAnimationFrame(() => {
+      kbRepaintRaf = 0
+      repaintNow()
+    })
+  }, { flush: 'post' })
   // The preference changes the width in pixels, then FitAddon re-measures.
   watch(contentWidth, () => nextTick(() => fitNow(true)))
 
   // The WebGL add-on is downloaded the first time it is chosen; until then (or
   // if that fails) xterm keeps the HTML renderer it starts with.
   let rendererSeq = 0
+  // WebGL is dropped for a grid the browser cannot draw: its drawing buffer is
+  // clamped (nothing reaches the screen) or its canvas is over the safe size.
+  // `webglCap` starts at the safe size and tightens to what the browser really
+  // gave the first time it clamped one, so a retry after a shrink is honest.
+  let webglDropped = false
+  let webglDroppedAt: { cols: number, rows: number } | null = null
+  let webglCap = MAX_WEBGL_PIXELS
+  function dropWebgl() {
+    const old = webgl
+    webgl = null
+    webglDropped = true
+    webglDroppedAt = term ? { cols: term.cols, rows: term.rows } : null
+    try { old?.dispose() } catch { /* torn down with its terminal */ }
+    reportTerminalRenderer('html-fallback')
+    if (term && term.rows > 0) term.refresh(0, Math.max(0, term.rows - 1))
+  }
+  // The canvas the add-on would get for the current grid (device pixels).
+  function intendedCanvas(): { width: number, height: number } | null {
+    const cell = (term as unknown as { _core?: { _renderService?: { dimensions?: { css?: { cell?: { width: number, height: number } } } } } })?._core?._renderService?.dimensions?.css?.cell
+    if (!term || !cell?.width || !cell.height) return null
+    const dpr = globalThis.devicePixelRatio || 1
+    return { width: Math.round(term.cols * cell.width * dpr), height: Math.round(term.rows * cell.height * dpr) }
+  }
+  function inheritedWebglFits() {
+    if (!term || webglCap <= 0) return false
+    const intended = intendedCanvas()
+    // Without xterm's measured cell (a bare terminal), the shrink itself is the
+    // only evidence; the check after the add-on loads drops it again if not.
+    return !intended || intended.width * intended.height <= webglCap
+  }
+  function syncWebgl() {
+    if (!term || disposed) return
+    if (webgl) {
+      const buffer = webglBufferOf(webgl)
+      if (!buffer) return
+      const clamped = buffer.drawingBufferWidth < buffer.width - 2 || buffer.drawingBufferHeight < buffer.height - 2
+      // What the browser really allowed becomes the ceiling for a retry.
+      if (clamped) webglCap = Math.min(webglCap, buffer.drawingBufferWidth * buffer.drawingBufferHeight)
+      if (webglBufferUnusable(buffer, webglCap)) dropWebgl()
+      return
+    }
+    // A grid that shrank (Fit to this screen, a width change) may fit again:
+    // reuse the normal WebGL load path. Until it shrinks there is nothing to
+    // gain from re-creating an add-on the browser will clamp anyway.
+    if (!webglDropped || terminalRenderer.value !== 'webgl') return
+    if (!webglDroppedAt || (term.cols >= webglDroppedAt.cols && term.rows >= webglDroppedAt.rows)) return
+    if (!inheritedWebglFits()) return
+    webglDropped = false
+    void setRenderer('webgl')
+  }
   async function setRenderer(renderer: 'webgl' | 'html') {
     if (!term) return
     const seq = ++rendererSeq
@@ -389,8 +524,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         })
         term.loadAddon(addon)
         // Backing store at CSS size × devicePixelRatio, whatever the browser reports.
-        guardWebglCanvasSize(addon)
+        guardWebglCanvasSize(addon, undefined, scheduleRepaint)
         webgl = addon
+        webglDropped = false
+        webglDroppedAt = null
         reportTerminalRenderer('webgl')
       } catch {
         try { addon?.dispose() } catch { /* addon partially activated */ }
@@ -398,11 +535,14 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
         reportTerminalRenderer('html-fallback')
       }
     } else {
+      webglDropped = false
+      webglDroppedAt = null
       reportTerminalRenderer('html')
     }
     // The cell size may change with the renderer. The wheel and
     // the pane size stay handled by fitNow / TerminalView.
     fitNow(true)
+    syncWebgl()
   }
   watch(terminalRenderer, r => void setRenderer(r))
 
@@ -489,12 +629,14 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
           resized: () => {
             if (term !== current) return
             if (smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
+            scheduleRepaint()
             if (coreStream) offerFit()
+            syncWebgl()
           },
           reset: () => mouseSgr?.reset(),
           written: () => {
             if (credit && tws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'credit', bytes: credit }))
-            if (coreStream && !coreControl) followCursor()
+            if ((coreStream && !coreControl) || (kbOpen.value && !kbdOn.value)) followCursor()
             selectionHint.refresh(current, mouseSupported)
             if (smoothTouchScrolling.value) frameTick.value++
             if (bytes.length) wheel.frame()
@@ -627,22 +769,44 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     scrollInputVersion.value++
     if (wasEnabled) sendTerm({ type: 'touch.cancel', disabled: true })
   }, { flush: 'sync' })
+  // Lives for the owning component's effect scope, not dispose(): AgentView
+  // re-mounts TerminalView on the same controller across Conversation/Terminal toggles.
+  watch([kbOpen, kbdOn], ([open], [wasOpen]) => {
+    if (!isWatching()) {
+      cancelFollowSettle()
+      followCursor()
+      return
+    }
+    // The keyboard's open/close changes the host's box on the layout pass, not
+    // in this tick; kbdOn flipping under an already-open keyboard can
+    // re-project right away and settle on the frame.
+    if (open !== wasOpen) scheduleFollowSettle()
+    else {
+      followCursor()
+      scheduleFollowSettle()
+    }
+  }, { flush: 'post' })
 
   function setVisible(visible: boolean) {
     if (!visible && smoothTouchScrolling.value) { scrollInputVersion.value++; cancelTouchScroll() }
     sendTerm({ type: 'visibility', visible })
-    // Another client may have resized the pane while we were away.
-    if (visible) nextTick(() => fitNow(true))
+    // Another client may have resized the pane while we were away, or the
+    // host regained its height while covered.
+    if (visible) nextTick(() => { fitNow(true); followCursor(); scheduleFollowSettle() })
   }
 
   function dispose() {
     el?.removeEventListener('paste', clearVirtualModifiers, true)
     disposed = true
+    cancelRepaint()
     if (mounting) loading.value = false
     mounting = false
     takeoverQueued = false
     focusQueued = false
     stopSmoothWatch()
+    cancelFollowSettle()
+    const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
+    if (screen) screen.style.transform = ''
     wheel.cancel()
     disconnect()
     unbindSelection?.()
@@ -658,6 +822,8 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     links?.dispose()
     links = null
     webgl = null // term.dispose() destroys its addons
+    webglDropped = false
+    webglDroppedAt = null
     term?.dispose()
     term = null
   }
