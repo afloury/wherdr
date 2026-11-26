@@ -9,6 +9,8 @@ type ScrollCore = {
   buffers?: {
     active?: {
       ybase: number
+      scrollTop?: number
+      scrollBottom?: number
       lines: { get: (y: number) => { getTrimmedLength: () => number } | undefined }
     }
   }
@@ -22,12 +24,15 @@ function scrollCore(term: Terminal): ScrollCore | undefined {
 // xterm 6's scrollOnEraseInDisplay, for xterm 5.5: ED 2 moves the non-empty
 // part of the screen into the scrollback instead of erasing it in place. The
 // erase attribute is the input handler's own, so a background-color erase keeps
-// xterm's back-color-erase behavior.
+// xterm's back-color-erase behavior. Only when the scroll region is the whole
+// screen: scroll() moves the lines inside the region only, so a smaller one
+// would leave old rows on screen; xterm then erases as stock.
 export function scrollScreenIntoScrollback(term: Terminal): boolean {
   const core = scrollCore(term)
   const eraseAttr = core?._inputHandler?._eraseAttrData?.()
   const buffer = core?.buffers?.active
   if (!core?.scroll || !eraseAttr || !buffer) return false
+  if (buffer.scrollTop !== 0 || buffer.scrollBottom !== term.rows - 1) return false
   let last = -1
   for (let row = term.rows - 1; row >= 0; row--) {
     if ((buffer.lines.get(buffer.ybase + row)?.getTrimmedLength() ?? 0) > 0) { last = row; break }

@@ -37,6 +37,13 @@ describe('core scrollback across erase in display', () => {
     expect(stock.buffer.active.length).toBe(31)
   })
 
+  it('erases as stock on agy when a scroll region is set', async () => {
+    const stream = `${transcript(40)}\x1b[3;8r\x1b[2J\x1b[Hx`
+    const term = await sameStream(true, stream, 10)
+    const stock = await sameStream(undefined, stream, 10)
+    expect(bufferLines(term)).toEqual(bufferLines(stock))
+  })
+
   it('keeps stock behavior for a shell clear on a non-agy pane', async () => {
     const stream = `${transcript(40)}\x1b[H\x1b[2J\x1b[3Jscratch$ `
     const term = await sameStream(false, stream, 10)
