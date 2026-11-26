@@ -20,7 +20,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Improved
 
-- **A coordinator can defer a started task.** `wherdr pm task edit <task> --after <task>` now works on a task that is stopped or waiting for the user: it is parked behind those tasks, leaves Tasks to review, and goes on in the same conversation once they are done. The coordinator's role text and `task stop`'s help now say that a stop lands in Tasks to review, and that "do X after Y" is an `--after`.
+- **A coordinator can defer a started task.** `wherdr pm task edit <task> --after <task>` now works on a task stopped at its worker's step: it is parked behind those tasks, leaves Tasks to review, and goes on in the same conversation once they are done. The coordinator's role text and `task stop`'s help now say that a stop lands in Tasks to review, and that "do X after Y" is an `--after`.
 
 ### Fixed
 

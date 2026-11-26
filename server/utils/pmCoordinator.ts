@@ -52,6 +52,7 @@ import { checkTaskContext } from '../../shared/pm/context'
 import { READ_LINES, lastWords } from './pmRead'
 import { READ_COMMANDS, reachRefusal } from '../../shared/pm/reach'
 import { resumeRefusal } from '../../shared/pm/stop'
+import { deferRefusal } from '../../shared/pm/park'
 import { pacedStart, paceGauge, paceLine } from '../../shared/pm/pace'
 import { readQuotas } from './quotas'
 import { quotaByKey, reviewAccount, reviewQueueLines, runningReviews } from '../../shared/pm/reviewQueue'
@@ -543,10 +544,11 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       if (cmd.name === 'task edit' && cmd.after !== undefined) {
         const task = await taskOf(cmd.task), ids = afterIds({ after: cmd.after }).map(a => storedTaskId(projects, a) ?? a)
         if (turn !== 'user' && !pilot?.on) throw new HerdrError('refused', 'In a wake, after is changed only with the autopilot on')
-        const started = (task.step?.started || task.state === 'working') && !task.parked
-        // A stopped or waiting started task parks behind those tasks, as a worker's blocked:on does: it goes on in its conversation once they are done.
-        const park = started && !task.step?.done && (!!task.stopped || task.state === 'waiting')
-        const why = started && !park ? `${task.id} has started: after orders only tasks not started yet, or a stopped, waiting or parked one` : (park && !ids.length ? 'Name the tasks it waits for' : undefined) ?? afterRefusal(task.project, ids, await store.tasks(), projects, task.id)
+        // A started task parks behind those tasks, as a worker's blocked:on does: it goes on in its
+        // conversation once they are done. Only a stopped one at its worker's step (deferRefusal).
+        const park = (task.step?.started || task.state === 'working') && !task.parked
+        const holder = park && t && task.step ? currentStep(planOf(t, task, p), task.step)?.holder : undefined
+        const why = (park ? deferRefusal(task, holder, turn !== 'user') ?? (ids.length ? undefined : 'Name the tasks it waits for') : undefined) ?? afterRefusal(task.project, ids, await store.tasks(), projects, task.id)
         if (why) throw new HerdrError('refused', why)
         // No longer held by its chain: to do again, where the engine looks at it.
         // Checked again at the write: another edit may have closed a cycle meanwhile.

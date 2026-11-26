@@ -1493,6 +1493,23 @@ describe('commands of lot 10', () => {
     await refused(cli(['task', 'edit', first.id, '--after', second.id, '--reason', 'Cycle']), /cycle/)
   })
 
+  it('task edit --after never parks a task waiting on its agent\'s question, one stopped at the review, nor, in a wake, one the user stopped', async () => {
+    await noteTurn(store, 'CO', 'user', 'do these after the first')
+    const first = await store.addTask({ project: 'CO', title: 'First', type: 'feature' })
+    const asks = await store.addTask({ project: 'CO', title: 'Asks', type: 'feature' })
+    await store.saveTask({ ...asks, state: 'waiting', waiting: 'Permission: run npm test', waitKind: 'permission', step: state(1) })
+    await refused(cli(['task', 'edit', asks.id, '--after', first.id, '--reason', 'Later']), 'has started')
+    const reviewed = await store.addTask({ project: 'CO', title: 'Reviewed', type: 'feature' })
+    await store.saveTask(stoppedTask({ ...reviewed, state: 'working', step: state(2) }, { by: 'the coordinator', why: 'later', at: 1 }))
+    await refused(cli(['task', 'edit', reviewed.id, '--after', first.id, '--reason', 'Later']), 'its worker does not hold')
+    const mine = await store.addTask({ project: 'CO', title: 'Mine', type: 'feature' })
+    await store.saveTask(stoppedTask({ ...mine, state: 'working', step: state(1) }, { by: 'the user', why: 'not now', at: 1 }))
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true } })
+    await noteTurn(store, 'CO', 'wake')
+    await refused(cli(['task', 'edit', mine.id, '--after', first.id, '--reason', 'Later']), 'stopped by the user')
+    expect((await store.task(mine.id))!.stopped?.by).toBe('the user')
+  })
+
   it('spec changes: task edit, task note and tell --spec reach the running agent and the reviewer\'s next prompt; never in a wake', async () => {
     const sent: string[] = []
     const call = async (method: string, p: { text: string }) => { if (method === 'terminal.send') sent.push(p.text); return {} }
