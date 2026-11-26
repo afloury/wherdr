@@ -20,6 +20,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **An incident says offline, not unknown, when the machine is unreachable.** A "terminal not found" on a remote machine whose connection wherdr's own check had already lost was classed unknown while herdr-core's list still said connected. It is now offline, with the failed check as evidence.
 - **The files watcher counts only the task's own commits.** After a task merged its staging branch (or any branch other than its base), the files that merge brought in were logged as "changed files beyond the declared ones". The watcher now reads the task's own commits from its start (first parent, merges left out) plus uncommitted and new files.
 - **A finding the worker contests reaches the reviewer.** A line `Contested: <finding id>` (several ids separated by commas) in the worker's report is now kept as a dispute: the reviewer of the next round is told which findings the agent contests, and a finding contested and sent back again goes to *Your turn* as an arbitration instead of another send-back.
 - **A step's "Check … over 3h" clears when its agent is working.** The timeout only went when the engine had seen the agent idle first, so an agent you wrote to directly, or one the coordinator moved on, left the item in Tasks to review with only *Ask the agent to fix it*. The engine now takes the timeout out of Your turn, and starts the step's time limit again, as soon as it sees the agent working.
