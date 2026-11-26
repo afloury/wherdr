@@ -2,13 +2,14 @@
 
 [Documentation](README.md) · [Project](../README.md)
 
-Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conversation mode; any other terminal shows only its
-[terminal](terminal.md). How wherdr finds the conversation file on herdr-core is described in
+Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent terminals open in conversation mode; any other terminal shows only its
+[terminal](terminal.md). Command Code conversations are Linux-only for now. How wherdr finds the conversation file on herdr-core is described in
 [herdr-core › Conversations](core.md#conversations).
 
-- **Conversation view**: the agent's real transcript (Claude Code, Codex, Devin, Antigravity and Hermes Agent), rendered as
+- **Conversation view**: the agent's real transcript (Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan),
-  timestamps, search and infinite scroll back to the first message. Every message shows its time,
+  timestamps, search and infinite scroll back to the first message (Command Code follows the bounded
+  reads described under [herdr-core › Conversations](core.md#conversations)). Every message shows its time,
   muted and always on the right: under your messages, at the end of the agent reply's action
   row or of its end-of-turn line (`✓ 27 s · 1 action … 21:39`), with the day for an earlier one (*Yesterday 21:39*, then a short
   date); hover or tap it for the full date and time. Reading a conversation never
