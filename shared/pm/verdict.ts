@@ -129,7 +129,7 @@ const line = (f: Finding) => `- ${f.id} [${weight(f)}] ${f.title}${f.where ? ` (
 
 // What the worker is told when a verdict sends the task back.
 export const sendBackText = (step: string, fs: Finding[]) =>
-  [`Step "${step}" sent it back:`, ...fs.map(line), 'Fix them, commit, then say you are done. If you contest one, say so with its id.'].join('\n')
+  [`Step "${step}" sent it back:`, ...fs.map(line), 'Fix them, commit, then say you are done. If you contest one, add a line "Contested: <id>" to your report.'].join('\n')
 
 // From the second round on, the reviewer checks only the points already found.
 export function reviewText(text: string, prev?: Round) {

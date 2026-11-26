@@ -87,6 +87,22 @@ describe('after the worker, with each example template', () => {
     expect(w.s.done).toBe(true)
   })
 
+  it('a worker\'s "Contested: <id>" lines reach the review as disputes', () => {
+    const w = walk(company, 'feature')
+    const stuck = '{"findings":[{"id":"no-test","severity":"major","title":"No test","proof":"npm test: 0 tests"},{"id":"other","severity":"major","title":"Other","proof":"x"}]}'
+    w.done('worker')
+    w.done('reviewer', read({ verdict: stuck }))
+    w.tell()
+    w.done('worker', read({ note: 'Fixed other.\nContested: no-test, nope\n  contested:  other-id \nNot a dispute: Contested: inline' }))
+    expect(w.s.reviews?.review?.at(-1)?.disputed).toEqual(['no-test', 'nope', 'other-id'])
+    expect(w.tell()!.text).toContain('The agent contests: no-test, nope, other-id.')
+    for (let i = 0; i < 5 && !w.s.yourTurn; i++) {
+      w.done('reviewer', read({ verdict: stuck }))
+      if (!w.s.yourTurn) { w.tell(); w.done('worker') }
+    }
+    expect(w.s.yourTurn).toMatchObject({ reason: 'rounds', advice: { outcome: 'arbitrate', findings: ['no-test'] } })
+  })
+
   it('github: the engine opens the PR, the reviewer checks it, the merge waits for its checks', () => {
     const w = walk(github, 'simple')
     w.done('worker')
