@@ -59,10 +59,10 @@ export function refusalSaid(text: string, told?: Told): Said {
 // work its worker does (a conflict, red checks, a refused push, new commits to
 // review). outside: nothing in the code is wrong (herdr-core or a machine refused
 // the call, the network, a timeout, the Git host's 5xx or rate limit, a machine
-// offline): Try again only. unknown: Try again first, the agent second.
+// offline, or a setting only the user's: the working branch): Try again only. unknown: Try again first, the agent second.
 export type ActionFix = 'code' | 'outside' | 'unknown'
 const CODE_FIX = /conflicts? with|is behind|not mergeable|cannot be cleanly created|check\(s\) failed|refused|rejected\]|fast-forward|\(fetch first\)|since the review|head is not the task's commit|commits the task's worktree never had/i
-const OUTSIDE_FIX = /herdr-core|unreachable|offline|machine_unknown|timed out|did not respond|interrupted|(?:HTTP|status|error)[ :]*5\d\d\b|bad gateway|service unavailable|could not resolve host|connection (reset|refused|timed out|closed)|remote end hung up|RPC failed|early EOF|rate limit|unreadable PR details/i
+const OUTSIDE_FIX = /herdr-core|unreachable|offline|machine_unknown|timed out|did not respond|interrupted|(?:HTTP|status|error)[ :]*5\d\d\b|bad gateway|service unavailable|could not resolve host|connection (reset|refused|timed out|closed)|remote end hung up|RPC failed|early EOF|rate limit|unreadable PR details|working branch in Settings/i
 export function actionFix(error: string | undefined): ActionFix {
   if (!error) return 'unknown'
   if (OUTSIDE_FIX.test(error)) return 'outside'

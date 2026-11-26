@@ -1280,6 +1280,7 @@ it follows you across devices like the Board's picker.
   the screenshots follow the same rules as *Send back*, and the task leaves
   Tasks to review at once, back when its next review is done; the log keeps
   your words.
+  Every other step that waits for you (*It works*, *Approve design*…) has the same note field and *Send back* under its button, in the sheet's To do and in Tasks to review, with the same effect.
   With no TL;DR yet, the **Worker's note** (its closing report: what
   was done, why it is done, what was tested) and the **Reviewer's note** (the
   verdict, what it sent back and was fixed during the rounds, what it left as
@@ -1626,6 +1627,13 @@ worker is told, and the coordinator gets one wake with a decision: pull the
 shared contract (proto, API, schema) into its own task both wait for, or merge
 the two tasks into one. If it cannot decide, it tells you both options and leaves the wake unanswered:
 you also get the *coordinator is not answering* notification.
+
+A coordinator can park a started task **stopped at its worker's step** the same
+way: `wherdr pm task edit <task> --after <task> --reason "…"`. Use it to defer
+work ("do X after Y") instead of `task stop`, which lands the task in your Tasks
+to review. Refused for a working task, one waiting on an agent's question or a
+permission (that stays yours), one stopped at another step (the review), and,
+in a wake, one you stopped yourself.
 
 ### A task paused for room
 

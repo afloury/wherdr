@@ -4,7 +4,7 @@ import { mockNuxtImport, mountSuspended, registerEndpoint } from '@nuxt/test-uti
 import { readBody } from 'h3'
 import NewAgentSheet from '~/components/NewAgentSheet.vue'
 import { newAgentOpen } from '~/composables/useUi'
-import { herdrState } from '~/composables/useHerdr'
+import { appConfig, herdrState } from '~/composables/useHerdr'
 import { coordinators, resumedCoordinators } from '~/composables/useCoordinators'
 import type { CoordinatorView } from '#shared/pm/coordinator'
 import type { Pane } from '#shared/types'
@@ -15,7 +15,8 @@ mockNuxtImport('navigateTo', () => navigate)
 const opus = { program: 'claude' as const }
 let views: CoordinatorView[] = []
 const posts: { url: string, body: Record<string, unknown> }[] = []
-registerEndpoint('/api/config', () => ({ kinds: ['claude', 'codex'], home: '/repos', dirs: ['/repos'], push: { enabled: false, key: null, devices: 0 } }))
+let kinds = ['claude', 'codex']
+registerEndpoint('/api/config', () => ({ kinds, home: '/repos', dirs: ['/repos'], push: { enabled: false, key: null, devices: 0 } }))
 registerEndpoint('/api/pm/coordinators', () => views)
 registerEndpoint('/api/pm/coordinator-start', { method: 'POST', handler: async (e) => {
   posts.push({ url: '/api/pm/coordinator-start', body: await readBody(e) })
@@ -29,6 +30,10 @@ const folders: Record<string, { exists: boolean, git: boolean, remote?: boolean,
   '/repos/clients': { exists: true, git: false, empty: false },
 }
 registerEndpoint('/api/pm/repos', () => ({ home: '/repos', repos: ['/repos/api', '/repos/web'] }))
+registerEndpoint('/api/pm/coordinator-agent', { method: 'POST', handler: async (e) => {
+  posts.push({ url: '/api/pm/coordinator-agent', body: await readBody(e) })
+  return {}
+} })
 registerEndpoint('/api/pm/folder', (e) => {
   const at = String(new URL(e.node.req.url!, 'http://x').searchParams.get('path')).replace(/^~/, '/repos')
   return { path: at, ...folders[at]! }
@@ -57,6 +62,7 @@ async function openSheet(v: CoordinatorView[], panes: Pane[] = []) {
   return w
 }
 afterEach(() => {
+  kinds = ['claude', 'codex']; appConfig.value = { ...appConfig.value, kinds } as typeof appConfig.value
   newAgentOpen.value = false; posts.length = 0; navigate.mockClear(); coordinators.value = []; views = []
   herdrState.value = { ok: false, workspaces: [], panes: [] }
 })
@@ -132,9 +138,10 @@ it('adds a project from a git repository, a new folder or a folder without git, 
   await w.get('[data-testid="project-start"]').trigger('click')
   await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('/a/w2%3Ap1'))
   // No template: the project gets the minimal default, its coordinator proposes a workflow.
-  expect(posts.map(p => p.url)).toEqual(['/api/pm/project', '/api/pm/coordinator-start'])
+  expect(posts.map(p => p.url)).toEqual(['/api/pm/project', '/api/pm/coordinator-agent', '/api/pm/coordinator-start'])
   expect(posts[0]!.body).toEqual({ key: 'NA', name: 'Shop', machine: '', path: '/repos/new-app', plain: true, create: true, gitInit: true })
   expect(posts[1]!.body).toEqual({ project: 'NA', program: 'claude' })
+  expect(posts[2]!.body).toEqual({ project: 'NA', program: 'claude' })
   w.unmount()
 })
 
@@ -147,6 +154,24 @@ it('a browsed folder fills name and key, shows as ~/…, is probed and can start
   expect((w.get('#projectName').element as HTMLInputElement).value).toBe('clients')
   expect((w.get('#projectKey').element as HTMLInputElement).value).toBe('CLN')
   expect(w.get('[data-testid="project-start"]').attributes('disabled')).toBeUndefined()
+  w.unmount()
+})
+
+it('a new project started with omp keeps omp: its coordinator starts on omp and omp becomes its default', async () => {
+  kinds = ['claude', 'codex', 'omp']; appConfig.value = { ...appConfig.value, kinds } as typeof appConfig.value
+  const w = await openSheet([{ project: '_main', name: 'Main coordinator', main: true, agent: opus }])
+  await vi.waitFor(() => expect(w.find('[data-repo="/repos/web"]').exists()).toBe(true))
+  await w.get('[data-repo="/repos/web"]').trigger('click')
+  await vi.waitFor(() => expect(w.find('[data-testid="project-folder"]').attributes('data-folder')).toBe('git'), { timeout: 2000 })
+  await vi.waitFor(() => expect(w.find('[data-agent="omp"]').exists()).toBe(true))
+  await w.get('[data-agent="omp"]').trigger('click')
+  expect(w.get('[data-testid="project-start"]').text()).toBe('Start with OMP')
+  await w.get('[data-testid="project-start"]').trigger('click')
+  await vi.waitFor(() => expect(navigate).toHaveBeenCalled())
+  expect(posts.filter(p => p.url !== '/api/pm/project').map(p => [p.url, p.body])).toEqual([
+    ['/api/pm/coordinator-agent', { project: 'WEB', program: 'omp' }],
+    ['/api/pm/coordinator-start', { project: 'WEB', program: 'omp' }],
+  ])
   w.unmount()
 })
 

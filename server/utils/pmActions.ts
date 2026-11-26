@@ -11,7 +11,7 @@ import { mayMerge } from '../../shared/pm/guards'
 import { BB_STRATEGY, CODE, RETRY_MS, SCRIPT, SLOW, SLOW_SECS, allText, bbReady, errorText, keepsBranch, commandState, guardAction, isTransient, leaks, outputTail, prReady, readPrInfo, receiptId, runsState, type ActionResult, type GhRun, type PrInfo, type ShellResult } from '../../shared/pm/actions'
 import type { ResolvedGuards } from '../../shared/pm/guards'
 import type { BbStatus } from '../../shared/pm/actions'
-import { isPrMerge, type MergeBy, type StepAction } from '../../shared/pm/workflow'
+import { actionField, isPrMerge, type MergeBy, type StepAction } from '../../shared/pm/workflow'
 
 type Shell = (script: string, args: string[], input?: string) => Promise<ShellResult>
 export interface ActionDeps {
@@ -124,6 +124,13 @@ export async function runAction(deps: ActionDeps, job: ActionJob): Promise<Actio
     await store.saveReceipt({ ...prev, state: 'uncertain' })
     const why = merge && resumes > MERGE_RESUMES ? `interrupted ${MERGE_RESUMES + 1} times` : 'interrupted before its result was known'
     return { ok: false, error: `${job.action.kind} was ${why}: check by hand, then try again` }
+  }
+  // No branch from the step or the project's working branch: the repository's default one.
+  const field = actionField(job.action.kind)
+  if (field && !job.action[field]) {
+    const d = await run(deps, SCRIPT.defaultBranch, [job.worktree])
+    const name = d.code === 0 ? lastLine(d.out) : ''
+    if (name) job = { ...job, action: { ...job.action, [field]: name } }
   }
   // Resumed, it keeps who started it (above): your gesture still counts for the guards.
   const refused = guardAction(job.guards, job.action, { branch: job.branch, by: job.by, project: job.task.project })

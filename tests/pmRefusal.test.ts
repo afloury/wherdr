@@ -50,6 +50,8 @@ it('tells a failed action its worker can fix from one outside the code', () => {
   // herdr-core, a machine, the network, the Git host: Try again only.
   for (const e of ['merge: herdr-core rejected the request (unavailable)', 'box is unreachable', 'merge: timed out', 'merge: HTTP 502 Bad Gateway', 'push: could not resolve host: github.com', 'merge: API rate limit exceeded', 'github.merge was interrupted before its result was known: check by hand, then try again'])
     expect(actionFix(e)).toBe('outside')
+  // A setting only the user (or the coordinator) can change: never the worker's to fix.
+  expect(actionFix("git.land has no branch: name one in the step, or set the project's working branch in Settings › Projects › A › General")).toBe('outside')
   expect(actionFix('merge: exit code 1')).toBe('unknown')
   expect(actionFix(undefined)).toBe('unknown')
 })
