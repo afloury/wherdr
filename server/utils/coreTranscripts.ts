@@ -169,6 +169,13 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
     return info
   }
 
+  // Controlling terminal of a process on the machine (`ps` prints `pts/3`, `ttys003`).
+  // Through the machine's own shell (coreShell), so the machine is always named.
+  const ttyOf = (shell: ShellExec) => async (pid: number) => {
+    const r = await shell('ps -o tty= -p "$1"', [String(pid)], { timeoutMs: 5000, maxBytes: 256 }).catch(() => null)
+    return (r?.code === 0 && r.stdout.toString('utf8').trim()) || null
+  }
+
   const machines = new Map<string, Promise<Transcripts>>()
   // Warm instances by machine name: the synchronous final predicate
   // (live below) reaches the reader that produced a reply without a new
@@ -199,7 +206,7 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
           const r = await cmd.locate({ state: d.state, pid: d.pid, argv: d.argv, foreground: d.foreground ? { pid: d.foreground.pid } : null })
           return 'file' in r ? { file: r.file, session: r.session, guessed: true } : null
         }
-        return createTranscripts({ home, herdr, fs, locateCommandCode, codexHistory: name ? undefined : deps.codexHistory })
+        return createTranscripts({ home, herdr, fs, locateCommandCode, codexHistory: name ? undefined : deps.codexHistory, ttyOf: ttyOf(shell) })
       })()
       machines.set(name, t)
       // One derived promise, both branches handled — a failed build is
