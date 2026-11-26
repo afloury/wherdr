@@ -47,6 +47,10 @@ const claudeOutput = jsonl(
   { type: 'system', subtype: 'hook_response', outcome: 'cancelled' },
 )
 
+// The hand-kept built-ins (agentBuiltins.ts) that follow the stand-in's own list: /compact is in it.
+const OMP_SCREEN_ONLY = ['clear', 'new', 'resume', 'restart', 'settings', 'help', 'hotkeys', 'exit']
+const CLAUDE_SCREEN_ONLY = ['clear', 'resume', 'help', 'permissions', 'config', 'rewind', 'status', 'exit']
+
 describe('omp command listing', () => {
   it('reads the answer to get_available_commands', () => {
     expect(parseOmpCommands(ompOutput)).toEqual([
@@ -158,7 +162,7 @@ describe('what a terminal’s agent offers after "/"', () => {
     const list = await commands.list('w1:p1')
     expect(list.agent).toBe('omp')
     expect(list.error).toBeUndefined()
-    expect(list.commands.map(c => c.name)).toEqual(['compact', 'model', 'skill:release-notes', 'deploy', 'acme:lint_report', 'init'])
+    expect(list.commands.map(c => c.name)).toEqual(['compact', 'model', 'skill:release-notes', 'deploy', 'acme:lint_report', 'init', ...OMP_SCREEN_ONLY])
     // One run, here (no machine named), asked the way omp's RPC takes it.
     expect(core.execs()).toHaveLength(1)
     expect(core.execs()[0]!.params.on).toBeUndefined()
@@ -177,7 +181,7 @@ describe('what a terminal’s agent offers after "/"', () => {
     core.install('claude', claudeOutput)
     const list = await commands.list('host-a~w1:p3')
     expect(list.agent).toBe('claude')
-    expect(list.commands.map(c => c.name)).toEqual(['compact', 'release-notes', 'acme:review-api', 'wrap-up', 'sync-docs', 'fast'])
+    expect(list.commands.map(c => c.name)).toEqual(['compact', 'release-notes', 'acme:review-api', 'wrap-up', 'sync-docs', 'fast', ...CLAUDE_SCREEN_ONLY])
     expect(core.execs()[0]!.params.on).toBe('host-a')
     const ran = core.ran('claude')
     expect(ran.folder).toBe(project)
@@ -246,5 +250,27 @@ describe('what a terminal’s agent offers after "/"', () => {
     expect(core.calls).toHaveLength(0)
     await expect(commands.list('w9:p9')).rejects.toBeInstanceOf(HerdrError)
     await expect(commands.list('w9:p9')).rejects.toMatchObject({ code: 'bad_pane' })
+  })
+})
+
+describe('the screen-only built-ins after the agent’s own list', () => {
+  it('adds them as commands, and the agent’s entry wins on a clash of name or alias', async () => {
+    const own = jsonl({ id: 'cmds', type: 'response', command: 'get_available_commands', success: true, data: { commands: [
+      { name: 'compact', description: 'The agent’s own words', input: { hint: '[focus]' }, source: 'builtin' },
+      { name: 'reset', aliases: ['clear'], description: 'Its own /clear', source: 'builtin' },
+    ] } })
+    const { core, commands } = setup([pane('w1:p1', 't1', 'omp', '/tmp')])
+    core.install('omp', own)
+    const list = (await commands.list('w1:p1')).commands
+    expect(list.slice(0, 2).map(c => c.name)).toEqual(['compact', 'reset'])
+    expect(list.find(c => c.name === 'compact')!.desc).toBe('The agent’s own words')
+    expect(list.map(c => c.name).filter(n => n === 'clear' || n === 'compact')).toEqual(['compact'])
+    expect(list.slice(2).map(c => c.name)).toEqual(['new', 'resume', 'restart', 'settings', 'help', 'hotkeys', 'exit'])
+    expect(list.slice(2).every(c => c.kind === 'command' && c.desc)).toBe(true)
+  })
+
+  it('adds none when the agent could not be asked', async () => {
+    const { commands } = setup([pane('w1:p1', 't1', 'claude', '/tmp')])
+    expect((await commands.list('w1:p1')).commands).toEqual([])
   })
 })

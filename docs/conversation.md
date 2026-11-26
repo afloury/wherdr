@@ -210,7 +210,7 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   Claude Code field lists the commands and skills that agent has, so that a skill is found without
   knowing its name (`/ret` offers `/skill:retro`): the list narrows as you type, `↑` `↓` move, `Tab`
   or `Enter` complete the highlighted one, `Esc` closes it, a tap picks on a phone, and **+** opens it
-  too. It is read from the agent itself, on the pane's own machine and in its folder. A command that opens a panel or a
+  too. It is read from the agent itself, on the pane's own machine and in its folder, followed by a short fixed list of the commands the agent keeps to its screen (`/new`, `/resume`, `/permissions`…; the agent's own entry wins). A command that opens a panel or a
   picker (`/context`, `/model`…) shows the interactive terminal over the conversation. **Stop** (or `Esc`
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
