@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { activeTerminalRenderer, canvasDeviceSize, guardWebglCanvasSize, parseTerminalRenderer } from '../app/utils/terminalRenderer'
+import {
+  activeTerminalRenderer,
+  canvasDeviceSize,
+  guardWebglCanvasSize,
+  MAX_WEBGL_PIXELS,
+  parseTerminalRenderer,
+  webglBufferOf,
+  webglBufferUnusable,
+} from '../app/utils/terminalRenderer'
 
 describe('terminal renderer preference', () => {
   it('defaults to WebGL when the preference is absent or invalid', () => {
@@ -35,20 +43,60 @@ describe('WebGL canvas backing store', () => {
     expect(canvasDeviceSize({ width: 756, height: 416 }, expected, 2)).toEqual(expected)
   })
 
-  it('routes the renderer resizes through the guard', () => {
+  it('routes the renderer resizes through the guard and notifies only when the backing size changes', () => {
     const calls: number[][] = []
+    let resized = 0
+    const canvas = { width: 756, height: 832 }
     const renderer = {
+      _canvas: canvas,
       dimensions: { device: { canvas: expected } },
-      _setCanvasDevicePixelDimensions(w: number, h: number) { calls.push([w, h, this === renderer ? 1 : 0]) },
+      _setCanvasDevicePixelDimensions(w: number, h: number) {
+        canvas.width = w
+        canvas.height = h
+        calls.push([w, h, this === renderer ? 1 : 0])
+      },
     }
-    expect(guardWebglCanvasSize({ _renderer: renderer }, () => 2)).toBe(true)
+    expect(guardWebglCanvasSize({ _renderer: renderer }, () => 2, () => { resized++ })).toBe(true)
     renderer._setCanvasDevicePixelDimensions(378, 416)
+    expect(resized).toBe(0)
     renderer._setCanvasDevicePixelDimensions(757, 832)
-    expect(calls).toEqual([[756, 832, 1], [757, 832, 1]])
+    expect(resized).toBe(1)
+    renderer._setCanvasDevicePixelDimensions(757, 832)
+    expect(resized).toBe(1)
+    expect(calls).toEqual([[756, 832, 1], [757, 832, 1], [757, 832, 1]])
   })
 
   it('leaves an addon with other internals untouched', () => {
     expect(guardWebglCanvasSize({})).toBe(false)
     expect(guardWebglCanvasSize({ _renderer: { _setCanvasDevicePixelDimensions: () => {} } })).toBe(false)
+  })
+})
+
+describe('WebGL drawing buffer check', () => {
+  it('reads the canvas and GL drawing buffer sizes when present', () => {
+    expect(webglBufferOf({})).toBeNull()
+    expect(webglBufferOf({ _renderer: { _canvas: { width: 1400, height: 1920 } } })).toBeNull()
+    expect(webglBufferOf({
+      _renderer: {
+        _canvas: { width: 5600, height: 7680 },
+        _gl: { drawingBufferWidth: 4918, drawingBufferHeight: 6745 },
+      },
+    })).toEqual({
+      width: 5600,
+      height: 7680,
+      drawingBufferWidth: 4918,
+      drawingBufferHeight: 6745,
+    })
+  })
+
+  it('flags clamped buffers and canvases exceeding the safe pixel cap', () => {
+    expect(MAX_WEBGL_PIXELS).toBe(16_777_216)
+    expect(webglBufferUnusable({ width: 0, height: 0, drawingBufferWidth: 0, drawingBufferHeight: 0 })).toBe(false)
+    expect(webglBufferUnusable({ width: 1400, height: 1920, drawingBufferWidth: 1398, drawingBufferHeight: 1919 })).toBe(false)
+    // Clamped drawing buffer (Chrome on DPR 4 phone).
+    expect(webglBufferUnusable({ width: 5600, height: 7680, drawingBufferWidth: 4918, drawingBufferHeight: 6745 })).toBe(true)
+    expect(webglBufferUnusable({ width: 3200, height: 4000, drawingBufferWidth: 2800, drawingBufferHeight: 4000 })).toBe(true)
+    // Over MAX_WEBGL_PIXELS even without clamping (iOS Safari cap).
+    expect(webglBufferUnusable({ width: 5600, height: 7680, drawingBufferWidth: 5600, drawingBufferHeight: 7680 })).toBe(true)
   })
 })
