@@ -68,7 +68,11 @@ typing in the terminal (or in the composer from the conversation view, never und
 terminal), a key of the keybar, or "Fit to this screen".
 A watch-only viewer attaches at the terminal's current size.
 The browser returns credit after xterm has written each chunk (core's 256 KiB window
-bounds the relay) and scrolls the history it received locally.
+bounds the relay) and scrolls the history it received locally. In an Antigravity
+(`agy`) pane, a program that erases the saved lines (`ESC[3J`, as agy does on a
+SIGWINCH) does not wipe the scrollback xterm holds: the current screen first moves
+into the scrollback, then clears. A shell's own `clear` keeps its earlier lines only
+in an agy pane; other panes keep xterm's stock behavior (see [Terminal](terminal.md)).
 The composer sends with `terminal.send` (never retried), Stop calls
 `terminal.interrupt` and reports what core observed, keys use `terminal.keys`, and
 closing a pane ends its program with `terminal.kill`. Controls that core does not support

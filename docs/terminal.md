@@ -18,6 +18,13 @@
   DOM renderer instead, so its text stays visible; **Fit to this screen** shrinks it and WebGL
   comes back. **Take control of this terminal** and
   **Reconnect** are also in the agent's **…** menu.
+  - In an Antigravity (`agy`) pane, a program that erases the **saved lines** (`ESC[3J`,
+    as agy does on a SIGWINCH) does not wipe the scrollback this view already holds: the
+    current screen first moves into the scrollback, then clears. The `clear` trade-off is
+    agy-only: a shell's own `clear` in an agy pane keeps its earlier lines too, while every
+    other pane keeps xterm's stock behavior. While watching another screen's size, an agy
+    screen erase (`ESC[2J`) also brings the viewport back to the cursor's row, so a clear
+    never leaves a phone over rows it just blanked or older scrollback.
 - **Input**: keys go to core with `terminal.keys`, text with `terminal.send` (never retried),
   Stop with `terminal.interrupt`. The history the terminal received is scrolled locally, with the
   wheel or by touch. A program that tracks the mouse in its own full screen (Claude Code's
