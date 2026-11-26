@@ -1,3 +1,5 @@
+import { stoppedTask } from '../shared/pm/stop'
+import { parkWaits } from '../shared/pm/park'
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -12,7 +14,7 @@ import { execFileSync } from 'node:child_process'
 import { trustKeys } from '../shared/pm/run'
 import { coordinatorStart, setupDone } from '../shared/pm/setup'
 import { WORKSPACE_FIRST } from '../shared/pm/workspace'
-import { FIRST_REPLY, MAIN, OMP_COORDINATOR_ROLE, OMP_COORDINATOR_TOOLS, canResume, canRunCoordinator, defaultProjectProgram, parseCommand, promptAsArg, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
+import { FIRST_REPLY, MAIN, OMP_COORDINATOR_ROLE, OMP_COORDINATOR_TOOLS, canResume, canRunCoordinator, commandList, defaultProjectProgram, parseCommand, promptAsArg, roleFiles, coordinatorArgs, tellTarget, updateNotice } from '../shared/pm/coordinator'
 import pkg from '../package.json'
 import { EXAMPLES, common, company as example, github } from '../shared/pm/examples'
 import { DONE_CMD, reviewFile } from '../shared/pm/advance'
@@ -291,6 +293,14 @@ describe('the main coordinator (WHR-398)', () => {
     expect(parseCommand(['show', 'CO-1', '--project', 'CO'])).toEqual({ error: expect.stringContaining('--project is for') })
   })
 
+  // Alfred's AGENTS.md points to `wherdr pm help` instead of listing the commands.
+  it('answers help with the whole command list, the notes commands and their rule', async () => {
+    const { commands } = await cli(['help'], undefined, await issueToken(store, MAIN)) as { commands: string[] }
+    expect(commands).toEqual(commandList())
+    for (const usage of ['task add ', 'step done ', 'automation propose ', 'notes add ']) expect(commands.some(l => l.startsWith(`- \`wherdr pm ${usage}`)), usage).toBe(true)
+    expect(commands.at(-1)).toContain('Notes are the user\'s whiteboard')
+  })
+
   it('has no autopilot (WHR-51): no wake, none in its view, the route refuses it, a wake turn starts or adds nothing', async () => {
     const main = await issueToken(store, MAIN)
     const st = await store.addTask({ project: 'ST', title: 'Study', type: 'study' })
@@ -345,7 +355,7 @@ describe('the main coordinator (WHR-398)', () => {
     // A program only: its own default model, no --model (the model given is ignored).
     expect(r.folder).toBe(home)
     expect(await fs.readFile(path.join(home, 'CLAUDE.md'), 'utf8')).toBe('@AGENTS.md\n')
-    expect(await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')).toContain('only through the board')
+    expect(await fs.readFile(path.join(home, 'AGENTS.md'), 'utf8')).toContain('never type into its terminal')
     expect(runs[0]).toMatchObject({ cwd: home, labels: { 'wherdr.coordinator': MAIN }, env: { WHERDR_URL: 'http://127.0.0.1:7690' } })
     expect(runs[0]!.on).toBeUndefined()
     expect(runs[0]!.line).toMatch(/exec 'claude' 'Follow .*give me another name\?"'$/)
@@ -685,6 +695,7 @@ describe('role files', () => {
       if (method === 'machine.exec' && argv?.[2] === 'printf %s "$HOME"') return { code: 0, stdout: Buffer.from('/h').toString('base64') }
       // The repository's remote and gh's answer: a public GitHub repository.
       if (method === 'machine.exec' && argv?.[2] === REMOTE_SCRIPT) return { code: 0, stdout: Buffer.from('git@github.com:o/co.git\n{"visibility":"PUBLIC"}').toString('base64') }
+      if (method === 'machine.exec' && argv?.[2]?.includes('.omp/agent/sessions')) return { code: 0, stdout: Buffer.from(`/h/.omp/agent/sessions/x/${argv[4]!.split('/').pop()}.jsonl`).toString('base64') }
       if (method === 'machine.exec') return written.push(argv![4]!), scripts.set(argv![4]!, argv![2]!), { code: 0, stdout: '' }
       // Up at once: no trust dialog to answer, the first message delivered.
       if (method === 'terminal.get') return ended ? { state: 'finished' } : { state: 'live', status: 'idle' }
@@ -803,14 +814,32 @@ describe('role files', () => {
     }
   })
 
-  it('an omp coordinator starts with its tool list and its messages as the argument, and resumes with --continue', async () => {
+  it('an omp coordinator starts with its tool list and its messages as the argument, and resumes the folder\'s newest session file', async () => {
     const { runs, deps } = fakeCore()
     const line = () => String(runs.filter(r => r.method === 'terminal.run').at(-1)!.line)
     await startCoordinator(deps, 'CO', { program: 'omp' }, urls, ['A task was reported'])
     expect(line()).toMatch(new RegExp(`exec 'omp' '--tools' '${OMP_COORDINATOR_TOOLS}' '--add-dir' '/src/co' '--append-system-prompt' '[^']*coordinator, not a worker[^']*' '[^]*A task was reported[^]*'$`))
     expect(line()).not.toContain('--continue')
     await startCoordinator(deps, 'CO', { resume: true }, urls)
-    expect(line()).toMatch(new RegExp(`exec 'omp' '--tools' '${OMP_COORDINATOR_TOOLS}' '--add-dir' '/src/co' '--append-system-prompt' '[^']*coordinator, not a worker[^']*' '--continue'$`))
+    expect(line()).toMatch(new RegExp(`exec 'omp' '--tools' '${OMP_COORDINATOR_TOOLS}' '--add-dir' '/src/co' '--append-system-prompt' '[^']*coordinator, not a worker[^']*' '--resume=/h/.omp/agent/sessions/x/CO.jsonl'$`))
+  })
+
+  it('a restart of omp with no session file yet starts a new conversation, for a coordinator and for Alfred', async () => {
+    const { runs, deps } = fakeCore()
+    const noSession = { ...deps, alfredHome: path.join(dir, 'alfred'), pollMs: 1, call: (async (method: string, params: { argv?: string[] }) =>
+      method === 'machine.exec' && params.argv?.[2]?.includes('.omp/agent/sessions') ? { code: 0, stdout: '' } : deps.call(method, params)) as typeof deps.call }
+    const line = () => String(runs.filter(r => r.method === 'terminal.run').at(-1)!.line)
+    await startCoordinator(noSession, 'CO', { program: 'omp' }, urls)
+    await startCoordinator(noSession, 'CO', { resume: true }, urls, ['A task was reported'])
+    expect(line()).not.toContain('--resume')
+    expect(line()).toContain('A task was reported') // as the argument, as at a new start
+    await startCoordinator(noSession, MAIN, { program: 'omp' }, urls)
+    const greetings = () => runs.filter(r => r.method === 'terminal.send').length
+    await vi.waitFor(() => expect(greetings()).toBeGreaterThan(0))
+    const before = greetings()
+    await startCoordinator(noSession, MAIN, { resume: true }, urls)
+    expect(line()).toMatch(/exec 'omp'$/)
+    await vi.waitFor(() => expect(greetings()).toBeGreaterThan(before))
   })
 
   it('first start on a project with no accepted workflow: no template needed, its first reply proposes one, in the user\'s turn; not again', async () => {
@@ -904,14 +933,14 @@ describe('role files', () => {
     expect(OMP_COORDINATOR_ROLE).toMatch(/coordinator, not a worker[^]*wherdr pm task add/)
     expect(coordinatorArgs('omp', '/h/c', '/src/co')).toEqual(['omp', '--tools', tools, '--add-dir', '/src/co', ...role])
     expect(coordinatorArgs('omp', '/h/c', '/src/co', false, false, 'anthropic/claude-sonnet-5-5')).toEqual(['omp', '--model', 'anthropic/claude-sonnet-5-5', '--tools', tools, '--add-dir', '/src/co', ...role])
-    expect(coordinatorArgs('omp', '/h/c', '/src/co', false, true)).toEqual(['omp', '--tools', tools, '--add-dir', '/src/co', ...role, '--continue'])
+    expect(coordinatorArgs('omp', '/h/c', '/src/co', false, '/s/a.jsonl')).toEqual(['omp', '--tools', tools, '--add-dir', '/src/co', ...role, '--resume=/s/a.jsonl'])
     // A plain folder is the coordinator's to change: omp's default tools. Alfred has no repository.
     expect(coordinatorArgs('omp', '/h/c', '/src/co', true)).toEqual(['omp', '--add-dir', '/src/co'])
     expect(coordinatorArgs('omp', '/h/c')).toEqual(['omp'])
     // The messages go on omp's command line, and its conversation can be taken up again.
-    expect([canResume('omp', 'CO'), promptAsArg('omp', 'CO'), canResume('pi', 'CO'), promptAsArg('pi', 'CO')]).toEqual([true, true, false, false])
-    // Alfred on omp stays as before: its greeting typed, no resume.
-    expect([canResume('omp', MAIN), promptAsArg('omp', MAIN), canResume('claude', MAIN), promptAsArg('claude', MAIN)]).toEqual([false, false, true, true])
+    expect([canResume('omp'), promptAsArg('omp', 'CO'), canResume('pi'), promptAsArg('pi', 'CO')]).toEqual([true, true, false, false])
+    // Alfred on omp: its greeting typed, its conversation can be resumed.
+    expect([canResume('omp'), promptAsArg('omp', MAIN), canResume('claude'), promptAsArg('claude', MAIN)]).toEqual([true, false, true, true])
     // Which program may coordinate: omp offered for a project, any harness for Alfred.
     expect(['claude', 'codex', 'omp', 'pi'].map(p => canRunCoordinator(p, 'CO'))).toEqual([true, true, true, false])
     expect(canRunCoordinator('pi', MAIN)).toBe(true)
@@ -1447,6 +1476,38 @@ describe('commands of lot 10', () => {
     calls.length = 0
     await answerQuestion({ store, call } as never, task.id, undefined, 'host/t3') // no question: nothing changes
     expect(calls.map(c => c[0])).toEqual(['terminal.get'])
+  })
+
+  it('task edit --after defers a stopped or waiting started task: parked behind those tasks, never a working one', async () => {
+    await noteTurn(store, 'CO', 'user', 'do the second after the first')
+    const first = await store.addTask({ project: 'CO', title: 'First', type: 'feature' })
+    const second = await store.addTask({ project: 'CO', title: 'Second', type: 'feature' })
+    await store.saveTask({ ...second, state: 'working', step: state(1) })
+    await refused(cli(['task', 'edit', second.id, '--after', first.id, '--reason', 'Later']), 'has started')
+    await store.saveTask(stoppedTask((await store.task(second.id))!, { by: 'the coordinator', why: 'later', at: 1 }))
+    const saved = (await cli(['task', 'edit', second.id, '--after', first.id, '--reason', 'Do it after the first']) as { task: Task }).task
+    expect(saved).toMatchObject({ state: 'working', after: first.id, parked: { on: first.id, need: 'Do it after the first' } })
+    expect(saved.stopped).toBeUndefined()
+    expect(saved.waiting).toBeUndefined()
+    expect(parkWaits(saved)).toEqual([first.id])
+    await refused(cli(['task', 'edit', first.id, '--after', second.id, '--reason', 'Cycle']), /cycle/)
+  })
+
+  it('task edit --after never parks a task waiting on its agent\'s question, one stopped at the review, nor, in a wake, one the user stopped', async () => {
+    await noteTurn(store, 'CO', 'user', 'do these after the first')
+    const first = await store.addTask({ project: 'CO', title: 'First', type: 'feature' })
+    const asks = await store.addTask({ project: 'CO', title: 'Asks', type: 'feature' })
+    await store.saveTask({ ...asks, state: 'waiting', waiting: 'Permission: run npm test', waitKind: 'permission', step: state(1) })
+    await refused(cli(['task', 'edit', asks.id, '--after', first.id, '--reason', 'Later']), 'has started')
+    const reviewed = await store.addTask({ project: 'CO', title: 'Reviewed', type: 'feature' })
+    await store.saveTask(stoppedTask({ ...reviewed, state: 'working', step: state(2) }, { by: 'the coordinator', why: 'later', at: 1 }))
+    await refused(cli(['task', 'edit', reviewed.id, '--after', first.id, '--reason', 'Later']), 'its worker does not hold')
+    const mine = await store.addTask({ project: 'CO', title: 'Mine', type: 'feature' })
+    await store.saveTask(stoppedTask({ ...mine, state: 'working', step: state(1) }, { by: 'the user', why: 'not now', at: 1 }))
+    await store.saveCoordinator({ ...(await store.coordinator('CO'))!, autopilot: { ...DEFAULT_AUTOPILOT, on: true } })
+    await noteTurn(store, 'CO', 'wake')
+    await refused(cli(['task', 'edit', mine.id, '--after', first.id, '--reason', 'Later']), 'stopped by the user')
+    expect((await store.task(mine.id))!.stopped?.by).toBe('the user')
   })
 
   it('spec changes: task edit, task note and tell --spec reach the running agent and the reviewer\'s next prompt; never in a wake', async () => {

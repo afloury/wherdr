@@ -1032,6 +1032,9 @@ body.short-bottom { --safe-bottom: 0px; }
 
 /* ---------- Terminal ---------- */
 #termWrap { position: relative; flex: 1; min-height: 0; padding: 6px 4px 0 6px; background: var(--bg); }
+/* Keyboard open: the pane keeps its size (useTerminal), the canvas overflows
+   the shortened window — clip it instead of letting it paint over the row below. */
+body.kb #termWrap { overflow: hidden; }
 /* The layer receives touch gestures; on a computer, the mouse must reach
    xterm for selection and the programs' mouse mode. */
 #term { position: absolute; inset: 6px 4px 0 6px; z-index: 0; }
@@ -3380,12 +3383,17 @@ body.kb .interactive-terminal { top: var(--vv-top, 0px); bottom: auto; height: v
 }
 .slash-retry:hover { background: color-mix(in srgb, currentColor 14%, transparent); }
 /* Phone: the name and its kind on one line, the description under them; rows at the touch size. */
-@media (max-width: 699px), (pointer: coarse) {
+@media (max-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-width: 699px), (max-width: 899px) and (max-height: 699px) and (max-device-height: 699px), (max-width: 899px) and (max-height: 699px) and (pointer: fine), (max-width: 899px) and (max-height: 699px) and (pointer: none) {
   .slash-row { flex-wrap: wrap; row-gap: 2px; padding: 8px 12px; }
   .slash-kind { order: 2; }
   .slash-desc { order: 3; flex: 1 0 100%; }
 }
-@media (pointer: coarse) { .slash-row { min-height: 44px; } .slash-retry { min-height: 44px; padding: 0 12px; } }
+@media (pointer: coarse) {
+  .slash-row { flex-wrap: wrap; row-gap: 2px; padding: 8px 12px; min-height: 44px; }
+  .slash-kind { order: 2; }
+  .slash-desc { order: 3; flex: 1 0 100%; }
+  .slash-retry { min-height: 44px; padding: 0 12px; }
+}
 /* The question the reminder scrolled to. */
 .q-flash { animation: msg-flash 1.6s ease-out; }
 @media (prefers-reduced-motion: reduce) {
