@@ -130,7 +130,7 @@ const line = (f: Finding) => `- ${f.id} [${weight(f)}] ${f.title}${f.where ? ` (
 // What the worker is told when a verdict sends the task back.
 // minor: what the same verdict found below the bar; listed, never required.
 export const sendBackText = (step: string, fs: Finding[], minor: Finding[] = []) =>
-  [`Step "${step}" sent it back:`, ...fs.map(line), 'Fix them, commit, then say you are done. If you contest one, say so with its id.',
+  [`Step "${step}" sent it back:`, ...fs.map(line), 'Fix them, commit, then say you are done. If you contest one, add a line "Contested: <id>" to your report.',
     ...(minor.length ? ['', 'For later (minor), not blocking:', ...minor.map(line)] : [])].join('\n')
 
 // From the second round on, the reviewer checks only the points already found.
