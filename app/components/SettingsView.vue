@@ -193,6 +193,8 @@ const widthItems = computed(() => [
 ])
 // What an agent pane opens on: the Conversation, or the Terminal.
 const defaultPane = defaultViewMode
+// A local binding: v-model cannot write to an auto-imported ref.
+const copyOnSelectOn = copyOnSelect
 const defaultPaneItems = [
   { label: t('Conversation'), description: t('Read the transcript first.'), value: 'chat', icon: 'i-lucide-message-square' },
   { label: t('Terminal'), description: t('Type straight into the pane.'), value: 'term', icon: 'i-lucide-square-terminal' },
@@ -514,7 +516,7 @@ onMounted(() => {
               <h3>{{ t('Copy on select') }}</h3>
               <label class="settings-toggle">
                 <span><b>{{ t('Copy text as soon as you select it') }}</b><small>{{ t('Selecting text with the mouse, in a conversation or a terminal, copies it at once and shows Copied. Never in a text field. On by default on a computer, off on a phone. Follows you on every device.') }}</small></span>
-                <USwitch v-model="copyOnSelect" size="xl" />
+                <USwitch v-model="copyOnSelectOn" size="xl" />
               </label>
             </div>
             <div data-ui-target="conversation.typewriter" class="settings-group settings-typing">
