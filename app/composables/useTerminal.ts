@@ -16,6 +16,7 @@ import { proposeTerminalSize, terminalPixelWidth } from '~/utils/terminalSize'
 import { writeTerminalFrame } from '~/utils/terminalFrame'
 import { guardWebglCanvasSize, MAX_WEBGL_PIXELS, webglBufferOf, webglBufferUnusable } from '~/utils/terminalRenderer'
 import { bindTerminalSelection } from '~/utils/terminalSelection'
+import { copyOnSelect } from './useCopyOnSelect'
 import { bindTerminalLinks, type TerminalLinks } from '~/utils/terminalLinks'
 import { bindTerminalKeys } from '~/utils/terminalKeys'
 import { bindTerminalImagePaste } from '~/utils/terminalPaste'
@@ -28,6 +29,7 @@ import { TERM_FONT, onFontsLoaded } from '~/utils/terminalFont'
 import { createWheelPacer, trackSgrMouse, wheelReports, type SgrMouse } from '~/utils/terminalWheel'
 import { virtualNavigationBytes, virtualNavigationKeys } from '~/utils/keybarKeys'
 import { createCompositionTracker, toggleVirtualModifier, virtualChord, virtualInputKey, type VirtualModifier } from '~/utils/terminalModifiers'
+import { registerEraseInDisplay } from '~/utils/terminalScrollback'
 import { kbOpen } from './useViewport'
 
 const CORE_SCROLLBACK = 5000
@@ -38,7 +40,7 @@ export interface Banner { text: string, btn: string, fn: () => void }
 
 // `fill`: side-by-side cell, the terminal takes the whole cell instead of the
 // reading column of a pane opened alone.
-export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | null) => void, hasBanner: () => boolean, fill?: () => boolean, input?: () => boolean, wheelAccel?: () => boolean }) {
+export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | null) => void, hasBanner: () => boolean, fill?: () => boolean, input?: () => boolean, wheelAccel?: () => boolean, keepSavedLines?: () => boolean }) {
   let term: Terminal | null = null
   let fit: FitAddon | null = null
   let webgl: WebglAddon | null = null
@@ -87,6 +89,11 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let coreStream = false
   // herdr-core: whether this viewer's size is the terminal's (see coreTerm.ts).
   let coreControl = true
+  // A core program cleared its screen (ED 2) while watching. The rows the
+  // screen held are gone (and, with ED 3 swallowed, so is any trace of where
+  // the screen started): the next followCursor() scrolls back to the bottom
+  // before placing the cursor row.
+  let screenErased = false
   let sizeBanner: Banner | null = null
   // Asked before the stream was attached (composer focused on arrival): sent once it is.
   let controlPending = false
@@ -103,6 +110,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     mouseSupported = false
     coreStream = false
     coreControl = true
+    screenErased = false
     if (sizeBanner) { sizeBanner = null; opts.setBanner(null) }
   }
   // Watching a terminal taller than this screen (another viewer owns the size,
@@ -132,6 +140,12 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   function followCursor() {
     const screen = term?.element?.querySelector('.xterm-screen') as HTMLElement | null
     if (!term || !screen || !el || !term.rows) return
+    if (coreStream && !coreControl && screenErased) {
+      screenErased = false
+      term.scrollToBottom()
+    } else {
+      screenErased = false
+    }
     const rowPx = screen.offsetHeight / term.rows
     // Never project a lift from a zero, negative or disconnected host: layout
     // has not given the terminal a real height yet (the keyboard is still
@@ -224,7 +238,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     term.open(host)
     mouse = bindTerminalMouse(term, () => mouseSupported && opts.input?.() !== false, event => sendTerm(event))
     // Selection of the visible text, copied on release or with ⌘C.
-    unbindSelection = bindTerminalSelection(term, () => toast(t('Copied')))
+    unbindSelection = bindTerminalSelection(term, () => toast(t('Copied')), () => copyOnSelect.value)
     // OSC 8 hyperlinks and http(s) URLs, opened in a new tab.
     links = bindTerminalLinks(term, t)
     // Pasted image: its path on the agent's machine, pasted through Herdr,
@@ -289,6 +303,16 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     // utils/terminalWheel.ts); TerminalView converts it to terminal.scroll.
     term.attachCustomWheelEventHandler(() => false)
     mouseSgr = trackSgrMouse(term)
+    // Antigravity (agy) answers SIGWINCH with `ESC[2J ESC[3J ESC[H`: it
+    // clears the screen and the saved lines, then redraws only its footer. On
+    // an agy pane the saved lines are this xterm's history: ED 3 is swallowed,
+    // and ED 2 first scrolls the screen into the scrollback. Every other
+    // program keeps xterm's stock erase behavior. A cleared screen blanks every
+    // row a watching viewer could have scrolled onto, so followCursor()
+    // returns xterm's viewport to the bottom before placing the cursor row.
+    registerEraseInDisplay(term, () => coreStream && opts.keepSavedLines?.() === true, () => {
+      if (!coreControl) screenErased = true
+    })
     // Shift+Enter as a named key; Ctrl+V (outside Apple) and F12 left to the browser.
     bindTerminalKeys(term, key => sendVirtualKey(key))
     term.onData(d => {
@@ -633,7 +657,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
             if (coreStream) offerFit()
             syncWebgl()
           },
-          reset: () => mouseSgr?.reset(),
+          reset: () => { mouseSgr?.reset(); screenErased = false },
           written: () => {
             if (credit && tws === ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'credit', bytes: credit }))
             if ((coreStream && !coreControl) || (kbOpen.value && !kbdOn.value)) followCursor()
@@ -715,7 +739,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   }
   const isConnected = () => Boolean(tws && tws.readyState <= 1)
 
-  function reset() { term?.reset(); mouseSgr?.reset() }
+  function reset() { screenErased = false; term?.reset(); mouseSgr?.reset() }
   function focus() {
     focusQueued = !term && mounting
     term?.focus()

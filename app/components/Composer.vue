@@ -12,6 +12,7 @@ import { quotesIn, removeQuote } from '~/utils/questionReply'
 import { attachQuoteMirror } from '~/utils/quoteMirror'
 import { fileTile, pasteTile, photoTile } from '~/utils/attachTiles'
 import { isBareBang, isSlashCommand } from '#shared/queuedMatch'
+import { hasSlashList, type SlashCommand } from '#shared/slashCommands'
 import { viaPrompt } from '#shared/sendRoute'
 import { attachmentDisplayName, type AttachKind } from '#shared/attachments'
 import { refusalText, sortForAgent } from '~/utils/fileDrop'
@@ -26,6 +27,7 @@ import { PromptHistory, caretOnVisualEdge, historyDirection } from '~/utils/prom
 import { createTouchTap } from '~/utils/touchTap'
 import { ESC_CONFIRM_MS, type EscapeArm, pressEscape } from '~/utils/escapeStop'
 import { pasteHtmlText } from '~/utils/pasteHtml'
+import { firstSlash, matchSlash, slashKey, slashToken } from '~/utils/slashList'
 
 // `escStops`: Escape is free for Stop (the conversation search, which closes on it, is shut).
 // `termShown`: the terminal is on screen, so no notice offers to open it.
@@ -168,6 +170,7 @@ const placeholder = computed(() => {
 // Enter: UChatPrompt only sends text; a photo alone, or an empty field
 // while the agent is working (Stop), go through here.
 function onKeydown(e: KeyboardEvent) {
+  if (slashOpen.value && slashKeydown(e)) return
   if (e.key === 'Tab' && !e.shiftKey && !imeComposing(e) && suggestion.value && !text.value) {
     e.preventDefault()
     useSuggestion()
@@ -564,6 +567,65 @@ async function pasteFromClipboard() {
   }
 }
 
+// ------------------------------------------------------------ "/" list
+// "/" at the start of the field lists what the agent offers after it, commands and skills (omp
+// and Claude Code say what they have: composables/useSlashCommands.ts), narrowing as the word
+// grows. Up and Down move, Tab and Enter complete the highlighted one (a tap does too), Escape
+// closes the list. For another agent, a message that goes on past its first word, or while
+// there is no answer, the field is as it always was.
+const slash = useSlashCommands(() => props.pane)
+const slashWord = computed(() => (hasSlashList(props.pane?.agent) && !readOnly.value ? slashToken(text.value) : null))
+const slashMatches = computed(() => (slashWord.value === null ? [] : matchSlash(slash.commands.value, slashWord.value)))
+// The skeleton of a load only once it lasts (useDelayedFlag); a failure is shown at once.
+const slashLoading = useDelayedFlag(computed(() => slashWord.value !== null && slash.status.value === 'loading'))
+const slashClosed = ref(false)
+const slashActive = ref(-1)
+let slashMoved = false
+const slashOpen = computed(() => slashWord.value !== null && fieldFocused.value && !slashClosed.value
+  && (slashMatches.value.length > 0 || slashLoading.value || slash.status.value === 'failed'))
+const slashRowId = (i: number | 'list') => `slash-${props.paneId.replace(/\W/g, '_')}-${i}`
+// Asked when the list is about to show, not for a draft that only waits in the field.
+watch([slashWord, fieldFocused], ([word, focused]) => { if (word !== null && focused) slash.ensure() }, { immediate: true })
+watch(slashWord, (word) => { if (word === null) slashClosed.value = false })
+// The highlight starts on the best match, again when the word changes or the first matches arrive.
+watch([slashWord, () => slashMatches.value.length], ([word, n], [was, wasN]) => {
+  if (word === was && wasN && slashActive.value < n) return
+  slashActive.value = firstSlash(slashMatches.value, word ?? '')
+  slashMoved = false
+})
+watch([slashActive, slashWord], ([i, word], [, was]) => nextTick(() => {
+  const list = document.getElementById(slashRowId('list'))
+  if (list && word !== was) list.scrollTop = 0
+  document.getElementById(slashRowId(i))?.scrollIntoView({ block: 'nearest' })
+}))
+function hoverSlash(i: number) {
+  if (slashActive.value === i) return
+  slashActive.value = i
+  slashMoved = true
+}
+function pickSlash(cmd: SlashCommand) {
+  text.value = `/${cmd.name} `
+  focusEnd()
+}
+// True when the key was the list's.
+function slashKeydown(e: KeyboardEvent) {
+  if (imeComposing(e)) return false
+  const matches = slashMatches.value
+  const action = slashKey(e, { count: matches.length, active: slashActive.value, current: matches[slashActive.value], moved: slashMoved })
+  if (!action) return false
+  e.preventDefault()
+  e.stopImmediatePropagation()
+  if (action.type === 'close') slashClosed.value = true
+  else if (action.type === 'move') { slashActive.value = action.to; slashMoved = true }
+  else pickSlash(matches[action.index]!.cmd)
+  return true
+}
+// The "+" menu's way in: a tap with no "/" key at hand.
+function browseSlash() {
+  text.value = '/'
+  focusEnd()
+}
+
 // ------------------------------------------------------------ menu +
 const SLASH: Record<string, [string, string][]> = {
   claude: [['/compact', 'Summarize context'], ['/clear', 'New conversation'], ['/context', 'Context usage'],
@@ -588,6 +650,7 @@ function openPlus() {
   if (p.agent) {
     items.push({ kind: 'separator' })
     items.push({ kind: 'command', cmd: 'esc', desc: t('Interrupt agent'), run: () => props.sendKeys(['esc']) })
+    if (hasSlashList(p.agent) && !text.value) items.push({ kind: 'command', cmd: '/', desc: t('Browse commands and skills'), run: browseSlash })
     for (const [cmd, desc] of SLASH[p.agent] || []) {
       items.push({ kind: 'command', cmd, desc: t(desc), run: () => runSlash(cmd) })
     }
@@ -691,10 +754,36 @@ defineExpose({
         </button>
       </span>
     </div>
+    <!-- What the agent offers after "/": over the conversation, out of the flow like the tab above, so
+         that it comes and goes without moving the field. A press keeps the keyboard where it is. -->
+    <div v-if="slashOpen" class="composer-slash-anchor">
+      <div :id="slashRowId('list')" class="composer-slash" role="listbox" :aria-label="t('Commands and skills')" data-testid="slash-list" @mousedown.prevent>
+        <template v-if="slashMatches.length">
+          <button
+            v-for="(m, i) in slashMatches" :id="slashRowId(i)" :key="m.cmd.name" type="button" role="option" tabindex="-1"
+            class="slash-row" :class="{ active: i === slashActive }" :aria-selected="i === slashActive" :data-name="m.cmd.name"
+            @mousemove="hoverSlash(i)" @click="pickSlash(m.cmd)"
+          >
+            <span class="slash-name">/{{ m.cmd.name }}</span>
+            <span v-if="m.cmd.hint" class="slash-hint">{{ m.cmd.hint }}</span>
+            <span v-if="m.cmd.desc" class="slash-desc">{{ m.cmd.desc }}</span>
+            <span class="slash-kind">{{ t(m.cmd.kind) }}</span>
+          </button>
+        </template>
+        <div v-else-if="slash.status.value === 'failed'" class="slash-state failed" role="alert">
+          <span>{{ t('Couldn’t list this agent’s commands') }}</span>
+          <button type="button" class="slash-retry" @click="slash.ensure(true)">{{ t('Try again') }}</button>
+        </div>
+        <div v-else class="slash-state" role="status" :aria-label="t('Loading…')" aria-busy="true">
+          <i v-for="n in 3" :key="n" class="skel slash-skel" :style="{ width: `${88 - n * 18}%` }" />
+        </div>
+      </div>
+    </div>
     <UChatPrompt
       ref="promptRef" v-model="text" :disabled="Boolean(pane?.stopped)" :placeholder="pane?.stopped ? t('Restart Codex before sending a message') : readOnly ? t('Draft saved — sending unavailable offline') : placeholder" variant="outline" color="neutral"
       :rows="1" :maxrows="7" :autoresize="!fieldSizing" :autofocus="false" :submit-on-enter="enterSends && (canSend || stopMode || readOnly)"
       :enterkeyhint="enterSends ? 'send' : 'enter'" autocapitalize="sentences"
+      :aria-autocomplete="slashOpen ? 'list' : undefined" :aria-controls="slashOpen ? slashRowId('list') : undefined" :aria-activedescendant="slashOpen && slashActive >= 0 ? slashRowId(slashActive) : undefined"
       data-wherdr="composer-field" class="prompt" :class="{ suggesting: suggestTap, expanded, 'has-mic': Boolean(mic.engine.value), 'sized-content': fieldSizing }" :style="suggestRoom ? { '--suggest-room': `${suggestRoom}px` } : undefined" :ui="{ header: 'prompt-head', body: 'prompt-body', base: 'prompt-input', footer: 'prompt-foot' }"
       @focus="fieldFocus" @blur="fieldBlur"
       @submit="submit" @keydown="onKeydown" @paste="onPaste" @beforeinput="onBeforeInput"
