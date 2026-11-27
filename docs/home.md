@@ -157,7 +157,7 @@ Right under Alfred, above the coordinators, while something waits for you on the
 review** card with its count: tasks to approve, an agent's question, a failure to try again, a
 decision. Under its title, the ids of the first ones as their project's key badge, in its color, on
 one line (… when they do not all fit). A tap opens them one at a time (a sheet on the phone), with Approve, Reject and each
-item's own answers
+item's own answers, and Snooze or Dismiss to hide an item for a while or until something new happens
 ([Tasks to review](project-management.md#tasks-to-review)).
 
 ### Offered agents

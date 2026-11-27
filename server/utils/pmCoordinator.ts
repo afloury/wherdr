@@ -41,7 +41,7 @@ import { userEvent, userStep } from './pmBoard'
 import { ensureVisibility } from './pmVisibility'
 import { refreshGit } from './pmFolder'
 import { boardOrder, orderTasks } from '../../shared/pm/boardOrder'
-import { pauseForRoom, removeTask, resumeTask, stopTask } from './pmStop'
+import { endAgents, pauseForRoom, removeTask, resumeTask, stopTask } from './pmStop'
 import { checkOnGithub } from './pmGhCheck'
 import { noteBack } from './pmStall'
 import { reviveWorker } from './pmRelease'
@@ -52,6 +52,7 @@ import { checkTaskContext } from '../../shared/pm/context'
 import { READ_LINES, lastWords } from './pmRead'
 import { READ_COMMANDS, reachRefusal } from '../../shared/pm/reach'
 import { resumeRefusal } from '../../shared/pm/stop'
+import { deferRefusal } from '../../shared/pm/park'
 import { pacedStart, paceGauge, paceLine } from '../../shared/pm/pace'
 import { readQuotas } from './quotas'
 import { quotaByKey, reviewAccount, reviewQueueLines, runningReviews } from '../../shared/pm/reviewQueue'
@@ -543,11 +544,20 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       if (cmd.name === 'task edit' && cmd.after !== undefined) {
         const task = await taskOf(cmd.task), ids = afterIds({ after: cmd.after }).map(a => storedTaskId(projects, a) ?? a)
         if (turn !== 'user' && !pilot?.on) throw new HerdrError('refused', 'In a wake, after is changed only with the autopilot on')
-        const why = (task.step?.started || task.state === 'working') && !task.parked ? `${task.id} has started: after orders only tasks not started yet (or a parked one)` : afterRefusal(task.project, ids, await store.tasks(), projects, task.id)
+        // A started task parks behind those tasks, as a worker's blocked:on does: it goes on in its
+        // conversation once they are done. Only a stopped one at its worker's step (deferRefusal).
+        const park = (task.step?.started || task.state === 'working') && !task.parked
+        const holder = park && t && task.step ? currentStep(planOf(t, task, p), task.step)?.holder : undefined
+        const why = (park ? deferRefusal(task, holder, turn !== 'user') ?? (ids.length ? undefined : 'Name the tasks it waits for') : undefined) ?? afterRefusal(task.project, ids, await store.tasks(), projects, task.id)
         if (why) throw new HerdrError('refused', why)
         // No longer held by its chain: to do again, where the engine looks at it.
         // Checked again at the write: another edit may have closed a cycle meanwhile.
-        const saved = await store.updateTask(task.id, async (x, all) => ({ ...noCycle(afterRefusal(x.project, ids, await all(), projects, x.id), x), after: ids.join(',') || undefined, ...(x.state === 'waiting' && x.waiting?.includes(CHAIN_WAIT) ? { state: 'todo' as const, waiting: undefined } : {}) }), { by, text: `starts after ${ids.join(', ') || 'no task'} (${cmd.reason})` })
+        const saved = await store.updateTask(task.id, async (x, all) => ({ ...noCycle(afterRefusal(x.project, ids, await all(), projects, x.id), x), after: ids.join(',') || undefined, ...(x.state === 'waiting' && x.waiting?.includes(CHAIN_WAIT) ? { state: 'todo' as const, waiting: undefined } : {}), ...(park ? { state: 'working' as const, waiting: undefined, waitKind: undefined, stopped: undefined, parked: { on: ids[0]!, need: cmd.reason, at: Date.now(), before: afterIds(x).filter(a => !ids.includes(a)) } } : {}) }), { by, text: `${park ? 'parked: ' : ''}starts after ${ids.join(', ') || 'no task'} (${cmd.reason})` })
+        // A conversation that cannot be taken up again stays; the others end, to free their machine.
+        if (park && saved) {
+          const live = (await store.runs()).filter(r => r.task === saved.id && r.state !== 'ended')
+          if (live.length && live.every(r => r.role !== 'worker' || (r.program === 'claude' && !!r.session))) await endAgents(deps, saved, 'released', ' while the task is parked')
+        }
         if (cmd.title === undefined && cmd.description === undefined && cmd.mergeAfter === undefined && cmd.context === undefined && !cmd.prefs) return { task: saved }
       }
       if (cmd.name === 'task edit' && cmd.mergeAfter !== undefined) {

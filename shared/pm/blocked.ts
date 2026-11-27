@@ -25,7 +25,7 @@ export interface Stall { cause: string, reason: string, since: number }
 
 const current = (task: Task, plan: PlannedStep[]) => {
   const s = task.step
-  return s?.started && !s.done && !task.stopped && !task.parked && task.state === 'working' && !s.yourTurn ? { s, step: plan[s.at] } : undefined
+  return s?.started && !s.done && !task.stopped && !task.parked && !task.needsHuman && task.state === 'working' && !s.yourTurn ? { s, step: plan[s.at] } : undefined
 }
 
 // The step waits for its holder's report or verdict, and its instructions were delivered.

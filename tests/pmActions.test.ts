@@ -87,6 +87,15 @@ describe('runAction', () => {
     expect(f.receipts.get('A-1.1.land')?.state).toBe('done')
   })
 
+  it('lands on the repository\'s default branch when neither the step nor the project names one', async () => {
+    const f = fakeDeps([{ code: 0, out: 'dev\n' }, { code: 0, out: 'c0ffee' }, { code: 0, out: 'origin/dev' }])
+    expect(await runAction(f.deps, job({ action: { kind: 'git.land' } }))).toEqual({ ok: true, commit: 'c0ffee' })
+    expect(f.calls[1]).toEqual(['/w', 'dev', ''])
+    const none = fakeDeps([{ code: 1, out: '' }])
+    expect(await runAction(none.deps, job({ action: { kind: 'git.land' }, task: { id: 'A-1', title: 'T', description: 'D', project: 'a' } })))
+      .toEqual({ ok: false, error: 'git.land has no branch: name one in the step, or set the project\'s working branch in Settings › Projects › A › General' })
+  })
+
   it('tries a transient error again, sends a conflict back, and never replays a receipt', async () => {
     const f = fakeDeps([{ code: 1, out: 'fatal error in commit_refs' }, { code: 0, out: 'c0ffee' }, { code: 0, out: 'origin/dev' }])
     expect(await runAction(f.deps, job())).toEqual({ ok: true, commit: 'c0ffee' })
