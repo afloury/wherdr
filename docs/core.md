@@ -240,7 +240,8 @@ and verify size, SQLite header and block checksums — falling back to a full co
 when the tools are unavailable or verification fails. Kept
 copies live in the system temp dir under `wherdr-agy-<pid>-*` (often tmpfs, up
 to 256 MiB each), and the cache is sized so a few viewed panes do not thrash
-while concurrent reads trim back to the limit on completion: startup, periodic
+while staying under a shared 512 MiB byte budget across machines and trimming
+concurrent reads back to the limit on completion: startup, periodic
 sweeps and shutdown remove the folders whose process no longer runs or belongs
 to the exiting server (another live server's copies and pid-less folders stay
 untouched), and a pane that goes takes its copy with it. Step

@@ -1,5 +1,5 @@
 import { execFile, spawn, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -7,7 +7,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { fieldOf } from '../server/utils/agyProtobuf'
 import { createTranscripts } from '../server/utils/transcripts'
 import {
-  agyAnchorOf, agyHeadOf, agyToolSummary, agyUserText, conversationPath, createAgyTranscripts, disposeAgyCopies, hasStep,
+  agyAnchorOf, agyHeadOf, agyToolSummary, agyUserText, conversationPath, createAgyCacheBudget, createAgyTranscripts, disposeAgyCopies, hasStep,
   parseAgyStep, prefixOf, sweepAgyCopies, takeVisible, type AgyDoc, type AgyStep,
 } from '../server/utils/agyTranscripts'
 import { AGY_SESSION, openAgyFixture, stepBlobs, writeAgyFixture, writeAgySummaries } from './helpers/agy-fixture.mjs'
@@ -626,11 +626,18 @@ it('recopies a restarted WAL in full', async () => {
 // `remoteMachine` plus the one remote exec delta sync uses: the checksum
 // script runs here over a mirrored copy of the stored file, `execs` counts the
 // execs, and `run` can answer instead (missing tools, corrupt output).
-function remoteExecMachine(opts: { run?: (script: string, args: string[], fileBytes: Buffer | null) => Promise<Buffer> | Buffer } = {}) {
+function remoteExecMachine(opts: {
+  run?: (script: string, args: string[], fileBytes: Buffer | null) => Promise<Buffer> | Buffer
+  beforeRead?: (p: string, start: number, len: number) => void
+  onExec?: (script: string, args: string[]) => void
+  env?: NodeJS.ProcessEnv
+  omitTarget?: boolean
+} = {}) {
   const base = remoteMachine()
   const mirror = mkdtempSync(path.join(tmpdir(), 'wherdr-remote-mirror-'))
   homes.push(mirror)
   let execs = 0
+  const exitCodes: number[] = []
   const mirrorPath = (p: string) => path.join(mirror, p.replace(/^\/+/, '').replace(/[^\w.-]/g, '_'))
   const syncMirror = (p: string) => {
     const f = base.store.get(p)
@@ -641,24 +648,36 @@ function remoteExecMachine(opts: { run?: (script: string, args: string[], fileBy
   }
   const fs: MachineFs = {
     ...base.fs,
+    async read(p, start, len) {
+      opts.beforeRead?.(p, start, len)
+      return base.fs.read(p, start, len)
+    },
     async run(script, args, runOpts) {
       execs++
       const target = args[0] || ''
-      const dst = syncMirror(target)
+      const dst = opts.omitTarget ? mirrorPath(`${target}-missing`) : syncMirror(target)
       if (opts.run) return Buffer.from(await opts.run(script, args, base.store.get(target)?.buf ?? null))
-      if (!dst) throw new Error('missing file')
-      const mapped = args.map((a, i) => (i === 0 ? dst : a))
-      return await new Promise<Buffer>((resolve, reject) => {
-        execFile('sh', ['-c', script, 'sh', ...mapped], { encoding: 'buffer', maxBuffer: runOpts?.maxBytes ?? 64 * 1024, timeout: runOpts?.timeoutMs ?? 15000 },
-          (err, stdout, stderr) => err ? reject(new Error(stderr.toString() || err.message)) : resolve(stdout))
+      if (!dst && !opts.omitTarget) throw new Error('missing file')
+      const mapped = args.map((a, i) => (i === 0 ? dst! : a))
+      const out = await new Promise<Buffer>((resolve, reject) => {
+        execFile('sh', ['-c', script, 'sh', ...mapped], { encoding: 'buffer', maxBuffer: runOpts?.maxBytes ?? 64 * 1024, timeout: runOpts?.timeoutMs ?? 15000, ...(opts.env ? { env: opts.env } : {}) },
+          (err, stdout, stderr) => {
+            const code = err ? (typeof (err as { code?: unknown }).code === 'number' ? (err as { code: number }).code : 1) : 0
+            exitCodes.push(code)
+            if (err) reject(new Error(stderr.toString() || err.message))
+            else resolve(stdout)
+          })
       })
+      opts.onExec?.(script, args)
+      return out
     },
   }
   return {
     ...base,
     fs,
     execs: () => execs,
-    resetCounts: () => { execs = 0; base.bytes.clear() },
+    exitCodes: () => exitCodes,
+    resetCounts: () => { execs = 0; exitCodes.length = 0; base.bytes.clear() },
   }
 }
 
@@ -769,4 +788,227 @@ it('does not leave more kept copies than the cache holds, and drops its own on s
     expect(readdirSync(scratch).filter(n => n.startsWith(`wherdr-agy-${process.pid}-`))).toEqual([path.basename(otherLive)])
     expect(existsSync(nameless)).toBe(true)
   } finally { vi.unstubAllEnvs() }
+})
+
+it('exits non-zero in the block checksum script when the file is missing or tools are absent', async () => {
+  const { home } = fixture()
+  const live = openAgyFixture(home, { wal: true, rows: [
+    { role: 'user', text: 'First' },
+    { role: 'agent', text: `Payload ${'a'.repeat(1_200_000)}` },
+  ] })
+  keepers.push(live)
+  live.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+
+  const missingFile = remoteExecMachine({ omitTarget: true })
+  missingFile.sync(live.file)
+  const agyMissing = createAgyTranscripts({ home, fs: missingFile.fs })
+  await agyMissing.chat(pane)
+  live.append([{ idx: 2, role: 'agent', text: 'Second' }])
+  live.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  missingFile.sync(live.file)
+  missingFile.resetCounts()
+  expect((await agyMissing.chat(pane)).items?.at(-1)?.text).toBe('Second')
+  expect(missingFile.exitCodes()).toEqual([1])
+
+  const noTools = remoteExecMachine({ env: { PATH: '' } })
+  noTools.sync(live.file)
+  const agyNoTools = createAgyTranscripts({ home, fs: noTools.fs })
+  await agyNoTools.chat(pane)
+  live.append([{ idx: 3, role: 'agent', text: 'Third' }])
+  live.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  noTools.sync(live.file)
+  noTools.resetCounts()
+  expect((await agyNoTools.chat(pane)).items?.at(-1)?.text).toBe('Third')
+  expect(noTools.exitCodes()).toEqual([1])
+})
+
+it('recovers when a block changes between the checksum exec and the fetch', async () => {
+  const { home } = fixture()
+  const live = openAgyFixture(home, { wal: true, rows: [
+    { role: 'user', text: 'First' },
+    // Over 4 MiB so copyInto spans two READ_CHUNK_BYTES chunks when hashing blocks.
+    { role: 'agent', text: `Stable ${'a'.repeat(4_400_000)}` },
+  ] })
+  keepers.push(live)
+  live.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+
+  let nextIdx = 2
+  let mutated = false
+  const remote = remoteExecMachine({
+    onExec() {
+      if (mutated) return
+      mutated = true
+      live.append([{ idx: nextIdx++, role: 'agent', text: 'Third turn during fetch' }])
+      live.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+      remote.sync(live.file)
+      remote.sync(`${live.file}-wal`)
+    },
+  })
+  remote.sync(live.file)
+  remote.sync(`${live.file}-wal`)
+  const agy = createAgyTranscripts({ home, fs: remote.fs })
+  await agy.chat(pane)
+
+  live.append([{ idx: nextIdx++, role: 'agent', text: 'Second turn' }])
+  live.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  remote.sync(live.file)
+  remote.sync(`${live.file}-wal`)
+  remote.resetCounts()
+  const r = await agy.chat(pane)
+  expect(mutated).toBe(true)
+  expect(r.items?.at(-1)?.text).toBe('Third turn during fetch')
+  expect(remote.bytes.get(live.file) ?? 0).toBeGreaterThanOrEqual(remote.sizeOf(live.file))
+
+  // A subsequent checkpoint still delta-syncs from the updated kept block list.
+  live.append([{ idx: nextIdx++, role: 'agent', text: 'Fourth turn' }])
+  live.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+  remote.sync(live.file)
+  remote.sync(`${live.file}-wal`)
+  remote.resetCounts()
+  expect((await agy.chat(pane)).items?.at(-1)?.text).toBe('Fourth turn')
+  expect(remote.execs()).toBe(1)
+  expect(remote.bytes.get(live.file) ?? 0).toBeLessThan(remote.sizeOf(live.file))
+})
+
+it('evicts kept copies across instances to stay under a shared byte budget', async () => {
+  expect(createAgyCacheBudget().maxBytes).toBe(512 * 1024 * 1024)
+  const scratch = mkdtempSync(path.join(tmpdir(), 'wherdr-budget-'))
+  const homeA = mkdtempSync(path.join(scratch, 'home-a-'))
+  const homeB = mkdtempSync(path.join(scratch, 'home-b-'))
+  homes.push(scratch)
+  vi.stubEnv('TMPDIR', scratch)
+  const remoteA = remoteMachine()
+  const remoteB = remoteMachine()
+  const s1 = '11111111-2222-4333-8444-000000000011'
+  const s2 = '11111111-2222-4333-8444-000000000022'
+  const s3 = '11111111-2222-4333-8444-000000000033'
+  const diskKeptBytes = () => readdirSync(scratch)
+    .filter(n => n.startsWith(`wherdr-agy-${process.pid}-`))
+    .reduce((sum, dir) => sum + ['conv.db', 'conv.db-wal'].reduce((s, f) => {
+      try { return s + statSync(path.join(scratch, dir, f)).size } catch { return s }
+    }, 0), 0)
+
+  try {
+    const live1 = openAgyFixture(homeA, { session: s1, wal: true, rows: [
+      { role: 'user', text: `Prompt ${s1}` },
+      { role: 'agent', text: `Reply ${'x'.repeat(240_000)}` },
+    ] })
+    const live2 = openAgyFixture(homeB, { session: s2, wal: true, rows: [
+      { role: 'user', text: `Prompt ${s2}` },
+      { role: 'agent', text: `Reply ${'x'.repeat(240_000)}` },
+    ] })
+    const live3 = openAgyFixture(homeA, { session: s3, wal: true, rows: [
+      { role: 'user', text: `Prompt ${s3}` },
+      { role: 'agent', text: `Reply ${'x'.repeat(240_000)}` },
+    ] })
+    keepers.push(live1, live2, live3)
+    for (const [live, remote] of [[live1, remoteA], [live2, remoteB], [live3, remoteA]] as const) {
+      live.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+      remote.sync(live.file)
+      remote.sync(`${live.file}-wal`)
+    }
+    const size1 = remoteA.sizeOf(live1.file)
+    const size2 = remoteB.sizeOf(live2.file)
+    const size3 = remoteA.sizeOf(live3.file)
+    const maxBytes = size1 + size2 + 10_000
+    expect(size1 + size2 + size3).toBeGreaterThan(maxBytes)
+
+    const cacheBudget = createAgyCacheBudget(maxBytes)
+    const a = createAgyTranscripts({ home: homeA, fs: remoteA.fs, cacheBudget })
+    const b = createAgyTranscripts({ home: homeB, fs: remoteB.fs, cacheBudget })
+
+    await a.chat({ ...pane, id: 'a1', agentSession: s1 })
+    await b.chat({ ...pane, id: 'b2', agentSession: s2 })
+    expect(diskKeptBytes()).toBe(size1 + size2)
+    expect(cacheBudget.totalBytes()).toBe(size1 + size2)
+
+    // Both fit under the budget across instances: a live WAL append ships no db bytes.
+    live1.append([{ idx: 2, role: 'agent', text: 'Update 1' }])
+    live2.append([{ idx: 2, role: 'agent', text: 'Update 2' }])
+    remoteA.sync(`${live1.file}-wal`)
+    remoteB.sync(`${live2.file}-wal`)
+    remoteA.bytes.clear(); remoteB.bytes.clear()
+    await b.chat({ ...pane, id: 'b2', agentSession: s2 })
+    await a.chat({ ...pane, id: 'a1', agentSession: s1 })
+    expect(remoteA.bytes.get(live1.file) ?? 0).toBe(0)
+    expect(remoteB.bytes.get(live2.file) ?? 0).toBe(0)
+
+    // Opening s3 on A evicts s2 on B (LRU across instances) before exceeding budget.
+    await a.chat({ ...pane, id: 'a3', agentSession: s3 })
+    expect(diskKeptBytes()).toBeLessThanOrEqual(maxBytes)
+    expect(cacheBudget.totalBytes()).toBeLessThanOrEqual(maxBytes)
+
+    // s1 and s3 stay cached without db recopy; updating s2 recopies its db and evicts s1.
+    live1.append([{ idx: 3, role: 'agent', text: 'Update 1b' }])
+    live3.append([{ idx: 2, role: 'agent', text: 'Update 3' }])
+    remoteA.sync(`${live1.file}-wal`)
+    remoteA.sync(`${live3.file}-wal`)
+    remoteA.bytes.clear(); remoteB.bytes.clear()
+    expect((await a.chat({ ...pane, id: 'a1', agentSession: s1 })).items?.at(-1)?.text).toBe('Update 1b')
+    expect((await a.chat({ ...pane, id: 'a3', agentSession: s3 })).items?.at(-1)?.text).toBe('Update 3')
+    expect(remoteA.bytes.get(live1.file) ?? 0).toBe(0)
+    expect(remoteA.bytes.get(live3.file) ?? 0).toBe(0)
+
+    live2.append([{ idx: 3, role: 'agent', text: 'Update 2b' }])
+    remoteB.sync(`${live2.file}-wal`)
+    expect((await b.chat({ ...pane, id: 'b2', agentSession: s2 })).items?.at(-1)?.text).toBe('Update 2b')
+    expect(remoteB.bytes.get(live2.file)).toBe(size2)
+    expect(diskKeptBytes()).toBeLessThanOrEqual(maxBytes)
+
+    // Concurrent reads across instances still trim back under budget on release.
+    await Promise.all([
+      a.chat({ ...pane, id: 'a1', agentSession: s1 }),
+      b.chat({ ...pane, id: 'b2', agentSession: s2 }),
+      a.chat({ ...pane, id: 'a3', agentSession: s3 }),
+    ])
+    expect(diskKeptBytes()).toBeLessThanOrEqual(maxBytes)
+    expect(cacheBudget.totalBytes()).toBeLessThanOrEqual(maxBytes)
+  } finally { vi.unstubAllEnvs() }
+})
+
+it('delta-syncs a checkpointed database that shrinks by a partial block', async () => {
+  const { home } = fixture()
+  const live = openAgyFixture(home, { wal: true, rows: [] })
+  keepers.push(live)
+  live.db.exec('PRAGMA journal_mode=DELETE; PRAGMA auto_vacuum=INCREMENTAL; VACUUM; PRAGMA journal_mode=WAL; PRAGMA wal_autocheckpoint=0;')
+  live.append([
+    { idx: 0, role: 'user', text: 'First' },
+    { idx: 1, role: 'agent', text: `Keep ${'a'.repeat(2_800_000)}` },
+    { idx: 2, role: 'agent', text: `DropA ${'b'.repeat(350_000)}` },
+    { idx: 3, role: 'agent', text: `DropB ${'c'.repeat(350_000)}` },
+  ])
+  live.db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+
+  const remote = remoteExecMachine()
+  remote.sync(live.file)
+  remote.sync(`${live.file}-wal`)
+  const agy = createAgyTranscripts({ home, fs: remote.fs })
+  expect((await agy.chat(pane)).items?.length).toBe(4)
+  const size1 = remote.sizeOf(live.file)
+
+  // Shrink within the trailing partial block.
+  live.db.exec('DELETE FROM steps WHERE idx = 3; PRAGMA incremental_vacuum; PRAGMA wal_checkpoint(TRUNCATE);')
+  remote.sync(live.file)
+  remote.sync(`${live.file}-wal`)
+  const size2 = remote.sizeOf(live.file)
+  expect(size2).toBeLessThan(size1)
+  remote.resetCounts()
+  const r2 = await agy.chat(pane)
+  expect(r2.items?.map(i => i.text.slice(0, 5))).toEqual(['First', 'Keep ', 'DropA'])
+  expect(remote.execs()).toBe(1)
+  expect(remote.bytes.get(live.file) ?? 0).toBeGreaterThan(0)
+  expect(remote.bytes.get(live.file) ?? 0).toBeLessThan(size2)
+
+  // Shrink by another partial block across a 1 MiB block boundary.
+  live.db.exec('DELETE FROM steps WHERE idx = 2; PRAGMA incremental_vacuum; PRAGMA wal_checkpoint(TRUNCATE);')
+  remote.sync(live.file)
+  remote.sync(`${live.file}-wal`)
+  const size3 = remote.sizeOf(live.file)
+  expect(Math.ceil(size3 / (1024 * 1024))).toBeLessThan(Math.ceil(size2 / (1024 * 1024)))
+  remote.resetCounts()
+  const r3 = await agy.chat(pane)
+  expect(r3.items?.map(i => i.text.slice(0, 5))).toEqual(['First', 'Keep '])
+  expect(remote.execs()).toBe(1)
+  expect(remote.bytes.get(live.file) ?? 0).toBeGreaterThan(0)
+  expect(remote.bytes.get(live.file) ?? 0).toBeLessThan(size3)
 })
