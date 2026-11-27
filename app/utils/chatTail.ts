@@ -1,4 +1,4 @@
-import type { ChatItem, ChatResponse } from '#shared/types'
+import type { ChatItem, ChatResponse, ToolUpdate } from '#shared/types'
 
 // Bottom of the conversation after a re-read. With `keep` (incremental reply,
 // see server/utils/chatDelta.ts) the first `keep` items stay as they are (same
@@ -38,6 +38,92 @@ export function itemKeys(list: readonly Pick<ChatItem, 'role' | 'ts'>[]): string
     seen.set(base, n + 1)
     return `${base}#${n}`
   })
+}
+
+// Late tool outcomes (ChatResponse.toolUpdates): a tool result appended after
+// its call was shown arrives as an update matched by toolId. `at` is the
+// absolute byte offset of the result it comes from — its revision: an older
+// or unknown revision never downgrades a newer known one. Anything else counts
+// as no revision at all.
+const toolRev = (x: number | undefined): number | null =>
+  typeof x === 'number' && Number.isSafeInteger(x) && x >= 0 ? x : null
+
+// `inc` (later arrival) wins over `cur`, unless `cur`'s revision is known to
+// be strictly newer. An equal revision takes the later arrival — the record
+// at that byte may have been rewritten since.
+const pickUpdate = (inc: ToolUpdate, cur: ToolUpdate): ToolUpdate => {
+  const ri = toolRev(inc.at); const rc = toolRev(cur.at)
+  return rc !== null && (ri === null || ri < rc) ? cur : inc
+}
+
+// Apply updates to the items whose toolId matches — immutably: an item with
+// nothing to apply keeps its identity, and so does the whole array, so Vue
+// re-renders nothing. An applied update replaces the item's whole outcome —
+// out, error, images, ref, imageAt and hashes are cleared first, then the
+// update's own fields land (empty output, a false error, zero images/index
+// are clears) — and toolAt takes the revision the outcome came from.
+export function applyToolUpdates(items: ChatItem[], updates: ToolUpdate[] | undefined): ChatItem[] {
+  if (!updates?.length || !items.length) return items
+  const byId = new Map<string, ToolUpdate>()
+  for (const u of updates) byId.set(u.id, byId.has(u.id) ? pickUpdate(u, byId.get(u.id)!) : u)
+  let changed = false
+  const next = items.map((it) => {
+    const u = it.toolId ? byId.get(it.toolId) : undefined
+    if (!u) return it
+    const ru = toolRev(u.at); const ri = toolRev(it.toolAt)
+    if (ri !== null && (ru === null || ru < ri)) return it
+    const toolAt = ru ?? it.toolAt
+    const out = u.out || undefined
+    const error = u.error ? true : undefined
+    const images = u.images || undefined
+    const ref = images && u.ref ? u.ref : undefined
+    const imageAt = images && u.imageAt ? u.imageAt : undefined
+    // Normalized outcome already matches what the item shows: keep identity
+    // unless `hashes` still needs clearing.
+    if (it.toolAt === toolAt && it.out === out && it.error === error && it.images === images
+      && it.ref === ref && it.imageAt === imageAt && it.hashes === undefined) return it
+    changed = true
+    const n: ChatItem = { ...it, toolAt }
+    delete n.out; delete n.error; delete n.images; delete n.ref; delete n.imageAt; delete n.hashes
+    if (out) n.out = out
+    if (error) n.error = true
+    if (images) {
+      n.images = images
+      if (ref) n.ref = ref
+      if (imageAt) n.imageAt = imageAt
+    }
+    return n
+  })
+  return changed ? next : items
+}
+
+// Effective outcome set of a reply: its updates merged with the outcomes still
+// pending, once, newest revision per id — so a call becoming visible on an
+// older page receives the remembered outcome too.
+export function mergeToolUpdates(pending: ReadonlyMap<string, ToolUpdate>, updates: ToolUpdate[] | undefined): ToolUpdate[] {
+  const byId = new Map<string, ToolUpdate>()
+  for (const u of pending.values()) byId.set(u.id, u)
+  for (const u of updates ?? []) byId.set(u.id, byId.has(u.id) ? pickUpdate(u, byId.get(u.id)!) : u)
+  return [...byId.values()]
+}
+
+// Retain pending updates whose call is not yet visible at an equal or newer
+// toolAt across the rendered item lists, capped at 256 ids (oldest first).
+export function retainToolUpdates(pending: Map<string, ToolUpdate>, itemLists: readonly ChatItem[][], updates: ToolUpdate[] | undefined): void {
+  if (!updates?.length) return
+  for (const u of updates) {
+    const cur = pending.get(u.id)
+    const u2 = cur ? pickUpdate(u, cur) : u
+    const ru = toolRev(u2.at)
+    const satisfied = ru !== null && itemLists.some(list => list.some((it) => {
+      if (it.toolId !== u2.id) return false
+      const ri = toolRev(it.toolAt)
+      return ri !== null && ri >= ru
+    }))
+    if (satisfied) { pending.delete(u.id); continue }
+    pending.set(u.id, u2)
+    if (pending.size > 256) pending.delete(pending.keys().next().value!)
+  }
 }
 
 // Whether a reply means starting again from the bottom, dropping the older

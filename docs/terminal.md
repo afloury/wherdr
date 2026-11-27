@@ -18,6 +18,13 @@
   DOM renderer instead, so its text stays visible; **Fit to this screen** shrinks it and WebGL
   comes back. **Take control of this terminal** and
   **Reconnect** are also in the agent's **…** menu.
+  - In an Antigravity (`agy`) pane, a program that erases the **saved lines** (`ESC[3J`,
+    as agy does on a SIGWINCH) does not wipe the scrollback this view already holds: the
+    current screen first moves into the scrollback, then clears. The `clear` trade-off is
+    agy-only: a shell's own `clear` in an agy pane keeps its earlier lines too, while every
+    other pane keeps xterm's stock behavior. While watching another screen's size, an agy
+    screen erase (`ESC[2J`) also brings the viewport back to the cursor's row, so a clear
+    never leaves a phone over rows it just blanked or older scrollback.
 - **Input**: keys go to core with `terminal.keys`, text with `terminal.send` (never retried),
   Stop with `terminal.interrupt`. The history the terminal received is scrolled locally, with the
   wheel or by touch. A program that tracks the mouse in its own full screen (Claude Code's
@@ -28,7 +35,7 @@
   Claude Code's wheel acceleration, so a trackpad flick moves as far as the fingers and stops
   when they do. Other programs get one wheel event per row.
 - **Copy and links**: on a computer, drag over the text on screen to select it: releasing the
-  button copies it, as do `⌘C` / `Ctrl+Shift+C`. Links (OSC 8 hyperlinks and plain `http(s)://`
+  button copies it (**Settings › Conversation › Display › Copy on select**, on by default on a computer), as do `⌘C` / `Ctrl+Shift+C`. Links (OSC 8 hyperlinks and plain `http(s)://`
   URLs, even wrapped over several rows) open in a new tab with `⌘`+click / `Ctrl`+click, or a tap
   on a phone; only http and https open. A long line wrapped by the width is copied in one piece.
 - **Keep after restart** (agent's **…** menu): a kept terminal comes back as a shell when core
