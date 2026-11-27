@@ -93,6 +93,7 @@ describe('every message the engine sends goes through the shown key', () => {
     /Review again: read \$\{files\.review\}/, // a path
     /text: said \}/, // the coordinator's own words, relayed
     /text: msg \}/, // the user's report, its id from shownTaskId (pmReport.ts)
+    /Not understood\. Say it as: \$\{NEEDS_HUMAN_CMD\}/, // the marker's syntax (pmNeedsHuman.ts)
   ]
   it('terminal sends, PR titles and pushes', async () => {
     const dir = path.resolve('server/utils')

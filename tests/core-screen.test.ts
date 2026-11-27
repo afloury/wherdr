@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { createCoreScreens, readCoreScreen } from '../server/utils/coreScreen'
 import { coreChoose, coreNav, type CoreChooseDeps } from '../server/utils/coreChoose'
 import { CoreError } from '../server/utils/core'
-import type { Pane } from '../shared/types'
+import type { Choices, Pane } from '../shared/types'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 const bash = fx('claude-approve-bash.txt')
@@ -242,9 +242,9 @@ describe('enrich', () => {
 })
 
 describe('coreChoose', () => {
-  function setup(screenText: () => string) {
+  function setup(screenText: () => string, agent = 'claude') {
     const calls: [string, any][] = []
-    const p = pane('t1', { status: 'blocked' })
+    const p = pane('t1', { status: 'blocked', agent })
     const d: CoreChooseDeps = {
       call: async (m, params) => { calls.push([m, params]); return {} as never },
       pane: id => (id === 't1' ? p : undefined), panes: () => [p], refresh: () => {},
@@ -281,6 +281,36 @@ describe('coreChoose', () => {
     const stuck = setup(() => ask)
     await expect(coreChoose(stuck.d, { pane_id: 't1', index: free, label: c.options[free]!.label, identity: c.identity, text: 'Kiwi', question: c.question })).rejects.toMatchObject({ code: 'stale' })
     expect(stuck.calls.map(x => x[0])).toEqual(['terminal.keys'])
+  })
+  describe('omp HTML form', () => {
+    const form = fx('omp-ask-form-single.txt')
+    const onOther = fx('omp-ask-form-single-other.txt')
+    const read = (text: string) => readCoreScreen(text, 'omp', 'blocked')
+    const choose = (d: CoreChooseDeps, c: Choices, i: number, text?: string) =>
+      coreChoose(d, { pane_id: 't1', index: i, label: c.options[i]!.label, identity: c.identity, question: c.question, ...(text ? { text } : {}) })
+    it('shows the form as a card', () => {
+      expect(read(form)).toMatchObject({ interaction: 'native', choices: { form: true } })
+    })
+    it('chooses a radio with the keys to it and Enter', async () => {
+      const { d, calls } = setup(() => form, 'omp')
+      await choose(d, read(form).choices!, 2)
+      expect(calls).toEqual([['terminal.keys', { terminal: 'm/t1', keys: ['down', 'down', 'enter'] }]])
+    })
+    it('types the Other answer where the cursor stands, forces the send past a blocked program (it presses Enter)', async () => {
+      const c = read(form).choices!
+      let moved = false
+      const s = setup(() => (moved ? onOther : form), 'omp')
+      s.d.call = async (m, params) => { s.calls.push([m, params]); if (m === 'terminal.keys' && !moved) moved = true; return {} as never }
+      await choose(s.d, c, 3, 'Kiwi')
+      expect(s.calls).toEqual([
+        ['terminal.keys', { terminal: 'm/t1', keys: ['down', 'down', 'down'] }],
+        ['terminal.send', { terminal: 'm/t1', text: 'Kiwi', force: true }],
+      ])
+      // The cursor never reaches the row: nothing is typed.
+      const stuck = setup(() => form, 'omp')
+      await expect(choose(stuck.d, c, 3, 'Kiwi')).rejects.toMatchObject({ code: 'stale' })
+      expect(stuck.calls.map(x => x[0])).toEqual(['terminal.keys'])
+    })
   })
   it('rejects an unknown pane and maps core errors', async () => {
     const { d } = setup(() => bash)

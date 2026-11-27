@@ -98,6 +98,17 @@ export function roomPauseRefusal(task: Task, holder: string | undefined, live: {
   if (!worker || worker.program !== 'claude' || !worker.session) return `${task.id}'s worker conversation cannot be taken up again later (only a Claude worker's can): stop it instead, or let it finish`
 }
 
+// task edit --after on a started task (deferRefusal): only a stopped one at its worker's step
+// parks, as roomPauseRefusal pauses only a worker's step. One waiting on an agent's question or a
+// permission stays the user's, and in a wake a stop by the user is theirs to undo.
+export function deferRefusal(task: Task, holder: string | undefined, wake: boolean): string | undefined {
+  if (task.step?.done) return `${task.id} is done`
+  if (!task.stopped) return `${task.id} has started: after orders only tasks not started yet, a parked one, or a stopped one`
+  if (task.step?.yourTurn) return `${task.id} waits for the user: parking it would hide that from them`
+  if (holder !== 'worker') return `${task.id} is stopped at a step its worker does not hold: only a worker's step is parked`
+  if (wake && task.stopped.by === 'the user') return `${task.id} was stopped by the user: going on is the user's call`
+}
+
 // The task paused for room on a machine (key, name): no agent, no stall, out of the user's lists.
 export const roomParked = (task: Task, machine: string, label: string, why: string, now: number): Task =>
   ({ ...task, parked: { on: machine, need: why, at: now, before: afterIds(task), room: label } })
