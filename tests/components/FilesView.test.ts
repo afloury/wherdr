@@ -70,6 +70,7 @@ registerEndpoint('/api/files/read', async (event) => {
   if (path.endsWith('.pdf')) return { path, size: 11_000_000, kind: 'pdf', truncated: false }
   if (path.endsWith('.png')) return { path, size: 68, kind: 'image', dataUrl: PNG, truncated: false }
   if (path.endsWith('.zip')) return { path, size: 40, kind: 'binary', truncated: false }
+  if (path === 'big.html') return { path, size: 300_000, kind: 'text', text: '<h1>Big</h1>\n', truncated: true }
   const doc = DOCS[path] ?? DOCS[path.replace('/home/user/demo/', '')]
   if (doc !== undefined) return { path, size: doc.length, kind: 'text', text: doc, truncated: false }
   return { path, size: 19, kind: 'text', text: 'export const x = 1\nlet y\n', truncated: false }
@@ -217,6 +218,15 @@ describe('FilesView', () => {
     await w.findAll('.files-md-mode button')[1]!.trigger('click')
     expect(w.find('iframe').exists()).toBe(false)
     expect(w.find('.files-text').text()).toContain('<h1>Mockup</h1>')
+  })
+
+  it('shows a page too large to run as its start in text, and says why', async () => {
+    const w = await mountSuspended(FilesView, { props: { paneId: 'w1:p1', file: 'big.html', inFolder: true } })
+    await flushPromises()
+    expect(w.find('iframe').exists()).toBe(false)
+    expect(w.find('.changes-limit').text()).toContain('Too large to run as a page (over 256 KB)')
+    expect(w.find('.files-text').text()).toContain('<h1>Big</h1>')
+    expect(w.find('[aria-label="Download"]').exists()).toBe(true)
   })
 
   it('opens an image an agent shows in the zoomable viewer', async () => {

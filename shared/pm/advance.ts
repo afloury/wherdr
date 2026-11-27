@@ -65,18 +65,20 @@ export function reviewFile(task: Pick<Task, 'id' | 'title' | 'description' | 'sp
 // What the engine read after a signal: the task's commit, the size of its
 // diff, the worker's note (this round's section; whole: the report file with
 // the earlier rounds, rewrote: to write back, roundNote) and the reviewer's verdict file.
-// branch: the worktree's checked-out one; work: its own commits and files since its fork from the base (Task.work).
-export interface SignalRead { head?: string, diffLines?: number, note: string, whole?: string, rewrote?: true, verdict: string, branch?: string, work?: Work }
+// dirty: tracked files have uncommitted changes (git status --porcelain --untracked-files=no; a stray untracked file never blocks). branch: the worktree's checked-out one; work: its own commits and files since its fork from the base (Task.work).
+export interface SignalRead { head?: string, diffLines?: number, note: string, whole?: string, rewrote?: true, verdict: string, branch?: string, work?: Work, dirty?: true }
 export const READ_SEP = '--wherdr-read--'
 export type Work = NonNullable<Task['work']>
-export function parseRead(out: string): SignalRead {
-  const [head = '', lines = '', note = '', verdict = '', branch = '', commits = '', numstat = '', before = ''] = out.split(`${READ_SEP}\n`)
+export function parseRead(out: string, sep: string): SignalRead {
+  // The engine trims the script's output: a clean worktree leaves the last separator with no newline after it.
+  // sep is drawn at random for each read, so no file's content (a report's stray line) can split the sections.
+  const [head = '', lines = '', note = '', verdict = '', branch = '', commits = '', numstat = '', before = '', status = ''] = out.split(new RegExp(`${sep.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\n|$)`))
   const n = Number.parseInt(lines, 10)
   const files = numstat.split('\n').map(l => l.split('\t')).filter(c => c.length >= 3)
     .map(([a, d, ...p]) => ({ path: p.join('\t'), add: Number(a) || 0, del: Number(d) || 0 })).slice(0, 200)
   const r = roundNote(note.trim(), before.trim())
   return { ...(head.trim() ? { head: head.trim() } : {}), ...(Number.isFinite(n) ? { diffLines: n } : {}), note: r.fresh, ...(r.whole !== r.fresh ? { whole: r.whole } : {}), ...(r.rewrote ? { rewrote: r.rewrote } : {}), verdict: verdict.trim(), ...(branch.trim() ? { branch: branch.trim() } : {}),
-    ...(commits.trim() ? { work: { commits: commits.trim(), files } } : {}) }
+    ...(commits.trim() ? { work: { commits: commits.trim(), files } } : {}), ...(status.trim() ? { dirty: true as const } : {}) }
 }
 
 // What the task keeps of an accepted report or verdict: its commits and files
@@ -103,6 +105,7 @@ export const disputesOf = (note: string) =>
 // to the agent (a verdict that does not parse); or nothing (not its step).
 export function signalEvent(step: PlannedStep | undefined, role: Run['role'], r: SignalRead): StepEvent | { fix: string } | undefined {
   if (!step || step.holder !== role) return
+  if (role === 'worker' && step.ends === 'report' && r.dirty) return { fix: `Commit your work, then run ${DONE_CMD} again` }
   if (role === 'worker' && step.ends === 'report') {
     const disputes = disputesOf(r.note)
     return { kind: 'report', from: 'worker', evidence: proofsOf(r), ...(disputes.length ? { disputes } : {}) }

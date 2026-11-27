@@ -184,6 +184,18 @@ function forwardedZone(ip: string, ctx: NetContext): NetZone | 'foreign' | null 
   return ctx.trusted.any ? 'open' : null
 }
 
+// The request comes from a browser on this computer: straight to loopback, or
+// through `tailscale serve` naming this computer's own tailnet address.
+export function fromThisComputer(peer: string | undefined, h: Headers, ctx: NetContext): boolean {
+  const check = checkClient(peer, h, ctx)
+  if (!check.ok) return false
+  if (check.zone === 'local') return true
+  if (!isLoopbackIp(plainIp(peer))) return false
+  const self = ctx.tailscale?.running ? ctx.tailscale.selfIps : []
+  const clients = forwardedClients(h)
+  return clients.length > 0 && clients.every(c => isLoopbackIp(plainIp(c)) || self.some(x => sameIp(plainIp(x), plainIp(c))))
+}
+
 const RANK: Record<NetZone, number> = { local: 0, tailnet: 1, trusted: 2, open: 3 }
 
 // The verdict for one connection: its TCP peer, then what a local proxy says.

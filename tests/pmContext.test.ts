@@ -471,7 +471,7 @@ describe('a reviewer\'s start', () => {
     const { actionsSettled } = await import('../server/utils/pmBoard')
     const { github } = await import('../shared/pm/examples')
     const { initialState, onEvent, planSteps } = await import('../shared/pm/steps')
-    const { READ_SEP } = await import('../shared/pm/advance')
+    const { SIGNAL_READ_SCRIPT } = await import('../server/utils/pmAdvance')
     const tick = async (d: Parameters<typeof advanceTick>[0]) => { await advanceTick(d); await actionsSettled() }
     const pay = member2(path.join(home, 'work', 'pay3')); member2(path.join(home, 'work', 'rv'))
     const sha = pay.first, snap = path.join(home, '.wherdr/pm/context/PAY', sha)
@@ -505,7 +505,7 @@ describe('a reviewer\'s start', () => {
       const [, , script, , ...args] = p.argv as string[]
       if (script === CONTEXT_SCRIPT) { const r = sh(script, ...args); return { code: r.code, stdout: Buffer.from(r.out).toString('base64') } }
       if (p.input) files[args.at(-1)!.endsWith('.md') ? args.at(-2)! : args[0]!] = Buffer.from(p.input as string, 'base64').toString()
-      const out = script!.includes(READ_SEP) ? ['abc1234', '5', '', verdict, `task/${t.id}`].join(`\n${READ_SEP}\n`)
+      const out = script === SIGNAL_READ_SCRIPT ? ['abc1234', '5', '', verdict, `task/${t.id}`].join(`\n${args.at(-1)}\n`)
         : script!.includes('gh pr create') ? 'https://github.com/o/r/pull/9'
           : script!.includes('command -v') ? 'claude' : script!.includes('$HOME') ? home : ''
       return { code: script!.includes('--contains') ? 1 : 0, stdout: Buffer.from(out).toString('base64') }
