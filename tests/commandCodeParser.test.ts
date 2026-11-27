@@ -11,7 +11,8 @@ vi.mock('node:crypto', async (importOriginal) => {
     createHash: (...args: Parameters<typeof real.createHash>) => { cryptoCount.n++; return real.createHash(...args) },
   }
 })
-import { commandCodeParser, type CommandCodeResult, extractImage, type Lines, lineImageHashes, parseLines, stripBlobs } from '../server/utils/transcripts'
+import { commandCodeParser, type CommandCodeResult, createTranscripts, extractImage, type Lines, lineImageHashes, parseLines, stripBlobs } from '../server/utils/transcripts'
+import type { MachineFs } from '../server/utils/fsx'
 import { lastModel, modelFromLine } from '../server/utils/models'
 import type { ChatItem } from '../shared/types'
 import { AT, at, assistant, J, modelChange, REAL_SAMPLE, results, sess, user } from './cmdParserFixture'
@@ -46,7 +47,9 @@ describe('parseLines for Command Code', () => {
       // A result-only structured turn is automation, not a user message.
       results('u3', [{ tool_use_id: 't-x', content: 'exit code 1' }], 30),
     ))
-    expect(items).toEqual([{ role: 'user', text: 'Here is what the tool returned:\nexit code 1, see line 40', ts: at(10) }])
+    // The parse carries reader metadata (resultRefs) on the array itself:
+    // compare the items, not the metadata.
+    expect(Array.from(items)).toEqual([{ role: 'user', text: 'Here is what the tool returned:\nexit code 1, see line 40', ts: at(10) }])
   })
 
   it('parses assistant string and structured content: text and thinking without signatures', () => {
@@ -585,6 +588,59 @@ describe('Command Code images', () => {
     const genB = parseLines(lb + '\n', 'cmd', 0, '', undefined, '', undefined, 'gen-b')
     expect(genB[0]!.hashes).toEqual([sha(b)])
     expect(genB[0]!.hashes).not.toEqual([sha(a)])
+  })
+
+  it('resolves null on malformed image records, through image() too', async () => {
+    expect(extractImage(null, 0, 'cmd')).toBeNull()
+    expect(extractImage(JSON.parse('42'), 0, 'cmd')).toBeNull()
+    expect(extractImage(JSON.parse('[1]'), 0, 'cmd')).toBeNull()
+    const file = '/home/alice/.commandcode/projects/x/s1.jsonl'
+    const raw = 'null'
+    const reads: [string, number, number][] = []
+    const ENOENT = () => Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    const fs: MachineFs = {
+      // The selected file stats; anything else is absent (the guarded path
+      // needs the observation's stat before it reads).
+      stat: async p => {
+        if (p !== file) throw ENOENT()
+        return { size: raw.length, mtimeMs: 1, isFile: true, isDir: false }
+      },
+      statMany: async () => [],
+      readdir: async () => { throw ENOENT() },
+      readFile: async () => { throw ENOENT() },
+      read: async (p, s, l) => { reads.push([p, s, l]); return Buffer.from(raw).subarray(s, s + l) },
+    }
+    const t = createTranscripts({ home: '/h', herdr: (async () => { throw new Error('x') }) as never, fs, locateCommandCode: async () => ({ file, session: 's1' }) })
+    expect(await t.image({ id: 'p1', agent: 'cmd', cwd: '/w' }, 's1.jsonl', `0:${raw.length}`, 0)).toBeNull()
+    expect(reads).toEqual([[file, 0, raw.length]])
+  })
+
+  it('image() reads only the selected file — never a referenced path or blob store', async () => {
+    const file = '/home/alice/.commandcode/projects/x/s1.jsonl'
+    const rec = user('u1', [
+      { type: 'image', data: 'blob:sha256:' + 'b'.repeat(64) },
+      { type: 'image', data: 'file:///home/alice/.ssh/id_rsa' },
+      img(PNG),
+    ], 10)
+    const raw = JSON.stringify(rec)
+    const reads: [string, number, number][] = []
+    const ENOENT = () => Object.assign(new Error('ENOENT'), { code: 'ENOENT' })
+    const fs: MachineFs = {
+      // The selected file stats; anything else is absent.
+      stat: async p => {
+        if (p !== file) throw ENOENT()
+        return { size: Buffer.byteLength(raw), mtimeMs: 1, isFile: true, isDir: false }
+      },
+      statMany: async () => [],
+      readdir: async () => { throw ENOENT() },
+      readFile: async () => { throw ENOENT() },
+      read: async (p, s, l) => { reads.push([p, s, l]); return Buffer.from(raw).subarray(s, s + l) },
+    }
+    const t = createTranscripts({ home: '/h', herdr: (async () => { throw new Error('x') }) as never, fs, locateCommandCode: async () => ({ file, session: 's1' }) })
+    const got = await t.image({ id: 'p1', agent: 'cmd', cwd: '/w' }, 's1.jsonl', `0:${Buffer.byteLength(raw)}`, 0)
+    expect(got).toEqual({ type: 'image/png', body: Buffer.from(PNG, 'base64') })
+    // Exactly one read: the transcript line itself, nothing referenced by it.
+    expect(reads).toEqual([[file, 0, Buffer.byteLength(raw)]])
   })
 })
 
