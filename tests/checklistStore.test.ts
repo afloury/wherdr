@@ -13,8 +13,8 @@ beforeEach(() => {
 afterEach(() => rmSync(dir, { recursive: true, force: true }))
 
 const items = [
-  { index: 0, group: 1, text: 'a', written: false },
-  { index: 1, group: 1, text: 'b', written: false },
+  { index: 0, text: 'a', written: false },
+  { index: 1, text: 'b', written: false },
 ]
 const toggle = (index: number, checked: boolean, key = 'k') => ({ op: 'toggle', key, at: 7, items, index, checked })
 

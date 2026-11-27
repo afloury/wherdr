@@ -13,8 +13,7 @@ import type { ChecklistState } from '#shared/checklist'
 import type { Pane } from '#shared/types'
 
 const AT = 1_700_000_000_000
-const text = '- [ ] Header\n- [x] Footer\n'
-const html = md(text)
+const html = md('- [ ] Header\n- [x] Footer\n')
 
 // The server: one state per pane, answers like the real routes.
 const stored: Record<string, ChecklistState> = {}
@@ -34,7 +33,7 @@ registerEndpoint('/api/checklist', async (event) => {
 registerEndpoint('/api/prompt', { method: 'POST', handler: async (event) => { prompts.push((await readBody<{ text: string }>(event)).text); return { ok: true } } })
 registerEndpoint('/api/input', { method: 'POST', handler: async () => { others.push('input'); return { ok: true } } })
 
-const check = (pane: string) => ({ pane, key: 'm1', at: AT, text })
+const check = (pane: string) => ({ pane, key: 'm1', at: AT })
 const boxes = (w: { findAll: (s: string) => any[] }) => w.findAll('input[type=checkbox]')
 
 describe('Checklist ticks', () => {
@@ -55,11 +54,24 @@ describe('Checklist ticks', () => {
 
   it('shows the stored ticks after a reload', async () => {
     stored['w1:reload'] = { m1: { at: AT, items: {
-      0: { group: 0, text: 'Header', written: false, checked: true, sent: false },
-      1: { group: 0, text: 'Footer', written: true, checked: false, sent: true },
+      0: { text: 'Header', written: false, checked: true, sent: false },
+      1: { text: 'Footer', written: true, checked: false, sent: true },
     } } }
     const w = await mountSuspended(ChatMarkdown, { props: { html, typing: null, check: check('w1:reload') } })
     await vi.waitFor(() => expect(boxes(w).map(b => b.element.checked)).toEqual([true, false]))
+    w.unmount()
+  })
+
+  // The items are the boxes on the page: a quoted list or code that looks like one shifts nothing.
+  it('ticks the item whose box was ticked after a quoted list and indented code', async () => {
+    const tricky = md('> - [ ] quoted\n\n    - [ ] in code\n\nPlan:\n\n- [ ] first\n- [ ] second\n')
+    const w = await mountSuspended(ChatMarkdown, { props: { html: tricky, typing: null, check: check('w1:shift') } })
+    const all = boxes(w)
+    expect(all).toHaveLength(3)
+    await all[2].setValue(true)
+    await vi.waitFor(() => expect(writes).toHaveLength(1))
+    expect(writes[0]).toMatchObject({ index: 2, items: [{ text: 'quoted' }, { text: 'first' }, { text: 'second' }] })
+    expect(stored['w1:shift']!.m1!.items['2']).toMatchObject({ text: 'second', checked: true })
     w.unmount()
   })
 
@@ -71,7 +83,7 @@ describe('Checklist ticks', () => {
 })
 
 const pane = (id: string): Pane => ({ id, workspace: 'w1', tab: 'w1:t1', tabLabel: null, agent: 'pi', name: null, label: null, status: 'idle', title: null, cwd: '/home/user/demo', agentSession: null })
-const ticked = (): ChecklistState => ({ m1: { at: AT, items: { 0: { group: 0, text: 'Header', written: false, checked: true, sent: false } } } })
+const ticked = (): ChecklistState => ({ m1: { at: AT, items: { 0: { text: 'Header', written: false, checked: true, sent: false } } } })
 
 async function send(id: string, message: string, w?: Awaited<ReturnType<typeof mountSuspended>>) {
   const view = w ?? await mountSuspended(Composer, { props: { pane: pane(id), paneId: id, sendKeys: async () => {} } })
@@ -97,6 +109,20 @@ describe('Composer + checklist', () => {
     await send('w1:next', 'Thanks', w)
     await vi.waitFor(() => expect(prompts).toHaveLength(2))
     expect(prompts[1]).toBe('Thanks')
+    w.unmount()
+  })
+
+  it('counts only the user\'s ticks, not the agent\'s own', async () => {
+    stored['w1:own'] = { m1: { at: AT, items: {
+      0: { text: 'Header', written: true, checked: true, sent: true },
+      1: { text: 'Body', written: false, checked: true, sent: false },
+      2: { text: 'Footer', written: false, checked: true, sent: false },
+    } } }
+    const w = await mountSuspended(Composer, { props: { pane: pane('w1:own'), paneId: 'w1:own', sendKeys: async () => {} } })
+    await vi.waitFor(() => expect(w.find('[data-testid=checklist-chip]').text()).toContain('2 ticked items will be sent'))
+    await send('w1:own', 'Go on', w)
+    await vi.waitFor(() => expect(prompts).toHaveLength(1))
+    expect(prompts[0]).toMatch(/\n\[x\] Body\n\[x\] Footer$/)
     w.unmount()
   })
 

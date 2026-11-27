@@ -44,8 +44,8 @@ function parseItems(v: unknown): ChecklistItem[] {
   if (!Array.isArray(v) || v.length > 200) throw bad('items: a list of up to 200 items')
   return v.map((i) => {
     const it = i as Partial<ChecklistItem> | null
-    if (!it || !isIndex(it.index) || !isIndex(it.group) || typeof it.text !== 'string' || typeof it.written !== 'boolean') throw bad('items: { index, group, text, written }')
-    return { index: it.index, group: it.group, text: it.text.slice(0, 200), written: it.written }
+    if (!it || !isIndex(it.index) || typeof it.text !== 'string' || typeof it.written !== 'boolean') throw bad('items: { index, text, written }')
+    return { index: it.index, text: it.text.slice(0, 200), written: it.written }
   })
 }
 
@@ -60,7 +60,8 @@ function parseMarks(v: unknown): ChecklistMark[] {
 
 let queue: Promise<unknown> = Promise.resolve()
 
-// Applies a toggle or a "sent" to one conversation; returns its new state.
+// Applies a toggle or a "sent" to one conversation; returns its new state. A toggle carries
+// the message's items as the page rendered them (the one source of the indexes), checked here.
 export function updateChecklist(paneId: string, body: Record<string, unknown>, file = CHECKLIST_FILE): Promise<ChecklistState> {
   if (typeof paneId !== 'string' || !paneId || paneId.length > 200) return Promise.reject(bad('pane_id: required'))
   let apply: (s: ChecklistState) => ChecklistState
