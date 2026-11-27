@@ -2,7 +2,7 @@
 // wherdr.* labels on herdr-core, so the engine finds it again after a restart.
 import type { NeedsHuman } from './needsHuman'
 import type { Project } from './project'
-import { checkPrefs, reviewerCheck, validModel, type ContextSpec, type WorkflowError, type Prefs, type Step, type Template, type Weight } from './workflow'
+import { checkPrefs, modelMisfit, modelProgram, programName, reviewerCheck, validModel, type ContextSpec, type Program, type TextPref, type WorkflowError, type Prefs, type Step, type Template, type Weight } from './workflow'
 import { commandWords, resolveAgent, type AgentRef, type NamedAgent } from './namedAgents'
 import type { ContextFolder } from './context'
 import { fillBase, planSteps, type StepState } from './steps'
@@ -180,7 +180,7 @@ export function trustKeys(screen: string, folder: string): string[] | undefined 
 // A running agent stopped on its login prompt (Claude's /login, Codex's sign in again): the account's login expired.
 export const isLoginPrompt = (text: string) => /please run \/login|login reached its time limit|oauth token has expired|log out and sign in again/i.test(text)
 export const isAuthFailure = (text: string) => /not logged in|log ?in again|please (run )?\/?login|authenticat|unauthori[sz]ed|invalid api key|\b401\b/i.test(text)
-export { PROGRAMS, SAME_MODEL } from './workflow'
+export { PROGRAMS, SAME_MODEL, programName } from './workflow'
 
 export const runLabels = (install: string, run: Run) =>
   ({ [LABEL.install]: install, [LABEL.task]: run.task, [LABEL.run]: run.id, [LABEL.role]: run.role })
@@ -282,21 +282,43 @@ export const taskPlan = (t: Template, task: Pick<Task, 'type' | 'prefs' | 'base'
 export const typeSteps = (t: Template, type: string): Step[] =>
   (t.taskTypes[type]?.steps ?? []).map(s => (typeof s === 'string' ? t.steps?.[s] : s)).filter((s): s is Step => !!s)
 
+// The worker's model for `program`: the nearest level's model, unless the agent
+// it was set for (that level's, or a broader one's) is another program: then
+// prefs.models[program], nearest level first, when one is set.
+function workerModel(levels: (Prefs | undefined)[], program: string, named: readonly NamedAgent[]): string {
+  const at = Math.max(0, levels.findIndex(p => p?.model))
+  const model = levels[at]?.model ?? ''
+  const agent = levels.slice(at).find(p => p?.agent)?.agent
+  const ref = agent ? resolveAgent(agent, named) : undefined
+  const setFor = ref && 'program' in ref ? ref.program : modelProgram(model)
+  const other = levels.find(p => p?.models?.[program as Program])?.models?.[program as Program]
+  return !other || !setFor || setFor === program ? model : other
+}
+
 // Program and model of the worker: the nearest level wins (task, task type,
-// template). Returns the reason when the task cannot start.
+// template). Returns the reason when the task cannot start (misfit: a model of
+// another program's family, refused at task add and task edit too).
 // named: the named agents (Settings › Agents) a pref may name; agent and
 // command then say which one and how to start it.
-export function workerPlan(t: Template, task: Task, named: readonly NamedAgent[] = []): AgentRef & { model: string } | { reason: string } {
+export function workerPlan(t: Template, task: Pick<Task, 'type' | 'prefs'>, named: readonly NamedAgent[] = []): AgentRef & { model: string } | { reason: string, misfit?: true } {
   const tt = t.taskTypes[task.type]
   if (!tt) return { reason: `The template has no task type "${task.type}"` }
   if (!typeSteps(t, task.type).some(s => s.holder === 'worker')) return { reason: `Task type "${task.type}" has no worker step` }
-  const pick = (k: 'agent' | 'model') => task.prefs?.[k] || tt.prefs?.[k] || t.prefs?.[k] || ''
-  const agent = pick('agent'), model = pick('model')
+  const agent = prefOf(t, task, 'agent')
   if (!agent) return { reason: 'No agent set: add prefs.agent to the template' }
   const ref = resolveAgent(agent, named)
   if (!('program' in ref)) return { reason: 'reason' in ref ? ref.reason : agent }
+  const model = workerModel([task.prefs, tt.prefs, t.prefs], ref.program, named)
   if (!validModel(ref.program, model)) return { reason: model ? `Invalid model "${model}"` : 'No model set: add prefs.model to the template (the model is always pinned)' }
+  const misfit = modelMisfit(ref.program, model, `--model or prefs.models.${ref.program}`)
+  if (misfit) return { reason: misfit, misfit: true }
   return { ...ref, model }
+}
+
+// Why a task's prefs give its worker or its reviewer a model of another
+// program's family (task add, task edit), or undefined.
+export function modelRefusal(t: Template, task: Pick<Task, 'type' | 'prefs'>, named: readonly NamedAgent[] = []): string | undefined {
+  for (const p of [workerPlan(t, task, named), reviewerPlan(t, task, undefined, named)]) if ('misfit' in p) return p.reason
 }
 
 // Program and model of the reviewer: reviewAgent and reviewModel, nearest
@@ -305,11 +327,11 @@ export function workerPlan(t: Template, task: Task, named: readonly NamedAgent[]
 // out: why the review agent cannot take this review now (its account at its
 // limit). With reviewFallbackAgent and reviewFallbackModel set, the fallback
 // takes it (`switched` says why); without, nothing changes.
-export function reviewerPlan(t: Template, task: Task, out?: string, named: readonly NamedAgent[] = []): AgentRef & { model: string, switched?: string } | { reason: string } {
+export function reviewerPlan(t: Template, task: Pick<Task, 'type' | 'prefs'>, out?: string, named: readonly NamedAgent[] = []): AgentRef & { model: string, switched?: string } | { reason: string, misfit?: true } {
   const worker = workerPlan(t, task, named)
   if ('reason' in worker) return worker
   if (!typeSteps(t, task.type).some(s => s.holder === 'reviewer')) return { reason: `Task type "${task.type}" has no reviewer step` }
-  const pick = (k: keyof Prefs) => prefOf(t, task, k)
+  const pick = (k: TextPref) => prefOf(t, task, k)
   const main = reviewerCheck(worker, pick('reviewAgent') || worker.agent || worker.program, pick('reviewModel'), 'reviewModel', named)
   const agent = pick('reviewFallbackAgent'), model = pick('reviewFallbackModel')
   if (!out || (!agent && !model) || 'reason' in main) return main
@@ -334,12 +356,10 @@ export function taskPrefsOf(raw: unknown, named: readonly NamedAgent[]): { prefs
 }
 
 // A pref of a task: the nearest level that sets it (task, task type, template).
-export const prefOf = (t: Template, task: Pick<Task, 'type' | 'prefs'>, k: keyof Prefs) =>
+export const prefOf = (t: Template, task: Pick<Task, 'type' | 'prefs'>, k: TextPref) =>
   task.prefs?.[k] || t.taskTypes[task.type]?.prefs?.[k] || t.prefs?.[k] || ''
 
 // Why the review agent cannot take a review: its account at its limit until `until` (local time).
-// As the interface names it (KIND_LABEL in app/utils/format.ts): omp is "OMP".
-export const programName = (program: string) => (program === 'omp' ? 'OMP' : `${program.charAt(0).toUpperCase()}${program.slice(1)}`)
 export const quotaOut = (program: string, until: number) => `${programName(program)} out of quota until ${new Date(until).toTimeString().slice(0, 5)}`
 
 // The last reviewer start in a task's log, when the fallback took it: why, and by whom.
