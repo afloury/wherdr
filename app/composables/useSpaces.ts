@@ -47,10 +47,12 @@ export function splitItems(p: Pane): MenuItem[] {
   ]
 }
 // Split right / down (menu, Mod+Alt+S, Mod+Alt+Shift+S): false when it cannot.
-export function splitPane(p: Pane, dir: SplitDir): boolean {
+// `cwd`: another folder than the pane's (a folder of its conversation); `run`: a
+// command the new shell runs first, then stays open.
+export function splitPane(p: Pane, dir: SplitDir, cwd?: string, run?: string): boolean {
   const like = sameTabBody(p, [])
   if (!like || splitOff(p)) return false
-  void split(p, { ...like, beside: p.id }, dir)
+  void split(p, { ...like, ...(cwd ? { cwd } : {}), ...(run ? { run } : {}), beside: p.id }, dir)
   return true
 }
 async function split(p: Pane, body: Record<string, unknown>, dir: SplitDir) {

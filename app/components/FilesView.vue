@@ -89,7 +89,7 @@ const trail = ref<string[]>([])
 // An HTML page (an agent's mockup or demo) runs in a sandboxed frame
 // (Preview), served with its own policy (server/utils/fileDownload.ts): an
 // opaque origin, away from wherdr's cookies, storage and API. Or its source.
-// A page cut at the text limit stays source only.
+// A page cut at the text limit (TEXT_BYTES, 256 KB) stays source only, and says why.
 const htmlView = ref<'preview' | 'source'>('preview')
 const isHtml = computed(() => preview.value?.kind === 'text' && /\.html?$/i.test(preview.value.path))
 const isPage = computed(() => isHtml.value && !preview.value!.truncated)
@@ -319,7 +319,8 @@ function icon(e: FileEntry) {
           <p v-if="!preview" class="changes-notice"><span class="spinner" /> {{ t('Reading files…') }}</p>
           <template v-else>
             <p v-if="!file" class="changes-location">{{ preview.path }} · {{ fmtBytes(preview.size) }}</p>
-            <p v-if="preview.truncated && preview.kind === 'text'" class="changes-limit">{{ t('File truncated to keep this view responsive.') }}</p>
+            <p v-if="preview.truncated && isHtml" class="changes-limit">{{ t('Too large to run as a page (over 256 KB): showing its start as text. Download it to open it in a browser.') }}</p>
+            <p v-else-if="preview.truncated && preview.kind === 'text'" class="changes-limit">{{ t('File truncated to keep this view responsive.') }}</p>
             <template v-if="pageShown">
               <!-- Never allow-same-origin, popups, forms or top navigation. -->
               <iframe :key="`${inlineUrl}:${reloads}`" class="files-page" :src="inlineUrl" sandbox="allow-scripts" referrerpolicy="no-referrer" :title="preview.path" />

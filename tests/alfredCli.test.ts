@@ -280,7 +280,11 @@ describe('runAlfredCommand', () => {
     await fs.mkdir(path.join(dir, 'bin'))
     await fs.writeFile(path.join(dir, 'bin/wherdr'), WHERDR_SCRIPT, { mode: 0o755 })
     const env = { PATH: process.env.PATH, WHERDR_URL: `http://127.0.0.1:${(server.address() as { port: number }).port}` }
-    const send = (...args: string[]) => new Promise<void>((resolve) => { execFile(path.join(dir, 'bin/wherdr'), ['alfred', ...args], { env }, () => resolve()).stdin!.end('- Squash merges only\n') })
+    const send = (...args: string[]) => new Promise<void>((resolve) => {
+      const { stdin } = execFile(path.join(dir, 'bin/wherdr'), ['alfred', ...args], { env }, () => resolve())
+      stdin!.on('error', () => {}) // the CLI may exit before reading stdin
+      stdin!.end('- Squash merges only\n')
+    })
     try {
       await send('project', 'memory', 'APP')
       await send('project', 'memory', 'APP', '--apply')
