@@ -89,6 +89,22 @@ describe('after the worker, with each example template', () => {
     expect(w.s.done).toBe(true)
   })
 
+  it('a worker\'s "Contested: <id>" lines reach the review as disputes', () => {
+    const w = walk(company, 'feature')
+    const stuck = '{"findings":[{"id":"no-test","severity":"major","title":"No test","proof":"npm test: 0 tests"},{"id":"other","severity":"major","title":"Other","proof":"x"}]}'
+    w.done('worker')
+    w.done('reviewer', read({ verdict: stuck }))
+    w.tell()
+    w.done('worker', read({ note: 'Fixed other.\nContested: no-test, nope\n  contested:  other-id \nNot a dispute: Contested: inline' }))
+    expect(w.s.reviews?.review?.at(-1)?.disputed).toEqual(['no-test', 'nope', 'other-id'])
+    expect(w.tell()!.text).toContain('The agent contests: no-test, nope, other-id.')
+    for (let i = 0; i < 5 && !w.s.yourTurn; i++) {
+      w.done('reviewer', read({ verdict: stuck }))
+      if (!w.s.yourTurn) { w.tell(); w.done('worker') }
+    }
+    expect(w.s.yourTurn).toMatchObject({ reason: 'rounds', advice: { outcome: 'arbitrate', findings: ['no-test'] } })
+  })
+
   it('github: the engine opens the PR, the reviewer checks it, the merge waits for its checks', () => {
     const w = walk(github, 'simple')
     w.done('worker')
@@ -205,6 +221,24 @@ describe('end signals', () => {
       const r = parseRead(out, sep)
       expect(r.verdict).toBe(verdict)
       expect(r.whole ?? r.note).toContain(`${READ_SEP}\n\nhttps://example.com/pull/1\n${READ_SEP}\ntail`)
+    }
+    finally { await fs.rm(dir, { recursive: true, force: true }) }
+  })
+
+  it('a changed tracked file makes the read dirty; an untracked file does not (the real script)', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'read-git-'))
+    try {
+      const git = (...a: string[]) => execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...a], { encoding: 'utf8' })
+      git('init', '-q')
+      await fs.writeFile(path.join(dir, 'a.txt'), 'one\n')
+      git('add', 'a.txt')
+      git('commit', '-qm', 'one')
+      const sep = `${READ_SEP}-test`
+      const readNow = () => parseRead(execFileSync('sh', ['-c', SIGNAL_READ_SCRIPT, 'sh', dir, 'b', path.join(dir, 'none.md'), path.join(dir, 'none.json'), '', path.join(dir, 'none.before.md'), sep], { encoding: 'utf8' }).trim(), sep)
+      await fs.writeFile(path.join(dir, 'scratch.log'), 'x\n')
+      expect(readNow().dirty).toBeUndefined()
+      await fs.writeFile(path.join(dir, 'a.txt'), 'two\n')
+      expect(readNow().dirty).toBe(true)
     }
     finally { await fs.rm(dir, { recursive: true, force: true }) }
   })

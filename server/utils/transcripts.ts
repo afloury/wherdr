@@ -1,12 +1,14 @@
-import { createHash } from 'node:crypto'
+import { createHash, type Hash } from 'node:crypto'
 import { imageTagCount, uploadNames, withoutUploads } from '../../shared/queuedMatch'
-import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail } from '../../shared/types'
+import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail, ToolUpdate } from '../../shared/types'
 import { ompToolCall, ompToolResult, ompUserRun } from './ompTools'
 import { pendingClaudeTool, pendingCodexTool, pendingOmpTool } from './promptDetail'
 import { type ClaudeAsked, type OmpAsked, pendingClaudeAsk, pendingOmpAsk } from './choices'
 import { cleanModelName, lastModel, mergeOmpModel, ompLastModel, ompModelComplete, ompModelLabel, ompModelResult } from './models'
-import { type MachineFs, localFs } from './fsx'
+import { type FsStat, type MachineFs, localFs } from './fsx'
 import { machinePath } from './machinePath'
+import { fingerprintRefs, type CommandCodeResultRef } from './commandCodeWatch'
+import { createCommandCodeState, type CommandCodeFileHandle, type CommandCodeObservation } from './commandCodeState'
 import { searchFile } from './conversationSearch'
 import { hasTranscript, transcriptKind } from '../../shared/agentKind'
 import { type CommandTemplate, ompCommandTemplates } from './slash'
@@ -17,7 +19,7 @@ import { createDevinTranscripts } from './devinTranscripts'
 import { devinSession } from './devinSessions'
 import { codexDaemonReplyKey, type CodexHistory } from './codexDaemon'
 import { clip, isNoise } from './transcriptText'
-import { createBoundedReads, type BottomRead } from './boundedRead'
+import { ANCHOR_BYTES, anchorHash, createBoundedReads, MAX_READ_BYTES, PAGE_ITEMS, WINDOW_BYTES, type BottomRead } from './boundedRead'
 import { createAgyTranscripts } from './agyTranscripts'
 import { agySession } from './agySessions'
 import { type HermesLoc, createHermesTranscripts, locateHermes } from './hermesTranscripts'
@@ -34,16 +36,16 @@ export interface TranscriptPane {
   title?: string | null
 }
 
-interface Loc { file: string, session: string, guessed?: boolean, python?: string }
+export interface Loc { file: string, session: string, guessed?: boolean, python?: string }
 const hermesLoc = (loc: Loc): HermesLoc => ({ db: loc.file, session: loc.session, ...(loc.python ? { python: loc.python } : {}) })
 interface CodexRollout { file: string, id: string, ts: number, mtimeMs: number }
 // Window in which a Codex's conversation is created around its appearance.
 const CODEX_BIRTH_BEFORE = 5000
 const CODEX_BIRTH_AFTER = 120000
-type Lines = string[] & { refs?: string[] }
-type Parsed = ChatItem[] & { queue?: ClaudeQueueEntry[], popped?: ClaudeQueueEntry[] }
+export type Lines = string[] & { refs?: string[] }
+type Parsed = ChatItem[] & { queue?: ClaudeQueueEntry[], popped?: ClaudeQueueEntry[], updates?: ToolUpdate[], resultRefs?: CommandCodeResultRef[] }
 // `anchor`: fingerprint of the bytes just above `start` (see anchorAt).
-interface TailResult { start: number, items: ChatItem[], queue: ClaudeQueueEntry[], popped?: ClaudeQueueEntry[], anchor?: string }
+interface TailResult { start: number, items: ChatItem[], queue: ClaudeQueueEntry[], popped?: ClaudeQueueEntry[], anchor?: string, updates?: ToolUpdate[] }
 
 // The anchor in a client's token (`/<start>.<hash>`): the fingerprint the
 // bounded reads hash just above a page's start (see boundedRead.ts), checked
@@ -65,6 +67,14 @@ export function headOf(token: string | null | undefined): { file: string, size: 
   const m = HEAD.exec(String(token || ''))
   if (!m) return null
   return { file: m[1]!, size: Number(m[2]), from: m[3] === 'null' ? null : Number(m[3]), ino: m[4] ? Number(m[4]) : null, gen: `${m[4] ? `${m[4]}-` : ''}${m[5]}`, unsettled: m[6] === '!' }
+}
+// Command Code tokens also carry the file's generation stamp and this
+// reader's nonce (`~s<stamp>~r<reader>`): a page remembered under another
+// generation or another process must never splice under the current one.
+const CSTAMP = /~s(\d+)~r([a-z0-9]+)(?=[~/#]|$)/
+const tokenStamp = (token: string | null | undefined): { stamp: number, reader: string } | null => {
+  const m = CSTAMP.exec(String(token || ''))
+  return m ? { stamp: Number(m[1]), reader: m[2]! } : null
 }
 // A stat that gives whole seconds only (a remote `stat` without fractions, a
 // coarse file system): a rewrite at the same size within the second already
@@ -141,8 +151,18 @@ export function sameMsg(queued: string, said: string): boolean {
 
 // Base64 images (Claude: source.data, Codex: data:image/…): we
 // empty them before JSON.parse, only their count matters to us.
+// One parameter only: `.map(stripBlobs)` must never pass the array index as a
+// second argument.
 export const stripBlobs = (line: string) => (line.length > 50000
   ? line.replace(/"data":"[A-Za-z0-9+/=]{500,}"/g, '"data":""').replace(/"data:image\/[^"]{500,}"/g, '""')
+  : line)
+
+// Command Code variant: for cmd the strip must not turn a rejected payload
+// into an accepted empty image — only shapes its filter would accept are
+// emptied, so an invalid data URL stays verbatim and stays rejected.
+export const stripCmdBlobs = (line: string) => (line.length > 50000
+  ? line.replace(/"data":"[A-Za-z0-9+/=]{500,}"/g, '"data":""')
+    .replace(/"data":"data:image\/[\w.+-]+;base64,[A-Za-z0-9+/=]{500,}"/g, '"data":""')
   : line)
 
 export function toolSummary(name: string, input: Json, home = ''): string {
@@ -900,17 +920,343 @@ function ompCommandText(text: string, templates: readonly CommandTemplate[]): st
   return text
 }
 
+// Command Code (commandcode.ai): one JSONL session per project, shaped like
+// Claude's (message / model_change / session lines, tool_use + tool_result,
+// thinking, images). `meta.source` separates a human turn from tool results
+// and injected context; `model` on assistant lines is the session's model.
+// Format `version: 3`, as written by Command Code `1.93.0` (see
+// tests/cmdParserFixture.ts for an anonymised real sample).
+function commandCodeText(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (!Array.isArray(value)) return ''
+  return value.map(p => (p && p.type === 'text' && typeof p.text === 'string' ? p.text : '')).filter(Boolean).join('\n')
+}
+
+function commandCodeTool(name: string, input: Json): string {
+  if (typeof input === 'string') return firstLine(input)
+  const i = input && typeof input === 'object' ? input : {}
+  // Only string values are summarized: a malformed field must never throw on
+  // String coercion or leak an arbitrary object into the summary.
+  const s = (v: unknown) => typeof v === 'string' ? v : ''
+  switch (name) {
+    case 'shell_command': return firstLine(s(i.description) || s(i.command))
+    case 'read_file': case 'write_file': case 'edit_file':
+      return firstLine(s(i.file_path) || s(i.path))
+    case 'grep': return `${s(i.pattern)}${typeof i.path === 'string' && i.path ? ` · ${i.path}` : ''}`
+    case 'glob': return firstLine(s(i.pattern))
+    case 'agent': return firstLine(s(i.description) || s(i.prompt))
+    case 'ask_user_question': return firstLine(s(Array.isArray(i.questions) ? i.questions[0]?.question : ''))
+    case 'search_tools': return firstLine(s(i.query))
+    default: {
+      const v = Object.values(i).find(x => typeof x === 'string')
+      return firstLine(v)
+    }
+  }
+}
+
+// Outcome remembered for a call whose tool_use is in an older page than the
+// tool_result being parsed (see commandCodeParser). `at` is the result's
+// absolute byte offset: the revision chronology compares, never arrival
+// order. Images and the result watch fields arrive with their tasks.
+export type CommandCodeResult = { out?: string, error?: boolean, images?: number, ref?: string, imageAt?: number, at?: number }
+
+// Ids live in the bounded maps across parses: cap their bytes (a transcript
+// can carry an arbitrarily large one). An oversized id is rejected on call
+// and result alike — never truncated into a false match.
+const CMD_ID_MAX = 128
+const CMD_NAME_MAX = 100
+const cmdId = (v: unknown): string | null =>
+  typeof v === 'string' && v.length > 0 && Buffer.byteLength(v) <= CMD_ID_MAX ? v : null
+
+// State of an incremental Command Code parse (see commandCodeParser):
+// the items of the bottom fed so far, their served copies, the retained
+// call index, the outcome bookkeeping, and the opt-in cross-page map.
+interface CmdParseState {
+  items: ChatItem[]
+  copies: WeakMap<ChatItem, ChatItem>
+  tools: Map<string, ChatItem>
+  // Outcomes already on the wire per id: a repeat of the same revision must
+  // not amplify into repeated serialized updates, a changed outcome at the
+  // same offset (a rewritten record) still emits.
+  emitted: Map<string, ToolUpdate>
+  pending: Map<string, ToolUpdate>
+  updates: ToolUpdate[]
+  // The cross-page orphan map is opt-in: without it a result before its
+  // call is dropped for this parse, exactly as a lone window always was.
+  results?: Map<string, CommandCodeResult>
+  // Absolute positions of the result records parsed since the last result()
+  // — reader metadata for raw watch registration, drained once with the
+  // items, newest absolute offset per id (an equal offset may hold a
+  // changed record), bounded like the watch map.
+  resultRefs: Map<string, CommandCodeResultRef>
+}
+
+// Chronology on absolute result byte offsets (`at`): an outcome replaces
+// only an equal-or-older one, whichever order pages were parsed in.
+const cmdNewer = (at: number | undefined, was: number | undefined) => (at ?? -Infinity) >= (was ?? -Infinity)
+// Absolute position of a "start:length" ref: both halves well-formed,
+// non-negative safe integers and the record's end still on the number
+// line — anything else is no position at all (an impossible extent is
+// never revision or watch metadata), never a NaN/Infinity offset on the
+// wire or in the maps.
+const cmdRefPos = (ref: string | undefined): { at: number, len: number } | null => {
+  const m = ref && /^(\d+):(\d+)$/.exec(ref)
+  if (!m) return null
+  const at = Number(m[1])
+  const len = Number(m[2])
+  return at >= 0 && len >= 0 && Number.isSafeInteger(at) && Number.isSafeInteger(len) && Number.isSafeInteger(at + len) ? { at, len } : null
+}
+
+// Apply a result to a call item, if it is not older than what is shown.
+function cmdApply(p: CmdParseState, t: ChatItem, rec: CommandCodeResult) {
+  if (!cmdNewer(rec.at, t.toolAt)) return
+  p.copies.delete(t)
+  t.out = rec.out
+  t.error = rec.error || undefined
+  t.images = rec.images
+  t.ref = rec.ref
+  t.imageAt = rec.imageAt
+  if (rec.at !== undefined) t.toolAt = rec.at
+}
+
+// One update per id per feed, carrying the newest absolute revision.
+function cmdEmit(p: CmdParseState, id: string, rec: CommandCodeResult) {
+  const u: ToolUpdate = { id, out: rec.out ?? '', error: rec.error === true, images: rec.images ?? 0, ref: rec.ref ?? '', imageAt: rec.imageAt ?? 0 }
+  if (rec.at !== undefined) u.at = rec.at
+  const was = p.pending.get(id)
+  if (was && !cmdNewer(u.at, was.at)) return
+  if (was) p.pending.delete(id)
+  p.pending.set(id, u)
+}
+
+// The normalized outcome an update carries, without its revision: two
+// updates of one revision differ only by this (a record rewritten in place).
+const cmdSame = (a: ToolUpdate, b: ToolUpdate) =>
+  a.out === b.out && a.error === b.error && a.images === b.images && a.ref === b.ref && a.imageAt === b.imageAt
+
+// Command Code's parser, fed complete lines appended to a transcript: each
+// poll feeds only the new lines (a transcript grows); old lines are never
+// re-parsed. `tools` indexes retained calls for constant-time result
+// matching — its entries live and die with their items (see drop), never
+// with the separate bounded orphan-outcome map (`results`). Served items
+// are immutable: result() hands out copies made once per item (chatDelta
+// signs each); an outcome applied to a call already served touches it, so
+// the next result() returns a fresh object while served ones never change.
+
+function feedCommandCode(p: CmdParseState, lines: Lines) {
+  const { items, tools, results } = p
+  for (let i = 0; i < lines.length; i++) {
+    let d: Json
+    try { d = JSON.parse(lines[i]!) } catch { continue }
+    if (!d || d.type !== 'message' || !d.message || typeof d.message !== 'object') continue
+    const m = d.message
+    const ref = lines.refs?.[i]
+    const v = m.meta?.createdAt
+    const ts = typeof d.timestamp === 'string' ? d.timestamp
+      : Number.isFinite(v) && Math.abs(v) <= 8.64e15 ? new Date(v).toISOString() : null
+    if (m.role === 'assistant') {
+      if (typeof m.content === 'string') {
+        if (m.content.trim()) items.push(replyItem({ role: 'assistant', text: clip(m.content), ts }, ref))
+        continue
+      }
+      const content = Array.isArray(m.content) ? m.content : []
+      let lastText: ChatItem | null = null
+      let own = 0
+      for (const [block, part] of content.entries()) {
+        if (!part || typeof part !== 'object') continue
+        if (part.type === 'thinking' && typeof part.thinking === 'string' && part.thinking.trim()) {
+          items.push({ role: 'thinking', text: clip(part.thinking), ts })
+        } else if (part.type === 'text' && typeof part.text === 'string' && part.text.trim()) {
+          lastText = replyItem({ role: 'assistant', text: clip(part.text), ts }, ref, block)
+          items.push(lastText)
+        } else if (part.type === 'tool_use') {
+          const id = cmdId(part.id)
+          if (!id) continue
+          const raw = typeof part.name === 'string' ? part.name : 'Tool'
+          const t: ChatItem = { role: 'tool', name: clip(raw, CMD_NAME_MAX), toolId: id, text: clip(commandCodeTool(raw, part.input), 300), ts }
+          // Its result may have been parsed in a newer page (a page
+          // boundary between the call and the result): the remembered
+          // outcome applies — then the page's own older result cannot.
+          const saved = results?.get(id)
+          if (saved) {
+            t.out = saved.out
+            t.error = saved.error || undefined
+            t.images = saved.images
+            t.ref = saved.ref
+            t.imageAt = saved.imageAt
+            if (saved.at !== undefined) t.toolAt = saved.at
+          }
+          tools.set(id, t)
+          items.push(t)
+        } else if (part.type === 'image' && cmdLineImage(part)) {
+          own++
+        }
+      }
+      // All accepted own images of the message form one ordered group on
+      // its last text reply (Copy/Reply identity stays the text's); with
+      // no text they are a single image reply — indices are the line's.
+      if (own) {
+        if (lastText) { lastText.images = own; lastText.ref = ref }
+        else items.push(replyItem({ role: 'assistant', text: '', images: own, ref, ts }, ref))
+      }
+      continue
+    }
+    if (m.role !== 'user') continue
+    const content = m.content
+    const source = m.meta && typeof m.meta.source === 'string' ? m.meta.source : null
+    // `meta.isMeta` marks automation (monitor wake-ups, goal continuations):
+    // its source is still "user" but it is not a human turn.
+    const hidden = m.meta?.isMeta === true
+    if (typeof content === 'string') {
+      const text = content.trim()
+      if (text && !hidden && (source === 'user' || !source)) items.push({ role: 'user', text: clip(text), ts })
+      continue
+    }
+    if (!Array.isArray(content)) continue
+    let text = ''
+    let images = 0
+    // Accepted images of a line are ordered own-first then per tool result
+    // (lineImages): the offset starts at the count of accepted own images
+    // and runs through every result, matched or not.
+    let toolImages = content.reduce((n, p) => n + (p && cmdLineImage(p) ? 1 : 0), 0)
+    for (const part of content) {
+      if (!part || typeof part !== 'object') continue
+      if (part.type === 'text' && typeof part.text === 'string') {
+        text += (text ? '\n' : '') + part.text
+      } else if (part.type === 'image') {
+        if (cmdLineImage(part)) images++
+      } else if (part.type === 'tool_result') {
+        const n = Array.isArray(part.content) ? part.content.reduce((s: number, q: Json) => s + (q && cmdLineImage(q) ? 1 : 0), 0) : 0
+        const id = cmdId(part.tool_use_id)
+        if (!id) { toolImages += n; continue }
+        const out = commandCodeText(part.content)
+        // A result is the complete replacement of what the call showed: an
+        // empty or successful one clears out/error/images instead of
+        // preserving them. `at` is its absolute position: its revision.
+        const pos = cmdRefPos(ref)
+        const rec: CommandCodeResult = { out: out ? clip(out, 8000) : undefined, error: part.is_error === true, at: pos?.at }
+        // The record's own raw position, for the reader's result watch:
+        // newest absolute offset per id — an equal offset may hold a
+        // changed record. Bounded like the watch map; drained by result().
+        if (pos) {
+          const was = p.resultRefs.get(id)
+          if (!was || pos.at >= was.at) {
+            p.resultRefs.set(id, { id, at: pos.at, len: pos.len })
+            if (p.resultRefs.size > 4096) p.resultRefs.delete(p.resultRefs.keys().next().value!)
+          }
+        }
+        if (n && ref) {
+          rec.images = n
+          rec.ref = ref
+          if (toolImages) rec.imageAt = toolImages
+        }
+        const t = tools.get(id)
+        if (results) {
+          // The newest known outcome wins — this feed's record, the shared
+          // entry, or the outcome already shown on the call itself: a shared
+          // eviction must not let an older record downgrade other parsers.
+          const saved = results.get(id)
+          const shown: CommandCodeResult | undefined = t && t.toolAt !== undefined
+            ? { out: t.out, error: t.error === true, images: t.images, ref: t.ref, imageAt: t.imageAt, at: t.toolAt }
+            : undefined
+          let best = rec
+          if (saved && !cmdNewer(best.at, saved.at)) best = saved
+          if (shown && !cmdNewer(best.at, shown.at)) best = shown
+          if (best !== saved) {
+            results.set(id, best)
+            if (results.size > 4096) results.delete(results.keys().next().value!)
+            // The call may already be shown in an older page the client
+            // loaded: send the complete outcome so it updates — or clears.
+            if (!t) cmdEmit(p, id, best)
+          }
+        }
+        // Apply the newest outcome known for this call: the shared map may
+        // hold one another parser stored later than this feed's record.
+        if (t) cmdApply(p, t, results?.get(id) ?? rec)
+        toolImages += n
+      }
+    }
+    const human = !hidden && (source === 'user' || (!source && !content.some((p: Json) => p && p.type === 'tool_result')))
+    if (human && (text.trim() || images)) items.push({ role: 'user', text: clip(text.trim()), ...(images ? { images, ref } : {}), ts })
+  }
+}
+
+export type CommandCodeParser = ReturnType<typeof commandCodeParser>
+export function commandCodeParser(shared?: Map<string, CommandCodeResult>) {
+  const p: CmdParseState = {
+    items: [],
+    copies: new WeakMap(),
+    tools: new Map(),
+    emitted: new Map(),
+    pending: new Map(),
+    updates: [],
+    results: shared,
+    resultRefs: new Map(),
+  }
+
+  // Items below `n` left the bottom (the reader's window slid): their calls
+  // leave the index with them; a later result then reports as an update.
+  function drop(n: number) {
+    const gone = new Set(p.items.splice(0, n))
+    if (!gone.size) return
+    for (const [id, t] of p.tools) if (gone.has(t)) p.tools.delete(id)
+  }
+
+  function result(): Parsed {
+    // Only a revision the wire has not carried crosses into the updates: a
+    // newer offset, or the same offset holding a different outcome.
+    for (const u of p.pending.values()) {
+      const e = p.emitted.get(u.id)
+      if (u.at === undefined || e === undefined || u.at > (e.at ?? -Infinity) || (u.at === e.at && !cmdSame(u, e))) {
+        p.updates.push(u)
+        if (u.at !== undefined) p.emitted.set(u.id, u)
+      }
+    }
+    p.pending.clear()
+    while (p.emitted.size > 4096) p.emitted.delete(p.emitted.keys().next().value!)
+    const out: Parsed = p.items.map((orig) => {
+      let it = p.copies.get(orig)
+      if (it) return it
+      it = { ...orig }
+      p.copies.set(orig, it)
+      const key = replyKeys.get(orig)
+      if (key) replyKeys.set(it, key)
+      return it
+    })
+    if (p.updates.length) out.updates = p.updates.splice(0)
+    if (p.resultRefs.size) {
+      out.resultRefs = [...p.resultRefs.values()]
+      p.resultRefs.clear()
+    }
+    return out
+  }
+  return { feed: (lines: Lines) => feedCommandCode(p, lines), result, drop }
+}
+
+// Stateless whole-lines parse: one feed of the window given. `updates`:
+// late outcomes for calls outside the parse (ChatResponse.toolUpdates).
+// The JSONL format read here (`session` / `message` / `model_change` records,
+// `version: 3`) is the one Command Code `1.93.0` writes; a record's shape is
+// read as documented in tests/cmdParserFixture.ts (REAL_SAMPLE).
+export function parseCommandCode(lines: Lines, results?: Map<string, CommandCodeResult>, updates?: ToolUpdate[]): Parsed {
+  const p = commandCodeParser(results)
+  p.feed(lines)
+  const out = p.result()
+  if (updates && out.updates) updates.push(...out.updates)
+  return out
+}
+
 // `base`: position (in bytes) of `text` in the file. Each line keeps
 // its "start:length" position (lines.refs): messages with images
 // carry it, to re-read the image on demand (see image()).
-const parseKind = (lines: Lines, kind: string | null, home: string, templates?: readonly CommandTemplate[], cwd = '') =>
-  kind === 'omp' ? parseOmp(lines, home, templates, cwd) : kind === 'codex' ? parseCodex(lines) : parseClaude(lines, home)
+const parseKind = (lines: Lines, kind: string | null, home: string, templates?: readonly CommandTemplate[], cwd = '', cmd?: { results?: Map<string, CommandCodeResult>, updates?: ToolUpdate[] }) =>
+  kind === 'omp' ? parseOmp(lines, home, templates, cwd) : kind === 'codex' ? parseCodex(lines) : kind === 'cmd' ? parseCommandCode(lines, cmd?.results, cmd?.updates) : parseClaude(lines, home)
 
 // Complete lines kept from one read to the next (see readTail): their
 // positions, the lines without their base64, and the content hashes of their
 // images (as parseLines gives them).
 interface LineStore { lines: Lines & { refs: string[] }, hashes: Map<string, string[]>, keep: boolean }
-export function storeLines(store: LineStore, text: string, base: number): Lines {
+export function storeLines(store: LineStore, text: string, base: number, kind?: string | null, memoPrefix?: string): Lines {
   const added: Lines = []
   added.refs = []
   let off = base
@@ -918,9 +1264,9 @@ export function storeLines(store: LineStore, text: string, base: number): Lines 
     const n = Buffer.byteLength(l)
     const ref = `${off}:${n}`
     off += n + 1
-    const h = lineImageHashes(l)
+    const h = lineImageHashes(l, kind, memoPrefix ? `${memoPrefix}:${ref}` : undefined)
     if (h.length) store.hashes.set(ref, h)
-    added.push(stripBlobs(l))
+    added.push(kind === 'cmd' ? stripCmdBlobs(l) : stripBlobs(l))
     added.refs.push(ref)
   }
   if (store.keep) {
@@ -940,7 +1286,7 @@ export function withHashes(items: ChatItem[], hashes: Map<string, string[]>) {
   }
 }
 
-export function parseLines(text: string, kind: string | null, base = 0, home = '', templates?: readonly CommandTemplate[], cwd = ''): Parsed {
+export function parseLines(text: string, kind: string | null, base = 0, home = '', templates?: readonly CommandTemplate[], cwd = '', cmdResults?: Map<string, CommandCodeResult>, memoPrefix?: string): Parsed {
   const raw = text.split('\n')
   const refs: string[] = []
   let off = base
@@ -949,17 +1295,26 @@ export function parseLines(text: string, kind: string | null, base = 0, home = '
     refs.push(`${off}:${n}`)
     off += n + 1
   }
-  const lines: Lines = raw.map(stripBlobs)
+  const lines: Lines = raw.map(l => (kind === 'cmd' ? stripCmdBlobs(l) : stripBlobs(l)))
   lines.refs = refs
-  const items = parseKind(lines, kind, home, templates, cwd)
+  const cmdUpdates: ToolUpdate[] = []
+  const items = parseKind(lines, kind, home, templates, cwd, { results: cmdResults, updates: cmdUpdates })
+  if (cmdUpdates.length) items.updates = cmdUpdates
   // Content hash of each image, to spot one shown twice (see shared/imageDupes.ts).
   const byRef = new Map<string, number>()
   refs.forEach((r, i) => byRef.set(r, i))
+  // A ref's hash list is computed once per parse however many items carry
+  // its images — for cmd each lookup pays a whole-line digest for its key.
+  const hashed = new Map<string, string[]>()
   for (const it of items) {
     if (!it.images || !it.ref) continue
-    const i = byRef.get(it.ref)
-    if (i === undefined) continue
-    const all = lineImageHashes(raw[i]!)
+    let all = hashed.get(it.ref)
+    if (!all) {
+      const i = byRef.get(it.ref)
+      if (i === undefined) continue
+      all = lineImageHashes(raw[i]!, kind, memoPrefix ? `${memoPrefix}:${refs[i]}` : undefined)
+      hashed.set(it.ref, all)
+    }
     const at = it.imageAt || 0
     const own = all.slice(at, at + it.images)
     if (own.length === it.images) it.hashes = own
@@ -980,18 +1335,45 @@ export function turnStart(line: string, kind: string | null): boolean {
 // and its multi-MB base64 is decoded and hashed once, not at every poll.
 const HASH_CACHE_MAX = 2000
 const hashCache = new Map<string, string[]>()
-export function lineImageHashes(line: string): string[] {
-  if (!line.includes('"type":"image"') && !line.includes('"input_image"')) return []
-  const key = `${line.length}:${line.slice(0, 200)}:${line.slice(-200)}`
+// For cmd the cache key of a line is a digest of the whole line: computing it
+// re-hashes every multi-MB base64 row on each overlapping or backward read.
+// A `memoKey` (`<file generation>:<line position>`) remembers that digest, so
+// a re-read of the same position in the same generation never re-hashes the
+// line; a new generation (the file was rewritten) misses and recomputes.
+const LINE_DIGEST_CACHE_MAX = 2000
+const lineDigestCache = new Map<string, string>()
+export function lineImageHashes(line: string, kind?: string | null, memoKey?: string): string[] {
+  // The compact precheck matches how Claude/Codex/omp writers serialize; cmd
+  // transcripts may pretty-print `"type" : "image"`, so it uses a looser gate.
+  if (kind === 'cmd' ? !line.includes('"image"') : !line.includes('"type":"image"') && !line.includes('"input_image"')) return []
+  // The legacy key is approximate (length + first/last 200 chars): two large
+  // images differing only in the middle would collide. cmd needs exact
+  // identity — a digest of the whole line, never a retained payload.
+  const key = kind === 'cmd' ? cmdLineKey(line, memoKey) : `${line.length}:${line.slice(0, 200)}:${line.slice(-200)}`
   const hit = hashCache.get(key)
   if (hit) return hit
   let hashes: string[] = []
   try {
-    hashes = lineImages(JSON.parse(line)).map(img => 'blob' in img ? img.blob : createHash('sha256').update(Buffer.from(img.data, 'base64')).digest('hex'))
+    hashes = lineImages(JSON.parse(line), kind).map(img => 'blob' in img ? img.blob : createHash('sha256').update(Buffer.from(img.data, 'base64')).digest('hex'))
   } catch { hashes = [] }
   if (hashCache.size >= HASH_CACHE_MAX) hashCache.delete(hashCache.keys().next().value!)
   hashCache.set(key, hashes)
   return hashes
+}
+
+// Cache key of a cmd line: its whole-line digest, remembered per
+// (generation, line position) when the caller knows them.
+function cmdLineKey(line: string, memoKey?: string): string {
+  if (memoKey) {
+    const known = lineDigestCache.get(memoKey)
+    if (known) return known
+  }
+  const key = `c:${createHash('sha256').update(line).digest('hex')}`
+  if (memoKey) {
+    if (lineDigestCache.size >= LINE_DIGEST_CACHE_MAX) lineDigestCache.delete(lineDigestCache.keys().next().value!)
+    lineDigestCache.set(memoKey, key)
+  }
+  return key
 }
 
 // Types served as is: an SVG image (or any type written in the
@@ -1003,9 +1385,53 @@ const IMAGE_TYPES = /^image\/(?:png|jpeg|gif|webp)$/
 // ~/.omp/agent/blobs (see image()).
 export type TranscriptImage = { type: string, body: Buffer } | { type: string, blob: string }
 type LineImage = { type: string, data: string } | { type: string, blob: string }
+// Command Code accepts inline image payloads only — positive base64 or
+// data-URL shape, never a storage key, file/URL or path. Nothing a record
+// says can make this open a filesystem or network resource, so it can't
+// reach omp's blob store either. `''` counts: stripBlobs empties a large
+// payload before parse but the image's position survives.
+const B64 = /^[A-Za-z0-9+/=]*$/
+const DATA_URL = /^data:(image\/[\w.+-]+);base64,(.*)$/
+// One accepted-image rule shared by parse counting, hashing and extraction:
+// `{type:'image', source:{type:'base64', data}}` (Claude's shape) or flat
+// `{type:'image', data}` as inline base64 or a data: URL.
+function cmdLineImage(p: Json): LineImage | null {
+  if (!p || typeof p !== 'object' || p.type !== 'image') return null
+  if (p.source && typeof p.source === 'object' && !Array.isArray(p.source)) {
+    const s = p.source
+    return s.type === 'base64' && typeof s.data === 'string' && B64.test(s.data)
+      ? { type: typeof s.media_type === 'string' ? s.media_type : 'image/png', data: s.data } : null
+  }
+  if (typeof p.data !== 'string') return null
+  const mm = DATA_URL.exec(p.data)
+  if (mm && mm[2] !== undefined) return B64.test(mm[2]) ? { type: mm[1]!, data: mm[2] } : null
+  return B64.test(p.data)
+    ? { type: typeof p.mimeType === 'string' ? p.mimeType : 'image/png', data: p.data } : null
+}
 // Images of a line, in the order of the `i` of /api/chat/image.
-function lineImages(d: Json): LineImage[] {
+// A malformed record (`null`, a number, an array) carries no images.
+function lineImages(d: Json, kind?: string | null): LineImage[] {
   const found: LineImage[] = []
+  if (!d || typeof d !== 'object' || Array.isArray(d)) return found
+  if (kind === 'cmd') {
+    // Exactly what parseCommandCode reads: the message's own images first,
+    // then each tool result's accepted images. attachment/payload metadata
+    // is not part of cmd messages and cannot shift these indices.
+    const content = d.message && Array.isArray(d.message.content) ? d.message.content : null
+    for (const p of content || []) {
+      const img = cmdLineImage(p)
+      if (img) found.push(img)
+    }
+    for (const p of content || []) {
+      if (p && p.type === 'tool_result' && Array.isArray(p.content)) {
+        for (const q of p.content) {
+          const img = cmdLineImage(q)
+          if (img) found.push(img)
+        }
+      }
+    }
+    return found
+  }
   const visit = (parts: Json[] | null) => {
     for (const p of parts || []) {
       if (p && p.type === 'image' && p.source && p.source.data) found.push({ type: p.source.media_type || 'image/png', data: p.source.data })
@@ -1030,8 +1456,8 @@ function lineImages(d: Json): LineImage[] {
   }
   return found
 }
-export function extractImage(d: Json, index: number): TranscriptImage | null {
-  const img = lineImages(d)[index]
+export function extractImage(d: Json, index: number, kind?: string | null): TranscriptImage | null {
+  const img = lineImages(d, kind)[index]
   if (!img) return null
   const lower = String(img.type).toLowerCase()
   const type = IMAGE_TYPES.test(lower) ? lower : 'application/octet-stream'
@@ -1050,10 +1476,14 @@ export function isMissing(e: unknown): boolean {
   return err.code === 'remote' && /no such file|not a directory|introuvable/i.test(err.message || '')
 }
 
-export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, codexHistory }: { home: string, herdr: HerdrCall, fs?: MachineFs, now?: () => number, codexHistory?: CodexHistory }) {
+export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, locateCommandCode, codexHistory }: { home: string, herdr: HerdrCall, fs?: MachineFs, now?: () => number, locateCommandCode?: (pane: TranscriptPane) => Promise<Loc | null>, codexHistory?: CodexHistory }) {
   // The machine's paths (POSIX for a remote Linux machine, even from a Windows host).
   const path = machinePath(home)
   const devin = createDevinTranscripts({ home, fs, now })
+  // Command Code file generations of this machine (see commandCodeState):
+  // cross-page outcomes, result-record watches, the trusted stat, the
+  // invalidation stamps and the reader nonce client tokens carry.
+  const cmd = createCommandCodeState({ fs })
   const agy = createAgyTranscripts({ home, fs, now })
   const hermes = createHermesTranscripts({ fs })
   // File -> state (size, generation) and when this server first saw it, for
@@ -1062,7 +1492,32 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   const genSeen = new Map<string, { state: string, at: number }>()
   const firstSums = new Map<string, Promise<string | null>>()
   const sumKey = (file: string, size: number, gen: string) => `${file}|${size}|${gen}`
-  async function settledGen(file: string, st: { size: number, mtimeMs: number }, gen: string) {
+  // Command Code transcripts grow without bound: their continuity evidence
+  // is the head and tail 64 KiB windows of the claimed prefix — one read
+  // of the whole claim when they touch (<= 128 KiB), two disjoint reads
+  // otherwise — hashed with its size, inode and generation, whatever
+  // st.size says, instead of a whole-file digest a multi-GiB transcript
+  // could not afford. A rewrite strictly between the windows can evade
+  // this check: it is a sample, never a whole-content proof. A failed or
+  // short sample is *unknown* — the callers treat it as changed, and there
+  // is no digest fallback. Reads go through readExact, so a generation
+  // detached while the sample is in flight fails the proof instead of
+  // minting one.
+  const FINGER_BYTES = 64 * 1024
+  async function cmdFingerprint(file: string, claim: { size: number, ino?: number, gen: string, stamp: number }): Promise<string | null> {
+    const { size, ino, gen, stamp } = claim
+    if (!Number.isSafeInteger(size) || size < 0) return null
+    const windows = size <= 2 * FINGER_BYTES ? [[0, size]] : [[0, FINGER_BYTES], [size - FINGER_BYTES, FINGER_BYTES]]
+    const hash = createHash('sha1')
+    hash.update(`${gen}|${size}|${ino ?? 0}|`)
+    for (const [start, len] of windows) {
+      const b = len ? await cmd.io.readExact(file, start!, len!, stamp) : Buffer.alloc(0)
+      if (b === null || b.length !== len) return null
+      hash.update(b)
+    }
+    return hash.digest('hex')
+  }
+  async function settledGen(file: string, st: { size: number, mtimeMs: number, ino?: number }, gen: string, stamp?: number) {
     if (Math.round(st.mtimeMs * 1000) % 1_000_000) return true // sub-second mtime: exact
     const state = `${st.size}|${gen}`
     const seen = genSeen.get(file)
@@ -1070,10 +1525,12 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     genSeen.delete(file)
     genSeen.set(file, { state, at: now() })
     if (genSeen.size > 64) genSeen.delete(genSeen.keys().next().value!)
-    if (fs.digest) {
+    const sum = stamp !== undefined
+      ? cmdFingerprint(file, { size: st.size, ino: st.ino, gen, stamp })
+      : fs.digest ? fs.digest(file, st.size).catch(() => null) : null
+    if (sum) {
       // Taken before the bottom is read: what any client reads of this
       // state comes after it.
-      const sum = fs.digest(file, st.size).catch(() => null)
       firstSums.set(sumKey(file, st.size, gen), sum)
       if (firstSums.size > 64) firstSums.delete(firstSums.keys().next().value!)
       await sum
@@ -1082,14 +1539,28 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   }
   // A client list read from a state not settled yet: is its part of the file
   // (its first `size` bytes, appends only add after them) still the same?
-  async function stillThere(file: string, prev: { size: number, gen: string }) {
-    if (!fs.digest) return true // no checksum on this machine: cannot tell
+  async function stillThere(file: string, prev: { size: number, ino: number | null, gen: string }, stamp?: number) {
+    if (stamp === undefined && !fs.digest) return true // no checksum on this machine: cannot tell
     const before = await firstSums.get(sumKey(file, prev.size, prev.gen))
     if (!before) return false // forgotten (server restarted): start again to be safe
-    return await fs.digest(file, prev.size).catch(() => null) === before
+    const fresh = stamp !== undefined
+      ? await cmdFingerprint(file, { size: prev.size, ino: prev.ino ?? undefined, gen: prev.gen, stamp })
+      : await fs.digest!(file, prev.size).catch(() => null)
+    return fresh === before
   }
   const locCache = new Map<string, { at: number, loc: Loc | null, session?: string | null }>()
   const lastLoc = new Map<string, Loc>() // last file found, fallback if a lookup fails
+  // Command Code replies bound to their generation (see withGen): the
+  // file the reply was read from and an origin-bound live predicate.
+  // Stamps are reader-local — a foreign reader's contexts never match.
+  const contexts = new WeakMap<ChatResponse, { file: string, live: () => boolean }>()
+  // Latest observed Command Code selection per pane: each lookup takes an
+  // opaque ticket, so a lookup started before a forget (or a reused pane
+  // id) can never carry a ticket that is reissued — a late stale lookup
+  // never overwrites a newer observation. Publication guard only (see
+  // live) — never a locator or cache fallback.
+  const selections = new Map<string, { ticket: object, file: string | null }>()
+  const selSeq = new Map<string, object>()
   const previewCache = new Map<string, { size: number, gen: string, reply: { key: string, text: string } }>()
   const metaCache = new Map<string, Json>()
   const META_MAX = 2000
@@ -1332,6 +1803,21 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   // `fresh`: a cached "no file" is not trusted (a brand new Claude writes its
   // transcript with its first message, within those 8 s).
   async function locate(pane: TranscriptPane, fresh = false): Promise<Loc | null> {
+    // Command Code resolves through the machine's census-backed helper —
+    // never the pane-id/session caches, and never agentSession. Any earlier
+    // legacy entry for this pane is dropped so a later agent transition
+    // cannot resurrect it; a failed/unavailable lookup is "no location",
+    // not the failed-read path that preserves lastLoc. Without the callback
+    // there is no evidence at all: null.
+    if (pane.agent === 'cmd') {
+      locCache.delete(pane.id)
+      lastLoc.delete(pane.id)
+      const ticket = {}
+      selSeq.set(pane.id, ticket)
+      const l = locateCommandCode ? await locateCommandCode(pane).catch(() => null) : null
+      if (selSeq.get(pane.id) === ticket) selections.set(pane.id, { ticket, file: l?.file ?? null })
+      return l
+    }
     const hit = locCache.get(pane.id)
     if (hit && (hit.loc || !fresh) && Date.now() - hit.at < 8000 && hit.session === pane.agentSession) return hit.loc
     let loc: Loc | null = null
@@ -1385,25 +1871,25 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   // How a kind's lines parse, for the windows and slices of one file: omp's
   // session folder (its paths shown relative to it) is read once per file,
   // its file commands re-read every 5 min (see refreshOmpTemplates).
-  async function windowReader(file: string, kind: string | null) {
+  async function windowReader(file: string, kind: string | null, gen?: string) {
     const cwd = kind === 'omp' ? await ompCwd(file) : ''
     return {
       label: String(kind),
-      parse: (text: string, base: number) => parseLines(text, kind, base, home, ompTemplates.list, cwd),
+      parse: (text: string, base: number) => parseLines(text, kind, base, home, ompTemplates.list, cwd, undefined, gen),
       join: (windows: Parsed[]) => {
         const last = windows.at(-1)
         return Object.assign(windows.flat(), { queue: last?.queue || [], popped: last?.popped || [] }) as Parsed
       },
       whole: kind === 'omp',
-      reduce: (line: string) => stripBlobs(line),
-      bottom: () => bottomOf(kind, cwd),
+      reduce: kind === 'cmd' ? stripCmdBlobs : stripBlobs,
+      bottom: () => bottomOf(kind, cwd, gen),
     }
   }
 
   // The state kept between polls for one bottom (see reads.readBelow): an
   // incremental parser for Claude's appended lines; Codex's and omp's lines
   // are kept and their last turn parsed again (see lastTurn).
-  function bottomOf(kind: string | null, cwd: string) {
+  function bottomOf(kind: string | null, cwd: string, gen?: string) {
     const store: LineStore = { lines: Object.assign([] as string[], { refs: [] as string[] }), hashes: new Map(), keep: kind === 'codex' || kind === 'omp' }
     const claude = store.keep ? null : claudeParser(home)
     const turns = { lines: 0, items: [] as ChatItem[], templates: ompTemplates.list }
@@ -1413,7 +1899,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
       feed(text: string, base: number) {
         first ??= base
         end = base + Buffer.byteLength(text) + 1
-        const added = storeLines(store, text, base)
+        const added = storeLines(store, text, base, kind, gen)
         claude?.feed(added)
       },
       result: () => {
@@ -1438,8 +1924,9 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   })
 
   // Goes back from `end` by windows up to PAGE_ITEMS messages (or the start).
-  async function readBackwards(file: string, end: number, kind: string | null): Promise<TailResult> {
-    return toTail(await reads.readBackwards(file, end, await windowReader(file, kind)))
+  // `gen`: the file generation, so image digests memoise per (generation, line).
+  async function readBackwards(file: string, end: number, kind: string | null, gen?: string): Promise<TailResult> {
+    return toTail(await reads.readBackwards(file, end, await windowReader(file, kind, gen)))
   }
 
   // Bottom of the conversation: from `from` (already shown on the phone) or,
@@ -1448,7 +1935,190 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   // Reads in progress are shared: several devices on one pane cost one read
   // and one parse per change.
   async function tail(file: string, kind: string | null, size: number, gen: string, from: number | null, settled = true, ino?: number): Promise<TailResult> {
-    return toTail(await reads.tail(file, await windowReader(file, kind), size, gen, from, settled, ino))
+    return toTail(await reads.tail(file, await windowReader(file, kind, gen), size, gen, from, settled, ino))
+  }
+
+  // Command Code generation-bound reading (raw exact-coverage reads, result
+  // record watch fingerprinting on raw bytes, and generation-scoped caches
+  // and retained bottoms so a replaced transcript never mixes bytes or drops
+  // in-flight errors into a newer generation).
+  type CmdCtx = { h: CommandCodeFileHandle, stamp: number, memo: string }
+  const CMD_CHECK_BYTES = 4096
+  const CMD_MAX_BELOW = 8
+  const CMD_MAX_KEPT_BYTES = 48 * 1024 * 1024
+  const cmdParseCache = new Map<string, { size: number, gen: string, settled: boolean, r: TailResult, stamp: number }>()
+  const cmdTailReads = new Map<string, Promise<TailResult>>()
+  const cmdBelow = new Map<string, { ino?: number, start: number, end: number, above: string, aligned: boolean, check: string, cmd: CommandCodeParser, cmdStamp: number }>()
+  const cmdQueues = new Map<string, Promise<unknown>>()
+  function cmdLocked<T>(key: string, run: () => Promise<T>): Promise<T> {
+    const r = (cmdQueues.get(key) || Promise.resolve()).then(run)
+    const done = r.catch(() => {})
+    cmdQueues.set(key, done)
+    void done.then(() => { if (cmdQueues.get(key) === done) cmdQueues.delete(key) })
+    return r
+  }
+  async function cmdRead(file: string, start: number, len: number, stamp: number): Promise<Buffer> {
+    const buf = await cmd.io.readExact(file, start, len, stamp)
+    if (!buf) throw new Error('command code transcript read unknown')
+    return buf
+  }
+  async function cmdReadRange(file: string, start: number, end: number, stamp: number) {
+    if (start <= 0) {
+      const buf = await cmdRead(file, 0, end, stamp)
+      return { start: 0, bufStart: 0, buf, text: buf.toString('utf8') }
+    }
+    const buf = await cmdRead(file, start - 1, end - start + 1, stamp)
+    const nl = buf.indexOf(0x0a)
+    const off = nl < 0 ? buf.length : nl + 1
+    return { start: start - 1 + off, bufStart: start - 1, buf, text: buf.subarray(off).toString('utf8') }
+  }
+  async function cmdAnchorAt(file: string, start: number, stamp: number) {
+    const s0 = Math.max(0, start - ANCHOR_BYTES)
+    const buf = start > 0 ? await cmdRead(file, s0, start - s0, stamp) : new Uint8Array()
+    return anchorHash(buf)
+  }
+  async function cmdReadBackwards(file: string, end: number, ctx: CmdCtx): Promise<TailResult> {
+    let start = end
+    let items: ChatItem[] = []
+    let queue: ClaudeQueueEntry[] | null = null
+    let popped: ClaudeQueueEntry[] | null = null
+    const updates = new Map<string, ToolUpdate>()
+    while (start > 0 && end - start < MAX_READ_BYTES) {
+      let w = WINDOW_BYTES
+      let r: Awaited<ReturnType<typeof cmdReadRange>>
+      for (;;) {
+        const s0 = Math.max(0, start - Math.min(w, MAX_READ_BYTES - (end - start)))
+        r = await cmdReadRange(file, s0, start, ctx.stamp)
+        if (r.start < start || s0 === 0 || start - s0 >= MAX_READ_BYTES - (end - start)) break
+        w *= 2
+      }
+      if (r.start === start) break
+      const parsed = parseLines(r.text, 'cmd', r.start, home, ompTemplates.list, '', ctx.h.results, ctx.memo)
+      for (const u of parsed.updates || []) {
+        const was = updates.get(u.id)
+        if (!was || cmdNewer(u.at, was.at)) { updates.delete(u.id); updates.set(u.id, u) }
+      }
+      if (parsed.resultRefs) for (const x of fingerprintRefs(r.buf, r.bufStart, parsed.resultRefs)) ctx.h.watch(x.id, x)
+      if (!queue) queue = parsed.queue || []
+      if (!popped) popped = parsed.popped || []
+      items = parsed.concat(items)
+      start = r.start
+      if (items.length >= PAGE_ITEMS) break
+    }
+    return { start, items, queue: queue || [], popped: popped || [], ...(updates.size ? { updates: [...updates.values()] } : {}) }
+  }
+  async function cmdReadSlice(file: string, size: number, from: number, ctx: CmdCtx): Promise<TailResult> {
+    const s0 = Math.max(0, from - ANCHOR_BYTES)
+    const buf = await cmdRead(file, s0, size - s0, ctx.stamp)
+    const above = buf.subarray(0, from - s0)
+    let off = from - s0
+    if (from > 0 && above[above.length - 1] !== 0x0a) {
+      const nl = buf.indexOf(0x0a, off)
+      off = nl < 0 ? buf.length : nl + 1
+    }
+    const items = parseLines(buf.subarray(off).toString('utf8'), 'cmd', s0 + off, home, ompTemplates.list, '', ctx.h.results, ctx.memo)
+    if (items.resultRefs) for (const x of fingerprintRefs(buf, s0, items.resultRefs)) ctx.h.watch(x.id, x)
+    if (!cmd.io.live(file, ctx.stamp)) throw new Error('command code transcript generation changed')
+    return { start: from, items, queue: items.queue || [], popped: items.popped || [], anchor: off === from - s0 ? anchorHash(above) : '', ...(items.updates?.length ? { updates: items.updates } : {}) }
+  }
+  async function cmdReadBelow(file: string, size: number, from: number, ino: number | undefined, ctx: CmdCtx): Promise<TailResult> {
+    const key = `${file}|cmd|${from}`
+    const s0 = Math.max(0, from - ANCHOR_BYTES)
+    const live = () => cmd.io.live(file, ctx.stamp)
+    const stale = (): never => { throw new Error('command code transcript generation changed') }
+    if (!live()) stale()
+    let b = cmdBelow.get(key)
+    if (b && b.cmdStamp !== ctx.stamp) b = undefined
+    let above: Buffer = Buffer.alloc(0)
+    let known: Buffer = Buffer.alloc(0)
+    let fresh: Buffer = Buffer.alloc(0)
+    const c0 = b ? Math.max(b.start, b.end - CMD_CHECK_BYTES) : 0
+    if (b && b.ino === ino && size >= b.end) {
+      if (c0 - from <= CMD_CHECK_BYTES) {
+        const buf = await cmdRead(file, s0, size - s0, ctx.stamp)
+        above = buf.subarray(0, from - s0)
+        known = buf.subarray(c0 - s0, b.end - s0)
+        fresh = buf.subarray(b.end - s0)
+      } else {
+        above = await cmdRead(file, s0, from - s0, ctx.stamp)
+        const buf = await cmdRead(file, c0, size - c0, ctx.stamp)
+        known = buf.subarray(0, b.end - c0)
+        fresh = buf.subarray(b.end - c0)
+      }
+      if (above.length !== from - s0 || known.length !== b.end - c0 || anchorHash(above) !== b.above || anchorHash(known) !== b.check) {
+        if (cmd.invalidate(file, b.cmdStamp)) cmdBelow.delete(key)
+        throw new Error('command code transcript rewritten')
+      }
+    }
+    if (!b || b.ino !== ino || size < b.end) {
+      const buf = await cmdRead(file, s0, size - s0, ctx.stamp)
+      above = buf.subarray(0, from - s0)
+      let off = from - s0
+      if (from > 0 && above[above.length - 1] !== 0x0a) {
+        const nl = buf.indexOf(0x0a, off)
+        off = nl < 0 ? buf.length : nl + 1
+      }
+      known = Buffer.alloc(0)
+      b = { ino, start: s0 + off, end: s0 + off, above: anchorHash(above), aligned: off === from - s0, check: anchorHash(known), cmd: commandCodeParser(ctx.h.results), cmdStamp: ctx.stamp }
+      fresh = buf.subarray(off)
+    }
+    const nl = fresh.lastIndexOf(0x0a)
+    let feedBase = b.end
+    if (nl >= 0) {
+      if (!live()) stale()
+      feedBase = b.end
+      const store: LineStore = { lines: Object.assign([] as string[], { refs: [] as string[] }), hashes: new Map(), keep: false }
+      const added = storeLines(store, fresh.subarray(0, nl).toString('utf8'), b.end, 'cmd', ctx.memo)
+      b.cmd.feed(added)
+      b.end += nl + 1
+      const tailBuf = Buffer.concat([known, fresh.subarray(0, nl + 1)])
+      b.check = anchorHash(tailBuf.subarray(Math.max(0, tailBuf.length - CMD_CHECK_BYTES)))
+    }
+    if (!live()) stale()
+    cmdBelow.delete(key)
+    cmdBelow.set(key, b)
+    while (cmdBelow.size > CMD_MAX_BELOW) {
+      const oldest = cmdBelow.keys().next().value!
+      if (oldest === key) break
+      cmdBelow.delete(oldest)
+    }
+    const partial = fresh.subarray(nl + 1)
+    if (partial.length) {
+      let whole2 = false
+      try { JSON.parse(stripCmdBlobs(partial.toString('utf8'))); whole2 = true }
+      catch { /* incomplete: ignored as the parsers would */ }
+      if (whole2) return await cmdReadSlice(file, size, from, ctx)
+    }
+    const items = b.cmd.result()
+    if (nl >= 0 && items.resultRefs) {
+      for (const x of fingerprintRefs(fresh.subarray(0, nl), feedBase, items.resultRefs)) ctx.h.watch(x.id, x)
+    }
+    if (!live()) stale()
+    return { start: from, items, queue: items.queue || [], popped: items.popped || [], anchor: b.aligned ? b.above : '', ...(items.updates?.length ? { updates: items.updates } : {}) }
+  }
+  async function cmdReadTail(file: string, size: number, from: number | null, ino: number | undefined, ctx: CmdCtx): Promise<TailResult> {
+    if (from !== null && from <= size && size - from <= MAX_READ_BYTES) {
+      return await cmdLocked(`${file}|cmd|${from}|${ctx.stamp}`, () => cmdReadBelow(file, size, from, ino, ctx))
+    }
+    const r = await cmdReadBackwards(file, size, ctx)
+    r.anchor = await cmdAnchorAt(file, r.start, ctx.stamp)
+    return r
+  }
+  async function cmdTail(file: string, size: number, gen: string, from: number | null, settled: boolean, ino: number | undefined, ctx: CmdCtx): Promise<TailResult> {
+    const key = `${file}|cmd|${from}`
+    const c = cmdParseCache.get(key)
+    if (c && c.settled && c.size === size && c.gen === gen && c.stamp === ctx.stamp && cmd.io.live(file, ctx.stamp)) return c.r
+    const flight = `${key}|${size}|${gen}|${ctx.stamp}`
+    let read = cmdTailReads.get(flight)
+    if (!read) {
+      read = cmdReadTail(file, size, from, ino, ctx).finally(() => { cmdTailReads.delete(flight) })
+      cmdTailReads.set(flight, read)
+    }
+    const r = await read
+    if (!cmd.io.live(file, ctx.stamp)) throw new Error('command code transcript generation changed')
+    cmdParseCache.set(key, { size, gen, settled, r, stamp: ctx.stamp })
+    if (cmdParseCache.size > 16) cmdParseCache.delete(cmdParseCache.keys().next().value!)
+    return r
   }
 
   // omp session folder, from the file's first line ("session" entry): the
@@ -1498,6 +2168,25 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   }
 
   // ------------------------------------------------------------ API
+  // Everything the reader keeps per file — caches keyed `file|…`, retained
+  // bottoms, and pane-keyed caches whose entry is about this file. A Command
+  // Code generation replaced or evicted purges all of it at once: old
+  // awaited work must not refill them afterwards.
+  function purgeFile(file: string) {
+    const p = `${file}|`
+    for (const k of cmdParseCache.keys()) if (k.startsWith(p)) cmdParseCache.delete(k)
+    for (const k of cmdTailReads.keys()) if (k.startsWith(p)) cmdTailReads.delete(k)
+    for (const k of cmdBelow.keys()) if (k.startsWith(p)) cmdBelow.delete(k)
+    for (const k of previewCache.keys()) if (k.startsWith(p)) previewCache.delete(k)
+    for (const k of firstSums.keys()) if (k.startsWith(p)) firstSums.delete(k)
+    metaCache.delete(file)
+    genSeen.delete(file)
+    for (const [k, v] of modelCache) if (v.file === file) modelCache.delete(k)
+    for (const [k, v] of pendingCache) if (v.file === file) pendingCache.delete(k)
+    for (const [k, v] of askCache) if (v.file === file) askCache.delete(k)
+    for (const [k, v] of claudeAskCache) if (v.file === file) claudeAskCache.delete(k)
+  }
+
   async function search(pane: TranscriptPane, query: string, deadline: number) {
     if (!hasTranscript(pane.agent)) return { hits: [], limited: false, kind: null }
     const loc = await locate(pane)
@@ -1507,6 +2196,32 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     if (pane.agent === 'hermes') return hermes.search(hermesLoc(loc), query, deadline)
     // The transcript path tells the real kind (closed agent mislabeled).
     const kind = transcriptKind(loc.file) || pane.agent
+    if (kind === 'cmd') {
+      const o = await cmd.observe(loc.file)
+      if (!o.st) throw new Error('command code transcript state unknown')
+      const h = cmd.handle(loc.file)
+      if (h.stamp !== o.stamp) throw new Error('command code transcript generation changed')
+      if (o.invalidated) purgeFile(loc.file)
+      const stamp = h.stamp
+      const bound: MachineFs = {
+        ...fs,
+        stat: async (p) => {
+          if (!cmd.io.live(p, stamp)) throw new Error('command code transcript generation changed')
+          const st = await fs.stat(p)
+          if (!cmd.io.live(p, stamp)) throw new Error('command code transcript generation changed')
+          return st
+        },
+        read: async (p, start, len, timeoutMs) => {
+          const buf = await cmd.io.readExact(p, start, len, stamp, timeoutMs)
+          if (!buf) throw new Error('command code transcript read unknown')
+          return buf
+        },
+      }
+      const r = await searchFile(bound, loc.file, kind, home, query, deadline)
+      if (!cmd.io.live(loc.file, stamp)) throw new Error('command code transcript generation changed')
+      if (selections.get(pane.id)?.file !== loc.file) return { hits: [], limited: false, kind: null }
+      return { ...r, kind }
+    }
     return { ...await searchFile(fs, loc.file, kind, home, query, deadline), kind }
   }
 
@@ -1516,7 +2231,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   // opts.fresh : look for the file again if none was found lately (see locate)
   // opts.anchor: token as the client sent it, for the join check (anchorOf),
   //              when `since` was dropped (list the server no longer knows)
-  async function chat(pane: TranscriptPane, opts: { since?: string, from?: number | null, before?: number | null, fresh?: boolean, anchor?: string } = {}): Promise<ChatResponse> {
+  async function chatOnce(pane: TranscriptPane, opts: { since?: string, from?: number | null, before?: number | null, fresh?: boolean, anchor?: string } = {}): Promise<ChatResponse> {
     if (!hasTranscript(pane.agent)) return { available: false, reason: 'unsupported' }
     if (pane.agent === 'codex' && codexHistory) {
       const history = await codexHistory.chat(pane, opts)
@@ -1539,12 +2254,30 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
       for (const item of r.items || []) if (item.role === 'assistant' && item.ref) replyKeys.set(item, `hermes:${r.session}:${item.ref}`)
       return r
     }
-    let st
-    try { st = await fs.stat(loc.file) }
-    catch (e) {
-      // Failed read: an error (the client keeps what it shows), not an empty result.
-      if (!isMissing(e)) throw e
-      st = null
+    // The transcript path tells the real kind: a pane whose agent changed while
+    // its session stayed must not read the file as another agent's (no message).
+    const kind = transcriptKind(loc.file) || pane.agent
+    if (kind === 'omp') await refreshOmpTemplates()
+    let st: FsStat | null = null
+    let h: CommandCodeFileHandle | null = null
+    if (kind === 'cmd') {
+      let o: CommandCodeObservation | null = null
+      try { o = await cmd.observe(loc.file) }
+      catch (e) { if (!isMissing(e)) throw e; o = null }
+      if (o && !o.st) throw new Error('command code transcript state unknown')
+      st = o ? o.st : null
+      if (st && st.isFile) {
+        h = cmd.handle(loc.file)
+        if (o && h.stamp !== o.stamp) throw new Error('command code transcript generation changed')
+        if (o && o.invalidated) purgeFile(loc.file)
+      }
+    } else {
+      try { st = await fs.stat(loc.file) }
+      catch (e) {
+        // Failed read: an error (the client keeps what it shows), not an empty result.
+        if (!isMissing(e)) throw e
+        st = null
+      }
     }
     // Gone, or a folder where the transcript was expected: no conversation.
     if (!st || !st.isFile) {
@@ -1554,42 +2287,94 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     }
     const fileId = path.basename(loc.file)
     const base = { available: true, file: fileId, session: loc.session, guessed: Boolean(loc.guessed) }
-    // The transcript path tells the real kind: a pane whose agent changed while
-    // its session stayed must not read the file as another agent's (no message).
-    const kind = transcriptKind(loc.file) || pane.agent
-    if (kind === 'omp') await refreshOmpTemplates()
-    if (opts.before !== null && opts.before !== undefined) {
-      const r = await readBackwards(loc.file, Math.min(opts.before, st.size), kind)
-      return { ...base, older: true, items: r.items, start: r.start }
+    const gen = genOf(st)
+    const ctx: CmdCtx | undefined = h ? { h, stamp: h.stamp, memo: `${gen}:s${h.stamp}` } : undefined
+    const withGen = <T extends ChatResponse>(r: T): T => {
+      if (h) {
+        const file = loc.file
+        const stamp = h.stamp
+        contexts.set(r, { file, live: () => cmd.io.live(file, stamp) })
+      }
+      return r
+    }
+    const sent = opts.anchor ?? opts.since
+    const tok = kind === 'cmd' ? tokenStamp(sent) : null
+    const noProof = kind === 'cmd' && (tok === null || tok.stamp !== h!.stamp || tok.reader !== cmd.reader)
+    const stale = noProof && (sent != null || opts.before != null)
+    if (opts.before !== null && opts.before !== undefined && !noProof) {
+      const r = ctx
+        ? await cmdReadBackwards(loc.file, Math.min(opts.before, st.size), ctx)
+        : await readBackwards(loc.file, Math.min(opts.before, st.size), kind, gen)
+      if (h && !cmd.io.live(loc.file, h.stamp)) throw new Error('command code transcript generation changed')
+      return withGen({ ...base, older: true, items: r.items, start: r.start, ...(r.updates?.length ? { toolUpdates: r.updates } : {}) })
     }
     const from = opts.from === undefined ? null : opts.from
-    const gen = genOf(st)
-    const settled = await settledGen(loc.file, st, gen)
+    const settled = await settledGen(loc.file, st, gen, h?.stamp)
+    if (h && !cmd.io.live(loc.file, h.stamp)) throw new Error('command code transcript generation changed')
     // Token: file, size, cursor, generation (unchanged as long as these are,
     // once settled), then the anchor of the reply's start.
-    const head = `${fileId}:${st.size}:${from}:${gen}`
-    if (settled && opts.since && opts.since.split('/')[0] === head) return { ...base, unchanged: true, token: opts.since }
-    let r = await tail(loc.file, kind, st.size, gen, from, settled, st.ino)
+    const head = `${fileId}:${st.size}:${from}:${gen}${h ? `~s${h.stamp}~r${cmd.reader}` : ''}`
+    if (settled && opts.since && opts.since.split('/')[0] === head) return withGen({ ...base, unchanged: true, token: opts.since })
+    let r = ctx
+      ? await cmdTail(loc.file, st.size, gen, from, settled, st.ino, ctx)
+      : await tail(loc.file, kind, st.size, gen, from, settled, st.ino)
     // The client's list starts at the cursor, and the file was rewritten
     // above it: replaced by another file (inode), shorter, rewritten at the
     // same size (appends always grow it), or other bytes just above the cursor
     // (anchor), or no line start there any more. Read back from the end, and
     // say so: the client starts again.
-    const sent = opts.anchor ?? opts.since
     const at = anchorOf(sent)
     const prev = headOf(sent)
     const same = prev !== null && prev.file === fileId
     // A list read before its state settled (whole-second mtimes): rewritten
     // within that second if its part of the file changed since.
-    const rewritten = from !== null && from > 0 && at !== null && at.start === from && (r.anchor !== at.hash
+    const rewritten = stale || (from !== null && from > 0 && at !== null && at.start === from && (r.anchor !== at.hash
       || (same && prev.ino !== null && st.ino !== undefined && prev.ino !== st.ino)
       || (same && st.size < prev.size)
       || (same && st.size === prev.size && prev.gen !== gen)
-      || (same && prev.unsettled && !await stillThere(loc.file, prev)))
-    if (rewritten) r = await tail(loc.file, kind, st.size, gen, null, settled, st.ino)
-    const mark = `${head}${settled ? '' : '!'}`
+      || (same && prev.unsettled && !await stillThere(loc.file, prev, h?.stamp))))
+    if (rewritten) {
+      r = ctx
+        ? await cmdTail(loc.file, st.size, gen, null, settled, st.ino, ctx)
+        : await tail(loc.file, kind, st.size, gen, null, settled, st.ino)
+    }
+    const mark = `${fileId}:${st.size}:${from}:${gen}${settled ? '' : '!'}${h ? `~s${h.stamp}~r${cmd.reader}` : ''}`
     const token = r.anchor ? `${mark}/${r.start}.${r.anchor}` : mark
-    return { ...base, token, items: r.items, start: r.start, queue: r.queue || [], ...(r.popped?.length ? { popped: r.popped } : {}), ...(rewritten ? { rewritten: true } : {}) }
+    if (h && !cmd.io.live(loc.file, h.stamp)) throw new Error('command code transcript generation changed')
+    return withGen({ ...base, token, items: r.items, start: r.start, queue: r.queue || [], ...(r.popped?.length ? { popped: r.popped } : {}), ...(rewritten ? { rewritten: true } : {}), ...(r.updates?.length ? { toolUpdates: r.updates } : {}) })
+  }
+
+  // Command Code post-read currency & generation check: at most one internal
+  // re-attempt if the generation detached mid-read, or not_found when gone.
+  async function chat(pane: TranscriptPane, opts: { since?: string, from?: number | null, before?: number | null, fresh?: boolean, anchor?: string } = {}): Promise<ChatResponse> {
+    if (pane.agent !== 'cmd') return await chatOnce(pane, opts)
+    for (let attempt = 0; ; attempt++) {
+      const r = await chatOnce(pane, opts)
+      if (!r.available) return r
+      const cur = await current(pane, r)
+      if (cur === 'gone') return { available: false, reason: 'not_found' }
+      if (cur === 'stale' || live(pane, r) === false) {
+        if (attempt === 0) continue
+        throw new Error('command code transcript generation changed')
+      }
+      return r
+    }
+  }
+
+  async function current(pane: TranscriptPane, r: ChatResponse): Promise<'ok' | 'stale' | 'gone' | null> {
+    const ctx = contexts.get(r)
+    if (!ctx) return pane.agent === 'cmd' && r.available ? 'gone' : null
+    const loc = await locate(pane)
+    if (!loc || loc.file !== ctx.file) return 'gone'
+    return ctx.live() ? 'ok' : 'stale'
+  }
+
+  function live(pane: TranscriptPane, r: ChatResponse): boolean | null {
+    const ctx = contexts.get(r)
+    if (!ctx) return pane.agent === 'cmd' && r.available ? false : null
+    const sel = selections.get(pane.id)
+    if (!sel || sel.file !== ctx.file) return false
+    return ctx.live()
   }
 
   // Agent's last reply, for cards and notifications.
@@ -1604,12 +2389,16 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
       if (short) return short
       const r = await chat(pane, {})
       if (!r.available || !r.items) return null
+      if (pane.agent === 'cmd' && live(pane, r) !== true) return null
       return lastReplyOf(r.items)
     } catch { /* no preview */ }
     return null
   }
   async function tailReply(pane: TranscriptPane): Promise<{ key: string, text: string } | null> {
     if (pane.agent === 'devin') return null // ATIF is a single JSON document, not JSONL.
+    // Command Code previews come from the guarded chat itself until the
+    // short-preview path carries generation evidence.
+    if (pane.agent === 'cmd') return null
     if (pane.agent === 'agy' || pane.agent === 'hermes') return null // A SQLite database, not JSONL.
     if (!hasTranscript(pane.agent)) return null
     const loc = await locate(pane)
@@ -1625,7 +2414,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     const settled = await settledGen(loc.file, st, gen)
     if (kind === 'omp') await refreshOmpTemplates()
     const r = await reads.readRange(loc.file, st.size - PREVIEW_BYTES, st.size)
-    const reply = lastReplyOf(parseLines(r.text, kind, r.start, home, ompTemplates.list, kind === 'omp' ? await ompCwd(loc.file) : ''))
+    const reply = lastReplyOf(parseLines(r.text, kind, r.start, home, ompTemplates.list, kind === 'omp' ? await ompCwd(loc.file) : '', undefined, gen))
     previewCache.delete(key)
     if (settled && reply) previewCache.set(key, { size: st.size, gen, reply })
     if (previewCache.size > 64) previewCache.delete(previewCache.keys().next().value!)
@@ -1659,10 +2448,28 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     const off = Number(m[1])
     const len = Number(m[2])
     if (len > 60 * 1024 * 1024) return null
+    const kind = transcriptKind(loc.file) || pane.agent
+    if (kind === 'cmd') {
+      if (!Number.isSafeInteger(off) || off < 0 || !Number.isSafeInteger(len)
+        || len < 0 || len > 60 * 1024 * 1024 || !Number.isSafeInteger(off + len)) return null
+      const o = await cmd.observe(loc.file).catch(() => null)
+      if (!o || !o.st || !o.st.isFile) return null
+      const h = cmd.handle(loc.file)
+      if (h.stamp !== o.stamp) return null
+      if (o.invalidated) purgeFile(loc.file)
+      const buf = await cmd.io.readExact(loc.file, off, len, h.stamp)
+      if (!buf || !cmd.io.live(loc.file, h.stamp)) return null
+      if (selections.get(pane.id)?.file !== loc.file) return null
+      let d: Json
+      try { d = JSON.parse(buf.toString('utf8')) }
+      catch { return null }
+      const img = extractImage(d, index, kind)
+      return img && !('blob' in img) ? img : null
+    }
     let d: Json
     try { d = JSON.parse((await fs.read(loc.file, off, len)).toString('utf8')) }
     catch { return null }
-    const img = extractImage(d, index)
+    const img = extractImage(d, index, kind)
     if (!img || !('blob' in img)) return img
     const blob = path.join(home, '.omp/agent/blobs', img.blob)
     try {
@@ -1677,7 +2484,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
   // its kind, so the reading goes on until both are found (`raw`: partial).
   const MODEL_WINDOW = 512 * 1024
   const MODEL_MAX_BYTES = 16 * 1024 * 1024
-  const modelCache = new Map<string, { file: string, size: number, raw: ModelInfo | null, info: ModelInfo | null }>()
+  const modelCache = new Map<string, { file: string, size: number, raw: ModelInfo | null, info: ModelInfo | null, stamp?: number }>()
   async function model(pane: TranscriptPane): Promise<ModelInfo | null> {
     if (pane.agent === 'devin') {
       const loc = await locate(pane)
@@ -1691,22 +2498,50 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
       const loc = await locate(pane)
       return loc ? hermes.model(hermesLoc(loc)) : null
     }
-    if (!pane.agent || !['claude', 'codex', 'omp'].includes(pane.agent)) return null
+    if (!pane.agent || !['claude', 'codex', 'omp', 'cmd'].includes(pane.agent)) return null
     const loc = await locate(pane)
     if (!loc) return null
+    const kind = transcriptKind(loc.file) || pane.agent
+    const c = modelCache.get(pane.id)
+    let h: CommandCodeFileHandle | null = null
+    let size: number
     // A failed read (SSH dropped, timeout) says nothing about the model: keep
     // the last value of this file, or let the caller keep its own. Only a
-    // missing file means "no model".
+    // missing file means "no model". Command Code: only an entry proven of
+    // the file's CURRENT generation may stand in — never a prior selected
+    // file's or a detached generation's metadata.
     const stale = (e: unknown) => {
+      if (kind === 'cmd') {
+        if (isMissing(e)) return null
+        if (c && c.file === loc.file && c.stamp !== undefined && c.stamp === cmd.stampOf(loc.file)
+          && selections.get(pane.id)?.file === loc.file) return c.info
+        throw e
+      }
       if (c && c.file === loc.file) return c.info
       if (isMissing(e)) return null
       throw e
     }
-    const c = modelCache.get(pane.id)
-    let size: number
-    try { size = (await fs.stat(loc.file)).size }
-    catch (e) { return stale(e) }
-    if (c && c.file === loc.file && c.size === size) return c.info
+    if (kind === 'cmd') {
+      let o: CommandCodeObservation | null = null
+      try { o = await cmd.observe(loc.file) }
+      catch (e) { return stale(e) }
+      if (!o.st) {
+        if (c && c.file === loc.file && c.stamp !== undefined && c.stamp === o.stamp && cmd.io.live(loc.file, o.stamp)
+          && selections.get(pane.id)?.file === loc.file) return c.info
+        throw new Error('command code transcript state unknown')
+      }
+      if (!o.st.isFile) return null
+      h = cmd.handle(loc.file)
+      if (h.stamp !== o.stamp) throw new Error('command code transcript generation changed')
+      if (o.invalidated) purgeFile(loc.file)
+      size = o.st.size
+      if (c && c.file === loc.file && c.size === size && c.stamp === h.stamp
+        && selections.get(pane.id)?.file === loc.file) return c.info
+    } else {
+      try { size = (await fs.stat(loc.file)).size }
+      catch (e) { return stale(e) }
+      if (c && c.file === loc.file && c.size === size) return c.info
+    }
     const omp = pane.agent === 'omp'
     let raw: ModelInfo | null = null
     let done = size // end of the last complete line (a line being written will be re-read)
@@ -1714,28 +2549,33 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
       // Already read up to c.size: only what follows can bring something new. We
       // start from the byte before (the newline): readRange skips the line
       // started at the beginning of the window.
-      const floor = c && c.file === loc.file && c.size < size ? c.size : 0
+      const floor = c && c.file === loc.file && c.size < size && (kind !== 'cmd' || c.stamp === h!.stamp) ? c.size : 0
       let end = size
       let w = MODEL_WINDOW
       while (end > floor && size - end < MODEL_MAX_BYTES) {
-        const s0 = Math.max(floor ? floor - 1 : 0, end - w)
-        const r = await reads.readRange(loc.file, s0, end)
+        const room = MODEL_MAX_BYTES - (size - end)
+        const s0 = Math.max(floor ? floor - 1 : 0, end - Math.min(w, room))
+        const r = h
+          ? await cmdReadRange(loc.file, s0, end, h.stamp)
+          : await reads.readRange(loc.file, s0, end)
         if (r.start >= end) {
           // No whole line in the window (message with images): we widen it.
-          if (s0 <= Math.max(0, floor - 1) || w >= MODEL_MAX_BYTES) break
+          if (s0 <= Math.max(0, floor - 1) || end - s0 >= room) break
           w *= 2
           continue
         }
         if (end === size && !r.text.endsWith('\n')) done = size - Buffer.byteLength(r.text.slice(r.text.lastIndexOf('\n') + 1))
-        const lines = r.text.split('\n').map(stripBlobs)
-        raw = omp ? mergeOmpModel(raw, ompLastModel(lines)) : lastModel(lines, pane.agent)
+        const lines = r.text.split('\n').map(l => (kind === 'cmd' ? stripCmdBlobs(l) : stripBlobs(l)))
+        raw = omp ? mergeOmpModel(raw, ompLastModel(lines)) : lastModel(lines, kind)
         if (omp ? ompModelComplete(raw) : raw) break
         end = r.start
       }
       if (floor && c) raw = omp ? mergeOmpModel(raw, c.raw) : raw || c.raw
     } catch (e) { return stale(e) }
+    if (h && !cmd.io.live(loc.file, h.stamp)) throw new Error('command code transcript generation changed')
+    if (h && selections.get(pane.id)?.file !== loc.file) return null
     const info = omp ? ompModelResult(raw) : raw
-    modelCache.set(pane.id, { file: loc.file, size: done, raw, info })
+    modelCache.set(pane.id, { file: loc.file, size: done, raw, info, stamp: h?.stamp })
     return info
   }
 
@@ -1806,13 +2646,15 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     if (last) agy.forgetFile(last.file)
     locCache.delete(paneId)
     lastLoc.delete(paneId)
+    selections.delete(paneId)
+    selSeq.delete(paneId)
     modelCache.delete(paneId)
     pendingCache.delete(paneId)
     askCache.delete(paneId)
     claudeAskCache.delete(paneId)
   }
 
-  return { chat, preview, latestReply, image, forget, locate, model, observe, wasActive: activity.was, search, pendingTool, pendingAsk, pendingClaudeQuestions }
+  return { chat, preview, latestReply, image, forget, locate, model, observe, wasActive: activity.was, search, pendingTool, pendingAsk, pendingClaudeQuestions, current, live }
 }
 
 export type Transcripts = ReturnType<typeof createTranscripts>

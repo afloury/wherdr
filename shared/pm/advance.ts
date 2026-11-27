@@ -11,6 +11,7 @@ import { earlierCommit, needsShots } from './shots'
 import { recovering } from './incident'
 import type { PlannedStep, StepEvent, StepState } from './steps'
 import { blockedOnLine } from './park'
+import { needsHumanLine } from './needsHuman'
 
 // The agent's own end signal, typed in its terminal (hc sets HC_TERMINAL_ID).
 export const DONE_CMD = `hc label "$HC_TERMINAL_ID" ${LABEL.report}=done`
@@ -43,6 +44,7 @@ export const doneSection = (note: string) => [
   `    ${DONE_CMD}`, '',
   `If you need the user's answer to go on, ask in your last message, then run \`${ASK_CMD}\`.`, '',
   blockedOnLine(), '',
+  needsHumanLine(), '',
 ]
 
 // The reviewer's instructions file: the task, what to review, the workspace's
@@ -63,7 +65,7 @@ export function reviewFile(task: Pick<Task, 'id' | 'title' | 'description' | 'sp
 // What the engine read after a signal: the task's commit, the size of its
 // diff, the worker's note (this round's section; whole: the report file with
 // the earlier rounds, rewrote: to write back, roundNote) and the reviewer's verdict file.
-// dirty: the worktree has uncommitted changes (git status --porcelain). branch: the worktree's checked-out one; work: its own commits and files since its fork from the base (Task.work).
+// dirty: tracked files have uncommitted changes (git status --porcelain --untracked-files=no; a stray untracked file never blocks). branch: the worktree's checked-out one; work: its own commits and files since its fork from the base (Task.work).
 export interface SignalRead { head?: string, diffLines?: number, note: string, whole?: string, rewrote?: true, verdict: string, branch?: string, work?: Work, dirty?: true }
 export const READ_SEP = '--wherdr-read--'
 export type Work = NonNullable<Task['work']>
@@ -95,12 +97,19 @@ export function proofsOf(r: SignalRead): Partial<Record<Evidence, string>> {
   return { ...(r.note ? { report: r.whole ?? r.note, 'proposed-tasks': r.note } : {}), ...(link ? { link } : {}), ...(r.head ? { commit: r.head } : {}) }
 }
 
+// The findings a worker's note contests: a line "Contested: id-1, id-2".
+export const disputesOf = (note: string) =>
+  [...new Set([...note.matchAll(/^[ \t]*contested:[ \t]*(.+)$/gim)].flatMap(m => m[1]!.split(/[,\s]+/).map(id => id.replace(/^[`'"]+|[`'".;]+$/g, '')).filter(Boolean)))]
+
 // A run's "done" → the engine's event for the current step; what to fix, told
 // to the agent (a verdict that does not parse); or nothing (not its step).
 export function signalEvent(step: PlannedStep | undefined, role: Run['role'], r: SignalRead): StepEvent | { fix: string } | undefined {
   if (!step || step.holder !== role) return
   if (role === 'worker' && step.ends === 'report' && r.dirty) return { fix: `Commit your work, then run ${DONE_CMD} again` }
-  if (role === 'worker' && step.ends === 'report') return { kind: 'report', from: 'worker', evidence: proofsOf(r) }
+  if (role === 'worker' && step.ends === 'report') {
+    const disputes = disputesOf(r.note)
+    return { kind: 'report', from: 'worker', evidence: proofsOf(r), ...(disputes.length ? { disputes } : {}) }
+  }
   if (role !== 'reviewer' || step.ends !== 'verdict') return
   const findings = parseFindings(r.verdict || '(empty)')
   if ('error' in findings) return { fix: `${findings.error}: write {"findings":[…]} to the verdict file, then run ${DONE_CMD}` }
