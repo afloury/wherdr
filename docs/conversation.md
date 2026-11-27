@@ -24,6 +24,19 @@ Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent terminals 
   entry takes the card's place (shown once), with its run time and its output folded.
   Run while Claude is working: Claude Code queues the command and runs it once, when its turn
   ends; until then it shows only as its queued bubble, and the card starts when Claude runs it.
+  An inline command (`~/tools/update.sh 3.2.2`, `./script --flag`) is a command, not a path: an
+  executable path followed by arguments opens the command menu, while a bare path stays a path.
+  A command in an agent's reply also has **Run in split right**, **Run in split down** (a new shell
+  pane beside the conversation) and, in a browser on the agent's own computer, **Run in my terminal**:
+  each asks you to confirm, runs the command in the agent's folder, and stays open when it ends
+  (**Run in my terminal** is refused when that folder is outside the folders chat files may use).
+  A folder the agent writes (`~/project/`, with or without its closing slash) has **Open in split right** and **Open in split down**
+  (a shell in that folder beside the conversation, on the agent's machine, from any device), and,
+  in a browser on the agent's own computer, **Open in my terminal**: it opens the computer's default terminal app
+  (Linux: `xdg-terminal-exec`, else `$TERMINAL`; macOS: the default terminal) outside wherdr, in
+  your shell, in that folder. **Open in file manager** shows the same folder in the desktop's file
+  manager (`xdg-open`, or `open` on macOS). Neither is offered on a phone, a remote browser or for an agent on
+  another machine, and only for folders chat files may use (Settings › Security).
 - **Following new messages**: a new or growing reply (typed in as it arrives, or shown at once)
   keeps the view at the bottom only if you were at the bottom. Scroll up (wheel, touch, keyboard
   or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the
@@ -46,6 +59,18 @@ Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent terminals 
   reference instances. Incomplete, unsupported or unsafe diagrams stay readable code. Scripts,
   foreign HTML, animation and external resources are rejected; raw inline SVG is not inserted
   into the page. Other fence languages and file-explorer document fences remain code.
+- <a id="tickable-checklists"></a>**Tickable checklists**: the Markdown task items (`- [ ]` / `- [x]`) in an agent's reply are
+  checkboxes you can tick, also nested and inside an accordion; the box stands where the bullet was, and on a phone a tap on the
+  item's words ticks it too. Ticking is passive: nothing is sent and the agent is never woken or prompted. The ticks are kept on
+  the server for each conversation and reply, so they survive a reload and show on your other devices: within a few seconds while
+  the conversation is on screen and one of its last five replies holds a list (or ticks wait to be sent), otherwise when you open
+  it. A chip above the message field (*2 ticked items will be sent*) says what the next message will carry; **×** on it drops
+  that state without sending it. When you send a message, wherdr appends a compact block to it:
+  `Checklist from your 10:39 message:` then one line per item you changed, `[x] Header`, `[ ] Alert card › one layout` (text shortened, a nested item with
+  its parents' labels). Only your own changes since the agent wrote the list or since they were last sent are counted and sent:
+  an item the agent ticked itself is not. After sending, that state counts as sent: a later change is sent again with a later
+  message. A block never goes alone (an empty message stays unsent), never with a slash command, and a choice tapped in the
+  conversation does not carry it. It works in a coordinator's chat, a task agent's and Alfred's.
 - <a id="live-status-cards"></a>**Live status cards**: a code fence labelled `wherdr` whose lines are all `status …` shows one
   card per line, read from wherdr's own data, never from what the agent wrote:
   `status machine:<key or name>` (online or offline, free memory, load, agents),
@@ -149,8 +174,9 @@ Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent terminals 
   the pm tasks folder; another project's task only within its reach), or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task
   has some). On a wide computer they open in the side panel, in place of Settings (drag its left
   edge, or the arrow keys on it, to resize; double-click: default width; kept on the device): the file
-  read-only as in Files, as a document under the panel's one header (see [One file shown alone](files.md#one-file); an HTML page runs as a page), the screenshots by step, before and after side by side, with a button
-  to open the task. On a phone a card shows above the message field, and a tap opens a sheet
+  read-only as in Files, as a document under the panel's one header (see [One file shown alone](files.md#one-file); an HTML page runs as a page up to 256 KB, a larger one shows its start as text), the screenshots by step, before and after side by side, with a button
+  to open the task. On a phone a card shows above the message field, in the conversation column and as wide as the
+  field, and a tap opens a sheet
   (before and after toggled). A tap on a shown image (the file, an image of a shown Markdown
   file, a screenshot) opens the full-screen viewer, with zoom and pan, through the images shown
   together. The card also stays in the reply (a ```wherdr block of

@@ -4,6 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { afterAll, expect, it } from 'vitest'
 import { createShellFs } from '../server/utils/fsx'
 import { createHermesTranscripts, locateHermes } from '../server/utils/hermesTranscripts'
+import type { DatabaseSyncCtor } from '../server/utils/sqliteDb'
 // @ts-expect-error untyped test helper
 import { writeHermesFixture } from './helpers/hermes-fixture.mjs'
 
@@ -26,6 +27,8 @@ it('reads a conversation without creating sidecars, then a live one while its ga
   const loc = { db: fx.file, session: fx.id }
   const r = await reader.chat(loc)
   expect(texts(r)).toEqual(WHOLE)
+  // "\x00json:" multimodal content: read losslessly through node:sqlite.
+  expect(r.items?.find(i => i.text === 'What is this?')).toMatchObject({ role: 'user', images: 1 })
   expect(fs.readdirSync(fx.dir)).toEqual(['state.db'])
   expect(await reader.chat(loc, { since: r.token })).toMatchObject({ unchanged: true })
   expect(await reader.model(loc)).toEqual({ id: 'test-model', label: expect.any(String) })
@@ -70,6 +73,8 @@ it.skipIf(spawnSync('python3', ['-c', 'import sqlite3']).status !== 0)('reads a 
     const child = execFile('sh', ['-c', script, 'sh', ...args], { encoding: 'buffer' }, (err, stdout, stderr) => {
       resolve({ code: err ? 1 : 0, stdout, stderr: stderr.toString() })
     })
+    // A script that exits before reading stdin closes the pipe first: not a failure.
+    child.stdin!.on('error', () => {})
     child.stdin!.end(opts.input ?? Buffer.alloc(0))
   })
   const remote = createHermesTranscripts({ fs: createShellFs(exec, { statTtlMs: 0 }) })
@@ -96,4 +101,21 @@ it('locates the session a Hermes pane shows: the TUI file, else the CLI bar', as
     .toEqual({ db: '/home/u/.hermes/profiles/coder/state.db', session: id, python: '/usr/bin/python3' })
   // A bar cut off by a narrow pane: nothing.
   expect(await locateHermes(machine(cli), '/home/u', { pid: 7 }, async () => ' ☤ test-model │ 20260101_1200')).toBeNull()
+})
+
+it('reads through a node:sqlite that cannot bind numbered parameters', async () => {
+  const fx = fixture()
+  // Node 22 and 24.0-24.10: `?1` throws "column index out of range".
+  class StrictParams {
+    db: DatabaseSync
+    constructor(p: string, o?: { readOnly?: boolean }) { this.db = new DatabaseSync(p, o) }
+    prepare(sql: string) {
+      if (/\?\d/.test(sql)) throw new Error('column index out of range')
+      return this.db.prepare(sql)
+    }
+    exec(sql: string) { this.db.exec(sql) }
+    close() { this.db.close() }
+  }
+  const reader = createHermesTranscripts({ sqlite: StrictParams as unknown as DatabaseSyncCtor })
+  expect(texts(await reader.chat({ db: fx.file, session: fx.id }))).toEqual(WHOLE)
 })

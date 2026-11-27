@@ -55,6 +55,13 @@ async function clearCodexField() {
 }
 // Conversation draft (text + photos), kept when switching conversations.
 const draft = useDraft(props.paneId)
+// Ticks put on the agent's task lists: they join the next message (composables/useChecklist.ts).
+const checklist = useChecklist(props.paneId)
+const checklistChip = computed(() => {
+  const { ticked, changed } = checklist.counts.value
+  if (!changed) return ''
+  return ticked ? tl(`${ticked} ticked item${ticked > 1 ? 's' : ''} will be sent`) : t('Checklist changes will be sent')
+})
 const text = toRef(draft, 'text')
 const promptRef = ref<{ textareaRef?: HTMLTextAreaElement } | null>(null)
 const ta = computed(() => promptRef.value?.textareaRef || null)
@@ -251,8 +258,10 @@ async function submit() {
   const paths = attachments.value.flatMap(a => (a.paste ? [] : [a.ref || a.path!]))
   const typed = typedText.value
   const body = messageBody(typed, pastes, paths)
-  const msg = body
-  if (!msg || sending.value) return
+  if (!body || sending.value) return
+  // The ticks since the last message go after it, never after a slash command.
+  const block = isSlashCommand(body) ? null : checklist.takeBlock()
+  const msg = block ? `${body}\n\n${block.text}` : body
   // The same text sent here a moment ago: an echo (a dictation app pressing
   // Enter again while the page lags), not a new message. Its copy goes.
   if (!claimSend(props.paneId, msg)) {
@@ -276,7 +285,7 @@ async function submit() {
     rememberPastes(pastes)
     haptic()
     emit('sent', null)
-    outboxSend(p, props.paneId, msg).then(() => { emit('sent', null); answered(p) }, (err: Error) => toast(err.message, true))
+    outboxSend(p, props.paneId, msg).then(() => { if (block) checklist.confirmSent(block.marks); emit('sent', null); answered(p) }, (err: Error) => toast(err.message, true))
     return
   }
   sending.value = true
@@ -292,13 +301,14 @@ async function submit() {
     if (!text.value && !attachments.value.length) {
       text.value = typed
       attachments.value = atts
-    } else restoreDraft(draft, msg, pastes)
+    } else restoreDraft(draft, body, pastes)
   }
   try {
     let queued: QueuedMessage | null = null
     if (prompt && free >= 0) {
       if (!(await choose(props.paneId, free, prompt.options[free]!.label, prompt.identity, { text: msg, question: prompt.question }))) return giveBack()
     } else queued = await sendMessage(p, props.paneId, msg)
+    if (block) checklist.confirmSent(block.marks)
     rememberSent(typed)
     for (const a of atts) releaseAtt(a, true)
     haptic()
@@ -750,6 +760,14 @@ defineExpose({
       <span v-for="q in quotes" :key="q.start" class="composer-quote" role="listitem">
         <span class="composer-quote-text">{{ q.excerpt }}</span>
         <button type="button" class="composer-quote-x" :aria-label="t('Remove quote')" @mousedown.prevent @click="text = removeQuote(text, q)">
+          <UIcon name="i-lucide-x" />
+        </button>
+      </span>
+    </div>
+    <div v-if="checklistChip" class="composer-quotes" data-testid="checklist-chip">
+      <span class="composer-quote">
+        <span class="composer-quote-text">{{ checklistChip }}</span>
+        <button type="button" class="composer-quote-x" :aria-label="t('Do not send the checklist')" @mousedown.prevent @click="checklist.discard()">
           <UIcon name="i-lucide-x" />
         </button>
       </span>

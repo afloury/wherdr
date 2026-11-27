@@ -16,7 +16,7 @@ import { userMessageParts } from '~/utils/userMessage'
 import { type PendingMessage, type WaitingOn, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
-import { CHAT_READ_MS, applyToolUpdates, createFlipGuard, createTailLoader, itemKeys, mergeToolUpdates, nextTail, restartsTail, retainToolUpdates, swapTail, tailQuery } from '~/utils/chatTail'
+import { applyToolUpdates, chatReadTimeoutMs, createFlipGuard, createTailLoader, itemKeys, mergeToolUpdates, nextTail, restartsTail, retainToolUpdates, swapTail, tailQuery } from '~/utils/chatTail'
 import { missedReply, replyId, sortNewReplies } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -518,7 +518,7 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     const ready = firstRead ? await chatIntent.take(props.pane) : undefined
     if (stale()) return false
     const startedAt = Date.now()
-    const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
+    const r = ready || await api<ChatResponse>(`/api/chat?${tailQuery(pane, chat.value)}`, undefined, AbortSignal.timeout(chatReadTimeoutMs(props.pane.agent, firstRead)))
     // From the open to the answer, a preloaded read included (its own time: useChatIntent).
     if (import.meta.dev && firstRead) console.debug(`[chat] first read (${ready ? 'preloaded' : 'direct'}, ${props.pane.machine ? 'remote' : 'local'}): ${Math.round(performance.now() - openedAt)} ms`)
     if (stale()) return false
@@ -629,7 +629,7 @@ async function loadOlder() {
   const file = chat.value.file
   const before = chat.value.olderCursor
   try {
-    const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane)}&before=${before}${props.pane.agent === 'cmd' ? `&since=${encodeURIComponent(chat.value.token)}` : ''}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
+    const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane)}&before=${before}${props.pane.agent === 'cmd' ? `&since=${encodeURIComponent(chat.value.token)}` : ''}`, undefined, AbortSignal.timeout(chatReadTimeoutMs(props.pane.agent, true)))
     if (pane !== props.pane.id || r.file !== file || chat.value.olderCursor !== before || staleGen(gen)) return
     if (r.stale) return
     if (!r.available) {
@@ -816,6 +816,8 @@ const openTools = reactive(new Set<string>())
 // (new preview, new screen…) changes the pane object, but rebuilds the blocks
 // only when one of these flips.
 const paneId = computed(() => props.pane.id)
+// A reply whose rendered HTML holds a task list: its checkboxes can be ticked (ChatMarkdown.vue `check`).
+const hasTaskList = (b: { text: string, html: string }) => /\[[ xX]\]/.test(b.text) && /<input\b[^>]*type="checkbox"/.test(b.html)
 const working = computed(() => !readOnly.value && props.pane.status === 'working')
 const blocked = computed(() => !readOnly.value && props.pane.status === 'blocked')
 const pendingPrompt = computed(() => Boolean(props.pane.pendingPrompt))
@@ -1425,9 +1427,33 @@ const liveRunAt = computed(() => {
   const timeOf = (b: Block) => (b.k === 'tools' ? (b.list[0]?.ts ? Date.parse(b.list[0].ts) : undefined) : blockTime(b))
   return liveRunSpot(shownBlocks.value, Date.parse(run.ts), timeOf)
 })
+// A command outside the agent: in a new shell pane beside this conversation, or in the
+// computer's own terminal app. Either runs it in the agent's folder (the server refuses
+// the terminal app when that folder is outside the allowed ones), after the user has
+// seen it in full and confirmed; the window or pane stays open after it ends.
+const splitPaneItems = computed(() => Boolean(props.pane.cwd) && !offlineView.value && !paneStale(props.pane))
+async function runOutside(cmd: string, where: 'terminal' | 'right' | 'down') {
+  const target = where === 'terminal' ? tl('your terminal app') : tl('a new pane beside this conversation')
+  const folder = props.pane.cwd ? shortPath(props.pane.cwd) : tl('its folder')
+  const ok = await askConfirm(tl(`Run this command in ${target}, in ${folder}? The window stays open when it ends.`), tl('Run'), 'primary', cmd)
+  if (!ok) return
+  if (where === 'terminal') {
+    try {
+      await api('/api/open-terminal', { pane_id: props.pane.id, command: cmd })
+      toast(tl('Opened in your terminal'))
+    } catch (err) { toast((err as Error).message, true) }
+  } else splitPane(props.pane, where, undefined, cmd)
+}
 function cmdMenuItems(cmd: string, runnable: boolean): MenuItem[] {
   const items: MenuItem[] = []
   if (runnable) items.push({ label: tl('Run…', 'Lancer…'), icon: 'i-lucide-play', run: () => runCommand(cmd) })
+  if (runnable && !props.pane.machine && canOpenTerminal.value) items.push({ label: tl('Run in my terminal'), icon: 'i-lucide-square-terminal', run: () => runOutside(cmd, 'terminal') })
+  if (runnable && splitPaneItems.value) {
+    items.push(
+      { label: tl('Run in split right'), icon: 'i-lucide-columns-2', run: () => runOutside(cmd, 'right') },
+      { label: tl('Run in split down'), icon: 'i-lucide-rows-2', run: () => runOutside(cmd, 'down') },
+    )
+  }
   items.push({ label: t('Copy command'), icon: 'i-lucide-copy', desc: cmd, mono: true, run: () => copyText(cmd) })
   return items
 }
@@ -1455,6 +1481,22 @@ function openCodeMenu(el: HTMLElement, items: MenuItem[], title: string) {
   codeMenuDropdown.value = toDropdown(items)
   codeMenu.open = true
 }
+// A folder the agent wrote (`~/project/`) opens in the default terminal app of
+// this computer: only for an agent on it, from a browser on it (the server
+// says which, also behind `tailscale serve`, and checks again; a phone or a remote browser has no terminal of that computer).
+const onThisComputer = ref(false)
+if (import.meta.client) api<{ available: boolean }>('/api/open-terminal').then(r => { onThisComputer.value = r.available }, () => {})
+const canOpenTerminal = computed(() => onThisComputer.value && !props.pane.machine && !offlineView.value && !paneStale(props.pane))
+async function openFolderOn(route: string, path: string, done: string) {
+  try {
+    await api(route, { pane_id: props.pane.id, path })
+    toast(done)
+  } catch (err) {
+    toast((err as Error).message, true)
+  }
+}
+const openInTerminal = (path: string) => openFolderOn('/api/open-terminal', path, tl('Opened in your terminal'))
+const openInFileManager = (path: string) => openFolderOn('/api/open-folder', path, tl('Opened in your file manager'))
 const fileName = (p: string) => p.replace(/\/+$/, '').split('/').pop() || p
 // Where the server found it (useWrittenPaths.ts): its absolute path, one set
 // of actions per folder when it is in several; found nowhere, muted.
@@ -1464,10 +1506,25 @@ function placeItems(p: string, f: PathFound | undefined, several: boolean): Menu
   const items: MenuItem[] = []
   // A folder (`src/`) has nothing to show or save; a notes file opens in the Notes panel.
   if (f?.notes) items.push({ label: `${t('Preview')}${place}`, icon: 'i-lucide-eye', run: () => openNotesFile(f.notes!) })
-  else if (!offlineView.value && !p.endsWith('/')) {
+  else if (!offlineView.value && !p.endsWith('/') && !f?.dir) {
     items.push(
       { label: `${t('Preview')}${place}`, icon: 'i-lucide-eye', run: () => previewFile(shown) },
       { label: `${t('Download')}${place}`, icon: 'i-lucide-download', run: () => downloadFile(shown) },
+    )
+  }
+  // A folder the server found (with or without its closing slash): a shell in it beside
+  // this conversation (anywhere), or outside wherdr (this computer only), at its found path.
+  const dir = f?.dir ? f.abs : ''
+  if (dir && !offlineView.value && !paneStale(props.pane)) {
+    items.push(
+      { label: tl('Open in split right'), icon: 'i-lucide-columns-2', run: () => { splitPane(props.pane, 'right', dir) } },
+      { label: tl('Open in split down'), icon: 'i-lucide-rows-2', run: () => { splitPane(props.pane, 'down', dir) } },
+    )
+  }
+  if (dir && canOpenTerminal.value) {
+    items.push(
+      { label: tl('Open in my terminal'), icon: 'i-lucide-square-terminal', run: () => openInTerminal(dir) },
+      { label: tl('Open in file manager'), icon: 'i-lucide-folder-open', run: () => openInFileManager(dir) },
     )
   }
   items.push({ label: `${t('Copy path')}${place}`, icon: 'i-lucide-copy', desc: shown, mono: true, run: () => copyText(shown) })
@@ -1510,7 +1567,7 @@ async function markPaths() {
   if (offlineView.value) return
   paintPaths()
   const chips = pathChips()
-  if (await resolveWritten(props.pane.id, chips.map(c => c.p).filter(p => p && !p.endsWith('/')))) paintPaths()
+  if (await resolveWritten(props.pane.id, chips.map(c => c.p).filter(Boolean))) paintPaths()
   // Then, for the bare names found nowhere, the folders quoted before them.
   const guesses = chips.filter(c => writtenFound(props.pane.id, c.p)?.length === 0).flatMap(c => c.guesses)
   if (await resolveWritten(props.pane.id, guesses)) paintPaths()
@@ -1894,6 +1951,11 @@ function gotoUnanswered() {
   }
   haptic()
 }
+// Ticks on task lists: polled while one of the last agent replies holds a list (useChecklist.ts).
+const RECENT_REPLIES = 5
+const recentTaskList = computed(() => blocks.value.filter(b => b.k === 'assistant').slice(-RECENT_REPLIES).some(b => hasTaskList(b as Block & { k: 'assistant' })))
+useChecklistSync(() => paneId.value, () => recentTaskList.value)
+
 defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch, gotoUnanswered })
 </script>
 
@@ -2053,7 +2115,7 @@ defineExpose({ scrollToEnd, reload: () => setTimeout(loadChat, 400), focusSearch
                   :ui="aiUi(`msg msg-ai tw-${agent || 'agent'}${canRun ? ' can-run' : ''}`)"
                 >
                   <template #content>
-                    <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" :runs="runButtons" @done="typingDone(b.id)" />
+                    <ChatMarkdown :html="b.html" :typing="typingAt(b.id)" :runs="runButtons" :check="hasTaskList(b) ? { pane: paneId, key: b.rid, at: b.ms ?? 0 } : undefined" @done="typingDone(b.id)" />
                   </template>
                 </UChatMessage>
                 <div v-if="!b.endsTurn && (b.ts || !readOnly || readAloudEngine !== 'off')" class="msg-actions">

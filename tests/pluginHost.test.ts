@@ -291,7 +291,6 @@ describe('plugin host', () => {
     api.draft.set('ignored')
     expect(s.getDraft()).toBeNull()
   })
-
   it('mountHeaderAction registrations are tracked, idempotent and disposed with the plugin', async () => {
     type MountApi = { mountHeaderAction: (r: (el: HTMLElement) => void) => () => void, onNavigate: (c: () => void) => () => void }
     let api!: MountApi

@@ -2,7 +2,7 @@
 // a terminal would: a file path, a command, an ID (thread, commit, issue), a
 // number or duration, a key, or a failure (`exit 1`, `FAIL`). Plain code
 // (identifiers, snippets) has no kind.
-import { pathCandidate } from '../../shared/filePaths'
+import { pathCandidate, pathCommand } from '../../shared/filePaths'
 
 export type CodeKind = 'path' | 'cmd' | 'id' | 'num' | 'key' | 'err' | 'ok'
 
@@ -33,6 +33,7 @@ export function codeKind(code: string): CodeKind | null {
   if (/^t-\d{3,}$|^[A-Z][A-Z0-9]+-\d+$|^(?=[0-9a-f]*[a-f])(?=[0-9a-f]*\d)[0-9a-f]{7,40}$/.test(s)) return 'id'
   if (NUM.test(s)) return 'num'
   if (pathCandidate(s)) return 'path'
+  if (pathCommand(s)) return 'cmd'
   if (/^[$!❯]\s|^\/[a-z][\w-]*(?:\s|$)/.test(s)) return 'cmd'
   const first = s.split(/\s+/)[0]!
   if (PROGRAMS.has(first) && /\s/.test(s)) return 'cmd'
