@@ -72,7 +72,8 @@ export function copyTerminalText(text: string, clipboard: Clipboard | undefined 
 const isMac = () => typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent)
 
 // `copied`: discreet feedback once the text is in the clipboard.
-export function bindTerminalSelection(term: Terminal, copied?: () => void): () => void {
+// `onRelease`: whether a released drag copies (Settings › Copy on select); ⌘C always copies.
+export function bindTerminalSelection(term: Terminal, copied?: () => void, onRelease: () => boolean = () => true): () => void {
   const root = term.element
   if (!root) return () => {}
   const mac = isMac()
@@ -87,7 +88,7 @@ export function bindTerminalSelection(term: Terminal, copied?: () => void): () =
   }
   // Copy on release (drag, double or triple click): capture phase on the
   // window, so it also runs when the button is released outside the terminal.
-  const onUp = () => copy()
+  const onUp = () => { if (onRelease()) copy() }
   const onDown = (e: MouseEvent) => {
     if (e.button === 0) window.addEventListener('mouseup', onUp, { capture: true, once: true })
     const mods = shiftDragPress(e, mac, term.modes.mouseTrackingMode !== 'none')

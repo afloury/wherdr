@@ -66,6 +66,7 @@
     "@vue/test-utils": "^2.5.1",
     "@xterm/addon-fit": "^0.10.0",
     "@xterm/addon-webgl": "^0.18.0",
+    "@xterm/headless": "^5.5.0",
     "@xterm/xterm": "^5.5.0",
     "dompurify": "^3.4.16",
     "happy-dom": "^20.14.5",

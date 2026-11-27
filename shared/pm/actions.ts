@@ -86,6 +86,14 @@ moved=$({ git diff --name-only --no-renames "$m2" "$2" -- ${files}; git diff --n
   [ "$(one "$m2" "$2" "$f")" = "$(one "$m3" "$3" "$f")" ] || printf '%s\\n' "$f"; done)
 [ -z "$moved" ] && echo comments || printf '%s\\nchanged\\n' "$moved"`
 export const SCRIPT = {
+  // The repository's default branch, for an action whose step and project name none:
+  // origin's, else main or master where the clone has it. Empty and exit 1 when unknown.
+  defaultBranch: `cd "$1" || exit 1
+b=$(git symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+[ -n "$b" ] || b=$(git ls-remote --symref origin HEAD 2>/dev/null | awk '$1 == "ref:" && $3 == "HEAD" { sub("^refs/heads/", "", $2); print $2; exit }')
+for c in main master; do [ -n "$b" ] || ! git show-ref -q --verify "refs/heads/$c" || b=$c; done
+[ -n "$b" ] && echo "$b"`,
+
   // Catch up with the target, then push the task branch onto it. A repository
   // without origin lands locally: the clone's branch $t (made when missing)
   // moves to the task's commit, unless a folder has it checked out. A merge

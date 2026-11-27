@@ -58,9 +58,12 @@ function blockFileDrop(e: DragEvent) {
   if (e.dataTransfer) e.dataTransfer.dropEffect = 'none'
 }
 
+let unbindCopyOnSelect: (() => void) | undefined
+
 // Keyboard (computer): Escape closes the open window (handled by the modals).
 onMounted(() => {
   installViewport()
+  unbindCopyOnSelect = bindCopyOnSelect(() => toast(t('Copied')))
   notificationHeartbeat = setInterval(sendViewing, 10000)
   for (const event of ['pointerdown', 'keydown', 'wheel', 'touchstart']) window.addEventListener(event, noteNotificationActivity, { passive: true })
   window.addEventListener('focus', noteNotificationActivity)
@@ -99,6 +102,7 @@ onUnmounted(() => {
   window.removeEventListener('online', recoverSockets)
   window.removeEventListener('dragover', blockFileDrop)
   window.removeEventListener('drop', blockFileDrop)
+  unbindCopyOnSelect?.()
   clearInterval(leaseTimer)
   clearInterval(notificationHeartbeat)
   for (const event of ['pointerdown', 'keydown', 'wheel', 'touchstart']) window.removeEventListener(event, noteNotificationActivity)

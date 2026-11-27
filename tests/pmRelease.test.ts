@@ -8,12 +8,12 @@ import { startTask, type PmLaunchDeps } from '../server/utils/pmLaunch'
 import { releaseIdle, wakeReleased } from '../server/utils/pmRelease'
 import { chatPolled, forgetTalk, userWrote } from '../server/utils/pmTalk'
 import { advanceTick } from '../server/utils/pmAdvance'
-import { mechanicTick } from '../server/utils/pmMechanic'
+import { mechanicTick, noteIdle } from '../server/utils/pmMechanic'
 import { forgetMemory } from '../server/utils/pmMemory'
 import { askAgentFix } from '../server/utils/pmFix'
 import { CODEX_SESSION_SCRIPT, FIX_QUIET_MS, RELEASE_IDLE_MS, RELEASE_TALK_MS, ROOM_WAKE_MS, agentBack, agentsAtWork, fixAskText, fixAskedStep, fixWatch, fixableBlock, handFix, handToAgent, idleSince, releaseDue, retriesAction, roomWanted } from '../shared/pm/release'
 import { cardStatus } from '../shared/pm/board'
-import { initialState, onEvent, type PlannedStep } from '../shared/pm/steps'
+import { initialState, onEvent, planSteps, type PlannedStep } from '../shared/pm/steps'
 import { wherdr } from '../shared/pm/examples'
 import type { Run, Task } from '../shared/pm/run'
 
@@ -182,6 +182,21 @@ describe('release and restart on the server', () => {
     const line = String(calls.filter(c => c[0] === 'terminal.run')[1]![1].line)
     expect(line.endsWith(`'--resume' '${ended.session}'`)).toBe(true)
     expect(t.log!.at(-1)!.text).toBe('started the worker again in its worktree: the user opened its conversation')
+  })
+
+  it('a step timeout in Your turn goes once its agent is seen working, even if it was never seen idle', async () => {
+    const { store, deps } = await setup()
+    const [plan, runs] = [planSteps(wherdr, { type: 'simple' }), await store.runs()]
+    const work = plan.findIndex(x => x.id === 'work')
+    const late = { ...(await store.task('WH-1'))!, state: 'working' as const, step: { ...task().step!, at: work, since: 5, told: 5, deadline: 6, yourTurn: { reason: 'timeout' as const, badge: 'Check work: over 3h' } } }
+    await store.saveTask(late)
+    const at = (status: string) => ({ ...deps, call: async (m: string, p: Record<string, unknown>) => (m === 'terminal.get' ? { status: { state: status } } : deps.call(m, p)) }) as PmLaunchDeps
+    const idle = await noteIdle(at('idle'), late, plan, runs, 100)
+    expect(idle.step!.yourTurn).toMatchObject({ reason: 'timeout' }) // still idle: still to check
+    const back = await noteIdle(at('working'), late, plan, runs, 100)
+    expect(back.step).toMatchObject({ yourTurn: undefined })
+    expect(back.step!.deadline).toBeGreaterThan(100)
+    expect(back.log!.at(-1)).toMatchObject({ by: 'engine', text: 'back to work: the worker is working again' })
   })
 })
 
