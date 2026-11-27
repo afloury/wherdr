@@ -237,6 +237,9 @@ export function planSteps(t: Template, input: TaskInput, base?: string): Planned
 }
 
 export const initialState = (): StepState => ({ at: 0, started: false, proofs: {}, rounds: {} })
+// The agent's step a task waiting at `at` goes back to, or -1 when none comes before it.
+export const sendBackTo = (plan: Pick<Step, 'holder'>[], at: number) => plan.slice(0, at).findLastIndex(p => p.holder === 'worker')
+
 export const currentStep = (plan: PlannedStep[], s: StepState): PlannedStep | undefined => plan[s.at]
 const hasAgent = (s: Step) => !!s.holder && s.holder !== 'none'
 
@@ -285,10 +288,10 @@ export function actAgain(plan: PlannedStep[], s: StepState, now: number): StepSt
 }
 
 // Back to the verdict step's sendBack step, with one message: what to fix.
-function sendBack(plan: PlannedStep[], state: StepState, step: PlannedStep, findings: Finding[], now: number, effects: Effect[]): StepState {
+function sendBack(plan: PlannedStep[], state: StepState, step: PlannedStep, findings: Finding[], now: number, effects: Effect[], minor: Finding[] = []): StepState {
   const back = plan.findIndex(p => p.id === step.sendBack)
   const s = enter(plan, { ...state, backFrom: step.id }, back, now, [])
-  effects.push({ kind: 'instruct', step: plan[back]!.id, holder: plan[back]!.holder!, text: sendBackText(step.id, findings) })
+  effects.push({ kind: 'instruct', step: plan[back]!.id, holder: plan[back]!.holder!, text: sendBackText(step.id, findings, minor) })
   return s
 }
 
@@ -355,7 +358,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
         const advice = advise({ rounds: history, nextGuarded: !!plan[state.at + 1]?.guarded, extraUsed: !!state.extra?.[step.id], swapped: !!state.swapped?.[step.id] })
         return { state: { ...s, yourTurn: { reason: 'rounds', badge: `Decide: ${step.id} failed ${n} times`, advice } }, effects }
       }
-      return { state: sendBack(plan, s, step, left, now, effects), effects }
+      return { state: sendBack(plan, s, step, left, now, effects, ev.findings.filter(f => !left.includes(f))), effects }
     }
     case 'decide': {
       const advice = state.yourTurn?.reason === 'rounds' ? state.yourTurn.advice : undefined
@@ -468,7 +471,7 @@ export function onEvent(plan: PlannedStep[], state: StepState, ev: StepEvent, no
       return { state: { ...state, acting: undefined, watch: undefined, yourTurn: { reason: 'action', badge, ...(error ? { error } : {}) } }, effects }
     }
     case 'back': {
-      const back = plan.slice(0, state.at).findLastIndex(p => p.holder === 'worker')
+      const back = sendBackTo(plan, state.at)
       if (step.ends !== 'user' || state.acting) return refuse(`Step "${step.id}" does not wait for you`)
       if (back < 0) return refuse('No earlier step of the agent to send it back to')
       if (!ev.note.trim()) return refuse('Say what to change')

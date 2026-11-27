@@ -1,0 +1,12 @@
++- Ask ------------------------------------------------------------------------------------------------------+
+| The service needs a datastore before the first release. Which one should the team provision first?         |
+|                                                                                                            |
+| Datastore                                                                                                  |
+| > (o) Postgres: relational, JSONB support, the team already runs it in production and knows how to back it |
+|       up (recommended)                                                                                     |
+|   ( ) SQLite: embedded, zero-ops                                                                           |
+|   ( ) MongoDB: document store                                                                              |
+|   ( ) Other: type your own                                                                                 |
+|                                                                                                            |
+|   Submit                                                                                                   |
++------------------------------------------------------------------------------------------------------------+

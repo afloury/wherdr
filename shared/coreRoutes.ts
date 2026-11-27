@@ -50,6 +50,8 @@ const BASE = [
   'GET ui/card', 'ui/act',
   // The notes agents write, read-only (NotesPanel.vue).
   'GET notes', 'GET notes/file',
+  // What an omp or Claude Code terminal's "/" list offers, read-only (Composer.vue).
+  'GET commands',
 ]
 
 export const CORE_ROUTES = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i, ...j, ...k, ...l, ...m, ...n, ...o, ...p, ...q, ...r, ...s, ...t, ...u, ...v, ...w, ...x, ...y, ...z]

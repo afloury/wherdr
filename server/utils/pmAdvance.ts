@@ -37,23 +37,27 @@ import { killTerminal } from './pmProcs'
 import { noteTaskError } from './pmSentinel'
 import { loginRestartText } from '../../shared/pm/recovery'
 import { isBlockedOn } from '../../shared/pm/park'
+import { isNeedsHuman } from '../../shared/pm/needsHuman'
+import { needsHumanReport } from './pmNeedsHuman'
 import { blockedOn } from './pmPark'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file,
-// its branch, then its own commits (no merges) and files per line count since its fork from the base ($5).
-export const SIGNAL_READ_SCRIPT = `wt=$1 b=$2 base=$5
-git -C "$wt" rev-parse -q --verify HEAD; echo "${READ_SEP}"
+// its branch, then its own commits (no merges) and files per line count since its fork from the base ($5), the report file before this round, then the uncommitted changes.
+// $7 is the separator, drawn at random for each read (newSeparator): no file's content can contain it.
+export const SIGNAL_READ_SCRIPT = `wt=$1 b=$2 base=$5 sep=$7
+git -C "$wt" rev-parse -q --verify HEAD; echo "$sep"
 s=$(git -C "$wt" config "branch.$b.wherdrstart")
-git -C "$wt" diff --numstat \${s:+"$s"} HEAD 2>/dev/null | awk '{n+=$1+$2} END {print n+0}'; echo "${READ_SEP}"
-cat "$3" 2>/dev/null; echo; echo "${READ_SEP}"
-cat "$4" 2>/dev/null; echo; echo "${READ_SEP}"
-git -C "$wt" symbolic-ref -q --short HEAD; echo "${READ_SEP}"
+git -C "$wt" diff --numstat \${s:+"$s"} HEAD 2>/dev/null | awk '{n+=$1+$2} END {print n+0}'; echo "$sep"
+cat "$3" 2>/dev/null; echo; echo "$sep"
+cat "$4" 2>/dev/null; echo; echo "$sep"
+git -C "$wt" symbolic-ref -q --short HEAD; echo "$sep"
 m=
 [ -n "$base" ] && { m=$(git -C "$wt" merge-base HEAD "origin/$base" 2>/dev/null) || m=$(git -C "$wt" merge-base HEAD "$base" 2>/dev/null); }
 [ -n "$m" ] || m=$s
-git -C "$wt" log --no-merges --format='%at %s' \${m:+"$m..HEAD"} 2>/dev/null | cksum; echo "${READ_SEP}"
-git -C "$wt" diff --numstat \${m:+"$m"} HEAD 2>/dev/null; echo "${READ_SEP}"
-cat "$6" 2>/dev/null`
+git -C "$wt" log --no-merges --format='%at %s' \${m:+"$m..HEAD"} 2>/dev/null | cksum; echo "$sep"
+git -C "$wt" diff --numstat \${m:+"$m"} HEAD 2>/dev/null; echo "$sep"
+cat "$6" 2>/dev/null; echo; echo "$sep"
+git -C "$wt" status --porcelain --untracked-files=no 2>/dev/null; :`
 // The task moves to the branch its worker pushed: its start point (and takeover tip) goes with it.
 const FOLLOW_SCRIPT = `for k in wherdrstart wherdrtaken; do s=$(git -C "$1" config "branch.$2.$k") && git -C "$1" config "branch.$3.$k" "$s"; done; exit 0`
 
@@ -125,6 +129,7 @@ export async function advanceTick(deps: PmLaunchDeps, now = Date.now()) {
     const said = alive(run)?.labels?.[LABEL.report]
     // Blocked on another task or repository: parked (park.ts), its signal cleared once handled.
     if (isBlockedOn(said)) { if (await blockedOn(deps, run, said!, now).then(() => true, () => false)) await clearSignal(deps, run.terminal!); continue }
+    if (isNeedsHuman(said)) { if (await needsHumanReport(deps, run, said!, now).then(() => true, () => false)) await clearSignal(deps, run.terminal!); continue }
     if (said !== 'done') continue
     // Cleared once handled; a failure leaves it for the next tick.
     if (await signal(deps, run, now).then(() => true, () => false)) await clearSignal(deps, run.terminal!)
@@ -140,8 +145,9 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   if (!c || c.task.step!.done) return
   const step = c.plan[c.task.step!.at]
   const files = runFiles(latest(await deps.store.runs(), run.task, 'worker')?.instructions ?? run.instructions)
-  const r = await exec(deps, c.on, SIGNAL_READ_SCRIPT, [run.worktree, run.branch, files.note, files.verdict, c.task.base ?? '', files.before])
-  const read = parseRead(r.out)
+  const sep = `${READ_SEP}-${randomUUID()}`
+  const r = await exec(deps, c.on, SIGNAL_READ_SCRIPT, [run.worktree, run.branch, files.note, files.verdict, c.task.base ?? '', files.before, sep])
+  const read = parseRead(r.out, sep)
   // The worker rewrote its report file: the earlier rounds go back on top.
   if (read.rewrote && run.role === 'worker') await exec(deps, c.on, 'printf \'%s\\n\' "$2" > "$1"', [files.note, read.whole!])
   const ev = signalEvent(step, run.role, read)
@@ -151,7 +157,7 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   const work = c.task.step!.agent
   if (!ev && work && run.role === 'worker') {
     const retry = retriesAction(c.plan, c.task.step!)
-    await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!) }, 'engine', `${work.kind}: the worker says it is done${retry ? `, ${step!.id} is tried again` : ''}`)
+    await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!), needsHuman: undefined }, 'engine', `${work.kind}: the worker says it is done${retry ? `, ${step!.id} is tried again` : ''}`)
     // A failed action it fixed: tried again now; failing again, it is back in Your turn with the new error.
     if (retry) startAction(deps, run.task, () => {})
     return
@@ -170,7 +176,7 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   if (res.refused) return void await Promise.all([tell(`${res.refused}\n\nWhen done: ${DONE_CMD}`), deps.store.logTask(c.task, 'engine', `${step!.id}: ${res.refused}`)])
   const what = ev.kind === 'verdict' ? `verdict, ${ev.findings.length} finding(s)` : 'done'
   const fresh = await deps.store.task(run.task)
-  await deps.store.logTask({ ...fresh!, step: res.state, ...signalKept(fresh!, step!.id, ev, read) }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
+  await deps.store.logTask({ ...fresh!, step: res.state, needsHuman: undefined, ...signalKept(fresh!, step!.id, ev, read) }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
 }
 
 // The worker pushed another branch than the task's: the engine pushes, opens

@@ -23,13 +23,15 @@ export const SYNCED_SETTINGS = [
   // Coordinators section: their order and Hidden group (shared/pm/coordinatorOrder.ts)
   'coordinatorOrder', 'coordinatorsHidden',
   // Conversation
-  'typewriterSpeed', 'encryptedText', 'defaultViewMode',
+  'typewriterSpeed', 'encryptedText', 'defaultViewMode', 'copyOnSelect',
   // Board
   'boardGrouping', 'boardDone', 'boardFolds', 'boardProject',
   // Notes panel: its filter (shared/notes.ts)
   'notesFilter',
   // Tasks to review: its filter (useReview.ts)
   'reviewFilter',
+  // Tasks to review: the items the user snoozed or dismissed (shared/pm/reviewHide.ts), read by the server
+  'reviewHidden',
   // Files
   'wherdr.files.hidden', 'wherdr.files.md',
   // Security: files shown from conversations (shared/chatFiles.ts), read by the server

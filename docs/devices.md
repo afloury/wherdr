@@ -4,6 +4,10 @@
 
 ### On a computer
 
+- **Copy on select**: selecting text with the mouse, in a conversation (messages, code blocks) or in the
+  terminal, copies it at once and shows *Copied*, like a terminal. Never in the message field or another
+  text field. On by default with a mouse or trackpad, off on a phone; change it in
+  **Settings › Conversation › Display › Copy on select** (it follows you on every device).
 - **Spaces and tabs**: sidebar with every space, tabs at the top, active tab remembered per space.
   With herdr-core each terminal of a space is a tab, unless **Split right** or **Split down** (a
   pane's **…** menu, or Mod+Alt+S and Mod+Alt+Shift+S) put a second shell beside or under it in

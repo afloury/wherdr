@@ -251,10 +251,24 @@ function onWheel(e: WheelEvent) {
 }
 
 let fitTimer: ReturnType<typeof setTimeout> | undefined
+let fitSettleTimer: ReturnType<typeof setTimeout> | undefined
+// The quiet the viewport needs before a moving fit lands: roughly the
+// keyboard's slide animation, restarted by each new frame of it.
+const VIEWPORT_SETTLE_MS = 280
 // Throttle rather than debounce: long divider drags must keep fitting while
 // the pointer moves, without sending every intermediate pixel to Herdr.
+// A viewport still moving (the keyboard animating, a pinch) wants the
+// opposite: one fit once it settles, not a pane resize per animation frame.
 function scheduleFit() {
   if (smoothTouchScrolling.value) cancelTouch()
+  if (viewportMoving(VIEWPORT_SETTLE_MS)) {
+    clearTimeout(fitSettleTimer)
+    fitSettleTimer = setTimeout(() => {
+      fitSettleTimer = undefined
+      props.ctl.fitNow(true)
+    }, VIEWPORT_SETTLE_MS)
+    return
+  }
   if (fitTimer) return
   fitTimer = setTimeout(() => {
     fitTimer = undefined
@@ -262,6 +276,7 @@ function scheduleFit() {
   }, 50)
 }
 watch(layoutTick, scheduleFit)
+watch(() => props.ctl.kbdOn?.value, (on) => { if (on) scheduleFit() })
 let ro: ResizeObserver | null = null
 onMounted(() => {
   document.addEventListener('pointerdown', cancelTouch, true)
@@ -282,6 +297,7 @@ onUnmounted(() => {
   cancelTouch()
   ro?.disconnect()
   clearTimeout(fitTimer)
+  clearTimeout(fitSettleTimer)
   cancelAnimationFrame(legacyRaf)
   props.ctl.dispose()
 })
