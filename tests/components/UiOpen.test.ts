@@ -6,6 +6,7 @@ import { defineComponent, h } from 'vue'
 import { UApp } from '#components'
 import { useRoute } from '#app'
 import AgentView from '~/components/AgentView.vue'
+import UiShowCard from '~/components/UiShowCard.vue'
 import { herdrState, sidePanelRoom, uiOpenRequest, uiOpenedBy } from '~/composables/useHerdr'
 import type { Pane } from '#shared/types'
 
@@ -85,5 +86,14 @@ it.each([true, false])('shows a place once when the reply keeps its card (wide s
     expect(w.find('.ui-open-row').exists()).toBe(false)
     expect(w.text()).not.toContain('Opened by Alfred')
     expect(w.text()).toContain('Place in wherdr')
+  } finally { w.unmount() }
+})
+
+// WHR-583: the `ui show` card sits in the same row as the `ui open` card (the message
+// field's gutters, checked above); kept in a reply, it has no row.
+it.each([false, true])('puts the ui show card in the message field\'s row unless kept (kept: %s)', async (kept) => {
+  const w = await mountSuspended(UiShowCard, { props: { event: { type: 'ui-show', pane: pane.id, what: 'file', arg: 'docs/plan.md', by: 'WEB coordinator' }, kept } })
+  try {
+    expect(w.find('.ui-open-card').element.parentElement!.classList.contains('ui-open-row')).toBe(!kept)
   } finally { w.unmount() }
 })

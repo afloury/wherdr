@@ -982,7 +982,8 @@ body.short-bottom { --safe-bottom: 0px; }
 }
 .term-banner > span { flex: 1; }
 .term-banner > .term-banner-icon { width: 16px; height: 16px; color: var(--ochre); flex: none; }
-/* A place an agent opened with `ui open` (UiOpenCard.vue), above the message field. */
+/* A place an agent opened with `ui open` (UiOpenCard.vue) or a file it showed with `ui show`
+   (UiShowCard.vue), above the message field, in a row with the field's gutters. */
 .ui-open-row { flex: none; padding: 6px 12px; }
 .ui-open-card { display: flex; align-items: stretch; background: var(--surface); border: 1px solid var(--line); }
 .ui-open-card:hover, .ui-open-card:focus-within { border-color: var(--accent); }
@@ -995,7 +996,7 @@ body.short-bottom { --safe-bottom: 0px; }
 .ui-open-x { display: grid; place-items: center; width: 44px; flex: none; border-left: 1px solid var(--line); color: var(--muted); cursor: pointer; }
 .ui-open-x:hover { color: var(--text); }
 /* The "questions unanswered" chip floats above the message field: room for it under the card. */
-.ui-open-card:has(+ .composer .composer-ask-anchor) { margin-bottom: 36px; }
+.ui-open-row:has(+ .composer .composer-ask-anchor) { padding-bottom: 42px; }
 .ui-show-top { display: flex; align-items: stretch; flex: none; min-height: 56px; border-bottom: 1px solid var(--line); }
 .ui-show-head { display: flex; flex-direction: column; justify-content: center; gap: 3px; flex: 1; min-width: 0; padding: 8px 16px; }
 .ui-show-head h2 { font: 700 16px/1.2 var(--sans); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
