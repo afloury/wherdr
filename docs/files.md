@@ -29,7 +29,8 @@
   storage, call its API, open windows, send forms or navigate the app. Self-contained pages only:
   its inline CSS, scripts and images work, as do `https` links to a CDN; files next to it are not
   loaded, and it makes no network requests (`fetch`). **Open** shows it alone in a new tab, under
-  the same sandbox.
+  the same sandbox. A larger page does not run: its start shows as text, under *Too large to run
+  as a page (over 256 KB)*; **Download** it to open it in a browser.
 - <a id="paths-in-a-conversation"></a>**Paths in a conversation**: a file path an agent writes
   in its reply (relative, `~/…` or absolute, `/tmp/…` included) opens the same preview. Which files
   it may open is set in Settings › Security › **Files shown from conversations**:

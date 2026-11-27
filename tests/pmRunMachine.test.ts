@@ -3,12 +3,11 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, beforeEach, expect, it } from 'vitest'
 import { createPmStore } from '../server/utils/pmStore'
-import { advanceTick } from '../server/utils/pmAdvance'
+import { SIGNAL_READ_SCRIPT, advanceTick } from '../server/utils/pmAdvance'
 import { actionsSettled } from '../server/utils/pmBoard'
 import { mechanicTick } from '../server/utils/pmMechanic'
 import { cleanTask } from '../server/utils/pmCleanup'
 import { startTask } from '../server/utils/pmLaunch'
-import { READ_SEP } from '../shared/pm/advance'
 import { github } from '../shared/pm/examples'
 import { initialState, onEvent, planSteps } from '../shared/pm/steps'
 import type { Run } from '../shared/pm/run'
@@ -28,7 +27,7 @@ const call = async (method: string, p: Record<string, unknown>) => {
   if (method !== 'machine.exec') return {}
   const script = (p.argv as string[])[2]!
   if (script.includes('wherdr-ready-check')) return { code: 0, stdout: Buffer.from(ready).toString('base64') }
-  const out = script.includes('get-url origin') ? 'git@github.com:o/r.git' : script.includes('command -v') ? 'claude' : script.includes(READ_SEP) ? ['abc1234', '5', '', ''].join(`\n${READ_SEP}\n`)
+  const out = script.includes('get-url origin') ? 'git@github.com:o/r.git' : script.includes('command -v') ? 'claude' : script === SIGNAL_READ_SCRIPT ? ['abc1234', '5', '', ''].join(`\n${(p.argv as string[]).at(-1)}\n`)
     : script.includes('gh pr create') ? 'https://github.com/o/r/pull/9'
       : script.includes('$HOME') ? '/h' : script.includes('worktree list') ? '1 1 0 0' : ''
   // The login check fails: the task stays waiting, nothing restarts.

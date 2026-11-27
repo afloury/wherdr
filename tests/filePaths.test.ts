@@ -44,6 +44,18 @@ describe('pathCandidate', () => {
   })
 })
 
+describe('pathCandidate and commands', () => {
+  it('an executable path followed by arguments is no path', () => {
+    for (const c of ['~/tools/update.sh 3.2.2', './script --flag', '/opt/demo/run.py input.txt', '/opt/demo/bin/tool -v'])
+      expect(pathCandidate(c), c).toBeNull()
+  })
+
+  it('keeps paths with spaces in a folder name', () => {
+    expect(pathCandidate('/Users/demo/My Files/a.txt')).toBe('/Users/demo/My Files/a.txt')
+    expect(pathCandidate('/Users/demo/My Files')).toBe('/Users/demo/My Files')
+  })
+})
+
 describe('resolveAgentPath', () => {
   it('expands ~ to the machine home', () => {
     expect(resolveAgentPath('~/project/a.ts', '/home/demo/elsewhere', HOME)).toBe('/home/demo/project/a.ts')

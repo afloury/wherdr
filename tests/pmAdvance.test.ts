@@ -2,7 +2,9 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
+import { execFileSync } from 'node:child_process'
 import { DONE_CMD, READ_SEP, chainState, dueText, parseRead, proofsOf, runsNow, signalEvent, signalKept, type SignalRead } from '../shared/pm/advance'
+import { SIGNAL_READ_SCRIPT } from '../server/utils/pmAdvance'
 import { initialState, onEvent, planSteps, type StepEvent, type StepState } from '../shared/pm/steps'
 import { company, github, vibe, common } from '../shared/pm/examples'
 import type { Template } from '../shared/pm/workflow'
@@ -146,18 +148,18 @@ describe('after the worker, with each example template', () => {
 
 describe('end signals', () => {
   it('reads the engine\'s script output, and the proofs a note gives', () => {
-    const r = parseRead(['abc1234', '42', 'See https://github.com/o/r/pull/3.\n', '{"findings":[]}'].join(`\n${READ_SEP}\n`))
+    const r = parseRead(['abc1234', '42', 'See https://github.com/o/r/pull/3.\n', '{"findings":[]}'].join(`\n${READ_SEP}\n`), READ_SEP)
     expect(r).toEqual({ head: 'abc1234', diffLines: 42, note: 'See https://github.com/o/r/pull/3.', verdict: '{"findings":[]}' })
     expect(proofsOf(r)).toMatchObject({ link: 'https://github.com/o/r/pull/3', commit: 'abc1234', report: r.note })
     expect(proofsOf(read({ head: undefined }))).toEqual({})
     // Then the branch, its own commits' fingerprint and its files with their line counts (binary: 0).
-    const w = parseRead(['abc1234', '42', '', '', 'task/X-1\n', '123 45\n', '3\t1\tsrc/a.ts\n-\t-\tlogo.png\n'].join(`${READ_SEP}\n`))
+    const w = parseRead(['abc1234', '42', '', '', 'task/X-1\n', '123 45\n', '3\t1\tsrc/a.ts\n-\t-\tlogo.png\n'].join(`${READ_SEP}\n`), READ_SEP)
     expect(w.work).toEqual({ commits: '123 45', files: [{ path: 'src/a.ts', add: 3, del: 1 }, { path: 'logo.png', add: 0, del: 0 }] })
   })
 
   it('a send-back round adds its section to the report: both stay, the proofs come from the round alone', () => {
     const first = '## Report\n\nCause found. https://example.com/issue/1'
-    const out = (note: string) => parseRead(['abc1234', '5', note, '', '', '', '', first].join(`\n${READ_SEP}\n`))
+    const out = (note: string) => parseRead(['abc1234', '5', note, '', '', '', '', first].join(`\n${READ_SEP}\n`), READ_SEP)
     const appended = out(`${first}\n\n## Review round 1\n\nFixed the test.`)
     expect(appended).toMatchObject({ note: '## Review round 1\n\nFixed the test.', whole: `${first}\n\n## Review round 1\n\nFixed the test.` })
     expect(appended.rewrote).toBeUndefined()
@@ -185,6 +187,60 @@ describe('end signals', () => {
     const reports = [{ step: 'work', text: 'Original report' }, { step: 'work', text: '' }]
     expect(taskHistory(log, [{ id: 'work' }, { id: 'review' }], { proofs: {} }, false, reports).filter(e => e.who === 'worker').map(e => e.text))
       .toEqual(['Original report', 'Reported done.'])
+  })
+
+  it('a worker\'s done with uncommitted changes is sent back to commit; clean, it goes through', () => {
+    const step = planSteps(company, { type: 'feature' }).find(s => s.id === 'work')
+    expect(signalEvent(step, 'worker', read({ dirty: true }))).toEqual({ fix: `Commit your work, then run ${DONE_CMD} again` })
+    expect(signalEvent(step, 'worker', read())).toMatchObject({ kind: 'report' })
+    const out = ['abc', '3', 'note', '', 'main', '', '', '', ' M a.ts\n'].join(`${READ_SEP}\n`)
+    expect(parseRead(out, READ_SEP).dirty).toBe(true)
+    expect(parseRead(out.replace(' M a.ts', ''), READ_SEP).dirty).toBeUndefined()
+  })
+
+  it('a clean worktree: the trimmed output ends on the separator, the report and the verdict are read from their own sections', () => {
+    const verdict = '{"findings":[]}'
+    const out = ['abc', '3', '\nhttps://example.com/pull/1\n\n', `${verdict}\n\n`, 'main\n', '1 2\n', '1\t0\ta.ts\n', '\n', ''].join(`${READ_SEP}\n`).trim()
+    expect(out.endsWith(READ_SEP)).toBe(true)
+    const r = parseRead(out, READ_SEP)
+    expect(r).toMatchObject({ note: 'https://example.com/pull/1', verdict })
+    expect(r.rewrote).toBeUndefined()
+    expect(r.whole).toBeUndefined()
+    expect(r.dirty).toBeUndefined()
+  })
+
+  it('a separator line inside the report or the verdict does not shift the sections (the real script)', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'read-'))
+    try {
+      const verdict = '{"findings":[{"id":"F1"}]}'
+      await fs.writeFile(path.join(dir, 'report.md'), `${READ_SEP}\n\nhttps://example.com/pull/1\n${READ_SEP}\ntail\n`)
+      await fs.writeFile(path.join(dir, 'report.before.md'), `${READ_SEP}\n\nolder\n`)
+      await fs.writeFile(path.join(dir, 'verdict.json'), verdict)
+      const sep = `${READ_SEP}-test`
+      const out = execFileSync('sh', ['-c', SIGNAL_READ_SCRIPT, 'sh', dir, 'b', path.join(dir, 'report.md'), path.join(dir, 'verdict.json'), '', path.join(dir, 'report.before.md'), sep], { encoding: 'utf8' }).trim()
+      const r = parseRead(out, sep)
+      expect(r.verdict).toBe(verdict)
+      expect(r.whole ?? r.note).toContain(`${READ_SEP}\n\nhttps://example.com/pull/1\n${READ_SEP}\ntail`)
+    }
+    finally { await fs.rm(dir, { recursive: true, force: true }) }
+  })
+
+  it('a changed tracked file makes the read dirty; an untracked file does not (the real script)', async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'read-git-'))
+    try {
+      const git = (...a: string[]) => execFileSync('git', ['-C', dir, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...a], { encoding: 'utf8' })
+      git('init', '-q')
+      await fs.writeFile(path.join(dir, 'a.txt'), 'one\n')
+      git('add', 'a.txt')
+      git('commit', '-qm', 'one')
+      const sep = `${READ_SEP}-test`
+      const readNow = () => parseRead(execFileSync('sh', ['-c', SIGNAL_READ_SCRIPT, 'sh', dir, 'b', path.join(dir, 'none.md'), path.join(dir, 'none.json'), '', path.join(dir, 'none.before.md'), sep], { encoding: 'utf8' }).trim(), sep)
+      await fs.writeFile(path.join(dir, 'scratch.log'), 'x\n')
+      expect(readNow().dirty).toBeUndefined()
+      await fs.writeFile(path.join(dir, 'a.txt'), 'two\n')
+      expect(readNow().dirty).toBe(true)
+    }
+    finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
 
   it('a verdict that does not parse is sent back to the reviewer, with how to answer', () => {
@@ -433,7 +489,8 @@ describe('advanceTick (store and a fake herdr-core)', () => {
         if (method !== 'machine.exec') return {}
         const script = (p.argv as string[])[2]!
         // The worker checked out its own branch: the engine follows it.
-        const out = script.includes(READ_SEP) ? ['abc1234', '5', '', verdict, 'feature/CO-1-fix'].join(`\n${READ_SEP}\n`)
+        const sep = (p.argv as string[]).at(-1)!
+        const out = script === SIGNAL_READ_SCRIPT ? ['abc1234', '5', '', verdict, 'feature/CO-1-fix'].join(`\n${sep}\n`)
           : script.includes('gh pr create') ? 'https://github.com/o/r/pull/9'
             : script.includes('command -v') ? 'claude' : script.includes('$HOME') ? '/h' : ''
         return { code: script.includes('--contains') ? 1 : 0, stdout: Buffer.from(out).toString('base64') }

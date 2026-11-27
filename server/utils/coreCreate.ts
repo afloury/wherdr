@@ -43,6 +43,7 @@ const REQUEST_LABEL = 'wherdr-request'
 // "New" sheet lists can always be started, nvm installs included.
 export const PATH_SETUP = USER_PATH_SETUP
 const TARGET_RE = /^[A-Za-z0-9_][A-Za-z0-9_.@:%[\]-]{0,199}$/
+const shq = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 const NAME_RE = /^[a-z0-9_][a-z0-9_.-]{0,31}$/
 
 // Machine of a request (key '' = this one): its `on` name, or undefined for the local core.
@@ -195,7 +196,7 @@ export async function sendAfterDialog(deps: CoreAdminDeps, address: string, text
 // Codex runs in a line that keeps its terminal when an update ends it (shared/codexLaunch.ts).
 const launchLine = (kind: string, args: string[]) => (kind === 'codex' ? codexLine(args) : `exec ${[kind, ...args].join(' ')}`)
 
-export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown, workspace?: unknown, prompt?: unknown, resume?: unknown, beside?: unknown }
+export interface CreateBody { kind?: unknown, machine?: unknown, cwd?: unknown, name?: unknown, workspace?: unknown, prompt?: unknown, resume?: unknown, beside?: unknown, run?: unknown }
 
 const newId = (prefix: string) => prefix + crypto.randomBytes(16).toString('hex')
 // herdr-app placement: a new tab of the given space, else of the space holding the
@@ -237,11 +238,14 @@ export async function coreCreate(deps: CoreAdminDeps, body: CreateBody) {
   const typed = cleanLabel(body.name)
   const name = toAgentName(typed)
   if (name && !NAME_RE.test(name)) throw new HerdrError('bad_name', 'Invalid name')
+  // A shell that first runs a command (a split from a command's menu), then stays open.
+  const run = kind === 'shell' && typeof body.run === 'string' ? body.run.trim() : ''
+  if (run.length > 4096 || /[\0\n\r]/.test(run)) throw new HerdrError('bad_command', 'Invalid command')
   const request = crypto.randomBytes(8).toString('hex')
   const placement = body.beside ? await besideLabels(deps, m, String(body.beside)) : creationLabels(deps, m, cwd, body.workspace)
   const params = {
     cwd, ...(on ? { on } : {}), ...(name ? { name } : {}), no_parent: true, wait: false,
-    labels: { [REQUEST_LABEL]: request, ...placement }, ...(kind === 'shell' ? {} : { line: `${PATH_SETUP}; ${launchLine(kind, body.resume === true ? RESUME_ARGS[kind] || [] : [])}` }),
+    labels: { [REQUEST_LABEL]: request, ...placement }, ...(kind === 'shell' ? (run ? { line: `${PATH_SETUP}; "\${SHELL:-/bin/sh}" -lc ${shq(run)}; exec "\${SHELL:-/bin/sh}" -l` } : {}) : { line: `${PATH_SETUP}; ${launchLine(kind, body.resume === true ? RESUME_ARGS[kind] || [] : [])}` }),
   }
   let address: string
   try {

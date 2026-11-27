@@ -51,6 +51,17 @@ describe('inlineCommand', () => {
     expect(inlineCommand('foo --dry-run')).toBe('foo --dry-run')
   })
 
+  it('an executable path followed by arguments is a command, a bare path is not', () => {
+    expect(inlineCommand('~/tools/update.sh 3.2.2')).toBe('~/tools/update.sh 3.2.2')
+    expect(inlineCommand('./script --flag')).toBe('./script --flag')
+    expect(inlineCommand('/opt/demo/run.py input.txt')).toBe('/opt/demo/run.py input.txt')
+    expect(inlineCommand('/opt/demo/bin/tool --verbose')).toBe('/opt/demo/bin/tool --verbose')
+    expect(inlineCommand('~/tools/update.sh')).toBeNull()
+    expect(inlineCommand('./script')).toBeNull()
+    expect(inlineCommand('/Users/demo/My Files/a.txt')).toBeNull()
+    expect(inlineCommand('/Users/demo/My Files')).toBeNull()
+  })
+
   it('leaves slash commands, paths, plain code and "!" operators alone', () => {
     for (const code of ['/compact', '/model opus', 'src/app.ts', 'useState', '!important', '!==', '$HOME', 'git', ''])
       expect(inlineCommand(code), code).toBeNull()
@@ -81,6 +92,12 @@ describe('markup', () => {
     expect(html).not.toContain('data-cmd')
     expect(html).not.toContain('code-run')
     expect(html).toContain('class="code-copy"')
+  })
+
+  it('inline executable path with arguments: a command chip, not a path chip', () => {
+    const html = md('Run `~/tools/update.sh 3.2.2` and open `~/tools/update.sh`.')
+    expect(html).toContain('<code class="md-cmd" data-k="cmd" data-cmd="~/tools/update.sh 3.2.2" role="button" tabindex="0">')
+    expect(html).toContain('<code class="md-path" data-k="path" role="button" tabindex="0">~/tools/update.sh</code>')
   })
 
   it('inline command: tappable, command escaped in its attribute', () => {
