@@ -23,12 +23,16 @@ export default defineWebSocketHandler({
     if (m && m.type === 'ping') { peer.send(JSON.stringify({ type: 'pong' })); return }
     const c = eventClients.get(peer.id)
     if (c && m && m.type === 'viewing') {
-      c.pane = PANE_RE.test(m.pane || '') ? m.pane : null
-      c.visible = m.visible === true
+      const pane = PANE_RE.test(m.pane || '') ? m.pane : null
+      const visible = m.visible === true
+      const newlyViewed = Boolean(pane && visible && !isViewed(pane))
+      c.pane = pane
+      c.visible = visible
       if (m.device === 'phone' || m.device === 'computer') c.device = m.device
       const used = usedAt(m, Date.now())
       if (used !== null) c.activeAt = used
       notificationPresence.heartbeat(peer.id, c.pane, c.visible)
+      if (newlyViewed) wakeCorePoll()
     }
   },
   close(peer) {

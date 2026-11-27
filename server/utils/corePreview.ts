@@ -60,7 +60,7 @@ export interface CorePreviewDeps {
 export function createCorePreviews(deps: CorePreviewDeps) {
   const now = deps.now ?? Date.now
   // `since`: when this key (state) was first read.
-  const cache = new Map<string, { key: string, text: string | null, at: number, since: number }>()
+  const cache = new Map<string, { key: string, text: string | null, at: number, since: number, allowReply: boolean }>()
   const busy = new Set<string>()
   // Panes whose reading was due while another one was in flight: woken when it ends.
   const skipped = new Set<string>()
@@ -73,9 +73,8 @@ export function createCorePreviews(deps: CorePreviewDeps) {
     handle.unref?.()
     timer = { at, handle }
   }
-  async function load(p: Pane): Promise<string | null> {
+  async function load(p: Pane, allowReply: boolean): Promise<string | null> {
     if (p.error) return p.error.length > MAX ? `${p.error.slice(0, MAX - 1)}…` : p.error
-    const allowReply = !p.agent || !NO_UNVIEWED_DB_PREVIEW.has(p.agent) || !deps.viewed || deps.viewed(p.id)
     if (p.agent && allowReply) {
       const reply = await deps.reply(p).catch(() => null)
       if (reply?.text) return reply.text.length > MAX ? `${reply.text.slice(0, MAX - 1)}…` : reply.text
@@ -91,21 +90,25 @@ export function createCorePreviews(deps: CorePreviewDeps) {
       for (const p of panes) {
         if (!p.coreAddress) continue
         const hit = cache.get(p.id)
+        const allowReply = !p.error && (!p.agent || !NO_UNVIEWED_DB_PREVIEW.has(p.agent) || !deps.viewed || deps.viewed(p.id))
         const key = `${p.status}:${p.stateSeq ?? ''}:${p.error ? 'e' : ''}`
-        const fresh = !hit || hit.key !== key
+        // Becoming viewed for an unviewed DB-backed pane starts a reply read without
+        // restarting settling or discarding the reply once the client moves away.
+        const upgrade = Boolean(hit && hit.key === key && allowReply && !hit.allowReply)
+        const fresh = !hit || hit.key !== key || upgrade
         const settling = !fresh && p.status !== 'working' && now() - hit.since < SETTLE_MS
         const due = fresh || (settling && now() - hit.at >= SETTLE_EVERY_MS) || (p.status === 'working' && now() - hit.at > WORKING_MS)
         if (due && (busy.has(p.id) || busy.size >= MAX_BUSY)) skipped.add(p.id)
         else if (due) {
           busy.add(p.id)
-          const since = fresh ? now() : hit.since
-          load(p)
+          const since = upgrade ? hit!.since : fresh ? now() : hit.since
+          load(p, allowReply)
             .then(text => {
-              cache.set(p.id, { key, text, at: now(), since })
+              cache.set(p.id, { key, text, at: now(), since, allowReply })
               if (text && text !== hit?.text) deps.wake?.()
               else if (p.status !== 'working' && now() - since < SETTLE_MS) wakeAt(now() + SETTLE_EVERY_MS)
             })
-            .catch(() => { cache.set(p.id, { key, text: hit?.text ?? null, at: now(), since }) })
+            .catch(() => { cache.set(p.id, { key, text: hit?.text ?? null, at: now(), since, allowReply }) })
             .finally(() => {
               busy.delete(p.id)
               if (skipped.size) { skipped.clear(); deps.wake?.() }
