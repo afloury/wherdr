@@ -353,6 +353,13 @@ export class DemoServer {
         case '/api/auth/status': return ok({ enabled: false, unlocked: true, devices: [] })
         case '/api/config': return ok({ kinds: ['claude', 'codex', 'omp'], home: S.HOME, os: 'Darwin', dirs: [`${S.HOME}/code/acme-api`, `${S.HOME}/code/acme-web`], push: { enabled: false, key: null, devices: 0 } })
         case '/api/quotas': return ok(S.quotas(now))
+        case '/api/commands': return ok({ agent: this.pane(paneId)?.agent ?? null, commands: [
+          { name: 'compact', desc: 'Summarize the conversation to free up context', kind: 'command' },
+          { name: 'context', desc: 'Show how much of the context window is used', kind: 'command' },
+          { name: 'model', desc: 'Change the model', kind: 'command' },
+          { name: 'skill:release-notes', desc: 'Draft release notes from merged pull requests', kind: 'skill' },
+          { name: 'skill:retro', desc: 'Run a retrospective on a coding session', kind: 'skill' },
+        ] })
         case '/api/notes': return ok({ notes: S.notes(now), files: Object.keys(S.noteFiles) })
         case '/api/notes/file': return ok({ text: S.noteFiles[q.get('path') ?? ''] ?? null })
         case '/api/pm/agents': return ok(S.taskAgents())

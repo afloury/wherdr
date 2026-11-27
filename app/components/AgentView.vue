@@ -159,6 +159,7 @@ const ctl = createTerminal(props.paneId, {
   input: () => live.value,
   // Claude Code accelerates wheel reports: see createWheelPacer.
   wheelAccel: () => pane.value?.agent === 'claude',
+  keepSavedLines: () => pane.value?.agent === 'agy',
 })
 const chatRef = ref<{ scrollToEnd: (force: boolean) => void, reload: () => void, focusSearch: () => void, gotoUnanswered: () => void } | null>(null)
 // Questions of the agent's last message the draft does not answer yet (ChatView): the composer's reminder.
@@ -383,8 +384,12 @@ const dropHint = computed(() => pane.value?.agent === 'claude'
 
 // Agent menu: sheet on the phone, dropdown menu on a computer.
 useNotificationClock()
-// herdr-core: using the composer (tap or key, not its automatic focus) makes this screen's size the terminal's.
-function takeTerminalControl() { if (core) ctl.takeControl() }
+// herdr-core: using the composer (tap or key, not its automatic focus) makes
+// this screen's size the terminal's in the conversation, where the field is
+// what the user types in. Under the terminal it never does: that pane belongs
+// to whoever reads it at its own size until the user types in the terminal
+// itself ("Fit to this screen", typed text, a key-bar key).
+function takeTerminalControl() { if (core && mode.value === 'chat') ctl.takeControl() }
 // herdr-core: Esc in the empty composer stops the agent here as well, so that it also works
 // without the app shortcuts (phone layout); stopPropagation keeps the v2 shortcut from stopping twice.
 function onComposerKey(e: KeyboardEvent) {
@@ -601,7 +606,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         />
         <PhoneIdentity v-if="compactPhone && pane" :pane="pane" :workspace="workspace" @overview="openPlan" />
         <div v-else class="agent-head">
-          <div class="agent-title"><AlfredEmblem v-if="isAlfredPane(pane)" class="head-emblem" /><ProjectBadge v-if="badge" class="head-badge" :text="badge.text" :color="badge.color" />{{ headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
+          <div class="agent-title"><AlfredEmblem v-if="isAlfredPane(pane)" class="head-emblem" /><TaskPill v-if="badge && !badge.coordinator && pane?.task" :task="pane.task" :text="badge.text" :color="badge.color" /><ProjectBadge v-else-if="badge" class="head-badge" :text="badge.text" :color="badge.color" />{{ headTitle }} <UIcon v-if="pane && paneNotificationsMuted(pane)" name="i-lucide-bell-off" class="notification-muted" :title="t('Muted')" /></div>
           <div class="agent-meta">
             <!-- No state known yet (startup): nothing rather than "closed". -->
             <StatusPill v-if="pane || herdrState.ok" :pane="pane" kind />

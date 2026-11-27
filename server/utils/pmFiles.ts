@@ -1,6 +1,9 @@
 // What each started task touches (shared/pm/files.ts), read from its worktree:
-// the paths its worker declared in its files marker, and the files it changed
-// (committed or not, new ones included) since its fork from its base as of now:
+// the paths its worker declared in its files marker, and the files it changed.
+// With a recorded start (branch.<b>.wherdrstart) these are the task's own commits
+// (start..HEAD on its first parent, merges left out, so what a merge of staging or the
+// base brought in is never counted) plus uncommitted and new files. Without one, the
+// files changed since its fork from its base as of now:
 // origin's base, fetched now (the task's base, else its workflow's PR base, else
 // origin's default branch when neither names one,
 // asked of origin when origin/HEAD is unset), else the local one when origin has
@@ -19,6 +22,7 @@ import { exec, mergingOf, noteWorkflowBase, runOn, startTask, type PmLaunchDeps 
 const SEP = '--wherdr-files--'
 export const FILES_SCRIPT = `wt=$1 b=$2 base=$4
 cat "$3" 2>/dev/null; echo; echo "${SEP}"
+st=$(git -C "$wt" config "branch.$b.wherdrstart" 2>/dev/null)
 s=
 if git -C "$wt" remote get-url origin >/dev/null 2>&1; then
   [ -n "$base" ] || base=$(git -C "$wt" symbolic-ref -q --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
@@ -28,7 +32,13 @@ if git -C "$wt" remote get-url origin >/dev/null 2>&1; then
   else r=0; git -C "$wt" ls-remote -q --exit-code origin "refs/heads/$base" >/dev/null 2>&1 || r=$?; [ "$r" = 2 ] || exit 1; fi
 fi
 [ -n "$s" ] || [ -z "$base" ] || s=$(git -C "$wt" merge-base HEAD "$base" 2>/dev/null)
-[ -n "$s" ] || s=$(git -C "$wt" config "branch.$b.wherdrstart") || exit 0
+if [ -n "$st" ]; then
+  # The task's own commits: its first-parent line from its start (or from the base it fast-forwarded to), merges left out.
+  if [ -n "$s" ] && git -C "$wt" merge-base --is-ancestor "$st" "$s" 2>/dev/null; then st=$s; fi
+  git -C "$wt" log --first-parent --no-merges --name-only --format= "$st..HEAD" 2>/dev/null; git -C "$wt" diff --name-only HEAD 2>/dev/null
+  git -C "$wt" ls-files --others --exclude-standard 2>/dev/null; exit 0
+fi
+[ -n "$s" ] || exit 0
 git -C "$wt" diff --name-only "$s" 2>/dev/null; git -C "$wt" ls-files --others --exclude-standard 2>/dev/null`
 
 export function parseFilesRead(out: string): { files: string[], changed: string[] } {

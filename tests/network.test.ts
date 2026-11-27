@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { funnelExposes, tailnetPeers, targetPort } from '../bin/lib/tailnet.mjs'
 import {
   checkClient, forwardedClients, gateDecision, isLoopbackIp, isTailnetIp, listenVerdict, netContext,
-  ensureFresh, ensureRecent, parseTrustedNetworks, plainIp, refreshTailscale, resetNetworkStateForTests, tailnetKnown, type NetContext, type TailscaleState,
+  ensureFresh, fromThisComputer, ensureRecent, parseTrustedNetworks, plainIp, refreshTailscale, resetNetworkStateForTests, tailnetKnown, type NetContext, type TailscaleState,
 } from '../server/utils/network'
 
 const TS: TailscaleState = { running: true, selfIps: ['100.90.1.2', 'fd7a:115c:a1e0::2'], peerIps: ['100.101.102.103', 'fd7a:115c:a1e0::5'], funnel: false }
@@ -378,5 +378,17 @@ describe('listening address', () => {
     expect(listenVerdict('0.0.0.0', t('10.147.17.0/24'), up)).toMatchObject({ ok: true, warn: expect.stringContaining('10.147.17.0/24') })
     expect(listenVerdict('192.168.1.2', t('10.0.0.0/8'), up).ok).toBe(false)
     expect(listenVerdict('0.0.0.0', t('any'), up)).toMatchObject({ ok: true, warn: expect.stringContaining('ANY network') })
+  })
+})
+
+describe('fromThisComputer', () => {
+  it('is true for loopback and for this computer behind tailscale serve, false for any other client', () => {
+    const c = ctx({ trusted: parseTrustedNetworks('') }, '')
+    expect(fromThisComputer('127.0.0.1', {}, c)).toBe(true)
+    expect(fromThisComputer('127.0.0.1', { 'x-forwarded-for': '100.90.1.2' }, { ...c, passkey: true })).toBe(true)
+    expect(fromThisComputer('127.0.0.1', { 'x-forwarded-for': 'fd7a:115c:a1e0::2' }, { ...c, passkey: true })).toBe(true)
+    expect(fromThisComputer('127.0.0.1', { 'x-forwarded-for': '100.101.102.103' }, { ...c, passkey: true })).toBe(false)
+    expect(fromThisComputer('100.101.102.103', {}, c)).toBe(false)
+    expect(fromThisComputer('127.0.0.1', { 'x-forwarded-for': '100.90.1.2' }, { ...c, tailscale: null, passkey: true })).toBe(false)
   })
 })

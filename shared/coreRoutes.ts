@@ -43,13 +43,15 @@ const BASE = [
   'chat', 'chat/image', 'prompt', 'input', 'interrupt', 'close', 'agents', 'codex-restart',
   'dirs', 'isgit', 'quotas', 'claude-statusline', 'claude-setup',
   'machine/add', 'machine/connect', 'machine/core', 'machine/core-rename', 'machine/core-forget',
-  'upload', 'attach', 'file', 'keep', 'checklist', 'open-editor',
+  'upload', 'attach', 'file', 'keep', 'checklist', 'open-editor', 'open-terminal', 'open-folder',
   'dictation/status', 'dictation/key', 'dictation/transcribe', 'dictation/prepare', 'GET dictation/models',
   'dictation/rewrite', 'GET dictation/text-models',
   // Action buttons an agent puts in its reply (shared/uiActions.ts).
   'GET ui/card', 'ui/act',
   // The notes agents write, read-only (NotesPanel.vue).
   'GET notes', 'GET notes/file',
+  // What an omp or Claude Code terminal's "/" list offers, read-only (Composer.vue).
+  'GET commands',
 ]
 
 export const CORE_ROUTES = [...BASE, ...a, ...b, ...c, ...d, ...e, ...f, ...g, ...h, ...i, ...j, ...k, ...l, ...m, ...n, ...o, ...p, ...q, ...r, ...s, ...t, ...u, ...v, ...w, ...x, ...y, ...z]

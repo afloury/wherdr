@@ -9,7 +9,8 @@
 import type { ToHandle } from '#shared/pm/board'
 
 const all = ref<ToHandle[]>([])
-const tasks = computed(() => all.value.filter(x => projectOnBar(x.project)))
+// Tasks that need the user now have their own card (NeedsYouCard): not counted twice.
+const tasks = computed(() => all.value.filter(x => !x.needsHuman && projectOnBar(x.project)))
 const load = () => api<ToHandle[]>('/api/pm/handle').then((v) => { all.value = Array.isArray(v) ? v : []; markHomeLoad('handle', true) }, () => markHomeLoad('handle', false))
 let timer: ReturnType<typeof setInterval> | undefined
 // Read while the card is on screen: a hidden page waits for the next tick it is shown.
@@ -33,9 +34,6 @@ watch(homeRetryTick, () => { if (homeFirstLoad.handle !== 'ok') load() }) // the
 </template>
 
 <style scoped>
-.review-card { display: flex; align-items: center; gap: 12px; width: 100%; min-width: 0; min-height: 56px; padding: 10px 12px; border: 1px solid var(--line); border-left: 2px solid var(--blocked); background: var(--surface); color: var(--text); text-align: left; cursor: pointer; }
-.review-card:hover { background: var(--surface-2); }
-.review-card:focus-visible { outline: 1px solid var(--mauve); outline-offset: -1px; }
 .review-count { flex: none; min-width: 28px; color: var(--blocked); font: 600 20px/1 var(--display); text-align: center; }
 .review-text { flex: 1; min-width: 0; display: grid; gap: 2px; }
 .review-text b { font: 600 14px/1.3 var(--display); }

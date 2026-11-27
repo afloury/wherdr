@@ -2,13 +2,14 @@
 
 [Documentation](README.md) · [Project](../README.md)
 
-Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conversation mode; any other terminal shows only its
-[terminal](terminal.md). How wherdr finds the conversation file on herdr-core is described in
+Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent terminals open in conversation mode; any other terminal shows only its
+[terminal](terminal.md). Command Code conversations are Linux-only for now. How wherdr finds the conversation file on herdr-core is described in
 [herdr-core › Conversations](core.md#conversations).
 
-- **Conversation view**: the agent's real transcript (Claude Code, Codex, Devin, Antigravity and Hermes Agent), rendered as
+- **Conversation view**: the agent's real transcript (Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent), rendered as
   Markdown, with grouped tool calls, images (full-screen viewer with pinch / wheel zoom and pan),
-  timestamps, search and infinite scroll back to the first message. Every message shows its time,
+  timestamps, search and infinite scroll back to the first message (Command Code follows the bounded
+  reads described under [herdr-core › Conversations](core.md#conversations)). Every message shows its time,
   muted and always on the right: under your messages, at the end of the agent reply's action
   row or of its end-of-turn line (`✓ 27 s · 1 action … 21:39`), with the day for an earlier one (*Yesterday 21:39*, then a short
   date); hover or tap it for the full date and time. Reading a conversation never
@@ -23,6 +24,19 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   entry takes the card's place (shown once), with its run time and its output folded.
   Run while Claude is working: Claude Code queues the command and runs it once, when its turn
   ends; until then it shows only as its queued bubble, and the card starts when Claude runs it.
+  An inline command (`~/tools/update.sh 3.2.2`, `./script --flag`) is a command, not a path: an
+  executable path followed by arguments opens the command menu, while a bare path stays a path.
+  A command in an agent's reply also has **Run in split right**, **Run in split down** (a new shell
+  pane beside the conversation) and, in a browser on the agent's own computer, **Run in my terminal**:
+  each asks you to confirm, runs the command in the agent's folder, and stays open when it ends
+  (**Run in my terminal** is refused when that folder is outside the folders chat files may use).
+  A folder the agent writes (`~/project/`, with or without its closing slash) has **Open in split right** and **Open in split down**
+  (a shell in that folder beside the conversation, on the agent's machine, from any device), and,
+  in a browser on the agent's own computer, **Open in my terminal**: it opens the computer's default terminal app
+  (Linux: `xdg-terminal-exec`, else `$TERMINAL`; macOS: the default terminal) outside wherdr, in
+  your shell, in that folder. **Open in file manager** shows the same folder in the desktop's file
+  manager (`xdg-open`, or `open` on macOS). Neither is offered on a phone, a remote browser or for an agent on
+  another machine, and only for folders chat files may use (Settings › Security).
 - **Following new messages**: a new or growing reply (typed in as it arrives, or shown at once)
   keeps the view at the bottom only if you were at the bottom. Scroll up (wheel, touch, keyboard
   or scrollbar) and the view stays where you are until you scroll back to the bottom or tap the
@@ -216,7 +230,11 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   never its file path, also when the message was sent again (**Send now**, **Retry**) or waited
   in the agent's queue.
   Slash commands typed in the field (`/compact`, `/clear`…) are sent as text; **+** also lists
-  the common ones of Claude Code, Codex, omp and Antigravity. A command that opens a panel or a
+  the common ones of Claude Code, Codex, omp and Antigravity. Typing `/` at the start of an omp or
+  Claude Code field lists the commands and skills that agent has, so that a skill is found without
+  knowing its name (`/ret` offers `/skill:retro`): the list narrows as you type, `↑` `↓` move, `Tab`
+  or `Enter` complete the highlighted one, `Esc` closes it, a tap picks on a phone, and **+** opens it
+  too. It is read from the agent itself, on the pane's own machine and in its folder, followed by a short fixed list of the commands the agent keeps to its screen (`/new`, `/resume`, `/permissions`…; the agent's own entry wins). A command that opens a panel or a
   picker (`/context`, `/model`…) shows the interactive terminal over the conversation. **Stop** (or `Esc`
   in the empty field) interrupts the agent and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
@@ -231,8 +249,8 @@ Claude Code, Codex, Devin, Antigravity and Hermes Agent terminals open in conver
   hidden; a reading taken while omp rests, or before its panel hid the gauge, is marked as
   the last one.
 - **Composer and terminal together** on a computer: under an agent's terminal, the composer stays
-  available; typing in it takes control of the terminal's size ([Terminal](terminal.md)).
-- The model and effort pickers, the slash-command list and Codex update cards are v2 only.
+  available without taking control of the terminal's size ([Terminal](terminal.md)).
+- The model and effort pickers and Codex update cards are v2 only.
 
 An agent's reply can be quoted in the field question by question and point by point (a list
 item or a paragraph that asks nothing), so that one message answers them all:
@@ -364,6 +382,8 @@ field, so nothing moves when it comes or goes.
 **Settings › Conversation** has three tabs, each kept in the address so a link opens it:
 
 - **Display** (`#/settings?section=conversation&tab=display`, the default): default pane view,
+  **Copy on select** (selecting text with the mouse, in a conversation or the terminal, copies it at
+  once and shows *Copied*; never in a text field; on by default on a computer, off on a phone),
   typewriter, reply style and quoted replies. The typewriter's sample reply sits under **Show me**
   (closed by default; it plays once on opening, ↻ replays it, **Hide** folds it).
 - **Dictation** (`#/settings?section=conversation&tab=dictation`): off, on this device (its
