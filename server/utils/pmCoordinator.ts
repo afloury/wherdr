@@ -9,7 +9,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { projectPlace } from '../../shared/pm/places'
 import { notesStore, runNotes, type NotesStore } from './notesStore'
-import { FIRST_REPLY, MAIN, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, ROOT_RULE_FILES, isPlainFolder, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepBackRefusal, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, type NotedTurn, PROPOSAL_ANSWERS, workspaceView } from '../../shared/pm/coordinator'
+import { FIRST_REPLY, MAIN, PREF_WORDS, canResume, canRunCoordinator, coordinatorBy, commandList, coordinatorArgs, updateNotice, isCoordinatorProgram, promptAsArg, mainRoleFiles, OWN_ROLE_FILES, parseCommand, roleFiles, ROOT_RULE_FILES, isPlainFolder, citedSpecChange, specChangeRefusal, specChangedText, specDiff, tellTarget, stepBackRefusal, stepDoneEvent, templateDiff, templateEditRefusal, type CoordinatorAgent, type CoordinatorProgram, type CoordinatorView, type Proposal, type ProposalAnswer, type ProposalOutcome, type Turn, type NotedTurn, PROPOSAL_ANSWERS, workspaceView } from '../../shared/pm/coordinator'
 import { FEATURE, WORKSPACE_FIRST, coordinatorKey, handledBy, isWorkspace, membersOf, ownWorkflow } from '../../shared/pm/workspace'
 import { initialState, onEvent, planSteps, currentStep, durationMs, waitStep } from '../../shared/pm/steps'
 import { templateChanges } from '../../shared/pm/templateText'
@@ -25,7 +25,7 @@ import { automationLine, proposalLine, proposeAutomation } from '../../shared/pm
 import type { Template } from '../../shared/pm/workflow'
 import { allowedMachines, machineNamed, taskMachine, type Project } from '../../shared/pm/project'
 import { projectOf, showIds, shownKey, shownTaskId, storedTaskId } from '../../shared/pm/projectKey'
-import { taskPlan, trustKeys, waitOf, type Task } from '../../shared/pm/run'
+import { modelRefusal, taskPlan, trustKeys, waitOf, type Task } from '../../shared/pm/run'
 import { HerdrError } from './herdr'
 import { cardNotesMessage, tellCardOutcome } from './cardOutcome'
 import { cardNoteOf } from '../../shared/uiActions'
@@ -51,7 +51,7 @@ import { CHAIN_WAIT, DONE_CMD, afterIds, mergeAfterIds } from '../../shared/pm/a
 import { checkTaskContext } from '../../shared/pm/context'
 import { READ_LINES, lastWords } from './pmRead'
 import { READ_COMMANDS, reachRefusal } from '../../shared/pm/reach'
-import { resumeRefusal } from '../../shared/pm/stop'
+import { agentChangeRefusal, resumeRefusal } from '../../shared/pm/stop'
 import { deferRefusal } from '../../shared/pm/park'
 import { pacedStart, paceGauge, paceLine } from '../../shared/pm/pace'
 import { readQuotas } from './quotas'
@@ -581,11 +581,17 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       if (cmd.name === 'task edit' && cmd.prefs) {
         const task = await taskOf(cmd.task), asked = cmd.prefs
         if (turn !== 'user' && !pilot?.on) throw new HerdrError('refused', 'In a wake, the agents are changed only with the autopilot on')
-        if (task.step?.started || task.state === 'working' || task.run) throw new HerdrError('refused', `${task.id} has started: its agents change only before its first start`)
+        // A started one, only stopped at its worker's step: its next start runs the new agent in a new conversation.
+        const started = !!(task.step?.started || task.state === 'working' || task.run)
+        const holder = started && t && task.step ? currentStep(planOf(t, task, p), task.step)?.holder : undefined
+        const why = started ? agentChangeRefusal(task, holder) : undefined
+        if (why) throw new HerdrError('refused', why)
         // Checked as task add's; "" puts back the workflow's.
         const prefs = await store.taskPrefs({ ...task.prefs, ...asked })
-        const said = Object.entries(asked).map(([k, v]) => `${k === 'agent' ? 'worker' : 'reviewer'}: ${v || 'the workflow\'s'}`).join(', ')
-        const saved = await store.updateTask(task.id, x => ({ ...x, prefs }), { by, text: `agents: ${said} (${cmd.reason})` })
+        const misfit = t ? modelRefusal(t, { type: task.type, prefs }, await namedAgents()) : undefined
+        if (misfit) throw new HerdrError('refused', misfit)
+        const said = Object.entries(asked).map(([k, v]) => `${PREF_WORDS[k as keyof typeof asked]}: ${v || 'the workflow\'s'}`).join(', ')
+        const saved = await store.updateTask(task.id, x => ({ ...x, prefs }), { by, text: `agents: ${said}${started ? ', from its next start, in a new conversation' : ''} (${cmd.reason})` })
         if (cmd.title === undefined && cmd.description === undefined) return { task: saved }
       }
       const why = specChangeRefusal(turn)
@@ -635,6 +641,8 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
       // Added in the user's turn (or relayed by Alfred): their request, never held by the pace.
+      const misfit = cmd.prefs ? modelRefusal(needPlan(), { type: cmd.type, prefs: cmd.prefs }, await namedAgents()) : undefined
+      if (misfit) throw new HerdrError('refused', misfit)
       if (cmd.refs?.length && !(await store.task(storedTaskId(projects, cmd.feature!) ?? cmd.feature!))?.plan?.file) throw new HerdrError('bad_input', `--refs: ${cmd.feature} has no plan file: name it when the feature is split ("plan": "<the path of its tasks.md>")`)
       const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.mergeAfter ? { mergeAfter: cmd.mergeAfter } : {}), files: cmd.files ?? [], ...(cmd.feature ? { feature: cmd.feature } : {}), ...(cmd.refs?.length ? { refs: cmd.refs } : {}), ...(cmd.weight ? { weight: cmd.weight } : {}), ...(cmd.fromBranch ? { fromBranch: cmd.fromBranch } : {}), ...(cmd.context ? { context: cmd.context } : {}), ...(cmd.prefs ? { prefs: cmd.prefs } : {}), origin: asked ? 'user' : 'coordinator', addedBy: scope })
       const task = !asked ? { ...added, autopilot: true as const } : added

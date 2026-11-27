@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { validateTaskInput, validateTemplate, type Template } from '../shared/pm/workflow'
-import { workerPlan, type Task } from '../shared/pm/run'
+import { modelRefusal, workerPlan, type Task } from '../shared/pm/run'
+import { agentChangeRefusal } from '../shared/pm/stop'
+import { parseCommand } from '../shared/pm/coordinator'
 import { combineGuards, mayMerge } from '../shared/pm/guards'
 
 const template = (): Template => ({
@@ -102,6 +104,42 @@ describe('validateTemplate', () => {
     const task = (prefs: Record<string, string>) => ({ type: 'simple', prefs }) as Task
     expect(workerPlan(template(), task({ agent: 'omp', model: '@plan:high' }))).toEqual({ program: 'omp', model: '@plan:high' })
     expect(workerPlan(template(), task({ agent: 'claude', model: '@plan' }))).toEqual({ reason: 'Invalid model "@plan"' })
+  })
+})
+
+describe('a model per program', () => {
+  const t = (): Template => ({ ...template(), prefs: { agent: 'claude', model: 'sonnet', reviewModel: 'opus', models: { codex: 'gpt-5' } } })
+  const task = (prefs?: Record<string, string>) => ({ type: 'simple', ...(prefs ? { prefs } : {}) }) as Task
+
+  it('takes prefs.models for another program than the one model was set for', () => {
+    expect(workerPlan(t(), task())).toEqual({ program: 'claude', model: 'sonnet' })
+    expect(workerPlan(t(), task({ agent: 'codex' }))).toEqual({ program: 'codex', model: 'gpt-5' })
+    expect(workerPlan(t(), task({ agent: 'codex', model: 'gpt-5-mini' }))).toEqual({ program: 'codex', model: 'gpt-5-mini' })
+    // omp takes any family: its model is the one set for it, or the nearest one.
+    expect(workerPlan(t(), task({ agent: 'omp' }))).toEqual({ program: 'omp', model: 'sonnet' })
+  })
+
+  it('refuses a model of another program\'s family, with how to fix it; an unknown name passes', () => {
+    const why = 'model sonnet is a Claude model; codex needs a Codex model: set --model or prefs.models.codex'
+    expect(workerPlan({ ...t(), prefs: { agent: 'claude', model: 'sonnet', reviewModel: 'opus' } }, task({ agent: 'codex' }))).toEqual({ reason: why, misfit: true })
+    expect(modelRefusal(t(), task({ model: 'gpt-5' }))).toBe('model gpt-5 is a Codex model; claude needs a Claude model: set --model or prefs.models.claude')
+    expect(modelRefusal(t(), task({ reviewAgent: 'codex' }))).toContain('set --review-model or prefs.reviewModel')
+    expect(modelRefusal(t(), task({ reviewAgent: 'codex', reviewModel: 'o3' }))).toBeUndefined()
+    expect(modelRefusal(t(), task({ agent: 'codex', model: 'my-local-model', reviewAgent: 'claude' }))).toBeUndefined()
+    expect(paths(validateTemplate({ ...t(), prefs: { ...t().prefs, models: { codex: 'opus', gemini: 'x' } } }))).toEqual(['prefs.models.codex', 'prefs.models.gemini'])
+  })
+
+  it('task add and task edit take --model and --review-model', () => {
+    expect(parseCommand(['task', 'add', 'Fix it', '--type', 'simple', '--agent', 'codex', '--model', 'gpt-5', '--review-model', 'opus'])).toMatchObject({ prefs: { agent: 'codex', model: 'gpt-5', reviewModel: 'opus' } })
+    expect(parseCommand(['task', 'edit', 'WEB-1', '--model', '', '--reason', 'back to the workflow'])).toMatchObject({ prefs: { model: '' } })
+    expect(parseCommand(['task', 'add', 'Fix it', '--type', 'simple', '--model', 'not a model'])).toEqual({ error: expect.stringContaining('--model') })
+  })
+
+  it('changes a started task\'s agents only once it is stopped at its worker\'s step', () => {
+    const stopped = { ...task(), id: 'WEB-1', state: 'waiting', stopped: { by: 'the user', why: 'wrong model', at: 1 }, step: { at: 1, started: true } } as unknown as Task
+    expect(agentChangeRefusal(stopped, 'worker')).toBeUndefined()
+    expect(agentChangeRefusal({ ...stopped, state: 'working', stopped: undefined }, 'worker')).toContain('stop it first')
+    expect(agentChangeRefusal(stopped, 'reviewer')).toContain('its worker does not hold')
   })
 })
 

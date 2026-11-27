@@ -57,15 +57,25 @@ export function resumeRefusal(task: Task, how: Resume, by: Stopper, step: Planne
   if (how === 'as-is' && !step?.ends) return 'This step has no end to skip'
 }
 
+// task edit --agent/--model on a started task: only one stopped at its worker's
+// step (its next start runs the new agent, in a new conversation), never while it works.
+export function agentChangeRefusal(task: Task, holder: string | undefined): string | undefined {
+  if (task.step?.done) return `${task.id} is done`
+  if (task.state === 'working' || !task.stopped) return `${task.id} has started and is not stopped: stop it first, then change its agents`
+  if (holder !== 'worker') return `${task.id} is stopped at a step its worker does not hold: its agents change only at the worker's step`
+}
+
 // The note a continued worker reads first: why it stopped, where the work is,
 // and what its step asks now (a send-back's findings, or the step's text).
-export function handoverText(task: Task, plan: PlannedStep[], branch: string): string {
+// earlier: the agent that left it (another one now when the task's agents changed).
+export function handoverText(task: Task, plan: PlannedStep[], branch: string, earlier?: { program: string, model: string }): string {
   const s = task.step!, st = task.stopped!
   const due = dueText(plan, { ...s, told: undefined, yourTurn: undefined })
   const log = (task.log ?? []).slice(-5).map(e => `- ${new Date(e.at).toISOString().slice(0, 16)} ${e.by}: ${e.text.split('\n')[0]!.slice(0, 200)}`)
   return [
     '## Handover', '',
-    `An earlier agent worked on this task and was stopped by ${st.by}: ${st.why}`,
+    `An earlier agent${earlier ? ` (${earlier.program}, ${earlier.model})` : ''} worked on this task and was stopped by ${st.by}: ${st.why}`,
+    ...(earlier ? ['Its conversation is not yours to take up: what it did is in the worktree and the task\'s log.'] : []),
     'Its work is in this worktree as it left it: read `git status` and '
     + `\`git log $(git config branch.${branch}.wherdrstart)..HEAD\` before you change anything.`, '',
     ...(log.length ? ['The task\'s last log lines:', ...log, ''] : []),
