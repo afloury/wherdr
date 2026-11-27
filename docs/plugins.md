@@ -135,9 +135,23 @@ export default function (wherdr) {
 | API | Meaning |
 |---|---|
 | `wherdr.apiVersion` | `1`. Additions keep the number; a breaking change raises it. |
+| `wherdr.draft.get()` | The open conversation's draft text, or `null` when no conversation is open. |
+| `wherdr.draft.set(text)` | Replaces the draft of the open conversation (nothing is sent). No-op when no conversation is open. |
 | `wherdr.draft.insert(text)` | Appends `text` to the draft of the open conversation (nothing is sent). No-op when no conversation is open. |
+| `wherdr.draft.focus()` | Focuses the open conversation's composer. Never steals the focus of an open window; on iOS it raises the keyboard only inside a user gesture. |
 | `wherdr.currentAgent()` | `{ id, agent, name, machine }` of the open conversation, or `null` (`agent` is `claude`, `codex`, `omp`… or `null` for a terminal). |
 | `wherdr.onNavigate(cb)` | `cb(path)` after each page change (`/`, `/settings?section=plugins`…). Returns a tracked, idempotent disposer. |
+
+### Drafts (`wherdr.draft`)
+
+A plugin can prepare input in the open conversation's composer; sending stays with the person:
+
+- **`wherdr.draft.get()`** returns the current draft text, or `null` when no conversation is open.
+- **`wherdr.draft.set(text)`** replaces the draft text (`""` clears it). Does nothing when no conversation is open.
+- **`wherdr.draft.insert(text)`** appends `text`, after a space when the draft does not end in one. Does nothing when no conversation is open.
+- **`wherdr.draft.focus()`** focuses the composer's field. It never steals the focus of an open window (a sheet, a dialog), and **on iOS it raises the keyboard only when called synchronously inside a user gesture** (such as a button's `click` handler).
+
+**Nothing is ever sent.** No plugin call submits a draft, sends a message or answers an agent's question, menu or permission prompt: the human stays the sender.
 
 ### Lifecycle and failure isolation
 

@@ -6,7 +6,12 @@ import type { ClientPluginInfo, PluginPrefs } from '../../shared/clientPlugins'
 export interface CurrentAgent { id: string, agent: string | null, name: string | null, machine: string | null }
 export interface WherdrApi {
   apiVersion: 1
-  draft: { insert: (text: string) => void }
+  draft: {
+    get: () => string | null
+    set: (text: string) => void
+    insert: (text: string) => void
+    focus: () => void
+  }
   currentAgent: () => CurrentAgent | null
   // Returns the unsubscribe function.
   onNavigate: (cb: (path: string) => void) => () => void
@@ -17,7 +22,11 @@ export interface HostDeps {
   // The installed plugins and the Community plugins switch (off: none loads).
   list: () => Promise<{ plugins: ClientPluginInfo[], enabled: boolean }>
   load: (info: ClientPluginInfo) => Promise<{ default?: unknown }>
+  // The open conversation's draft: null when no conversation is open, writes no-op then.
+  getDraft: () => string | null
+  setDraft: (text: string) => void
   insertDraft: (text: string) => void
+  focusDraft: () => void
   currentAgent: () => CurrentAgent | null
   // Subscribes to route changes; returns the unsubscribe function.
   subscribeNavigate: (cb: (path: string) => void) => () => void
@@ -103,7 +112,12 @@ export function createPluginHost(deps: HostDeps) {
     }
     return {
       apiVersion: 1,
-      draft: { insert: (text) => { if (typeof text === 'string' && text) deps.insertDraft(text) } },
+      draft: {
+        get: () => deps.getDraft(),
+        set: (text) => { if (typeof text === 'string') deps.setDraft(text) },
+        insert: (text) => { if (typeof text === 'string' && text) deps.insertDraft(text) },
+        focus: () => { deps.focusDraft() },
+      },
       currentAgent: () => deps.currentAgent(),
       onNavigate: (cb) => {
         if (typeof cb !== 'function') throw new TypeError('onNavigate expects a function')
