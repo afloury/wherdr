@@ -126,6 +126,9 @@ describe('a model per program', () => {
     expect(modelRefusal(t(), task({ reviewAgent: 'codex' }))).toContain('set --review-model or prefs.reviewModel')
     expect(modelRefusal(t(), task({ reviewAgent: 'codex', reviewModel: 'o3' }))).toBeUndefined()
     expect(modelRefusal(t(), task({ agent: 'codex', model: 'my-local-model', reviewAgent: 'claude' }))).toBeUndefined()
+    // Inherited, with no prefs of the task's own (task add with no flag): refused too.
+    const codexType: Template = { ...t(), prefs: { agent: 'claude', model: 'sonnet', reviewModel: 'opus' }, taskTypes: { simple: { ...template().taskTypes.simple!, prefs: { agent: 'codex', reviewAgent: 'claude' } } } }
+    expect(modelRefusal(codexType, task())).toBe(why)
     expect(paths(validateTemplate({ ...t(), prefs: { ...t().prefs, models: { codex: 'opus', gemini: 'x' } } }))).toEqual(['prefs.models.codex', 'prefs.models.gemini'])
   })
 

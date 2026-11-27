@@ -641,7 +641,8 @@ async function command(deps: Deps, token: unknown, body: CliBody, visit: { on?: 
       if (why) throw new HerdrError('refused', why)
       if (!Object.hasOwn(needPlan().taskTypes, cmd.type)) throw new HerdrError('bad_input', `No task type "${cmd.type}": ${Object.keys(t!.taskTypes).join(', ')}`)
       // Added in the user's turn (or relayed by Alfred): their request, never held by the pace.
-      const misfit = cmd.prefs ? modelRefusal(needPlan(), { type: cmd.type, prefs: cmd.prefs }, await namedAgents()) : undefined
+      // The task's own prefs, else its type's and the workflow's: a misfit there is refused here too, not only at its start.
+      const misfit = modelRefusal(needPlan(), { type: cmd.type, ...(cmd.prefs ? { prefs: cmd.prefs } : {}) }, await namedAgents())
       if (misfit) throw new HerdrError('refused', misfit)
       if (cmd.refs?.length && !(await store.task(storedTaskId(projects, cmd.feature!) ?? cmd.feature!))?.plan?.file) throw new HerdrError('bad_input', `--refs: ${cmd.feature} has no plan file: name it when the feature is split ("plan": "<the path of its tasks.md>")`)
       const added = await store.addTask({ project: key, title: cmd.title, type: cmd.type, description: cmd.description ?? '', after: cmd.after ?? '', ...(cmd.mergeAfter ? { mergeAfter: cmd.mergeAfter } : {}), files: cmd.files ?? [], ...(cmd.feature ? { feature: cmd.feature } : {}), ...(cmd.refs?.length ? { refs: cmd.refs } : {}), ...(cmd.weight ? { weight: cmd.weight } : {}), ...(cmd.fromBranch ? { fromBranch: cmd.fromBranch } : {}), ...(cmd.context ? { context: cmd.context } : {}), ...(cmd.prefs ? { prefs: cmd.prefs } : {}), origin: asked ? 'user' : 'coordinator', addedBy: scope })
