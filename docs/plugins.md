@@ -102,8 +102,10 @@ writing code, install it as is.
 1. **Write** `src/index.ts` (or plain `index.js`). Export an object `{ activate(wherdr), deactivate() }`
    (or a function) as described in [The module](#the-module). Find your zone with its
    `data-wherdr` marker, and attach to it again when it reappears (use a `MutationObserver` and/or
-   `wherdr.onNavigate`). Undo everything in `deactivate()`. Do nothing at the top level of the module:
-   it runs as soon as the file loads, even when the plugin is turned off before it activates.
+   `wherdr.onNavigate`). Undo your own DOM side effects in `deactivate()`; what you registered
+   through the `wherdr` object is disposed automatically when the plugin stops. Do nothing at the
+   top level of the module: it runs as soon as the file loads, even when the plugin is turned off
+   before it activates.
 2. **Build** one ES module with no external imports (the example uses esbuild, installed with the repo's
    dependencies; any bundler works): `npx esbuild src/index.ts --bundle --format=esm --target=es2020 --outfile=index.js`.
    For the example: `npm run build:example-plugin` from the repo root.
@@ -135,15 +137,24 @@ export default function (wherdr) {
 | `wherdr.apiVersion` | `1`. Additions keep the number; a breaking change raises it. |
 | `wherdr.draft.insert(text)` | Appends `text` to the draft of the open conversation (nothing is sent). No-op when no conversation is open. |
 | `wherdr.currentAgent()` | `{ id, agent, name, machine }` of the open conversation, or `null` (`agent` is `claude`, `codex`, `omp`… or `null` for a terminal). |
-| `wherdr.onNavigate(cb)` | `cb(path)` after each page change (`/`, `/settings?section=plugins`…). Returns the function that unsubscribes. |
+| `wherdr.onNavigate(cb)` | `cb(path)` after each page change (`/`, `/settings?section=plugins`…). Returns a tracked, idempotent disposer. |
 
-### Failures are isolated
+### Lifecycle and failure isolation
 
-A plugin that throws while loading or activating, does not answer within 8 seconds, has no valid
-default export, or whose `onNavigate` callback throws, is **disabled**: its listeners are removed
-and Settings › Plugins shows it as "Disabled after an error" with the message. The other plugins
-and the app keep working. The switch tries it again. Errors thrown by your own DOM listeners
-(like the button above) are yours to catch.
+The host owns the lifecycle of what a plugin registers:
+
+- **Tracked, idempotent disposers.** Every call that registers something (`onNavigate`) returns a
+  disposer `() => void`; calling it more than once, or after the plugin stopped, is safe.
+- **Cleaned up on stop.** When a plugin stops — its switch, an update, a removal, [Community
+  plugins](#community-plugins-switch) turned off, or a failure — the host disposes everything it
+  registered, whether `deactivate()` is missing, throws, or returns a rejected promise. A
+  registration made after the plugin stopped never reaches the page.
+- **Failures are isolated.** A plugin that throws while loading or activating, does not answer
+  within 8 seconds, has no valid default export, or whose `onNavigate` callback throws or returns a
+  rejected promise is **disabled**: its registrations are disposed and Settings › Plugins shows it
+  as "Disabled after an error" with the message. The other plugins and the app keep working. The
+  switch tries it again. Errors thrown by your own DOM listeners (like the button above) are yours
+  to catch.
 
 ### Markers: `data-wherdr`
 

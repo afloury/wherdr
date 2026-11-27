@@ -148,6 +148,112 @@ describe('plugin host', () => {
     expect(h.rows()).toEqual([])
     expect(h.listError()).toBe('offline')
   })
+
+  it('registration disposers are idempotent, even after the plugin stopped', async () => {
+    let offs = 0
+    const counted = new Set<(p: string) => void>()
+    let first!: () => void
+    let second!: () => void
+    const s = setup({ p: (w: { onNavigate: (c: (p: string) => void) => () => void }) => {
+      first = w.onNavigate(() => {})
+      second = w.onNavigate(() => {})
+    } })
+    const h = createPluginHost({ ...s.deps, subscribeNavigate: (cb) => { counted.add(cb); return () => { offs++; counted.delete(cb) } } })
+    await h.init()
+    expect(counted.size).toBe(2)
+    first()
+    first()
+    expect(offs).toBe(1)
+    expect(counted.size).toBe(1)
+    await h.setEnabled('p', false)
+    expect(offs).toBe(2)
+    expect(counted.size).toBe(0)
+    second()
+    first()
+    expect(offs).toBe(2)
+  })
+
+  it('a registration whose teardown throws does not break the others nor deactivate', async () => {
+    const deactivate = vi.fn()
+    const counted = new Set<(p: string) => void>()
+    let n = 0
+    const s = setup({
+      p: {
+        activate: (w: { onNavigate: (c: (p: string) => void) => () => void }) => {
+          w.onNavigate(() => {})
+          w.onNavigate(() => {})
+        },
+        deactivate,
+      },
+    })
+    const h = createPluginHost({
+      ...s.deps,
+      subscribeNavigate: (cb) => {
+        counted.add(cb)
+        n++
+        const mine = n
+        return () => { counted.delete(cb); if (mine === 1) throw new Error('teardown boom') }
+      },
+    })
+    await h.init()
+    expect(counted.size).toBe(2)
+    await h.setEnabled('p', false)
+    expect(counted.size).toBe(0)
+    expect(deactivate).toHaveBeenCalledTimes(1)
+  })
+
+  it('a registration made after the plugin stopped never reaches the page', async () => {
+    let release!: () => void
+    const s = setup({
+      p: (w: { onNavigate: (c: (p: string) => void) => () => void }) => new Promise<void>((resolve) => {
+        release = () => { w.onNavigate(() => {}); resolve() }
+      }),
+    })
+    const init = s.host.init()
+    await vi.waitFor(() => expect(release).toBeTypeOf('function'))
+    await s.host.setEnabled('p', false)
+    release()
+    await init
+    expect(s.navs.size).toBe(0)
+    expect(s.status('p')).toBe('off')
+  })
+
+  it('a stale activation finishing after off-and-on leaves the new run alone', async () => {
+    const deactivate = vi.fn()
+    const releases: (() => void)[] = []
+    const s = setup({
+      p: {
+        activate: (w: { onNavigate: (c: (p: string) => void) => void }) => new Promise<void>((resolve) => {
+          const mine = releases.length + 1
+          releases.push(() => { w.onNavigate(() => s.insert(`nav${mine}`)); resolve() })
+        }),
+        deactivate,
+      },
+    })
+    const init = s.host.init()
+    await vi.waitFor(() => expect(releases).toHaveLength(1))
+    await s.host.setEnabled('p', false)
+    expect(deactivate).toHaveBeenCalledTimes(1)
+    const on = s.host.setEnabled('p', true)
+    await vi.waitFor(() => expect(releases).toHaveLength(2))
+    releases[0]!()
+    releases[1]!()
+    await init
+    await on
+    expect(s.status('p')).toBe('running')
+    expect(deactivate).toHaveBeenCalledTimes(1)
+    expect(s.navs.size).toBe(1)
+    s.insert.mockClear()
+    s.navs.forEach(cb => cb('/x'))
+    expect(s.insert).toHaveBeenCalledWith('nav2')
+  })
+
+  it('fails a plugin that registers a non-function callback', async () => {
+    const s = setup({ p: (w: { onNavigate: (c: unknown) => void }) => w.onNavigate(null) })
+    await s.host.init()
+    expect(s.status('p')).toBe('failed')
+    expect(s.host.rows()[0]!.error).toMatch(/expects a function/)
+  })
 })
 
 describe('plugin prefs', () => {
