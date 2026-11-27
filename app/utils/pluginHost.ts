@@ -105,19 +105,18 @@ export function createPluginHost(deps: HostDeps) {
     }
     // A host-invoked callback: skipped once the run is stale, a throw or a
     // rejection disables the plugin (which disposes its registrations).
-    // onResult shapes what the callback returned (a render's cleanup), in the
-    // same run only.
-    const guard = <T>(fn: () => T, onResult?: (res: T) => unknown): unknown => {
+    // onResult shapes what the callback returned (a render's cleanup).
+    const guard = <T>(fn: () => T, onResult?: (res: T, current: boolean) => unknown): unknown => {
       if (!isCurrent()) return undefined
       try {
         const res = fn()
         if (isThenable(res)) {
           return Promise.resolve(res).then(
-            v => (isCurrent() && onResult ? onResult(v as T) : undefined),
+            v => (onResult ? onResult(v as T, isCurrent()) : undefined),
             (e) => { if (isCurrent()) fail(id, e); return undefined },
           )
         }
-        return onResult ? onResult(res) : res
+        return onResult ? onResult(res, isCurrent()) : res
       } catch (e) {
         if (isCurrent()) fail(id, e)
         return undefined
@@ -147,9 +146,12 @@ export function createPluginHost(deps: HostDeps) {
         const off = deps.mountHeaderAction((el) => {
           if (!isCurrent()) return
           // The renderer's own cleanup never breaks the slot's teardown.
-          return guard(() => render(el), cleanup => (typeof cleanup === 'function'
-            ? () => { try { cleanup() } catch { /* a failing teardown changes nothing */ } }
-            : undefined)) as HeaderActionCleanup | Promise<HeaderActionCleanup | void> | void
+          return guard(() => render(el), (cleanup, current) => {
+            if (typeof cleanup !== 'function') return undefined
+            const safe = () => { try { cleanup() } catch { /* a failing teardown changes nothing */ } }
+            if (!current) { safe(); return undefined }
+            return safe
+          }) as HeaderActionCleanup | Promise<HeaderActionCleanup | void> | void
         })
         return track(off)
       },

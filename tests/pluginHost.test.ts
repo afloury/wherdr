@@ -324,6 +324,24 @@ describe('plugin host', () => {
     expect(s.status('p')).toBe('failed')
     expect(s.host.rows()[0]!.error).toMatch(/expects a function/)
   })
+
+  it('runs a renderer cleanup resolved after the plugin already stopped', async () => {
+    let resolve!: (cleanup: () => void) => void
+    const cleaned = vi.fn()
+    const s = setup({
+      p: (w: { mountHeaderAction: (r: (el: HTMLElement) => Promise<() => void>) => void }) => {
+        w.mountHeaderAction(() => new Promise((r) => { resolve = r }))
+      },
+    })
+    await s.host.init()
+    const pending: unknown[] = []
+    s.headerMounts.forEach(r => pending.push(r({})))
+    await vi.waitFor(() => expect(resolve).toBeTypeOf('function'))
+    await s.host.setEnabled('p', false)
+    resolve(() => { cleaned(); throw new Error('late teardown boom') })
+    await Promise.all(pending)
+    expect(cleaned).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('plugin prefs', () => {
