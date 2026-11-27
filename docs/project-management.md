@@ -1902,6 +1902,12 @@ A start wherdr refuses (the agent's program missing, say) puts the task in
 *Your turn* with the reason. An agent stopped on its login prompt is not
 waiting for you: it waits for the login, as an
 [incident](#why-agents-are-gone), and wherdr starts it again once the login is renewed.
+An agent that refuses its model in its first minutes and stays at its prompt
+(Codex's *The 'sonnet' model is not supported*, Claude's *There's an issue
+with the selected model*, omp's *Model "…" not found*) puts the task in *Your
+turn* with *The agent refused model sonnet (codex)*, and its coordinator is
+woken once with that reason (its autopilot on). wherdr does not start it again
+with the same model: give the task another one.
 
 When wherdr hands the worker work of its own (a catch-up with the base branch,
 a CI fix), the task leaves *Your turn* and its card says *the agent is

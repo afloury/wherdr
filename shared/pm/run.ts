@@ -179,6 +179,14 @@ export function trustKeys(screen: string, folder: string): string[] | undefined 
 // An agent that stopped because it is not logged in.
 // A running agent stopped on its login prompt (Claude's /login, Codex's sign in again): the account's login expired.
 export const isLoginPrompt = (text: string) => /please run \/login|login reached its time limit|oauth token has expired|log out and sign in again/i.test(text)
+// A running agent that refused its model at start, and sits at its prompt: the model it names, else ''.
+// Codex: "The 'sonnet' model is not supported when using Codex with a ChatGPT account." or "model list doesn't include";
+// Claude: "There's an issue with the selected model (x). It may not exist or you may not have access to it.";
+// omp: 'Model "x" not found'. undefined: no refusal.
+export function refusedModelOf(text: string): string | undefined {
+  const m = /The '([^']+)' model is not supported|issue with the selected model \(([^)]+)\)|\bModel "([^"]+)" not found|(model list doesn't include)/i.exec(text)
+  return m ? (m[1] ?? m[2] ?? m[3] ?? '') : undefined
+}
 export const isAuthFailure = (text: string) => /not logged in|log ?in again|please (run )?\/?login|authenticat|unauthori[sz]ed|invalid api key|\b401\b/i.test(text)
 export { PROGRAMS, SAME_MODEL, programName } from './workflow'
 
