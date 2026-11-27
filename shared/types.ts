@@ -26,9 +26,11 @@ export interface PromptDetail {
 }
 // `multi`: checkboxes (omp); a choice checks or unchecks, Enter moves on.
 // `typing`: omp's free-text answer field is open (single option: `free`).
+// `form`: read from omp's HTML-form ask: a free row (Other, a text field) takes its text where the
+// cursor stands, no Enter before it.
 // `tabs`: tabs of omp's multi-question "Ask" box (the last one is Submit),
 // `tab` the one shown; ←/→ move between them.
-export interface Choices { identity?: string, unavailable?: boolean, question: string | null, cursor: number, options: ChoiceOption[], kind?: 'self-update', detail?: PromptDetail, multi?: boolean, typing?: boolean, tabs?: string[], tab?: number }
+export interface Choices { identity?: string, unavailable?: boolean, question: string | null, cursor: number, options: ChoiceOption[], kind?: 'self-update', detail?: PromptDetail, multi?: boolean, typing?: boolean, form?: boolean, tabs?: string[], tab?: number }
 
 // Waiting screen of an agent (Codex at startup: hooks, folder trust,
 // login…). `other`: unrecognized screen,

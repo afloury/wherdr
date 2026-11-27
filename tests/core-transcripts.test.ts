@@ -182,6 +182,9 @@ describe('remote shell', () => {
     expect(sent[0]).toHaveProperty('on', '')
     await coreShell(call, 'box')('true')
     expect(sent[1]).toHaveProperty('on', 'box')
+    // null: herdr-core's own machine, on purpose (a local terminal).
+    await coreShell(call, null)('true')
+    expect(sent[2]).not.toHaveProperty('on')
   })
 })
 
