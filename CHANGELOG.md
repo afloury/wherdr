@@ -8,6 +8,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **An agent that refuses its model no longer sits unseen.** Codex started with a model its account does not have says so and waits at its prompt without exiting, so the quick-exit retry never fired and the task stayed *working* with nothing said. wherdr now reads a young agent's screen for its program's refusal (Codex, Claude, omp): the task goes to *Your turn* with *The agent refused model X*, its coordinator is woken once with that reason, and it is not started again with the same model ([Agents of a task that waits for you](docs/project-management.md#agents-of-a-task-that-waits-for-you)).
 - **The model follows the agent.** `task add --agent codex` on a workflow whose model is a Claude one no longer starts Codex with `--model sonnet` and leaves it idle. The workflow's `prefs.models` gives a model per program (`{ "codex": "gpt-5" }`), taken when the agent is another program than the one `model` was set for; a model of another program's family is refused at `task add`, `task edit` and the start, saying what to set. `task add` and `task edit` take `--model` and `--review-model`, and `task edit --agent`/`--model` now also works on a task stopped at its worker's step: its next start runs the new agent in the same worktree, in a new conversation ([Worker and reviewer agents](docs/project-management.md#worker-and-reviewer-agents)).
 
 ### Improved
