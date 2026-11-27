@@ -18,7 +18,7 @@ describe('coreRouteAllowed', () => {
     '/api/chat', '/api/chat/image?pane=1', '/api/search?q=a', '/api/dirs?path=/', '/api/machine/add',
     '/api/machine/core', '/api/machine/core-rename', '/api/machine/core-forget', '/api/keep?pane=1',
     '/api/upload', '/api/attach', '/api/file', '/api/client-plugins', '/api/client-plugins/p1/main.js',
-    '/api/dictation/key', '/api/push/subscribe',
+    '/api/dictation/key', '/api/push/subscribe', '/api/open-terminal', '/api/open-folder',
   ])('allows %s', (p) => { expect(coreRouteAllowed(p)).toBe(true) })
 
   it.each([

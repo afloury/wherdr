@@ -20,11 +20,12 @@ import ActionCard from './ActionCard.vue'
 import { QUESTIONS_HOST, type QuestionsHost } from '~/utils/questionsCard'
 import type { WherdrQuestion } from '~/utils/markdown'
 import { h, render } from 'vue'
+import { taskBoxes, taskItems, wrapTaskRow } from '~/utils/checklistDom'
 
 // `cipher` must default to undefined, not false: Vue casts a missing Boolean
 // prop to false, which would switch the encrypted text off everywhere.
 // `runs`: state of the Run buttons, by command (composables/useCodeRun.ts).
-const props = withDefaults(defineProps<{ html: string, typing: number | null, speed?: TypingSpeed, cipher?: boolean, runs?: Record<string, RunMark> }>(), { speed: undefined, cipher: undefined, runs: undefined })
+const props = withDefaults(defineProps<{ html: string, typing: number | null, speed?: TypingSpeed, cipher?: boolean, runs?: Record<string, RunMark>, check?: { pane: string, key: string, at: number } }>(), { speed: undefined, cipher: undefined, runs: undefined, check: undefined })
 const emit = defineEmits<{ done: [] }>()
 // Two roots (the task cards' teleports): a class given to this component goes on the body.
 defineOptions({ inheritAttrs: false })
@@ -284,10 +285,47 @@ function syncRuns() {
 }
 watch(() => props.runs, syncRuns)
 
+// Task-list checkboxes of an agent's reply (`check` set): ticking is passive, it only
+// goes to the checklist store (composables/useChecklist.ts), never to the agent.
+// The boxes on the page are the items (utils/checklistDom.ts): stored and sent by their place there.
+const checklist = props.check ? useChecklist(props.check.pane) : null
+function syncChecks() {
+  const c = props.check
+  if (!c || !checklist) return
+  const items = checklist.state.value[c.key]?.items
+  taskBoxes(el.value).forEach((box, i) => {
+    if (!box.classList.contains('md-check')) {
+      box.disabled = false
+      box.classList.add('md-check')
+      box.setAttribute('aria-label', t('Mark as done'))
+      wrapTaskRow(box)
+    }
+    const stored = items?.[String(i)]
+    box.checked = stored ? stored.checked : box.defaultChecked
+  })
+}
+function onCheck(event: Event) {
+  const c = props.check
+  const box = event.target
+  if (!c || !checklist || !el.value || !(box instanceof HTMLInputElement) || !box.classList.contains('md-check')) return
+  const boxes = taskBoxes(el.value)
+  const index = boxes.indexOf(box)
+  if (index >= 0) checklist.toggle(c.key, { at: c.at, items: taskItems(el.value, boxes) }, index, box.checked)
+}
+// On a phone a tap on an item's words ticks it, as on its box (a link or code button keeps its own tap).
+function onCheckRow(event: MouseEvent) {
+  const target = event.target as Element | null
+  const row = target?.closest?.('.md-check-row')
+  if (!row || target!.closest('input, a, button') || !matchMedia('(pointer: coarse)').matches) return
+  row.querySelector<HTMLInputElement>('input.md-check')?.click()
+}
+watch(() => checklist?.state.value[props.check?.key ?? '']?.items, () => syncChecks(), { deep: true, flush: 'post' })
+
 // First state applied before display: no flash of the full text.
 onMounted(() => {
   mountCards()
   syncRuns()
+  syncChecks()
   fillTaskSlots()
   syncSvgTheme(true)
   if (props.typing !== null) start(props.typing)
@@ -304,7 +342,7 @@ watch(() => props.html, () => {
   plan = null
   emit('done')
 }, { flush: 'pre' })
-watch(() => props.html, () => { mountCards(); syncRuns(); fillTaskSlots(); syncSvgTheme(true) }, { flush: 'post' })
+watch(() => props.html, () => { mountCards(); syncRuns(); syncChecks(); fillTaskSlots(); syncSvgTheme(true) }, { flush: 'post' })
 onBeforeUnmount(() => {
   dropCards()
   themeObserver?.disconnect()
@@ -316,7 +354,7 @@ onBeforeUnmount(() => {
 
 <template>
   <!-- eslint-disable-next-line vue/no-v-html -- HTML sanitized by DOMPurify (utils/markdown.ts) -->
-  <div ref="el" v-bind="$attrs" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" @click="onAppLink($event); onSvgToggle($event)" @keydown="onKey" @error.capture="onImageError" v-html="html" />
+  <div ref="el" v-bind="$attrs" class="md-body" :class="{ typing: typing !== null }" @click.capture="onClick" @click="onAppLink($event); onSvgToggle($event); onCheckRow($event)" @change="onCheck" @keydown="onKey" @error.capture="onImageError" v-html="html" />
   <Teleport v-for="(s, i) in taskSlots" :key="`${i}:${s.id}`" :to="s.to">
     <ChatTaskCard :id="s.id" />
   </Teleport>
@@ -326,6 +364,18 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/* GitHub-style task items: the box stands where the bullet was, wrapped words line up under the words. */
+.md-body :deep(li.md-task) { list-style: none; }
+.md-body :deep(li.md-task > :is(ul, ol)) { margin-bottom: 0; }
+.md-body :deep(.md-check-row) { display: flex; align-items: flex-start; gap: .55em; margin-left: -1.35em; } /* overflow-safe: into the list item's indent */
+.md-body :deep(.md-check-text) { flex: 1; min-width: 0; }
+.md-body :deep(input.md-check) { flex: none; margin: .3em 0 0; cursor: pointer; accent-color: var(--accent); }
+@media (pointer: coarse) {
+  /* The whole row is the tap target (onCheckRow): 44px high, no wider gaps between rows. */
+  .md-body :deep(li.md-task) { margin: 0; }
+  .md-body :deep(.md-check-row) { min-height: 44px; align-items: center; cursor: pointer; }
+  .md-body :deep(input.md-check) { width: 20px; height: 20px; margin: 0; }
+}
 .md-body :deep(.svg-block) { background: transparent; }
 .md-body :deep(.wherdr-block .ui-open-card) { margin: 0; }
 .md-body :deep(.wherdr-block) { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 8px; margin: 8px 0; }
