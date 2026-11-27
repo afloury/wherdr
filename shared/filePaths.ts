@@ -34,12 +34,30 @@ const SEGMENT = /^[\w@+~.,=%#-]+$/
 
 export const stripPosition = (s: string) => s.replace(POSITION, '')
 
+// Extensions of a file that is run, not opened: `~/x.sh 3.2.2` is a command.
+const SCRIPT_EXTS = new Set(['sh', 'bash', 'zsh', 'fish', 'py', 'rb', 'js', 'mjs', 'ts', 'pl', 'php'])
+
+// Inline code that is an executable path followed by arguments (`~/x.sh 3.2.2`,
+// `./script --flag`, `/opt/bin/tool -v`): a command, not a path. A space inside
+// a folder name (`/Users/me/My Files/a.txt`) is not an argument: after the
+// path, only an option or a script's arguments say it is a command.
+export function pathCommand(code: string): boolean {
+  const raw = String(code || '').trim()
+  const m = /^(\S+)\s+(\S[\s\S]*)$/.exec(raw)
+  if (!m || raw.length > 1024 || /[\0\n\r]/.test(raw)) return false
+  const [, head, rest] = m as unknown as [string, string, string]
+  if (!/^(?:\/|~\/|\.{1,2}\/)/.test(head) || !pathCandidate(head)) return false
+  if (head.startsWith('.')) return true
+  const ext = /\.([A-Za-z0-9]{1,10})$/.exec(head)?.[1]?.toLowerCase()
+  return Boolean(ext && SCRIPT_EXTS.has(ext)) || rest.startsWith('-')
+}
+
 // Inline code that looks like a file or folder path: absolute, `~/…`, or
 // relative (`./x`, `../x`, `dir/file.ext`, `a/b/c`, `dir/`, `README.md`).
 // Returns the path without its `:line:col` suffix, or null.
 export function pathCandidate(code: string): string | null {
   const raw = String(code || '').trim()
-  if (raw.length < 2 || raw.length > 1024 || NOT_PATH.test(raw)) return null
+  if (raw.length < 2 || raw.length > 1024 || NOT_PATH.test(raw) || pathCommand(raw)) return null
   const p = stripPosition(raw)
   if (p.length < 2 || p.startsWith('-')) return null
   const absolute = p.startsWith('/') || p.startsWith('~/')
@@ -90,7 +108,8 @@ export function resolveAgentPath(written: string, cwd: string | null | undefined
 export const WRITTEN_BATCH = 200
 
 export type PathPlace = 'agent' | 'repo' | 'notes'
-export interface PathFound { where: PathPlace, abs: string, notes?: string }
+// `dir`: a folder written without its closing slash.
+export interface PathFound { where: PathPlace, abs: string, notes?: string, dir?: true }
 export const PLACE_LABELS: Record<PathPlace, string> = { agent: 'Agent folder', repo: 'Repository', notes: 'Notes' }
 
 // The absolute paths a written path may mean on the agent's machine, in order:

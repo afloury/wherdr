@@ -4,6 +4,7 @@
 // `npm test`). The command is returned without the prompt the agent wrote
 // in front of it ("! " for Claude Code's shell mode, "$ ", "❯ "), and a
 // console transcript keeps its prompted lines only (the rest is output).
+import { pathCommand } from '../../shared/filePaths'
 import { codeKind } from './codeKind'
 
 const SHELL_LANGS: Record<string, true> = { bash: true, sh: true, zsh: true, shell: true, console: true, shellsession: true }
@@ -53,7 +54,7 @@ export function inlineCommand(code: string): string | null {
     return m[1] === '!' && codeKind(rest) === 'cmd' && !rest.startsWith('/') ? rest : null
   }
   // Slash commands (`/compact`) are the agent's, not the shell's.
-  return codeKind(s) === 'cmd' && !s.startsWith('/') ? s : null
+  return codeKind(s) === 'cmd' && (!s.startsWith('/') || pathCommand(s)) ? s : null
 }
 
 // Agents whose input runs "!"-prefixed text as a shell command in their own
