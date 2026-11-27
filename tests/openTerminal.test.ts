@@ -110,9 +110,21 @@ describe('openTerminal', () => {
   })
 
   it('passes a command to the script and refuses a multi-line one', async () => {
-    expect(await openTerminal({ pane_id: 'w1:p1', path: '.', command: 'ls -l' }, true, { ...deps(), folder: async () => '/home/demo/app' })).toEqual({ ok: true })
+    const asked: string[] = []
+    const own = { ...deps(), folder: async (w: string) => { asked.push(w); return w === '/home/demo/app' ? w : null } }
+    expect(await openTerminal({ pane_id: 'w1:p1', path: '.', command: 'ls -l' }, true, own)).toEqual({ ok: true })
+    expect(asked).toEqual(['/home/demo/app'])
+    expect(written.at(-1)).toContain(`cd '/home/demo/app'`)
     expect(written.at(-1)).toContain(`-lc 'ls -l'`)
-    expect(await code(openTerminal({ pane_id: 'w1:p1', path: '.', command: 'ls\nrm x' }, true, { ...deps(), folder: async () => '/home/demo/app' }))).toBe('bad_command')
+    expect(await code(openTerminal({ pane_id: 'w1:p1', command: 'ls\nrm x' }, true, own))).toBe('bad_command')
+  })
+
+  it('refuses a command when the pane’s folder is outside the allowed folders, never running it at home', async () => {
+    launched.length = 0
+    const outside = { ...deps(), findPane: () => ({ cwd: '/srv/app' }), folder: async () => null }
+    await expect(openTerminal({ pane_id: 'w1:p1', command: 'rm -rf build' }, true, outside)).rejects.toMatchObject({ code: 'outside_roots', message: expect.stringContaining('not run') })
+    expect(await code(openTerminal({ pane_id: 'w1:p1', command: 'ls' }, true, { ...deps(), findPane: () => ({ cwd: null }) }))).toBe('bad_path')
+    expect(launched).toEqual([])
   })
 
   it('opens the folder in the file manager under the same rules', async () => {

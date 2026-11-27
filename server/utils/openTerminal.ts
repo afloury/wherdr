@@ -102,13 +102,22 @@ const defaultDeps: OpenTerminalDeps = {
 
 // The folder a request means, after the checks both actions share.
 // `sameMachine`: the request comes from a browser on this computer.
-async function requestedFolder(body: { pane_id?: unknown, path?: unknown }, sameMachine: boolean, deps: OpenTerminalDeps) {
+// `own`: the pane's own folder (a command runs there), never a written path;
+// outside the allowed folders it is refused, never replaced by the home folder.
+async function requestedFolder(body: { pane_id?: unknown, path?: unknown }, sameMachine: boolean, deps: OpenTerminalDeps, own = false) {
   const paneId = String(body.pane_id || '')
   if (!PANE_RE.test(paneId)) throw new HerdrError('bad_pane', 'Invalid pane')
   if (splitId(paneId).machine !== '') throw new HerdrError('not_local', 'This works for an agent on this computer only')
   if (!sameMachine) throw new HerdrError('not_local', 'This works from a browser on the agent’s computer only')
   const pane = deps.findPane(paneId)
   if (!pane) throw new HerdrError('bad_pane', 'Pane not found')
+  if (own) {
+    const cwd = pane.cwd?.startsWith('/') ? pane.cwd : ''
+    if (!cwd) throw new HerdrError('bad_path', 'The agent’s folder is not known')
+    const dir = await deps.folder(cwd, cwd)
+    if (!dir) throw new HerdrError('outside_roots', 'The agent’s folder is outside the folders chat files may use (Settings › Security › Files shown from conversations): the command was not run')
+    return { paneId, dir }
+  }
   const written = typeof body.path === 'string' ? body.path.trim() : ''
   if (!written || written.length > 1024 || /[\0\n\r]/.test(written)) throw new HerdrError('bad_path', 'Invalid folder')
   const dir = await deps.folder(written, pane.cwd)
@@ -116,10 +125,11 @@ async function requestedFolder(body: { pane_id?: unknown, path?: unknown }, same
   return { paneId, dir }
 }
 
+// With a command, it runs in the pane's own folder (the one its confirmation names).
 export async function openTerminal(body: { pane_id?: unknown, path?: unknown, command?: unknown }, sameMachine: boolean, deps: OpenTerminalDeps = defaultDeps) {
-  const { paneId, dir } = await requestedFolder(body, sameMachine, deps)
   const command = typeof body.command === 'string' ? body.command.trim() : ''
   if (command.length > 4096 || /[\0\n\r]/.test(command)) throw new HerdrError('bad_command', 'Invalid command')
+  const { paneId, dir } = await requestedFolder(body, sameMachine, deps, Boolean(command))
   const ok = await deps.launch(deps.write(terminalScript(dir, deps.shell, command)))
   log(`open-terminal: ${paneId}: ${ok ? 'opened' : 'no terminal'}`)
   if (!ok) throw new HerdrError('open_failed', 'No terminal app found: install one or set $TERMINAL')

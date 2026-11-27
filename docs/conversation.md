@@ -28,7 +28,8 @@ Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent terminals 
   executable path followed by arguments opens the command menu, while a bare path stays a path.
   A command in an agent's reply also has **Run in split right**, **Run in split down** (a new shell
   pane beside the conversation) and, in a browser on the agent's own computer, **Run in my terminal**:
-  each asks you to confirm, runs the command in the agent's folder, and stays open when it ends.
+  each asks you to confirm, runs the command in the agent's folder, and stays open when it ends
+  (**Run in my terminal** is refused when that folder is outside the folders chat files may use).
   A folder the agent writes (`~/project/`, with or without its closing slash) has **Open in split right** and **Open in split down**
   (a shell in that folder beside the conversation, on the agent's machine, from any device), and,
   in a browser on the agent's own computer, **Open in my terminal**: it opens the computer's default terminal app

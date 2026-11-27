@@ -1426,7 +1426,8 @@ const liveRunAt = computed(() => {
   return liveRunSpot(shownBlocks.value, Date.parse(run.ts), timeOf)
 })
 // A command outside the agent: in a new shell pane beside this conversation, or in the
-// computer's own terminal app. Either runs it in the agent's folder, after the user has
+// computer's own terminal app. Either runs it in the agent's folder (the server refuses
+// the terminal app when that folder is outside the allowed ones), after the user has
 // seen it in full and confirmed; the window or pane stays open after it ends.
 const splitPaneItems = computed(() => Boolean(props.pane.cwd) && !offlineView.value && !paneStale(props.pane))
 async function runOutside(cmd: string, where: 'terminal' | 'right' | 'down') {
@@ -1436,7 +1437,7 @@ async function runOutside(cmd: string, where: 'terminal' | 'right' | 'down') {
   if (!ok) return
   if (where === 'terminal') {
     try {
-      await api('/api/open-terminal', { pane_id: props.pane.id, path: '.', command: cmd })
+      await api('/api/open-terminal', { pane_id: props.pane.id, command: cmd })
       toast(tl('Opened in your terminal'))
     } catch (err) { toast((err as Error).message, true) }
   } else splitPane(props.pane, where, undefined, cmd)
@@ -1509,17 +1510,19 @@ function placeItems(p: string, f: PathFound | undefined, several: boolean): Menu
       { label: `${t('Download')}${place}`, icon: 'i-lucide-download', run: () => downloadFile(shown) },
     )
   }
-  // A folder: a shell in it beside this conversation (anywhere), or outside wherdr (this computer only).
-  if ((p.endsWith('/') || f?.dir) && f?.abs && !offlineView.value && !paneStale(props.pane)) {
+  // A folder the server found (with or without its closing slash): a shell in it beside
+  // this conversation (anywhere), or outside wherdr (this computer only), at its found path.
+  const dir = f?.dir ? f.abs : ''
+  if (dir && !offlineView.value && !paneStale(props.pane)) {
     items.push(
-      { label: tl('Open in split right'), icon: 'i-lucide-columns-2', run: () => { splitPane(props.pane, 'right', f.abs) } },
-      { label: tl('Open in split down'), icon: 'i-lucide-rows-2', run: () => { splitPane(props.pane, 'down', f.abs) } },
+      { label: tl('Open in split right'), icon: 'i-lucide-columns-2', run: () => { splitPane(props.pane, 'right', dir) } },
+      { label: tl('Open in split down'), icon: 'i-lucide-rows-2', run: () => { splitPane(props.pane, 'down', dir) } },
     )
   }
-  if ((p.endsWith('/') || f?.dir) && canOpenTerminal.value) {
+  if (dir && canOpenTerminal.value) {
     items.push(
-      { label: tl('Open in my terminal'), icon: 'i-lucide-square-terminal', run: () => openInTerminal(p) },
-      { label: tl('Open in file manager'), icon: 'i-lucide-folder-open', run: () => openInFileManager(p) },
+      { label: tl('Open in my terminal'), icon: 'i-lucide-square-terminal', run: () => openInTerminal(dir) },
+      { label: tl('Open in file manager'), icon: 'i-lucide-folder-open', run: () => openInFileManager(dir) },
     )
   }
   items.push({ label: `${t('Copy path')}${place}`, icon: 'i-lucide-copy', desc: shown, mono: true, run: () => copyText(shown) })
@@ -1562,7 +1565,7 @@ async function markPaths() {
   if (offlineView.value) return
   paintPaths()
   const chips = pathChips()
-  if (await resolveWritten(props.pane.id, chips.map(c => c.p).filter(p => p && !p.endsWith('/')))) paintPaths()
+  if (await resolveWritten(props.pane.id, chips.map(c => c.p).filter(Boolean))) paintPaths()
   // Then, for the bare names found nowhere, the folders quoted before them.
   const guesses = chips.filter(c => writtenFound(props.pane.id, c.p)?.length === 0).flatMap(c => c.guesses)
   if (await resolveWritten(props.pane.id, guesses)) paintPaths()
