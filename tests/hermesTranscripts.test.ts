@@ -73,6 +73,8 @@ it.skipIf(spawnSync('python3', ['-c', 'import sqlite3']).status !== 0)('reads a 
     const child = execFile('sh', ['-c', script, 'sh', ...args], { encoding: 'buffer' }, (err, stdout, stderr) => {
       resolve({ code: err ? 1 : 0, stdout, stderr: stderr.toString() })
     })
+    // A script that exits before reading stdin closes the pipe first: not a failure.
+    child.stdin!.on('error', () => {})
     child.stdin!.end(opts.input ?? Buffer.alloc(0))
   })
   const remote = createHermesTranscripts({ fs: createShellFs(exec, { statTtlMs: 0 }) })
