@@ -5,7 +5,7 @@
 // "unchanged" as long as the file has not grown).
 // Shown = older pages loaded on demand (`older`, up to
 // byte `olderCursor`) + bottom re-read continuously from byte `tailStart`.
-import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolView, Pane, QueuedMessage } from '#shared/types'
+import type { ChatItem, ChatResponse, ClaudeQueueEntry, ClaudeScreen, OmpToolView, Pane, QueuedMessage, ToolUpdate } from '#shared/types'
 import { readChat, saveChat, touchChat } from '~/utils/offlineCache'
 import { mayReadOffline, readOfflineAccess } from '~/utils/offlineAccess'
 import { restoreDraft } from '~/utils/queuedCancel'
@@ -16,7 +16,7 @@ import { userMessageParts } from '~/utils/userMessage'
 import { type PendingMessage, type WaitingOn, inputShown, pendingLabel, pendingQueue, rememberSent } from '~/utils/pendingQueue'
 import { clampRange, createSelectionSettler, lastLineRect, selectionReplyPos } from '~/utils/selectionReply'
 import { addAnswer, addQuote, answerEnd, answerOf, forgetReply, isQuoted, replyTargets, rowOf, rowRef, rowSettled, tableRank, tableRef, tappedAnswer, toggleOkAll, unansweredCount, withQuestions, type Answer } from '~/utils/questionReply'
-import { CHAT_READ_MS, createFlipGuard, createTailLoader, itemKeys, nextTail, restartsTail, swapTail, tailQuery } from '~/utils/chatTail'
+import { CHAT_READ_MS, applyToolUpdates, createFlipGuard, createTailLoader, itemKeys, mergeToolUpdates, nextTail, restartsTail, retainToolUpdates, swapTail, tailQuery } from '~/utils/chatTail'
 import { missedReply, replyId, sortNewReplies } from '~/utils/typewriter'
 import { newestThought } from '~/utils/reasoningReveal'
 import { restoredScrollTop, saveReadingPosition } from '~/utils/readingPosition'
@@ -107,8 +107,11 @@ function invalidate() {
   search.loading = false
   jumping = false
 }
+// Late Command Code tool outcomes waiting for their call page to load.
+const pendingUpdates = new Map<string, ToolUpdate>()
 function resetChat(reason: ChatResponse['reason'] | null = null) {
   invalidate()
+  pendingUpdates.clear()
   chat.value = fresh()
   unavailable.value = reason
   integration.value = null
@@ -145,10 +148,14 @@ const canRun = computed(() => canRunIn(props.pane))
 // shown only if it comes first.
 async function restoreChat() {
   if (!mayReadOffline(readOfflineAccess())) return
+  // Online, a kept tail cannot prove it came from the live Command Code
+  // process. The explicit offline / stale-pane read-only policy still applies.
+  if (props.pane.agent === 'cmd' && !readOnly.value) return
   const id = props.pane.id
   const gen = resetGen
   const saved = await readChat(id)
   if (!saved || unavailable.value || staleGen(gen) || id !== props.pane.id) return
+  if (props.pane.agent === 'cmd' && !readOnly.value) return
   // The server answered first: the kept end still tells what this device missed.
   if (synced || rendered.value) { markMissed(saved.items); return }
   // Its replies are known: one the server's answer adds is new to this
@@ -163,7 +170,7 @@ async function restoreChat() {
     chat.value = { ...fresh(), file: saved.file || null, tail: saved.items, queue: readOnly.value ? [] : saved.queue ?? [], held: true }
     savedAt.value = saved.at
   })
-  if (staleGen(gen) || id !== props.pane.id) return
+  if (staleGen(gen) || id !== props.pane.id || (props.pane.agent === 'cmd' && !readOnly.value)) return
   touchChat(props.pane.id)
 }
 
@@ -518,9 +525,12 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     if (!r.available) {
       // Any list on screen counts, the end kept on this device too: a server
       // that just restarted answers "not found" for a while (no blank list).
-      const m = onUnavailable(misses.value, items.value.length > 0)
-      misses.value = m.next
-      if (!m.clear) return false
+      // Command Code's selection server is authoritative, so no missed-poll grace applies.
+      if (props.pane.agent !== 'cmd') {
+        const m = onUnavailable(misses.value, items.value.length > 0)
+        misses.value = m.next
+        if (!m.clear) return false
+      }
       resetChat(r.reason || 'unsupported')
       integration.value = r.reason === 'no_integration' ? r.integration || null : null
       // Conversation opened before its first reply: that reply is new.
@@ -554,6 +564,9 @@ async function loadStep(current: () => boolean): Promise<boolean> {
       chat.value = { ...chat.value, token: '' }
       return true
     }
+    // Late Command Code outcomes: pending + this reply once, newest revision
+    // per id, applied immutably to the tail AND retained older pages.
+    const updates = mergeToolUpdates(pendingUpdates, r.toolUpdates)
     await apply(() => {
       const c = { ...chat.value }
       if (c.tailStart === null) {
@@ -562,8 +575,9 @@ async function loadStep(current: () => boolean): Promise<boolean> {
       }
       c.file = r.file || null
       c.token = r.token || ''
-      c.tail = c.held ? swapTail(c.tail, tail) : tail
+      c.tail = applyToolUpdates(c.held ? swapTail(c.tail, tail) : tail, updates)
       c.held = false
+      c.older = applyToolUpdates(c.older, updates)
       c.queue = r.queue || []
       chat.value = c
       noteReplies(c.tail)
@@ -571,6 +585,7 @@ async function loadStep(current: () => boolean): Promise<boolean> {
     // The tick inside apply may have crossed a reset: the items now held
     // belong to the new conversation and must not be saved under `pane`.
     if (stale()) return false
+    retainToolUpdates(pendingUpdates, [chat.value.tail, chat.value.older], updates)
     saveChat(pane, items.value, chat.value.file, chat.value.queue)
     // Paint the prepared tail first, then revalidate using its token and cursor.
     if (ready) return true
@@ -596,6 +611,14 @@ watch(() => identityOf(props.pane), () => {
   tailLoader.invalidate()
   if (!offlineView.value) loadChat()
 })
+// A Command Code transcript is only shown from a kept copy while read-only:
+// once live again, drop the offline copy and load the live selection.
+watch(readOnly, (ro, was) => {
+  if (ro || !was || props.pane.agent !== 'cmd' || savedAt.value === null) return
+  resetChat()
+  tailLoader.invalidate()
+  loadChat()
+})
 
 // Older slice, keeping on screen what we were reading.
 async function loadOlder() {
@@ -606,9 +629,16 @@ async function loadOlder() {
   const file = chat.value.file
   const before = chat.value.olderCursor
   try {
-    const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane)}&before=${before}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
+    const r = await api<ChatResponse>(`/api/chat?pane=${encodeURIComponent(pane)}&before=${before}${props.pane.agent === 'cmd' ? `&since=${encodeURIComponent(chat.value.token)}` : ''}`, undefined, AbortSignal.timeout(CHAT_READ_MS))
     if (pane !== props.pane.id || r.file !== file || chat.value.olderCursor !== before || staleGen(gen)) return
     if (r.stale) return
+    if (!r.available) {
+      if (props.pane.agent === 'cmd') {
+        toast(t('Conversation not found'), true)
+        resetChat('not_found')
+      }
+      return
+    }
     if (r.reload) {
       // An expired daemon cursor: read a fresh tail, keeping what is shown until then.
       // Not a reset: the reader keeps its scroll position, search and known replies.
@@ -618,13 +648,25 @@ async function loadOlder() {
       await loadChat()
       return
     }
+    // Command Code paging is stateless by byte offset: a page below `before`
+    // is not an older page, so reload cleanly from the bottom instead of splicing.
+    // Like any reload, it drops the old requests and keeps the reader where it was.
+    if (props.pane.agent === 'cmd' && !r.older) {
+      invalidate()
+      chat.value = { ...fresh(), tail: items.value, queue: chat.value.queue, held: true }
+      synced = false
+      await loadChat()
+      return
+    }
     const b = box.value
     const fromBottom = b ? b.scrollHeight - b.scrollTop : 0
+    const updates = mergeToolUpdates(pendingUpdates, r.toolUpdates)
     await apply(() => {
       shown.value = Infinity
       chat.value = {
         ...chat.value,
-        older: (r.items || []).concat(chat.value.older),
+        older: applyToolUpdates((r.items || []).concat(chat.value.older), updates),
+        tail: applyToolUpdates(chat.value.tail, updates),
         // Rewritten JSONL may return a later byte offset: stop, as before.
         olderCursor: (r.cursorKind === 'opaque' ? (r.start ?? 0) !== before : (r.start ?? 0) < before) ? (r.start ?? 0) : 0,
       }
@@ -632,6 +674,7 @@ async function loadOlder() {
     // A reset crossed the tick inside apply: the new conversation owns scroll,
     // busy flag and the copy kept on this device.
     if (staleGen(gen)) return
+    retainToolUpdates(pendingUpdates, [chat.value.tail, chat.value.older], updates)
     saveChat(pane, items.value, chat.value.file, chat.value.queue)
     if (b) b.scrollTop = b.scrollHeight - fromBottom
   } catch (err) {

@@ -9,4 +9,4 @@
 // pm/ask-coordinator: Ask the coordinator, a step it holds that waits on the user (WHR-300).
 // pm/agent-fix: Ask the agent to fix it, a blocked task's worker told or started again (WHR-356).
 // GET pm/logins, pm/login-renewed: the home's login-expired notice and its I logged in (WHR-381).
-export default ['GET pm/board', 'GET pm/handle', 'GET pm/agents', 'pm/step-user', 'pm/step-back', 'pm/report', 'pm/task-check', 'pm/review-restart', 'pm/worker-start', 'pm/worker-wake', 'pm/user-shot', 'pm/ask-coordinator', 'pm/agent-fix', 'GET pm/logins', 'pm/login-renewed'] as string[]
+export default ['GET pm/board', 'GET pm/handle', 'GET pm/agents', 'pm/step-user', 'pm/step-back', 'pm/report', 'pm/task-check', 'pm/review-restart', 'pm/worker-start', 'pm/worker-wake', 'pm/user-shot', 'pm/ask-coordinator', 'pm/agent-fix', 'GET pm/logins', 'pm/login-renewed', 'pm/review-hide'] as string[]
