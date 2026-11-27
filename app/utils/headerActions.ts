@@ -1,6 +1,7 @@
-// Mounts plugin widgets into every [data-wherdr="header-actions"] slot
+// Mounts plugin widgets into every registered [data-wherdr="header-actions"] slot
 // (Home and Agent headers, present and future) without plugins querying the DOM.
-// No observers run when no plugin mounts anything.
+// Components register and unregister their own slots via registerHeaderActionsSlot,
+// so no page-wide DOM observer or querySelectorAll scan ever runs.
 export type HeaderActionCleanup = () => void
 export type HeaderActionRender = (el: HTMLElement) => HeaderActionCleanup | void | Promise<HeaderActionCleanup | void>
 
@@ -25,6 +26,7 @@ export function hasHeaderActions(el: Element | null | undefined): boolean {
 
 /** Register a [data-wherdr="header-actions"] element owned by a component. */
 export function registerHeaderActionsSlot(el: Element): () => void {
+  if (registeredSlots.has(el)) return () => {}
   registeredSlots.add(el)
   for (const fn of [...syncAll]) fn()
   return () => {
@@ -37,23 +39,9 @@ function safeCall(fn: () => void) {
   try { fn() } catch { /* a failing teardown changes nothing */ }
 }
 
-/** Create a DOM mount manager for [data-wherdr="header-actions"] containers. */
-export function createHeaderActionsMount(root?: ParentNode) {
+/** Create a DOM mount manager for registered [data-wherdr="header-actions"] containers. */
+export function createHeaderActionsMount() {
   const entries = new Map<symbol, HeaderActionEntry>()
-  let observer: MutationObserver | null = null
-
-  function currentSlots(): Element[] {
-    const found = new Set<Element>()
-    const target = root ?? (typeof document !== 'undefined' ? document.body : null)
-    if (target) {
-      if (target instanceof Element && target.matches('[data-wherdr="header-actions"]')) found.add(target)
-      for (const el of target.querySelectorAll('[data-wherdr="header-actions"]')) found.add(el)
-    }
-    if (!root) {
-      for (const el of registeredSlots) found.add(el)
-    }
-    return [...found]
-  }
 
   function unmountSlot(rec: MountedSlot) {
     rec.dead = true
@@ -97,28 +85,18 @@ export function createHeaderActionsMount(root?: ParentNode) {
 
   function sync() {
     if (!entries.size) return
-    const slots = currentSlots()
-    const active = new Set(slots)
     for (const [key, entry] of [...entries]) {
       for (const [slot, rec] of [...entry.mounted]) {
-        if (!active.has(slot)) {
+        if (!registeredSlots.has(slot)) {
           entry.mounted.delete(slot)
           unmountSlot(rec)
         }
       }
-      for (const slot of slots) {
+      for (const slot of [...registeredSlots]) {
         if (!entries.has(key)) break
         mountSlot(key, entry, slot)
       }
     }
-  }
-
-  function ensureObserver() {
-    if (observer || typeof MutationObserver === 'undefined') return
-    const target = root ?? (typeof document !== 'undefined' ? document.body : null)
-    if (!target) return
-    observer = new MutationObserver(() => sync())
-    observer.observe(target, { childList: true, subtree: true })
   }
 
   return function mountHeaderAction(render: HeaderActionRender): () => void {
@@ -127,16 +105,11 @@ export function createHeaderActionsMount(root?: ParentNode) {
     entries.set(key, entry)
     syncAll.add(sync)
     sync()
-    ensureObserver()
     return () => {
       if (!entries.delete(key)) return
       for (const rec of entry.mounted.values()) unmountSlot(rec)
       entry.mounted.clear()
-      if (!entries.size) {
-        syncAll.delete(sync)
-        observer?.disconnect()
-        observer = null
-      }
+      if (!entries.size) syncAll.delete(sync)
     }
   }
 }
