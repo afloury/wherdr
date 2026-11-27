@@ -174,7 +174,7 @@ Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent terminals 
   the pm tasks folder; another project's task only within its reach), or a task's screenshots (`wherdr pm ui show shots WHR-12`, once the task
   has some). On a wide computer they open in the side panel, in place of Settings (drag its left
   edge, or the arrow keys on it, to resize; double-click: default width; kept on the device): the file
-  read-only as in Files, as a document under the panel's one header (see [One file shown alone](files.md#one-file); an HTML page runs as a page), the screenshots by step, before and after side by side, with a button
+  read-only as in Files, as a document under the panel's one header (see [One file shown alone](files.md#one-file); an HTML page runs as a page up to 256 KB, a larger one shows its start as text), the screenshots by step, before and after side by side, with a button
   to open the task. On a phone a card shows above the message field, in the conversation column and as wide as the
   field, and a tap opens a sheet
   (before and after toggled). A tap on a shown image (the file, an image of a shown Markdown
