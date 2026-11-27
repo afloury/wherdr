@@ -163,7 +163,8 @@ Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent terminals 
   has some). On a wide computer they open in the side panel, in place of Settings (drag its left
   edge, or the arrow keys on it, to resize; double-click: default width; kept on the device): the file
   read-only as in Files, as a document under the panel's one header (see [One file shown alone](files.md#one-file); an HTML page runs as a page), the screenshots by step, before and after side by side, with a button
-  to open the task. On a phone a card shows above the message field, and a tap opens a sheet
+  to open the task. On a phone a card shows above the message field, in the conversation column and as wide as the
+  field, and a tap opens a sheet
   (before and after toggled). A tap on a shown image (the file, an image of a shown Markdown
   file, a screenshot) opens the full-screen viewer, with zoom and pan, through the images shown
   together. The card also stays in the reply (a ```wherdr block of
