@@ -21,6 +21,7 @@ import type { CoreAdminDeps } from './coreCreate'
 import type { PmStore } from './pmStore'
 import { noteTurn } from './pmCoordinator'
 import { pushSend } from './push'
+import { projectNotificationAllowed } from './notificationRules'
 import { HerdrError } from './herdr'
 import { projectOf, shownKey, showIds } from '../../shared/pm/projectKey'
 import { coordinatorKey, handledBy } from '../../shared/pm/workspace'
@@ -29,7 +30,8 @@ import { typingInto } from './terminalTurns'
 export interface WakeDeps extends CoreAdminDeps { store: PmStore, notify?: (title: string, body: string, project: string) => Promise<unknown> }
 const newId = () => randomUUID().replace(/-/g, '').slice(0, 8)
 
-const pushNotify = (title: string, body: string, project: string) => pushSend({ title, body, tag: `pm-wake-${project}`, url: '/#/board' })
+const pushNotify = async (title: string, body: string, project: string) =>
+  await projectNotificationAllowed(project) ? pushSend({ title, body, tag: `pm-wake-${project}`, url: '/#/board' }) : 0
 
 // What herdr-core says of the coordinator's terminal; null: unknown this tick.
 async function statusOf(deps: WakeDeps, terminal: string | undefined): Promise<CoordStatus | null> {
