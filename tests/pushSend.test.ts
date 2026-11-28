@@ -103,6 +103,20 @@ describe('envoi Web Push', () => {
     expect(await push.pushSend({ title: 't', body: 'b', tag: 'x', url: '/' }, undefined, true)).toBe(2)
     await push.writeGlobalQuiet(null)
   })
+
+  it('Private notifications: every push shows one generic line, no user text, title or link', async () => {
+    await push.writeSubs([sub('https://push.example/a')])
+    const sent: string[] = []
+    sendNotification.mockReset()
+    sendNotification.mockImplementation(async (_s: unknown, body: string) => { sent.push(body) })
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ v: 1, settings: { privateNotifications: '1' } }))
+    const secret = { title: 'laptop · Fix login', titleFr: 'Corriger', body: 'Open https://login.example/x?code=1', bodyFr: 'Ouvre', tag: 'pane-w1:p1', url: '/#/a/w1%3Ap1', badge: 2 }
+    expect(await push.pushSend(secret)).toBe(1)
+    expect(JSON.parse(sent[0]!)).toEqual({ title: 'wherdr', body: 'An agent needs you', tag: 'pane-w1:p1', url: '/', badge: 2 })
+    fs.writeFileSync(path.join(dir, 'settings.json'), JSON.stringify({ v: 1, settings: {} }))
+    await push.pushSend(secret)
+    expect(JSON.parse(sent[1]!).body).toBe(secret.bodyFr)
+  })
 })
 
 describe('Web Push after Lock all devices', () => {

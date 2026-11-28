@@ -93,11 +93,21 @@ it('the user settles a review in one tap, and the grouped push tells only what i
 
   resetDecisionsTold()
   const notify = vi.fn(async () => {})
-  expect(await decisionsTick(store, notify)).toBeNull() // the first look only notes
+  let muted = false
+  const allow = async () => !muted
+  expect(await decisionsTick(store, notify, allow)).toBeNull() // the first look only notes
   await store.saveTask({ ...task, state: 'waiting', waitKind: 'question', waiting: 'Which port?' })
-  expect(await decisionsTick(store, notify)).toEqual({ title: '2 decisions wait for you', titleFr: '2 décisions t’attendent', body: 'GH-1: Which port?' })
+  expect(await decisionsTick(store, notify, allow)).toEqual({ title: '2 decisions wait for you', titleFr: '2 décisions t’attendent', body: 'GH-1: Which port?' })
   expect(notify).toHaveBeenCalledTimes(1)
-  expect(await decisionsTick(store, notify)).toBeNull()
+  expect(await decisionsTick(store, notify, allow)).toBeNull()
+  // A muted project's new decision is not pushed, nor told once unmuted.
+  muted = true
+  await store.saveTask({ ...task, state: 'waiting', waitKind: 'permission', waiting: 'Run npm test?' })
+  expect(await decisionsTick(store, notify, allow)).toBeNull()
+  muted = false
+  expect(await decisionsTick(store, notify, allow)).toBeNull()
+  expect(notify).toHaveBeenCalledTimes(1)
+  await store.saveTask({ ...task, state: 'waiting', waitKind: 'question', waiting: 'Which port?' })
 
   await expect(userDecide(store, task.id, 'nope')).rejects.toThrow(/choice: one of/)
   const after = await userDecide(store, task.id, 'pass')

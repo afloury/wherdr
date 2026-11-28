@@ -7,6 +7,8 @@
 export const SYNCED_SETTINGS = [
   // Notification policy follows the user across every device.
   'notificationRules',
+  // '1': every push shows one generic line, no user text, title or link (server/utils/push.ts)
+  'privateNotifications',
   // Appearance
   'theme', 'themeMode', 'customThemes',
   // Machine bar and groups

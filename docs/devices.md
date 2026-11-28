@@ -63,8 +63,8 @@
   show their position, never 1/1.
   Options keeps the conversation, the agent and its tools: Terminal/Conversation, search,
   notifications, browse files, keep after restart, take control, reconnect and settings.
-- **Terminal function keys** start closed. The square chevron button above Send shows or hides
-  one horizontally scrolling row in both Conversation and Terminal. It holds Ctrl, Esc, Tab,
+- **Terminal function keys** start closed. They show or hide one horizontally scrolling row: in
+  Terminal with the square chevron button above Send, in Conversation from Options (**Terminal keys**). It holds Ctrl, Esc, Tab,
   arrows, Enter, Ctrl+C, Backspace and the remaining modifiers and function keys. The phone-keyboard
   toggle comes first, and Home, End, PgUp, PgDn, Insert and Delete are available in both modes.
   In Conversation the keyboard toggle focuses the message field, and navigation uses the
