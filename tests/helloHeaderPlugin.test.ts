@@ -60,7 +60,7 @@ describe('hello-header example plugin', () => {
     expect(button).not.toBeNull()
     expect(button.getAttribute('aria-label')).toBeTruthy()
     button.click()
-    expect(s.getDraft()).toBeTruthy()
+    expect(s.getDraft()).toBe('Summarize the current state and next steps.')
     expect(s.focus).toHaveBeenCalledTimes(1)
   })
 
