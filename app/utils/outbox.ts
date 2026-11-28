@@ -13,6 +13,8 @@ export interface OutboxItem extends Omit<QueuedMessage, 'state'> {
   settledAt?: number
   // When a state first no longer listed this record (the agent took it).
   goneAt?: number
+  // Saved while sending (see toSave): it may have reached the agent.
+  unsure?: boolean
 }
 
 // A record the server no longer lists (the agent took the message) stays
@@ -76,6 +78,31 @@ export function prune(list: OutboxItem[], server: QueuedMessage[], now: number, 
     }
   }
   return out
+}
+
+// What outlives a page reload (useOutbox.ts keeps it in localStorage): the
+// messages the user still has to act on. "Not sent" (the server never got it)
+// comes back as it is, with Retry / Cancel; "Sending…" whose answer the reload
+// lost may have been typed, so it is marked `unsure`: it comes back into the
+// message field for the user to check, never sent again by itself or by Retry.
+// A confirmed message (the server answered) is not kept.
+export type SavedOutbox = Record<string, OutboxItem[]>
+export function toSave(list: OutboxItem[]): OutboxItem[] {
+  return list.filter(q => q.local || q.state === 'sending')
+    .map(q => ({ id: q.id, text: q.text, at: q.at, state: 'failed' as const, local: true, ...(q.unsure || q.state === 'sending' ? { unsure: true } : {}) }))
+}
+export function fromSaved(raw: unknown): { boxes: SavedOutbox, back: Record<string, string[]> } {
+  const boxes: SavedOutbox = {}, back: Record<string, string[]> = {}
+  if (!raw || typeof raw !== 'object') return { boxes, back }
+  for (const [paneId, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (!Array.isArray(list)) continue
+    const ok = list.filter((q): q is OutboxItem => Boolean(q) && typeof q.id === 'string' && typeof q.text === 'string')
+    const kept = ok.filter(q => !q.unsure).map(q => ({ id: q.id, text: q.text, at: q.at, state: 'failed' as const, local: true }))
+    const texts = ok.filter(q => q.unsure).map(q => q.text)
+    if (kept.length) boxes[paneId] = kept
+    if (texts.length) back[paneId] = texts
+  }
+  return { boxes, back }
 }
 
 // Messages held on the server for Codex (coreHeld.ts) that come back as texts,

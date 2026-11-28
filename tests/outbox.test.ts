@@ -1,7 +1,7 @@
 // A message shows in the conversation from the tap on Send: one bubble, from
 // "sending" to the server's record to the transcript, never two, never lost.
 import { describe, expect, it } from 'vitest'
-import { GONE_MAX_MS, type OutboxItem, REPEAT_MS, SETTLED_MS, SendTimeout, addSending, chainSend, failLocal, isRepeat, newOutboxId, prune, recentSends, resend, settle, withOutbox } from '../app/utils/outbox'
+import { GONE_MAX_MS, type OutboxItem, REPEAT_MS, SETTLED_MS, SendTimeout, addSending, chainSend, failLocal, fromSaved, isRepeat, newOutboxId, prune, recentSends, resend, settle, toSave, withOutbox } from '../app/utils/outbox'
 import { pendingQueue } from '../app/utils/pendingQueue'
 import type { ChatItem, QueuedMessage } from '../shared/types'
 
@@ -176,5 +176,18 @@ describe('outbox: sends of a conversation, one after the other', () => {
     release()
     await second
     expect(order).toEqual(['first', 'second'])
+  })
+})
+
+describe('outbox: across a page reload', () => {
+  it('keeps "Not sent" for Retry, sends back to the field what was sending, forgets what the server confirmed', () => {
+    let box = addSending([], 'w-a', 'not sent', T0)
+    box = failLocal(box, 'w-a')
+    box = addSending(box, 'w-b', 'was sending', T0 + 1)
+    box = settle(addSending(box, 'w-c', 'confirmed', T0 + 2), 'w-c', null, T0 + 3)
+    const back = fromSaved(JSON.parse(JSON.stringify({ p1: toSave(box) })))
+    expect(back.boxes).toEqual({ p1: [{ id: 'w-a', text: 'not sent', at: T0, state: 'failed', local: true }] })
+    expect(back.back).toEqual({ p1: ['was sending'] })
+    expect(fromSaved('garbage')).toEqual({ boxes: {}, back: {} })
   })
 })
