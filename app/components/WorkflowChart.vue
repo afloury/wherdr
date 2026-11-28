@@ -15,9 +15,10 @@ import { reviewerPlan, workerPlan, type Task } from '#shared/pm/run'
 import { actionLabel, describeStep } from '#shared/pm/describe'
 import { DEFAULT_ROUNDS } from '#shared/pm/steps'
 import { isPrMerge, type Evidence, type Template } from '#shared/pm/workflow'
-import { stepMarks, taskImpact, type ChangeKind, type FieldChange, type StepMark, type WorkflowChanges } from '#shared/pm/workflowChanges'
+import { impactRepeats, modelsProgram, stepMarks, taskImpact, type ChangeKind, type FieldChange, type StepMark, type WorkflowChanges } from '#shared/pm/workflowChanges'
 
-const props = defineProps<{ workflow: Template, type: string, base?: string, coordinator?: string, changes?: WorkflowChanges, compact?: boolean }>()
+// headline: the change's line shown above, an impact that only repeats it is left out.
+const props = defineProps<{ workflow: Template, type: string, base?: string, coordinator?: string, changes?: WorkflowChanges, compact?: boolean, headline?: string }>()
 
 type Kind = 'agent' | 'engine' | 'you' | 'edge'
 const PROOF: Record<Evidence, string> = { 'link': 'Link', 'commit': 'Commit', 'report': 'Report', 'proposed-tasks': 'Proposed tasks', 'screenshots': 'Screenshots' }
@@ -32,15 +33,24 @@ const plan = computed(() => {
 })
 const DIFF: Partial<Record<ChangeKind, string>> = { added: 'Added', removed: 'Removed', changed: 'Changed', moved: 'Moved' }
 const FIELD: Record<string, string> = { holder: 'Holder', ends: 'Ends', action: 'Action', rounds: 'Rounds', timeout: 'Timeout', agent: 'Agent', model: 'Model', reviewAgent: 'Agent', reviewModel: 'Model', reviewFallbackAgent: 'Fallback agent', reviewFallbackModel: 'Fallback model', sendBack: 'Sends back to', evidence: 'Proofs' }
-const fieldText = (f: FieldChange) => (f.field === 'instructions' ? tl('Instructions edited') : `${tl(FIELD[f.field] ?? f.field)}: ${f.before ?? tl('none')} → ${f.after ?? tl('none')}`)
-const impact = computed(() => (props.changes ? tl(taskImpact(props.changes, props.type, props.workflow)) : ''))
+const fieldName = (field: string) => { const prog = modelsProgram(field); return prog ? tl(`${kindLabel(prog)} model`) : tl(FIELD[field] ?? field) }
+const fieldText = (f: FieldChange) => (f.field === 'instructions' ? tl('Instructions edited') : `${fieldName(f.field)}: ${f.before ?? tl('none')} → ${f.after ?? tl('none')}`)
+const impact = computed(() => {
+  const line = props.changes ? taskImpact(props.changes, props.type, props.workflow) : ''
+  return line && !(props.headline && impactRepeats(line, props.headline)) ? tl(line) : ''
+})
 const guards = computed(() => taskGuards(props.workflow, props.type))
 // A named agent (Settings › Agents) shows by its name.
 const agentOf = (r: { program: string, agent?: string, model: string } | { reason: string }) =>
   'reason' in r ? tl('not set') : `${r.agent ?? kindLabel(r.program)} · ${r.model}`
 const agents = computed(() => {
   const task = { type: props.type } as Task, named = namedAgents.value
-  return { worker: agentOf(workerPlan(props.workflow, task, named)), reviewer: agentOf(reviewerPlan(props.workflow, task, undefined, named)) }
+  const worker = workerPlan(props.workflow, task, named)
+  // The per-program models (prefs.models, the type's over the workflow's), for
+  // the tasks started with another program: under the worker's default.
+  const models = { ...props.workflow.prefs?.models, ...props.workflow.taskTypes[props.type]?.prefs?.models }
+  const others = Object.entries(models).filter(([p, m]) => m && !('program' in worker && worker.program === p)).map(([p, m]) => `${kindLabel(p)} · ${m}`)
+  return { worker: agentOf(worker), others, reviewer: agentOf(reviewerPlan(props.workflow, task, undefined, named)) }
 })
 
 // Where a merge goes, for the guard line: the land's target, or the PR's base.
@@ -53,7 +63,7 @@ const intoOf = (steps: PlannedStep[], i: number) => {
 const nodes = computed(() => plan.value.map((s, i, all) => {
   const last = i === all.length - 1
   const kind: Kind = s.holder && s.holder !== 'none' ? 'agent' : s.ends === 'user' || s.guarded ? 'you' : s.ends === 'action' ? 'engine' : 'edge'
-  const who = s.holder === 'worker' ? [tl('Worker'), agents.value.worker]
+  const who = s.holder === 'worker' ? [tl('Worker'), agents.value.worker, ...agents.value.others]
     : s.holder === 'reviewer' ? [tl('Reviewer'), agents.value.reviewer]
     : s.holder === 'coordinator' ? [tl('Coordinator'), props.coordinator ? kindLabel(props.coordinator) : '']
     : kind === 'you' ? [tl('You'), ''] : kind === 'engine' ? [tl('The engine'), ''] : [i === 0 ? tl('Start') : last ? tl('Finish') : tl('Pass-through'), '']
@@ -181,7 +191,7 @@ const KINDS: Kind[] = ['agent', 'engine', 'you', 'edge']
               <small v-if="!compact" class="mono-label">{{ n.s.column || n.s.id }}</small>
               <span v-if="n.diff" class="wf-mark mono-label" data-testid="wf-mark">{{ tl(DIFF[n.diff]!) }}</span>
             </div>
-            <p class="wf-who" data-testid="wf-who"><span class="mono-label">{{ n.who[0] }}</span><span v-if="n.who[1]" class="mono">{{ n.who[1] }}</span></p>
+            <p class="wf-who" data-testid="wf-who"><span class="mono-label">{{ n.who[0] }}</span><span v-for="(a, k) in n.who.slice(1).filter(Boolean)" :key="k" class="mono">{{ a }}</span></p>
             <p v-if="n.ends && (!compact || n.diff)" class="wf-ends" data-testid="wf-ends"><span class="mono-label">{{ tl('Ends') }}</span> {{ n.ends }}</p>
             <ul v-if="n.delta.length" class="wf-delta" data-testid="wf-delta">
               <li v-for="f in n.delta" :key="f">{{ f }}</li>
@@ -238,6 +248,7 @@ const KINDS: Kind[] = ['agent', 'engine', 'you', 'edge']
 .wf-n { font-size: 11px; color: var(--k); }
 .wf-head b { font-size: 15px; color: var(--text-strong); }
 .wf-who { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 0; color: var(--k); }
+.wf-who .mono + .mono { flex-basis: 100%; }
 .wf-who .mono { font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
 .wf-ends { margin: 0; font-size: 14px; color: var(--text-2); overflow-wrap: anywhere; }
 .wf-ends .mono-label { margin-right: 4px; color: var(--muted); }

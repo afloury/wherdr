@@ -34,7 +34,7 @@ const outcome = computed(() => {
     <PartHead part="workflow" :title="tl(title)" />
     <p v-for="(l, i) in summary" :key="i" class="proposal-line" data-testid="proposal-headline">{{ l }}</p>
     <div v-if="pending?.template && drawn" class="proposal-chart" role="button" tabindex="0" :aria-label="tl('See all changes')" data-testid="proposal-chart" @click="review = true" @keydown.enter.prevent="review = true" @keydown.space.prevent="review = true">
-      <WorkflowChart :workflow="pending.template" :type="drawn" :changes="pending.changes" compact />
+      <WorkflowChart :workflow="pending.template" :type="drawn" :changes="pending.changes" :headline="summary[0]" compact />
     </div>
     <template v-if="pending">
       <ProposalOrigin :c="c" :can-goto="canGoto" @goto="emit('goto')" />

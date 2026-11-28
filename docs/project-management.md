@@ -505,7 +505,11 @@ the Workflow tab, one changed task type at a time, with the steps added (green),
 removed (red, dashed, back where they stood) and changed (cyan: each changed
 field before → after, such as holder, agent or model, how it ends, action, rounds
 or timeout) framed and named, a legend, and one line on what changes for that
-type's tasks (*For feature tasks: review changes its model; a new step shots*).
+type's tasks (*For feature tasks: review changes its model; a new step shots*),
+left out when it would only repeat the one-line change above. A per-program
+model (`prefs.models`) reads in plain words (*Codex tasks use gpt-6.1-sol (was:
+the workflow's model)*), marks the worker's step, which shows it under its
+default agent and model (*Claude · opus*, then *Codex · gpt-6.1-sol*).
 *List* shows the same change as a list (merge rule, guards; instructions as a
 text diff), *JSON* the raw diff. A proposal made before the workflow changed again is refused, and the
 review says so: ask the coordinator to propose again. The proposal's card in the coordinator's chat links to this review. [Alfred](alfred.md) can propose

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest'
-import { changeSummary, changeTitle, workflowChanges } from '../shared/pm/workflowChanges'
+import { changeHeadline, changeSummary, changeTitle, impactRepeats, stepMarks, taskImpact, workflowChanges } from '../shared/pm/workflowChanges'
 import { defaultWorkflow, type Template } from '../shared/pm/workflow'
 
 const old: Template = {
@@ -63,4 +63,20 @@ it('titles a proposal by what it does: first workflow, types only added or remov
   expect(changeTitle(workflowChanges(null, old))).toBe('First workflow')
   expect(changeTitle(workflowChanges(defaultWorkflow('CO'), add(old, 'release')))).toBe('First workflow')
   expect(changeTitle(workflowChanges(old, { ...add(old, 'release'), guards: { merge: { others: 'engine' } } }))).toBe('Workflow change')
+})
+
+it('per-program models read in plain words, mark the worker step, and the impact does not repeat the headline', () => {
+  const was: Template = { ...old, prefs: { agent: 'claude', model: 'opus', reviewAgent: 'codex', reviewModel: 'gpt-6.1' } }
+  const next: Template = { ...was, prefs: { ...was.prefs, models: { codex: 'gpt-6.1-sol' } } }
+  const c = workflowChanges(was, next)
+  expect(changeHeadline(c)).toBe('all types: Codex tasks use gpt-6.1-sol (was: the workflow\'s model)')
+  expect(changeSummary(workflowChanges(next, was))).toEqual(['all types: Codex tasks use the workflow\'s model (was: gpt-6.1-sol)'])
+  const marks = stepMarks(c, 'task', next)
+  expect(marks.get('work')).toMatchObject({ kind: 'changed', fields: [{ field: 'models.codex', after: 'gpt-6.1-sol' }] })
+  // The reviewer's model is reviewModel, whatever its program.
+  expect(marks.get('review')!.kind).toBe('same')
+  expect(taskImpact(c, 'task', next)).toBe('For task tasks: work changes its Codex model')
+  const guard = workflowChanges(old, { ...old, guards: { merge: { others: 'engine' } } })
+  expect(impactRepeats(taskImpact(guard, 'task', old), changeHeadline(guard))).toBe(true)
+  expect(impactRepeats(taskImpact(c, 'task', next), changeHeadline(c))).toBe(false)
 })
