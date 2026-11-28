@@ -123,12 +123,12 @@ it('only a task type added: New task type on the card and its review, and once a
 })
 
 it('a per-program model: in plain words once, and under the worker\'s default on its step', async () => {
-  const was: Template = { ...company, prefs: { ...company.prefs, agent: 'claude', model: 'opus' } }
+  const was: Template = { ...company, prefs: { ...company.prefs, agent: 'claude', model: 'opus', reviewAgent: 'codex', reviewModel: 'gpt-6.1' } }
   const next: Template = { ...was, prefs: { ...was.prefs, models: { codex: 'gpt-6.1-sol' } } }
   const c: CoordinatorView = { project: 'CO', name: 'Company', proposal: { diff: '+ models', at: 1, changes: workflowChanges(was, next), template: next } }
   w = await mountSuspended(ProposalCard, { props: { c } })
   expect(w.find('[data-testid="proposal-headline"]').text()).toBe('all types: Codex tasks use gpt-6.1-sol (was: the workflow\'s model)')
   const work = w.find('[data-testid="wf-node"][data-diff="changed"]')
   expect(work.findAll('[data-testid="wf-who"] .mono').map(x => x.text())).toEqual(['Claude · opus', 'Codex · gpt-6.1-sol'])
-  expect(work.find('[data-testid="wf-delta"]').text()).toBe('Codex model: none → gpt-6.1-sol')
+  expect(work.find('[data-testid="wf-delta"]').text()).toBe('Codex model: the workflow\'s model → gpt-6.1-sol')
 })

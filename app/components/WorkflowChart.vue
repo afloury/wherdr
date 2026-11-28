@@ -34,7 +34,12 @@ const plan = computed(() => {
 const DIFF: Partial<Record<ChangeKind, string>> = { added: 'Added', removed: 'Removed', changed: 'Changed', moved: 'Moved' }
 const FIELD: Record<string, string> = { holder: 'Holder', ends: 'Ends', action: 'Action', rounds: 'Rounds', timeout: 'Timeout', agent: 'Agent', model: 'Model', reviewAgent: 'Agent', reviewModel: 'Model', reviewFallbackAgent: 'Fallback agent', reviewFallbackModel: 'Fallback model', sendBack: 'Sends back to', evidence: 'Proofs' }
 const fieldName = (field: string) => { const prog = modelsProgram(field); return prog ? tl(`${kindLabel(prog)} model`) : tl(FIELD[field] ?? field) }
-const fieldText = (f: FieldChange) => (f.field === 'instructions' ? tl('Instructions edited') : `${fieldName(f.field)}: ${f.before ?? tl('none')} → ${f.after ?? tl('none')}`)
+// An unset per-program model is the workflow's own model.
+const fieldText = (f: FieldChange) => {
+  if (f.field === 'instructions') return tl('Instructions edited')
+  const none = modelsProgram(f.field) ? tl('the workflow\'s model') : tl('none')
+  return `${fieldName(f.field)}: ${f.before ?? none} → ${f.after ?? none}`
+}
 const impact = computed(() => {
   const line = props.changes ? taskImpact(props.changes, props.type, props.workflow) : ''
   return line && !(props.headline && impactRepeats(line, props.headline)) ? tl(line) : ''
