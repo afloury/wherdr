@@ -1,4 +1,3 @@
-## Improved
 wherdr 3.2.3 makes sending and answering dependable: a message is never sent twice or lost, an agent's prompt can be answered from the conversation while it is pending, and **Tasks to review** shows an agent's question or permission only when you are needed. It also brings tickable checklists, copy on select, snooze and dismiss in Tasks to review, named agents and per-program models, a ⌘K palette, Private notifications, and many terminal, omp and Antigravity fixes. Thanks to [@followcat](https://github.com/followcat) and [@simonsmallchua](https://github.com/simonsmallchua) for a large share of this release. Update as usual: the banner's *Update with Alfred*, or `update.sh 3.2.3` in the install folder.
 
 ## Fixed
