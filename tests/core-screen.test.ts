@@ -409,4 +409,17 @@ describe('coreChoose, same request on a redrawn screen', () => {
     // A call the screen does not show is never taken.
     expect((await card(wide, () => [bashCall('toolu_running', 'npm run dev')])).identity).toMatch(/^screen:/)
   })
+  it('among parallel calls, takes the one the dialog shows, else none', async () => {
+    const secrets = CMD.replace('conf', 'secrets')
+    const both = () => [bashCall('toolu_conf'), bashCall('toolu_secrets', secrets)]
+    const asked = wide.replaceAll(CMD, secrets).replace('⎿  $ ' + secrets, '⎿  $ ' + CMD)
+    const c = await card(asked, both)
+    expect(c.detail?.command).toBe(secrets)
+    // The card for the other call is refused on this dialog.
+    const s = setup([asked], both)
+    await expect(tap(s.d, await card(wide, both))).rejects.toMatchObject({ code: 'stale' })
+    expect(s.calls).toEqual([])
+    // Only the start of the command shown, shared by both: the screen key stays.
+    expect((await card(wide, () => [bashCall('a', CMD + ' | wc -l'), bashCall('b', CMD + ' | sort')])).identity).toMatch(/^screen:/)
+  })
 })

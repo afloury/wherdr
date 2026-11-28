@@ -1010,17 +1010,23 @@ export function sameOptionLabel(a: string | null | undefined, b: unknown): boole
   return Boolean(x && y) && (x.startsWith(y) || y.startsWith(x))
 }
 
-// Among the pending tool calls, the one this permission prompt asks for: the
-// screen shows its file or the start of its command. A call the screen does not
-// name is never taken (a parallel call still running, a lagging transcript).
+// Among the pending tool calls, the one this permission prompt asks for. Only
+// the dialog counts, not the output above it: its detail as read from the
+// screen, else (a short pane scrolled it away) what follows the last rule. A
+// call is named by its file, its whole command, or failing that the start of
+// its command; it is taken only when it alone is named (parallel calls, a
+// lagging transcript): otherwise the screen's own key stays the identity.
 export function pickCall(calls: PendingCall[], text: string, c: Choices): PendingCall | null {
   if (!calls.length || !(c.detail || isPermissionQuestion(c.question))) return null
-  const screen = squash(text)
-  const named = (d: PromptDetail) => {
-    const key = d.file ? squash(d.file.split('/').pop()) : squash(d.command).slice(0, LABEL_KEY)
-    return Boolean(key) && screen.includes(key)
+  const lines = text.split('\n')
+  const rule = lines.findLastIndex(l => /^\s*[─━═]{8,}\s*$/.test(l))
+  const dialog = squash(c.detail ? [c.detail.file, c.detail.command].join('') : lines.slice(rule + 1).join(''))
+  const only = (key: (d: PromptDetail) => string) => {
+    const named = calls.filter((k) => { const s = key(k.detail); return Boolean(s) && dialog.includes(s) })
+    return named.length === 1 ? named[0]! : named.length ? undefined : null
   }
-  return calls.find(k => named(k.detail)) ?? null
+  const whole = only(d => (d.file ? squash(d.file.split('/').pop()) : squash(d.command)))
+  return whole !== null ? whole ?? null : only(d => (d.file ? '' : squash(d.command).slice(0, LABEL_KEY))) ?? null
 }
 
 // On-screen prompt re-read before choose/nav; Claude questions can be
