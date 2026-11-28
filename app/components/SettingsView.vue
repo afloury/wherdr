@@ -613,7 +613,7 @@ onMounted(() => {
             <p class="muted notify-hint" :class="{ 'quiet-end': quietOn }">{{ quietEnd || tl('Notifications come back on by themselves at the end.', 'Retour automatique à la normale à la fin de la durée choisie.') }}</p>
           </div>
           <NotificationRules />
-          <div class="settings-group" data-ui-target="notifications.private">
+          <div class="settings-group">
             <label class="settings-toggle">
               <span><b>{{ t('Private notifications') }}</b><small>{{ t('Every notification only says “An agent needs you”: no message, task or conversation title, link or project name on the lock screen. On all devices.') }}</small></span>
               <USwitch v-model="privateNotificationsOn" size="xl" />
