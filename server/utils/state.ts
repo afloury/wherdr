@@ -175,6 +175,8 @@ export async function poll() {
   await coreScreens().enrich(state.panes).catch(() => {})
   void coreTranscriptsOf().observe(state.panes)
   corePreviews().apply(state.panes)
+  // A task's question or permission gone from its agent leaves Tasks to review now (pmMechanic.ts).
+  if (state.ok !== false) { const panes = state.panes; void import('./pmMechanic').then(m => m.clearGoneWaits(pmStore(), panes)).catch(() => {}) }
   const json = JSON.stringify(state)
   if (json !== stateJson) { stateJson = json; broadcastState() }
 }

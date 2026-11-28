@@ -2,7 +2,7 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { decisionsOf, decisionsPush, type DecisionsInput } from '../shared/pm/decisions'
+import { HOLD, decisionsOf, decisionsPush, type DecisionsInput } from '../shared/pm/decisions'
 import { initialState, onEvent, planSteps, type StepEvent, type StepState } from '../shared/pm/steps'
 import { github } from '../shared/pm/examples'
 import type { Card } from '../shared/pm/board'
@@ -48,6 +48,22 @@ it('groups what waits for the user, the recommended answer first', () => {
   expect(decisionsOf(input({ cards: [card('CO-7', { yourTurn: advice('your-turn', []) })] }))[0]!.options).toHaveLength(7)
   expect(by('CO-4')).toMatchObject({ label: 'Merged', text: 'Merge the PR' })
   expect(ds.find(d => d.group === 'proposal')!.text).toBe('After your message: “add a deploy step”')
+})
+
+it('holds back an agent\'s wait until it needs the user', () => {
+  const agent = (tasks: DecisionsInput['tasks'], now: number, asks: string[] = []) =>
+    decisionsOf(input({ cards: [card('CO-5', {})], tasks, wakes: [], coordinators: [], asks, now })).map(d => d.kind)
+  const permission = [{ id: 'CO-5', state: 'waiting' as const, waitKind: 'permission' as const, waitAt: 1000 }]
+  // A permission gone within 20 s never shows; one still there after it does.
+  expect(agent(permission, 1000 + HOLD.permission - 1)).toEqual([])
+  expect(agent(permission, 1000 + HOLD.permission)).toEqual(['permission'])
+  // A question its coordinator is woken for shows only once it went unanswered (an answer clears the wait).
+  const question = [{ id: 'CO-5', state: 'waiting' as const, waitKind: 'question' as const, waitAt: 1000 }]
+  expect(agent(question, 1001, ['CO'])).toEqual([])
+  expect(agent(question, 1000 + HOLD.question, ['CO'])).toEqual(['question'])
+  expect(agent([{ id: 'CO-5', state: 'working' }], 1000 + HOLD.question, ['CO'])).toEqual([])
+  // No coordinator woken for it: at once.
+  expect(agent(question, 1001)).toEqual(['question'])
 })
 
 it('drops an unanswered wake once the coordinator acked a later one', () => {

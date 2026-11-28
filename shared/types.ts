@@ -135,6 +135,8 @@ export interface Pane {
   task?: string
   // Its role on that task ('worker', 'reviewer'), from its wherdr.role label.
   role?: string
+  // A task agent's wait (its wherdr.report label or a permission prompt): its task's wait clears as soon as it goes (pmMechanic.ts clearGoneWaits).
+  wait?: 'question' | 'permission' | 'auth'
   // Agent name shown by Herdr (`display_agent`), if it says more than the agent kind.
   displayAgent?: string
   // Pane without an agent: foreground command ("pnpm dev"), missing at the shell prompt.
