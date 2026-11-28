@@ -129,12 +129,13 @@ export function defineApi<T>(
       }
       return gzipJson(event, out)
     } catch (e) {
-      const err = e as Error & { code?: string }
+      const err = e as Error & { code?: string, unconfirmed?: boolean }
       const known = e instanceof HerdrError || (url.pathname.startsWith('/api/auth/') && Boolean(err.code))
       const code = known ? err.code : 'internal'
       if (!known) log('error', event.method, url.pathname, e)
       const status = err.code === 'unreachable' ? 503 : err.code === 'locked' ? 401 : err.code === 'rate_limited' ? 429 : 400
-      return sendError(event, status, { error: err.message, code })
+      // May have reached the program (typed, its Enter lost): the app never sends it again.
+      return sendError(event, status, { error: err.message, code, ...(known && err.unconfirmed ? { unconfirmed: true } : {}) })
     }
   })
 }

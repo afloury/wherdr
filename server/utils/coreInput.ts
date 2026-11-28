@@ -222,12 +222,20 @@ async function typeIn(deps: CoreInputDeps, p: Pane, text: string, pastes: unknow
       const t = await deps.call<{ status?: string | { state?: string } | null }>('terminal.get', { terminal: p.coreAddress }, 3000).catch(() => null)
       const state = typeof t?.status === 'string' ? t.status : t?.status?.state
       if (state === 'idle' || state === 'done') {
-        await deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['enter'] }, 10000)
+        // The text is typed: a failed Enter must never lead to typing it again.
+        await deps.call('terminal.keys', { terminal: p.coreAddress, keys: ['enter'] }, 10000).catch(typedNotSubmitted)
         started = null // unconfirmed: Enter pressed, no turn observed yet
       }
     }
     return { ok: true, started }
   } catch (e) { failure(e) } finally { forget(); deps.refresh() }
+}
+
+// The message is in the terminal, only its Enter failed: unconfirmed (the held
+// queue and the conversation's Retry never type it again, see coreHeld.ts and
+// app/composables/useOutbox.ts).
+function typedNotSubmitted(): never {
+  throw Object.assign(new HerdrError('not_submitted', 'The message was typed but its Enter failed: check the terminal, it may need Enter.'), { unconfirmed: true })
 }
 
 // After a restart: the sends it interrupted are submitted the same way, only

@@ -103,10 +103,10 @@ export async function resumeTask(deps: PmLaunchDeps, id: unknown, how: Resume, b
   // Continue: a new agent for the step, in the same worktree; a worker reads a handover note first.
   const worker = (await store.runs()).filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
   const paused = room && !task.stopped ? { ...task, stopped: { by: 'the coordinator', why: `it paused the task to free room on ${room.room}: ${room.need}`, at: room.at } } : undefined
-  const handover = plan[s.at]?.holder === 'worker' && worker ? handoverText(paused ?? task, plan, worker.branch) : undefined
+  const handover = plan[s.at]?.holder === 'worker' && worker ? handoverText(paused ?? task, plan, worker.branch, worker) : undefined
   // Paused, not stopped: still working, its worker started again (the same conversation when it can).
   if (paused) await store.saveTask(going)
-  let started = await startTask(deps, task.id, { handover, by: logBy, ...(paused ? { revive: true as const, ...(worker?.session ? { resume: { session: worker.session, text: roomResumeText(room!) } } : {}) } : {}) })
+  let started = await startTask(deps, task.id, { handover, by: logBy, ...(paused ? { revive: true as const, ...(worker?.session ? { resume: { session: worker.session, text: roomResumeText(room!), program: worker.program } } : {}) } : {}) })
   if (paused && started.state !== 'working') started = await store.saveTask({ ...started, parked: room })
   // It could not start: now a failure of its own, no longer the stop.
   if (started.stopped) started = await store.saveTask({ ...started, stopped: undefined })
