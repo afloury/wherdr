@@ -7,7 +7,8 @@ import { classifyScreen, confirmedInput } from '../../shared/interactiveScreen'
 import { codexError } from '../../shared/codexError'
 import { hasTranscript } from '../../shared/agentKind'
 import { parseOmpStatus } from '../../shared/ompStatus'
-import { parseChoices, parseOmpPrompt, promptIdentity, completeClaudeAsk, type ClaudeAsked } from './choices'
+import { parseChoices, parseOmpPrompt, looseIdentity, callIdentity, pickCall, completeClaudeAsk, type ClaudeAsked } from './choices'
+import type { PendingCall } from './promptDetail'
 import { queueSendNow, readDraft, sameText } from './coreDraft'
 import { lastSentText, sendingTo } from './submitting'
 import { fieldHolds } from '../../shared/queuedMatch'
@@ -53,7 +54,7 @@ export function readCoreScreen(text: string, agent: string | null | undefined, s
         && !(agent === 'claude' && TRUST_FOLDER.test(tail))
         && !(agent === 'agy' && AGY_PICKER.test(tail)),
     })
-    if (choices) choices.identity = promptIdentity(text, agent)
+    if (choices) choices.identity = looseIdentity(choices)
   }
   const known = status && status !== 'unknown' ? status : null
   const derived = known ? null : working ? 'working' : choices ? 'blocked' : confirmedInput(text, agent) ? 'idle' : null
@@ -66,10 +67,26 @@ export function readCoreScreen(text: string, agent: string | null | undefined, s
   return { status: derived, choices, interaction }
 }
 
-export interface CoreScreenDeps {
+export interface TranscriptDeps {
+  asked?: (p: Pane) => Promise<ClaudeAsked[]>
+  pending?: (p: Pane) => Promise<PendingCall[]>
+}
+// The question on screen completed by the transcript (WHR-607): Claude's
+// AskUserQuestion, or the tool call a permission asks for. Its id becomes the
+// card's identity, and its full command the card's detail (never cut by the width).
+export async function withTranscript(deps: TranscriptDeps, p: Pane, choices: Choices, text: string): Promise<Choices> {
+  if (p.agent === 'claude' && deps.asked) {
+    const asked = completeClaudeAsk(choices, await deps.asked(p).catch(() => []))
+    if (asked !== choices) return asked
+  }
+  if (!deps.pending || !['claude', 'codex', 'omp'].includes(p.agent || '')) return choices
+  const call = pickCall(await deps.pending(p).catch(() => []), text, choices)
+  return call ? { ...choices, detail: call.detail, identity: callIdentity(call.call) } : choices
+}
+
+export interface CoreScreenDeps extends TranscriptDeps {
   call: (method: string, params: object, timeout: number) => Promise<{ text?: string }>
   viewed: (id: string) => boolean
-  asked?: (p: Pane) => Promise<ClaudeAsked[]>
   /** Colored screen (see corePaint): without it, no draft is shown. */
   colors?: (p: Pane) => Promise<string>
   /** Ask for a poll in `ms`: a suppressed 'terminal' wants its second read. */
@@ -221,8 +238,7 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         if (!born.has(p.id)) born.set(p.id, c.at)
         const status = r.status || p.status
         c.open = status !== 'blocked' && status !== 'working'
-        let choices = r.choices
-        if (choices && p.agent === 'claude' && deps.asked) choices = completeClaudeAsk(choices, await deps.asked(p).catch(() => []))
+        const choices = r.choices && r.interaction === 'native' ? await withTranscript(deps, p, r.choices, c.text) : null
         if (r.status) p.status = r.status
         const error = parsed.error
         if (error) p.error = error
@@ -236,7 +252,7 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         const published = raw === 'terminal' && streak < 2 ? prev?.published ?? 'unknown' : raw
         terms.set(p.id, { at: c.at, streak, published })
         p.interaction = published
-        if (choices && r.interaction === 'native') p.prompt = choices
+        if (choices) p.prompt = choices
         if (parsed.sendNow) p.queueSendNow = true
         // wherdr is still submitting a message here (a photo becoming an image):
         // what its field holds is that message on its way, not "Not sent".

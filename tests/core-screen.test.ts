@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
-import { createCoreScreens, readCoreScreen } from '../server/utils/coreScreen'
+import { createCoreScreens, readCoreScreen, withTranscript } from '../server/utils/coreScreen'
 import { coreChoose, coreNav, type CoreChooseDeps } from '../server/utils/coreChoose'
 import { CoreError } from '../server/utils/core'
 import type { Choices, Pane } from '../shared/types'
@@ -348,5 +348,78 @@ describe('coreChoose', () => {
     const gone = setup(() => input)
     await expect(coreNav(gone.d, { pane_id: 't1', keys: ['enter'], identity: identity() })).rejects.toMatchObject({ code: 'stale' })
     expect(calls.length + gone.calls.length).toBe(2)
+  })
+})
+
+// WHR-607: a tap is refused only when the request changed, not the screen's drawing.
+describe('coreChoose, same request on a redrawn screen', () => {
+  const countdown = fx('claude-perm-countdown.txt')
+  const wide = fx('claude-perm-wide.txt')
+  const CMD = 'ls -la /etc /usr /var /opt /srv /home 2>/dev/null | grep -c conf'
+  const bashCall = (call: string, command = CMD) => ({ call, detail: { tool: 'Bash', command } })
+  function setup(screens: string[], pending?: () => { call: string, detail: { tool: string, command: string } }[]) {
+    const calls: [string, any][] = []
+    const p = pane('t1', { status: 'blocked' })
+    let n = 0
+    const d: CoreChooseDeps = {
+      call: async (m, params) => { calls.push([m, params]); return {} as never },
+      pane: () => p, panes: () => [p], refresh: () => {}, sleep: async () => {},
+      read: async () => screens[Math.min(n++, screens.length - 1)]!,
+      ...(pending ? { pending: async () => pending() } : {}),
+    }
+    return { d, calls, p }
+  }
+  // The card as the poll made it.
+  const card = async (text: string, pending?: () => ReturnType<typeof bashCall>[]) => {
+    const s = setup([text], pending)
+    return withTranscript(s.d, s.p, readCoreScreen(text, 'claude', 'blocked').choices!, text)
+  }
+  const tap = (d: CoreChooseDeps, c: Choices, i = 0) => coreChoose(d, { pane_id: 't1', index: i, label: c.options[i]!.label, identity: c.identity })
+
+  it('without a transcript: works while the countdown ticks and after a resize, refuses another request', async () => {
+    const c = await card(countdown)
+    const ticking = setup([countdown.replace('0:39', '0:38')])
+    await tap(ticking.d, c)
+    expect(ticking.calls).toEqual([['terminal.keys', { terminal: 'm/t1', keys: ['enter'] }]])
+    // Wrapped at 46 columns: option 2's label is cut on screen.
+    const narrow = setup([fx('claude-perm-narrow.txt')])
+    await tap(narrow.d, await card(wide), 1)
+    expect(narrow.calls).toEqual([['terminal.keys', { terminal: 'm/t1', keys: ['down', 'enter'] }]])
+    const other = setup([wide])
+    await expect(tap(other.d, c)).rejects.toMatchObject({ code: 'stale' })
+    expect(other.calls).toEqual([])
+  })
+  it('reads once more before refusing', async () => {
+    const s = setup(['$ redrawing', countdown])
+    await tap(s.d, await card(countdown))
+    expect(s.calls.map(x => x[0])).toEqual(['terminal.keys'])
+  })
+  it('with the pending call: its id is the identity and its full command the detail, whatever the size', async () => {
+    const pending = [bashCall('toolu_running', 'npm run dev'), bashCall('toolu_asked')]
+    const c = await card(wide, () => pending)
+    expect(c.identity).toMatch(/^call:/)
+    expect(c.detail).toEqual({ tool: 'Bash', command: CMD })
+    // 16 rows: the command scrolled out of the box, the screen key differs.
+    const short = setup([fx('claude-perm-short.txt')], () => pending)
+    await tap(short.d, c)
+    expect(short.calls.map(x => x[0])).toEqual(['terminal.keys'])
+    // Answered, and the same command asked again: another call.
+    const again = setup([wide], () => [bashCall('toolu_next')])
+    await expect(tap(again.d, c)).rejects.toMatchObject({ code: 'stale' })
+    // A call the screen does not show is never taken.
+    expect((await card(wide, () => [bashCall('toolu_running', 'npm run dev')])).identity).toMatch(/^screen:/)
+  })
+  it('among parallel calls, takes the one the dialog shows, else none', async () => {
+    const secrets = CMD.replace('conf', 'secrets')
+    const both = () => [bashCall('toolu_conf'), bashCall('toolu_secrets', secrets)]
+    const asked = wide.replaceAll(CMD, secrets).replace('⎿  $ ' + secrets, '⎿  $ ' + CMD)
+    const c = await card(asked, both)
+    expect(c.detail?.command).toBe(secrets)
+    // The card for the other call is refused on this dialog.
+    const s = setup([asked], both)
+    await expect(tap(s.d, await card(wide, both))).rejects.toMatchObject({ code: 'stale' })
+    expect(s.calls).toEqual([])
+    // Only the start of the command shown, shared by both: the screen key stays.
+    expect((await card(wide, () => [bashCall('a', CMD + ' | wc -l'), bashCall('b', CMD + ' | sort')])).identity).toMatch(/^screen:/)
   })
 })
