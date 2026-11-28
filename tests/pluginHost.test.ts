@@ -9,6 +9,7 @@ function setup(plugins: Record<string, unknown>, prefs: PluginPrefs = { off: [],
   // The open conversation's draft as the page wires it: null when no conversation is open.
   let draftText: string | null = 'initial'
   const navs = new Set<(p: string) => void>()
+  const headerMounts = new Set<(el: unknown) => unknown>()
   const insert = vi.fn((t: string) => {
     if (draftText !== null) draftText = draftText && !/\s$/.test(draftText) ? `${draftText} ${t}` : draftText + t
   })
@@ -22,6 +23,7 @@ function setup(plugins: Record<string, unknown>, prefs: PluginPrefs = { off: [],
     focusDraft: focus,
     currentAgent: () => ({ id: 'w1:p1', agent: 'claude', name: 'demo', machine: null }),
     subscribeNavigate: (cb) => { navs.add(cb); return () => navs.delete(cb) },
+    mountHeaderAction: (render) => { headerMounts.add(render); return () => headerMounts.delete(render) },
     prefs: () => saved,
     savePrefs: (p) => { saved = p },
     changed: () => {},
@@ -29,7 +31,7 @@ function setup(plugins: Record<string, unknown>, prefs: PluginPrefs = { off: [],
   }
   const host = createPluginHost(deps)
   return {
-    host, deps, insert, focus, navs,
+    host, deps, insert, focus, navs, headerMounts,
     getDraft: () => draftText,
     setDraftRaw: (v: string | null) => { draftText = v },
     saved: () => saved,
@@ -288,6 +290,57 @@ describe('plugin host', () => {
     expect(api.draft.get()).toBeNull()
     api.draft.set('ignored')
     expect(s.getDraft()).toBeNull()
+  })
+  it('mountHeaderAction registrations are tracked, idempotent and disposed with the plugin', async () => {
+    type MountApi = { mountHeaderAction: (r: (el: HTMLElement) => void) => () => void, onNavigate: (c: () => void) => () => void }
+    let api!: MountApi
+    const s = setup({
+      bad: (w: MountApi) => { w.mountHeaderAction(() => { throw new Error('render boom') }) },
+      p: (w: MountApi) => { api = w },
+    })
+    await s.host.init()
+    expect(s.status('p')).toBe('running')
+    // Registering never invokes the renderer: only the host does, once a slot exists.
+    expect(s.status('bad')).toBe('running')
+    expect(s.headerMounts.size).toBe(1)
+    const dispose = api.mountHeaderAction(() => {})
+    api.mountHeaderAction(() => {})
+    expect(s.headerMounts.size).toBe(3)
+    dispose()
+    dispose()
+    expect(s.headerMounts.size).toBe(2)
+    // Stopping one plugin disposes its own registrations only.
+    await s.host.setEnabled('p', false)
+    expect(s.headerMounts.size).toBe(1)
+    dispose()
+    expect(s.headerMounts.size).toBe(1)
+    await s.host.setEnabled('bad', false)
+    expect(s.headerMounts.size).toBe(0)
+  })
+
+  it('a non-function mountHeaderAction renderer fails the plugin', async () => {
+    const s = setup({ p: (w: { mountHeaderAction: (r: unknown) => void }) => w.mountHeaderAction(null) })
+    await s.host.init()
+    expect(s.status('p')).toBe('failed')
+    expect(s.host.rows()[0]!.error).toMatch(/expects a function/)
+  })
+
+  it('runs a renderer cleanup resolved after the plugin already stopped', async () => {
+    let resolve!: (cleanup: () => void) => void
+    const cleaned = vi.fn()
+    const s = setup({
+      p: (w: { mountHeaderAction: (r: (el: HTMLElement) => Promise<() => void>) => void }) => {
+        w.mountHeaderAction(() => new Promise((r) => { resolve = r }))
+      },
+    })
+    await s.host.init()
+    const pending: unknown[] = []
+    s.headerMounts.forEach(r => pending.push(r({})))
+    await vi.waitFor(() => expect(resolve).toBeTypeOf('function'))
+    await s.host.setEnabled('p', false)
+    resolve(() => { cleaned(); throw new Error('late teardown boom') })
+    await Promise.all(pending)
+    expect(cleaned).toHaveBeenCalledTimes(1)
   })
 })
 

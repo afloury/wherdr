@@ -137,6 +137,70 @@ describe('core previews', () => {
       expect(reads).toBe(n)
     } finally { vi.useRealTimers() }
   })
+  it('reads no conversation for an unviewed database-backed agent, and keeps reading the others', async () => {
+    const replied: string[] = []
+    const p = createCorePreviews({
+      reply: async x => { replied.push(x.id); return { text: 'All done.' } },
+      read: async () => 'Indexing\nlast line\n',
+      viewed: id => id === 'seen',
+    })
+    const list = () => [
+      pane('seen', { agent: 'agy', stateSeq: 1 }),
+      pane('away', { agent: 'agy', stateSeq: 1 }),
+      pane('claude', { agent: 'claude', stateSeq: 1 }),
+    ]
+    p.apply(list())
+    await settle()
+    const shown = list()
+    p.apply(shown)
+    expect(shown.map(x => x.preview)).toEqual(['All done.', 'last line', 'All done.'])
+    expect(replied.sort()).toEqual(['claude', 'seen'])
+  })
+  it('reads an idle, settled database-backed pane once when it becomes viewed', async () => {
+    let t = 0
+    let isSeen = false
+    let replies = 0
+    let reads = 0
+    const p = createCorePreviews({
+      now: () => t,
+      reply: async () => { replies++; return { text: 'All done.' } },
+      read: async () => { reads++; return 'Indexing\nlast line\n' },
+      viewed: id => id === 'p1' && isSeen,
+    })
+    const list = () => [pane('p1', { agent: 'agy', status: 'idle', stateSeq: 1 })]
+    p.apply(list())
+    await settle()
+    t = 20_000
+    const before = list()
+    p.apply(before)
+    await settle()
+    expect(before[0]!.preview).toBe('last line')
+    expect(replies).toBe(0)
+    expect(reads).toBe(1)
+
+    isSeen = true
+    p.apply(list())
+    await settle()
+    const after = list()
+    p.apply(after)
+    await settle()
+    expect(after[0]!.preview).toBe('All done.')
+    expect(replies).toBe(1)
+    expect(reads).toBe(1)
+
+    // Further polls (and leaving the pane) keep the reply without re-reading.
+    t = 25_000
+    p.apply(list())
+    await settle()
+    t = 35_000
+    isSeen = false
+    const later = list()
+    p.apply(later)
+    await settle()
+    expect(later[0]!.preview).toBe('All done.')
+    expect(replies).toBe(1)
+    expect(reads).toBe(1)
+  })
   it('limits the readings in flight and forgets gone panes', async () => {
     let active = 0, peak = 0
     const p = createCorePreviews({ reply: async () => null, read: async () => { peak = Math.max(peak, ++active); await settle(); active--; return 'x' } })

@@ -27,6 +27,7 @@ import { carriesFiles, dragDepth } from '~/utils/fileDrop'
 import { interactionWindowFor } from '~/utils/interactionWindow'
 import { agentKeys, mergeKeys, replacementPane } from '~/utils/agentIdentity'
 import { uiOpenPanel } from '~/utils/settingsPanel'
+import { hasHeaderActions, registerHeaderActionsSlot } from '~/utils/headerActions'
 import type { UiOpenEvent } from '#shared/uiOpen'
 import type { UiShowEvent } from '#shared/uiShow'
 
@@ -433,15 +434,37 @@ function coreMenuItems(p: Pane | undefined): MenuItem[] {
 const NOTES_HEADER_MIN = 560
 const headerEl = ref<HTMLElement | null>(null)
 const headerWidth = ref(0)
+// The plugin slot of the header: its populated width counts against Notes in the header.
+const headerActionsEl = ref<HTMLElement | null>(null)
+const headerActionsWidth = ref(0)
 let headerObserver: ResizeObserver | null = null
+let headerActionsObserver: ResizeObserver | null = null
+let unregisterHeaderActions: (() => void) | null = null
 watch(headerEl, (el, old) => {
   if (old) headerObserver?.unobserve(old)
   if (!el) return
   headerObserver ??= new ResizeObserver(([e]) => { headerWidth.value = e?.contentRect.width ?? 0 })
   headerObserver.observe(el)
 })
-onBeforeUnmount(() => headerObserver?.disconnect())
-const notesInHeader = computed(() => !compactPhone.value && (!headerWidth.value || headerWidth.value >= NOTES_HEADER_MIN))
+watch(headerActionsEl, (el, old) => {
+  if (old) {
+    headerActionsObserver?.unobserve(old)
+    unregisterHeaderActions?.()
+    unregisterHeaderActions = null
+  }
+  if (!el) { headerActionsWidth.value = 0; return }
+  headerActionsObserver ??= new ResizeObserver(([e]) => {
+    headerActionsWidth.value = hasHeaderActions(headerActionsEl.value) ? (e?.contentRect.width ?? 0) : 0
+  })
+  headerActionsObserver.observe(el)
+  unregisterHeaderActions = registerHeaderActionsSlot(el)
+})
+onBeforeUnmount(() => {
+  headerObserver?.disconnect()
+  headerActionsObserver?.disconnect()
+  unregisterHeaderActions?.()
+})
+const notesInHeader = computed(() => !compactPhone.value && (!headerWidth.value || headerWidth.value - (headerActionsWidth.value > 0 ? headerActionsWidth.value + 6 : 0) >= NOTES_HEADER_MIN))
 const notesItem = computed<MenuItem>(() => ({ label: t('Notes'), icon: 'i-lucide-sticky-note', kbds: desk.value ? shortcutKbds('notes') : undefined, run: toggleNotes }))
 // A project's or workspace's coordinator: its board, settings and autopilot first, as on its sidebar row.
 const agentMenu = computed<MenuItem[]>(() => [...paneCoordinatorItems(pane.value), ...(notesInHeader.value ? [] : [notesItem.value]), ...coreMenuItems(pane.value)])
@@ -624,6 +647,7 @@ const viewStyle = computed(() => (kbOpen.value ? { height: `${vvHeight.value}px`
         </div>
         <ViewToggle v-if="controls.selector === 'cell'" :mode="mode" @toggle="toggleMode('term')" />
         <div class="agent-actions">
+          <span ref="headerActionsEl" data-wherdr="header-actions" class="header-actions" />
           <ViewToggle v-if="controls.selector === 'header'" :mode="mode" @toggle="toggleMode('term')" />
           <UButton
             v-if="headerAdd && pane && !compactPhone" icon="i-lucide-plus" color="neutral" variant="ghost" size="lg" class="icon-btn"

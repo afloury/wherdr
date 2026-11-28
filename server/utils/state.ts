@@ -46,6 +46,7 @@ let coreSubtitles: ReturnType<typeof createCorePreviews> | null = null
 const corePreviews = () => coreSubtitles ||= createCorePreviews({
   reply: p => coreTranscriptsOf().latestReply(p),
   read: async address => (await hcCall<{ text?: string }>('terminal.read', { terminal: address }, 4000)).text || '',
+  viewed: isViewed,
   wake: () => scheduleCorePoll(),
 })
 export const transcripts = {

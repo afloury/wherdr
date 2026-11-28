@@ -142,7 +142,8 @@ export async function advanceTick(deps: PmLaunchDeps, now = Date.now()) {
 // A run said it is done: the engine's event for the current step.
 async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   const c = await context(deps, run.task)
-  if (!c || c.task.step!.done) return
+  // Stopped: its agent's report moves nothing (it is taken up again by the user or the coordinator).
+  if (!c || c.task.step!.done || c.task.stopped) return
   const step = c.plan[c.task.step!.at]
   const files = runFiles(latest(await deps.store.runs(), run.task, 'worker')?.instructions ?? run.instructions)
   const sep = `${READ_SEP}-${randomUUID()}`
@@ -157,7 +158,7 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   const work = c.task.step!.agent
   if (!ev && work && run.role === 'worker') {
     const retry = retriesAction(c.plan, c.task.step!)
-    await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!), needsHuman: undefined }, 'engine', `${work.kind}: the worker says it is done${retry ? `, ${step!.id} is tried again` : ''}`)
+    unmoved(await deps.store.updateTask(run.task, x => (sameTurn(x, c.task) ? { ...x, step: agentBack(x.step!), needsHuman: undefined } : null), { by: 'engine', text: `${work.kind}: the worker says it is done${retry ? `, ${step!.id} is tried again` : ''}` }))
     // A failed action it fixed: tried again now; failing again, it is back in Your turn with the new error.
     if (retry) startAction(deps, run.task, () => {})
     return
@@ -175,9 +176,15 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   // A proof is missing: the agent is told which, the step stays.
   if (res.refused) return void await Promise.all([tell(`${res.refused}\n\nWhen done: ${DONE_CMD}`), deps.store.logTask(c.task, 'engine', `${step!.id}: ${res.refused}`)])
   const what = ev.kind === 'verdict' ? `verdict, ${ev.findings.length} finding(s)` : 'done'
-  const fresh = await deps.store.task(run.task)
-  await deps.store.logTask({ ...fresh!, step: res.state, needsHuman: undefined, ...signalKept(fresh!, step!.id, ev, read) }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
+  // Computed from the task read first: one stopped, answered, archived or taken as it is meanwhile is kept.
+  unmoved(await deps.store.updateTask(run.task, x => (sameTurn(x, c.task) ? { ...x, step: res.state, needsHuman: undefined, ...signalKept(x, step!.id, ev, read) } : null), { by: `${run.role} ${run.program} ${run.model}`, text: `${step!.id}: ${what}` }))
 }
+
+// The task's step, state, stop and run are still those a copy read before its awaits.
+const sameTurn = (fresh: Task, read: Task) => JSON.stringify(fresh.step) === JSON.stringify(read.step)
+  && fresh.state === read.state && fresh.stopped?.at === read.stopped?.at && fresh.run === read.run
+// Not written (the task moved meanwhile): the signal stays for the next pass, which reads the task again.
+const unmoved = (saved: Task | null) => { if (!saved) throw new Error('the task changed while its signal was read') }
 
 // The worker pushed another branch than the task's: the engine pushes, opens
 // PRs and checks merges on that one from now on, never on the old one.
