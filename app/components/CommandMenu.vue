@@ -151,8 +151,8 @@ const paletteUi = {
           <UIcon name="i-lucide-arrow-up-right" />
         </template>
         <!-- A task: its id in its project's colored badge before the title (the suffix, still searched, stays hidden). -->
-        <template #task-leading="{ item }">
-          <UIcon :name="item.icon" />
+        <template #task-leading="{ item, ui }">
+          <UIcon :name="item.icon" :class="ui.itemLeadingIcon()" />
           <ProjectBadge :text="item.badge.text" :color="item.badge.color" />
         </template>
         <template #hit-group-label="{ group: g }">
