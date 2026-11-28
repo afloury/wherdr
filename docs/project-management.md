@@ -190,6 +190,9 @@ its message under the field and keeps what you typed.
   The color, picked from a small palette, is the project's key badge everywhere:
   its coordinator row and conversation header, board cards, the task sheet, its
   task agents' headers and *Tasks to review*.
+
+  <img src="screenshots/home-phone.png" width="260" alt="Home on a phone: the acme-api coordinator with its blue API badge and the acme-web coordinator with its violet WEB badge; task badges WEB-7, WEB-8 and API-13 take their project's color. Fictional demo data.">
+
 - **Coordinator name**: what the project's coordinator is called after its key badge,
   in its sidebar row, its conversation header and what names it (notifications,
   decisions, proposals). Empty: the project's name, which follows a rename.

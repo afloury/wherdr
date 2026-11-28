@@ -38,6 +38,14 @@ copied and nothing runs in the cloud: wherdr talks to the hc session on your com
 - **Settings**: theme, home list, conversation, terminal, agents, notifications, phone and an
   optional passkey lock.
 
+<p align="center">
+  <img src="docs/screenshots/desktop.png" width="720" alt="wherdr v3 on a computer: the sidebar with Alfred, Tasks to review, the coordinators of two projects with their blue and violet key badges and a task waiting for an answer; on the right, that task's conversation with its Your turn card. Fictional demo data.">
+</p>
+<p align="center">
+  <img src="docs/screenshots/home-phone.png" width="260" alt="wherdr v3 home screen on a phone: counters, quotas, Alfred, Tasks to review and two project coordinators with their coloured key badges. Fictional demo data.">
+  <img src="docs/screenshots/chat-phone.png" width="260" alt="A task agent's conversation on a phone, ending with a Your turn card to approve or deny a command. Fictional demo data.">
+</p>
+
 ## Quick start
 
 On the Linux or macOS computer running an **hc session**, with **Node.js 22**:
