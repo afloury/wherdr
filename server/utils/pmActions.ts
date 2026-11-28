@@ -195,7 +195,9 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
     }
     case 'github.pr': {
       const r = await run(deps, SCRIPT.pr, [wt, branch, a.base!, `${job.shown ?? job.task.id}: ${job.task.title}`], job.task.description || job.task.title)
-      return r.code === 0 ? { ok: true, link: lastLine(r.out) } : fail(r)
+      if (r.code !== 0) return fail(r)
+      const moved = /^branch (\S+)$/m.exec(r.out)?.[1]
+      return { ok: true, link: lastLine(r.out), ...(moved ? { branch: moved, note: `${branch} already had a merged PR: its later commits go on ${moved}` } : {}) }
     }
     case 'github.merge': {
       // Waits for GitHub to show a fresh push, or for the checks: later, a later pass looks again.

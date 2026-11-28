@@ -567,10 +567,11 @@ describe('a PR already merged on GitHub', () => {
     fs.mkdirSync(bin, { recursive: true })
     fs.writeFileSync(path.join(bin, 'gh'), `#!/bin/sh
 case "$*" in
+  *"--head task/A-1-"*"--state merged"*) ;;
   *"--state merged"*) while read -r h u b; do case "$*" in *tojson*) echo "$h {\\"url\\":\\"$u\\",\\"baseRefName\\":\\"\${b:-dev}\\",\\"headRefOid\\":\\"$h\\",\\"merged\\":true}";; *) echo "$h $u";; esac; done < "${merged}";;
   *"--state open"*" -q .["*) ;;
   *"--state open"*) echo '[]';;
-  "pr create"*) echo "https://pr/new";;
+  "pr create"*) [ -e "${bin}/fail" ] && { rm "${bin}/fail"; echo 'pr create refused' >&2; exit 1; }; echo "https://pr/new";;
   *) echo "unexpected gh $*" >&2; exit 1;;
 esac
 `, { mode: 0o755 })
@@ -581,7 +582,7 @@ esac
     const sh: ActionDeps['sh'] = (script, args, input) => localSh(`PATH="${bin}:$PATH"\n${script}`, args, input)
     const f = fakeDeps([])
     const go = (step: string, action: ActionJob['action'], attempt = 1, by: ActionJob['by'] = 'engine') => runAction({ ...f.deps, sh }, job({ worktree: repo, step, attempt, action, by }))
-    return { repo, merged, go }
+    return { repo, merged, bin, go }
   }
 
   it('counts as done at the merge step', async () => {
@@ -607,15 +608,24 @@ esac
     expect(await s.go('merge', { kind: 'github.merge' }, 5)).toMatchObject({ ok: true, link: 'https://pr/2', commit: head, note: 'already merged on GitHub' })
   })
 
-  it('is the PR step\'s PR at its head, and refuses new commits after it', async () => {
+  it('is the PR step\'s PR at its head, and puts new commits after it on a new branch', async () => {
     const s = setup('merged-pr')
     const pr = (attempt: number) => s.go('pr', { kind: 'github.pr', base: 'dev' }, attempt)
     expect(await pr(1)).toEqual({ ok: true, link: 'https://pr/1' })
+    // Merged into dev; a fix after it: task/A-1-2 from dev with only the fix, and its own PR.
+    git(s.repo, 'push', '-q', 'origin', 'HEAD:refs/heads/dev')
     git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'after review')
-    expect(await pr(2)).toEqual({ ok: false, error: 'pr: task/A-1 already had PR https://pr/1 merged: new commits need a new branch' })
+    // pr create failing after the switch: the next run, still given task/A-1, takes task/A-1-2 up again.
+    fs.writeFileSync(path.join(s.bin, 'fail'), '')
+    expect(await pr(2)).toMatchObject({ ok: false, error: 'pr: pr create refused' })
+    expect(await pr(3)).toEqual({ ok: true, link: 'https://pr/new', branch: 'task/A-1-2', note: 'task/A-1 already had a merged PR: its later commits go on task/A-1-2' })
+    expect(git(s.repo, 'branch', '--show-current')).toBe('task/A-1-2')
+    expect(git(s.repo, 'log', '--format=%s', 'origin/dev..HEAD')).toBe('after review')
+    expect(git(s.repo, 'ls-remote', 'origin', 'refs/heads/task/A-1-2').split('\t')[0]).toBe(git(s.repo, 'rev-parse', 'HEAD'))
+    git(s.repo, 'checkout', '-q', 'task/A-1')
     // No merged PR: a new one, as before.
     fs.writeFileSync(s.merged, '')
-    expect(await pr(3)).toEqual({ ok: true, link: 'https://pr/new' })
+    expect(await pr(4)).toEqual({ ok: true, link: 'https://pr/new' })
   })
 })
 
