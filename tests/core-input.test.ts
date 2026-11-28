@@ -53,6 +53,12 @@ describe('core input routes', () => {
     expect(w.calls.filter(c => c[0] === 'terminal.keys')).toHaveLength(0)
   })
 
+  it('a failed extra Enter is unconfirmed: the text is typed, never typed again', async () => {
+    const t = deps((m) => m === 'terminal.send' ? { started: false } : m === 'terminal.get' ? { status: 'idle' } : new CoreError('unreachable', 'machine unreachable'))
+    t.d.settleMs = 1
+    await expect(coreSend(t.d, { pane_id: 't1', text: 'a\nb' })).rejects.toMatchObject({ code: 'not_submitted', unconfirmed: true })
+  })
+
   it('Claude\'s input already holds text: nothing typed, the send is refused', async () => {
     const t = deps(() => ({ started: true }))
     t.d.field = async () => '[Image #120] what is wrong here?'

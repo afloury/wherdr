@@ -145,6 +145,9 @@ const MAX_FIRST = 64 * 1024
 const DIALOG_RE = /Enter to confirm|Esc to cancel|\(y\/n\)|\[y\/N\]|enter continue|esc back|trust (this|the) folder|^\s*[›>❯]\s*1\.\s/im
 // A program that reports no status at all is trusted once its screen has been still this long.
 const STILL_POLLS = 6
+// A terminal.get that fails (core or the machine briefly unreachable) proves nothing:
+// read again, up to this many times in a row, before giving up.
+const READ_MISSES = 5
 
 // Sends the first message once, when the program is ready: core says it is idle and its
 // screen is still, else (no status reported) the screen has been still for a few seconds.
@@ -157,11 +160,13 @@ const STILL_POLLS = 6
 export async function sendFirstMessage(deps: CoreAdminDeps, address: string, text: string): Promise<'sent' | 'skipped' | 'dialog' | 'installing' | 'uncertain'> {
   const step = deps.pollMs ?? 500
   const end = Date.now() + (deps.readyWatchMs ?? 15000)
-  let last = '', stable = 0, sawStatus = false
+  let last = '', stable = 0, sawStatus = false, misses = 0
   while (Date.now() < end) {
     const t = await deps.call<CoreFacts & { status?: string | { state?: string, msg?: string } | null }>('terminal.get', { terminal: address }, 3000).catch(() => null)
     const state = typeof t?.status === 'string' ? t.status : t?.status?.state
+    if (!t && ++misses < READ_MISSES) { await new Promise(r => setTimeout(r, step)); continue }
     if (!t || t.state === 'finished') return 'skipped'
+    misses = 0
     if (codexInstalling(t.title, typeof t.status === 'object' ? t.status?.msg : null)) return 'installing'
     if (state === 'blocked') return 'dialog'
     if (state) sawStatus = true

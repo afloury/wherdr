@@ -257,6 +257,17 @@ describe('resume and first message', () => {
     expect(await watch).toBe('sent')
     expect(t.calls.filter(c => c[0] === 'terminal.send')).toEqual([['terminal.send', { terminal: 't3', text: 'hello' }]])
   })
+  it('reads again after a failed read behind a dialog, and still sends the first message', async () => {
+    const t = setup()
+    let gets = 0
+    const deps = { ...t.deps, call: (async (m: string, p: object) => {
+      t.calls.push([m, p])
+      if (m === 'terminal.get' && ++gets === 1) throw new Error('unreachable')
+      return m === 'terminal.read' ? { text: 'ready' } : { state: 'live', status: { state: 'idle' } }
+    }) as never, pollMs: 1, readyWatchMs: 200, queueWatchMs: 2000 }
+    expect(await sendAfterDialog(deps, 't3', 'x')).toBe('sent')
+    expect(t.calls.filter(c => c[0] === 'terminal.send')).toHaveLength(1)
+  })
   it('gives up on a queued first message that is never answered', async () => {
     const t = setup()
     const deps = { ...t.deps, call: (async (m: string) => (m === 'terminal.read' ? { text: 'Enter to confirm' } : { state: 'live', status: null })) as never, pollMs: 1, readyWatchMs: 20, queueWatchMs: 30 }
