@@ -15,7 +15,7 @@ import { reviewerPlan, workerPlan, type Task } from '#shared/pm/run'
 import { actionLabel, describeStep } from '#shared/pm/describe'
 import { DEFAULT_ROUNDS } from '#shared/pm/steps'
 import { isPrMerge, type Evidence, type Template } from '#shared/pm/workflow'
-import { impactRepeats, modelsProgram, stepMarks, taskImpact, type ChangeKind, type FieldChange, type StepMark, type WorkflowChanges } from '#shared/pm/workflowChanges'
+import { ifRuns, impactRepeats, modelsProgram, stepMarks, taskImpact, type ChangeKind, type FieldChange, type StepMark, type WorkflowChanges } from '#shared/pm/workflowChanges'
 
 // headline: the change's line shown above, an impact that only repeats it is left out.
 const props = defineProps<{ workflow: Template, type: string, base?: string, coordinator?: string, changes?: WorkflowChanges, compact?: boolean, headline?: string }>()
@@ -33,7 +33,7 @@ const plan = computed(() => {
 })
 const DIFF: Partial<Record<ChangeKind, string>> = { added: 'Added', removed: 'Removed', changed: 'Changed', moved: 'Moved' }
 const FIELD: Record<string, string> = { holder: 'Holder', ends: 'Ends', action: 'Action', rounds: 'Rounds', timeout: 'Timeout', agent: 'Agent', model: 'Model', reviewAgent: 'Agent', reviewModel: 'Model', reviewFallbackAgent: 'Fallback agent', reviewFallbackModel: 'Fallback model', sendBack: 'Sends back to', evidence: 'Proofs' }
-const fieldName = (field: string) => { const prog = modelsProgram(field); return prog ? tl(`${kindLabel(prog)} model`) : tl(FIELD[field] ?? field) }
+const fieldName = (field: string) => { const prog = modelsProgram(field); return prog ? tl(ifRuns(prog)) : tl(FIELD[field] ?? field) }
 // An unset per-program model is the workflow's own model.
 const fieldText = (f: FieldChange) => {
   if (f.field === 'instructions') return tl('Instructions edited')
@@ -52,10 +52,12 @@ const agents = computed(() => {
   const task = { type: props.type } as Task, named = namedAgents.value
   const worker = workerPlan(props.workflow, task, named)
   // The per-program models (prefs.models, the type's over the workflow's), for
-  // the tasks started with another program: under the worker's default.
+  // the tasks started with another program: under the worker's default, which
+  // then says it is the default, so none reads as a fallback.
   const models = { ...props.workflow.prefs?.models, ...props.workflow.taskTypes[props.type]?.prefs?.models }
-  const others = Object.entries(models).filter(([p, m]) => m && !('program' in worker && worker.program === p)).map(([p, m]) => `${kindLabel(p)} · ${m}`)
-  return { worker: agentOf(worker), others, reviewer: agentOf(reviewerPlan(props.workflow, task, undefined, named)) }
+  const others = Object.entries(models).filter(([p, m]) => m && !('program' in worker && worker.program === p)).map(([p, m]) => `${tl(ifRuns(p))}: ${m}`)
+  const main = agentOf(worker)
+  return { worker: others.length && !('reason' in worker) ? `${main} ${tl('(default)')}` : main, others, reviewer: agentOf(reviewerPlan(props.workflow, task, undefined, named)) }
 })
 
 // Where a merge goes, for the guard line: the land's target, or the PR's base.

@@ -121,12 +121,13 @@ export function changeTitle(c?: WorkflowChanges): ChangeTitle {
   return only('added') ? (many ? 'New task types' : 'New task type') : only('removed') ? (many ? 'Task types removed' : 'Task type removed') : 'Workflow change'
 }
 
-// A per-program model in plain words: "Codex tasks use gpt-6.1-sol (was: the workflow's model)".
+// A per-program model in plain words: "If the task runs Codex: gpt-6.1-sol (was: the workflow's model)".
 const OWN = 'the workflow\'s model'
 export const modelsProgram = (field: string) => (field.startsWith('models.') ? field.slice(7) : undefined)
+export const ifRuns = (program: string) => `If the task runs ${programName(program)}`
 const fieldLine = (f: FieldChange) => {
   const prog = modelsProgram(f.field)
-  if (prog) return `${programName(prog)} tasks use ${f.after ?? OWN} (was: ${f.before ?? OWN})`
+  if (prog) return `${ifRuns(prog)}: ${f.after ?? OWN} (was: ${f.before ?? OWN})`
   return f.field === 'instructions' ? 'instructions edited' : `${f.field}: ${f.before ?? 'none'} → ${f.after ?? 'none'}`
 }
 const stepLine = (s: StepChange) => (s.kind === 'added' ? `+ ${s.id}` : s.kind === 'removed' ? `− ${s.id}` : [`${s.id}${s.kind === 'moved' ? ' moved' : ''}`, s.fields.map(fieldLine).join(', ')].filter(Boolean).join(' '))
@@ -155,7 +156,7 @@ export function changeHeadline(c: WorkflowChanges): string {
 // whose steps did not change (a change to the whole workflow only).
 export interface StepMark { kind: ChangeKind, holder: string, ends?: string, fields: FieldChange[], step?: Step }
 // Plain words for the fields named in taskImpact.
-const words = (field: string) => { const prog = modelsProgram(field); return prog ? `${programName(prog)} model` : WORDS[field] ?? field }
+const words = (field: string) => { const prog = modelsProgram(field); return prog ? `model if the task runs ${programName(prog)}` : WORDS[field] ?? field }
 const WORDS: Record<string, string> = { agent: 'agent', model: 'model', reviewAgent: 'agent', reviewModel: 'model', reviewFallbackAgent: 'fallback agent', reviewFallbackModel: 'fallback model', ends: 'ending', sendBack: 'send-back step', evidence: 'proofs' }
 // The per-program models are the worker's (the reviewer's model is reviewModel).
 const HOLDER_PREFS: Record<string, string> = { agent: 'worker', model: 'worker', reviewAgent: 'reviewer', reviewModel: 'reviewer', reviewFallbackAgent: 'reviewer', reviewFallbackModel: 'reviewer' }

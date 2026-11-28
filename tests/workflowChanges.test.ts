@@ -69,13 +69,13 @@ it('per-program models read in plain words, mark the worker step, and the impact
   const was: Template = { ...old, prefs: { agent: 'claude', model: 'opus', reviewAgent: 'codex', reviewModel: 'gpt-6.1' } }
   const next: Template = { ...was, prefs: { ...was.prefs, models: { codex: 'gpt-6.1-sol' } } }
   const c = workflowChanges(was, next)
-  expect(changeHeadline(c)).toBe('all types: Codex tasks use gpt-6.1-sol (was: the workflow\'s model)')
-  expect(changeSummary(workflowChanges(next, was))).toEqual(['all types: Codex tasks use the workflow\'s model (was: gpt-6.1-sol)'])
+  expect(changeHeadline(c)).toBe('all types: If the task runs Codex: gpt-6.1-sol (was: the workflow\'s model)')
+  expect(changeSummary(workflowChanges(next, was))).toEqual(['all types: If the task runs Codex: the workflow\'s model (was: gpt-6.1-sol)'])
   const marks = stepMarks(c, 'task', next)
   expect(marks.get('work')).toMatchObject({ kind: 'changed', fields: [{ field: 'models.codex', after: 'gpt-6.1-sol' }] })
   // The reviewer's model is reviewModel, whatever its program.
   expect(marks.get('review')!.kind).toBe('same')
-  expect(taskImpact(c, 'task', next)).toBe('For task tasks: work changes its Codex model')
+  expect(taskImpact(c, 'task', next)).toBe('For task tasks: work changes its model if the task runs Codex')
   const guard = workflowChanges(old, { ...old, guards: { merge: { others: 'engine' } } })
   expect(impactRepeats(taskImpact(guard, 'task', old), changeHeadline(guard))).toBe(true)
   expect(impactRepeats(taskImpact(c, 'task', next), changeHeadline(c))).toBe(false)
