@@ -19,6 +19,7 @@ import { CoreError } from './core'
 import { actionShell, takeUpdate } from './pmActions'
 import { actionRunning, prSeen, startAction } from './pmBoard'
 import type { PmStore } from './pmStore'
+import type { Pane } from '../../shared/types'
 import { prNow, requiredChecks } from '../../shared/pm/board'
 import { exec, runOn, startTask, type PmLaunchDeps, launched } from './pmLaunch'
 import { busyNext, busyQueue, coordinatorStartRefusal, AUTOPILOT_STARTED, UNCONFIRMED } from '../../shared/pm/autopilot'
@@ -91,12 +92,40 @@ export async function syncWaits(deps: PmLaunchDeps) {
     // answer or an archive did not change it during the reads above.
     const set = (change: Partial<Task>) => store.updateTask(task.id, x => (sameWait(x, task) ? { ...x, ...change } : null))
     if (task.state === 'waiting' && task.waitKind === 'question' && kind === 'question' && asked && !task.question) { await set({ question: asked.full }); continue }
-    if (task.state === 'working' && kind) await set({ state: 'waiting', waiting: (kind === 'permission' && msg) || (asked ? `${WAITS.question}: ${asked.line}` : WAITS[kind]), waitKind: kind, question: asked?.full })
-    else if (task.state === 'waiting' && (task.waitKind === 'question' || task.waitKind === 'permission') && !kind)
-      await set({ state: 'working', waiting: undefined, waitKind: undefined, answered: undefined, question: undefined })
-    // The answered question gone from its agent: the next one wakes the coordinator again.
-    else if (task.answered && task.state === 'working' && !kind) await set({ answered: undefined })
+    if (task.state === 'working' && kind) await set({ state: 'waiting', waiting: (kind === 'permission' && msg) || (asked ? `${WAITS.question}: ${asked.line}` : WAITS[kind]), waitKind: kind, question: asked?.full, waitAt: Date.now() })
+    else if (!kind) await clearWait(store, task)
   }
+}
+
+// The agent's question or permission gone from its terminal: its task works
+// again; the answered question gone, the next one wakes the coordinator again.
+const goneWait = (task: Task): Partial<Task> | undefined =>
+  task.state === 'waiting' && (task.waitKind === 'question' || task.waitKind === 'permission') ? { state: 'working', waiting: undefined, waitKind: undefined, waitAt: undefined, answered: undefined, question: undefined }
+    : task.answered && task.state === 'working' ? { answered: undefined } : undefined
+const clearWait = async (store: PmStore, task: Task) => {
+  const change = goneWait(task)
+  if (change) await store.updateTask(task.id, x => (sameWait(x, task) ? { ...x, ...change } : null))
+}
+
+// The same clearing from the state the server already polls for the
+// interface (state.ts: every 5 s and on core's events, so at once after an
+// answer, a tell or a restart), without waiting for the engine's pass. Only
+// clears: a wait is set by syncWaits. One pass at a time.
+let clearing = false
+export async function clearGoneWaits(store: PmStore, panes: Pick<Pane, 'coreAddress' | 'wait'>[]) {
+  if (clearing) return
+  clearing = true
+  try {
+    if (!(await store.enabled())) return
+    const tasks = (await store.tasks()).filter(t => goneWait(t))
+    if (!tasks.length) return
+    const runs = await store.runs()
+    for (const task of tasks) {
+      const run = runs.find(r => r.id === task.run)
+      const pane = run?.terminal && run.state !== 'ended' ? panes.find(p => p.coreAddress === run.terminal) : undefined
+      if (pane && !pane.wait) await clearWait(store, task)
+    }
+  } finally { clearing = false }
 }
 
 // Nothing a wait depends on moved since `read`: its state, wait, stop, answer, question, run and step.

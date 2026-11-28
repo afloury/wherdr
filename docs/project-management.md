@@ -1261,7 +1261,14 @@ Under them, *Full question*, folded: the agent's whole last message, drawn as in
 its conversation (Markdown, its `wherdr` blocks), scrolling inside the window
 when it is long (open when there is no summary). *Open the task* stays. A question answered anywhere (here, in the agent's conversation, a
 coordinator's `tell`) leaves *Tasks to review* and *Tasks to handle* at once,
-without waiting for the engine's next pass.
+without waiting for the engine's next pass; so does a question or permission
+prompt that goes from the agent's terminal by itself, within seconds.
+
+An agent's wait shows here (and in its notification) only once it needs you. A
+permission prompt shows after about 20 seconds, so one that goes by itself never
+alerts. A question its coordinator is woken for (its autopilot on) shows only if
+the coordinator has not answered it after about 3 minutes; with no coordinator,
+or its autopilot off, it shows at once. The coordinator sees every wait at once.
 
 Each item has a clock (**Snooze**: 1 hour, 4 hours, until tomorrow at 8:00) and an eye
 (**Dismiss**). Both act on the entry only, never on the task, its step or its agent. A

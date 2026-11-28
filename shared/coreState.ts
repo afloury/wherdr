@@ -4,7 +4,7 @@ import { type CoreDocs, SPACE_LABEL, TAB_LABEL, WHERDR_TAB_LABEL, rootTerminals,
 import { addressOnly, coreActivity, coreTitle, coreUnread, ownTitle } from './coreInventory'
 import type { HerdrState, MachineInfo, Pane } from './types'
 import { cleanTitle, maskCreds } from './paneTitle'
-import { LABEL } from './pm/run'
+import { LABEL, waitOf } from './pm/run'
 import { CODEX_UPDATED_LABEL, codexInstalling } from './codexLaunch'
 import { canonicalCmdAgent, cmdProgramFromArgv } from './cmdAliases'
 
@@ -87,7 +87,7 @@ export function coreState(terminals: CoreTerminal[], machines: CoreMachine[], do
     const status = updated ? 'blocked' : (state === 'idle' || state === 'done') && terminal.labels?.[SEEN_LABEL] !== undefined ? (coreUnread(terminal) ? 'done' : 'idle') : state
     const pane: Pane = { id: `${workspace}:p${id}`, coreAddress: terminal.address, machine, workspace, tab, tabLabel: result.tabs!.find(t => t.id === tab)!.label,
       agent, name: addressOnly(terminal.name, terminal.address) ? null : maskCreds(terminal.name) || null, label: maskCreds(ownTitle(terminal)) || null, title: terminal.title == null ? null : cleanTitle(terminal.title), cwd, agentSession: null,
-      status, interaction: 'unknown', ...(terminal.labels?.[LABEL.task] ? { task: terminal.labels[LABEL.task], ...(terminal.labels[LABEL.role] ? { role: terminal.labels[LABEL.role] } : {}) } : {}),
+      status, interaction: 'unknown', ...(terminal.labels?.[LABEL.task] ? { task: terminal.labels[LABEL.task], ...(terminal.labels[LABEL.role] ? { role: terminal.labels[LABEL.role] } : {}), ...(waitOf(terminal) ? { wait: waitOf(terminal) } : {}) } : {}),
       ...(terminal.labels?.['wherdr.coordinator'] !== undefined ? { coordinator: true } : {}),
       ...(updated ? { stopped: { reason: 'update' as const } } : agent === 'codex' && codexInstalling(terminal.title, terminal.status?.msg) ? { installing: true } : {}),
       ...(typeof terminal.status_ms === 'number' ? { stateSeq: terminal.status_ms, since: terminal.status_ms } : terminal.turn ? { stateSeq: terminal.turn } : {}) }
