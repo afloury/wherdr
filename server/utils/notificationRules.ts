@@ -1,4 +1,4 @@
-import { notificationEvents, NotificationPresence, paneNotificationSource, parseNotificationSettings, type NotificationEvent, type NotificationSource } from '../../shared/notificationRules'
+import { coordinatorTarget, notificationEvents, NotificationPresence, paneNotificationSource, parseNotificationSettings, type NotificationEvent, type NotificationSource } from '../../shared/notificationRules'
 import { loadSettings } from './settings'
 import { getMachine, machineOfPane } from './machines'
 import type { HerdrState, Pane } from '../../shared/types'
@@ -28,3 +28,8 @@ export async function notificationAllowed(event: NotificationEvent, state: Pick<
   return notificationEvents(settings, resolved).includes(event)
     && !(source.conversation && notificationPresence.viewed(source.conversation))
 }
+
+// A project's own push (what waits for the user, a coordinator not answering):
+// its coordinator's exception decides (Muted, a timed mute), else the default.
+export const projectNotificationAllowed = (project: string) =>
+  notificationAllowed('needs-you', { workspaces: [] }, undefined, { machine: '', project, coordinator: coordinatorTarget(project) })

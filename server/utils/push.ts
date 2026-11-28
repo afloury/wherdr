@@ -9,6 +9,7 @@ import { DATA_DIR, appUrl, log } from './env'
 import { auth } from './http'
 import { readJsonOrMissing, writeJsonAtomic, writeJsonAtomicSync } from './atomicWrite'
 import { pushConfig } from './pushConfig'
+import { loadSettings } from './settings'
 import { type Quiet, quietActive, silenced } from '../../shared/quiet'
 import { type PushDelivery, type PushDeviceView, classifyPushError, expiredLongAgo, pushProvider } from '../../shared/pushDelivery'
 
@@ -156,8 +157,18 @@ export async function dropAllSubs(): Promise<number> {
   return n
 }
 
+// Private notifications (Settings › Notifications): one generic line, with no
+// user text, agent or terminal title, link or project name; a tap opens the app.
+export const PRIVATE_PUSH = { title: 'wherdr', body: 'An agent needs you' }
+export const privatePayload = (p: PushPayload): PushPayload =>
+  ({ ...PRIVATE_PUSH, tag: p.tag, url: '/', ...(p.badge === undefined ? {} : { badge: p.badge }) })
+// The setting last read: an unreadable settings file keeps it.
+let lastPrivate = false
+const privateOn = () => loadSettings().then(s => (lastPrivate = s.privateNotifications === '1'), () => lastPrivate)
+
 export async function pushSend(payload: PushPayload, audience?: PushAudience, force = false): Promise<number> {
   if (!pushReady()) return 0
+  if (await privateOn()) payload = privatePayload(payload)
   const generation = auth.generation()
   const all = await readSubs()
   // Subscribed before a Lock all devices (saved in the meantime by a request

@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { defaultNotifications, type NotificationSettings } from '../shared/notificationRules'
+import { coordinatorTarget, defaultNotifications, type NotificationSettings } from '../shared/notificationRules'
 
 const deps = vi.hoisted(() => ({ readSettings: vi.fn(), pushSend: vi.fn(), allowed: vi.fn(), findPane: vi.fn() }))
 vi.mock('../server/utils/settings', () => ({ readSettings: deps.readSettings, loadSettings: deps.readSettings }))
 vi.mock('../server/utils/machines', () => ({ getMachine: () => undefined, machineOfPane: () => undefined }))
 
-import { notificationAllowed, notificationPresence } from '../server/utils/notificationRules'
+import { notificationAllowed, notificationPresence, projectNotificationAllowed } from '../server/utils/notificationRules'
 
 let policy: NotificationSettings
 beforeEach(() => {
@@ -41,6 +41,12 @@ describe('server notification gate', () => {
     // An expired lease permits push without the browser ever disconnecting.
     notificationPresence.heartbeat('desktop', source.conversation, true, Date.now() - 30000)
     expect(await notificationAllowed('message', { workspaces: [] }, undefined, source)).toBe(true)
+  })
+  it('a project\'s own pushes (decisions, an unanswered coordinator) follow its coordinator\'s Muted', async () => {
+    expect(await projectNotificationAllowed('SHOP')).toBe(true)
+    policy.exceptions.push({ kind: 'coordinator', machine: '', id: coordinatorTarget('SHOP'), label: 'SHOP coordinator', events: [], subagents: false, until: null })
+    expect(await projectNotificationAllowed('SHOP')).toBe(false)
+    expect(await projectNotificationAllowed('CO')).toBe(true)
   })
   it('applies the default to unscoped custom and scheduled notices', async () => {
     policy.default.events = ['scheduled']
