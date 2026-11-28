@@ -6,6 +6,7 @@ import { createPluginHost, type HostDeps } from '../app/utils/pluginHost'
 import { createHeaderActionsMount, registerHeaderActionsSlot } from '../app/utils/headerActions'
 
 const dir = resolve(__dirname, '../docs/examples/plugins/hello-header')
+const TEMPLATE = 'Summarize the current state and next steps.'
 
 const hosts: ReturnType<typeof createPluginHost>[] = []
 const slotCleanups: (() => void)[] = []
@@ -13,8 +14,9 @@ const slotCleanups: (() => void)[] = []
 function mountSlot(html: string) {
   document.body.innerHTML = html
   const el = document.querySelector('[data-wherdr="header-actions"]')!
-  slotCleanups.push(registerHeaderActionsSlot(el))
-  return el
+  const unregister = registerHeaderActionsSlot(el)
+  slotCleanups.push(unregister)
+  return unregister
 }
 
 function setup(load: HostDeps['load'], initialDraft: string | null = '') {
@@ -40,7 +42,15 @@ function setup(load: HostDeps['load'], initialDraft: string | null = '') {
     timeoutMs: 1000,
   })
   hosts.push(host)
-  return { host, focus, getDraft: () => draftText, setDraftRaw: (v: string | null) => { draftText = v } }
+  return {
+    host,
+    focus,
+    getDraft: () => draftText,
+    navigate: (path: string, draft: string | null) => {
+      draftText = draft
+      for (const cb of [...navs]) cb(path)
+    },
+  }
 }
 
 afterEach(async () => {
@@ -51,37 +61,60 @@ afterEach(async () => {
 })
 
 describe('hello-header example plugin', () => {
-  it('mounts a button in header-actions, inserts a template and focuses the composer without sending', async () => {
-    mountSlot('<div class="home-actions"><span data-wherdr="header-actions" class="header-actions"></span></div>')
+  it('inserts the exact template and focuses the composer in a conversation', async () => {
+    mountSlot('<div class="agent-actions"><span data-wherdr="header-actions" class="header-actions"></span></div>')
     const s = setup(() => import(/* @vite-ignore */ pathToFileURL(resolve(dir, 'index.js')).href), '')
     await s.host.init()
     expect(s.host.rows()[0]!.status).toBe('running')
     const button = document.querySelector<HTMLButtonElement>('[data-wherdr="header-actions"] button')!
     expect(button).not.toBeNull()
-    expect(button.getAttribute('aria-label')).toBeTruthy()
+    expect(button.disabled).toBe(false)
+    expect(button.title).toBe('Insert prompt template')
     button.click()
-    expect(s.getDraft()).toBe('Summarize the current state and next steps.')
+    expect(s.getDraft()).toBe(TEMPLATE)
     expect(s.focus).toHaveBeenCalledTimes(1)
   })
 
-  it('mounts into a slot registered later, no-ops without an open draft, and removes everything on stop and restart', async () => {
+  it('is disabled and does nothing on Home, then refreshes on navigation', async () => {
+    const unregister = mountSlot('<div class="home-actions"><span data-wherdr="header-actions" class="header-actions"></span></div>')
     const s = setup(() => import(/* @vite-ignore */ pathToFileURL(resolve(dir, 'index.js')).href), null)
     await s.host.init()
     expect(s.host.rows()[0]!.status).toBe('running')
-
-    mountSlot('<div class="agent-actions"><span data-wherdr="header-actions" class="header-actions"></span></div>')
     const button = document.querySelector<HTMLButtonElement>('[data-wherdr="header-actions"] button')!
     expect(button).not.toBeNull()
+    expect(button.disabled).toBe(true)
+    expect(button.title).toBe('Open a conversation to insert the template')
     button.click()
     expect(s.getDraft()).toBeNull()
     expect(s.focus).not.toHaveBeenCalled()
 
+    s.navigate('/a/w1:p1', '')
+    expect(button.disabled).toBe(false)
+    expect(button.title).toBe('Insert prompt template')
+    button.click()
+    expect(s.getDraft()).toBe(TEMPLATE)
+    expect(s.focus).toHaveBeenCalledTimes(1)
+
+    s.navigate('/', null)
+    expect(button.disabled).toBe(true)
+    expect(button.title).toBe('Open a conversation to insert the template')
+
+    unregister()
+    s.navigate('/a/w1:p1', '')
+    expect(button.disabled).toBe(true)
+  })
+
+  it('removes its style on stop and restores it on the next start', async () => {
+    mountSlot('<div class="agent-actions"><span data-wherdr="header-actions" class="header-actions"></span></div>')
+    const s = setup(() => import(/* @vite-ignore */ pathToFileURL(resolve(dir, 'index.js')).href), '')
+    await s.host.init()
+    expect(s.host.rows()[0]!.status).toBe('running')
+    expect(document.getElementById('hello-header-style')).not.toBeNull()
+
     await s.host.setEnabled('hello-header', false)
-    expect(document.querySelector('[data-wherdr="header-actions"] button')).toBeNull()
     expect(document.getElementById('hello-header-style')).toBeNull()
 
     await s.host.setEnabled('hello-header', true)
-    expect(document.querySelector('[data-wherdr="header-actions"] button')).not.toBeNull()
     expect(document.getElementById('hello-header-style')).not.toBeNull()
   })
 })
