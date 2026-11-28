@@ -94,10 +94,12 @@ is kept per device. They load only while [Community plugins](#community-plugins-
 
 ### Build and install a plugin (step by step)
 
-A plugin is two files in one folder: `manifest.json` and a prebuilt ES module. The complete
-working example is [`docs/examples/plugins/hello-mic/`](examples/plugins/hello-mic/): a microphone
-button next to Send that inserts a fixed sample text (no audio). To follow the steps without
-writing code, install it as is.
+A plugin is two files in one folder: `manifest.json` and a prebuilt ES module. Two working examples ship in the repository:
+
+- [`docs/examples/plugins/hello-header/`](examples/plugins/hello-header/): a button in `header-actions` that inserts a template into the draft and focuses the composer, using only the public API.
+- [`docs/examples/plugins/hello-mic/`](examples/plugins/hello-mic/): a microphone button in `composer-actions` that inserts a fixed sample text (no audio).
+
+To follow the steps without writing code, install either example as is.
 
 1. **Write** `src/index.ts` (or plain `index.js`). Export an object `{ activate(wherdr), deactivate() }`
    (or a function) as described in [The module](#the-module). Find your zone with its
@@ -109,9 +111,9 @@ writing code, install it as is.
    before it activates.
 2. **Build** one ES module with no external imports (the example uses esbuild, installed with the repo's
    dependencies; any bundler works): `npx esbuild src/index.ts --bundle --format=esm --target=es2020 --outfile=index.js`.
-   For the example: `npm run build:example-plugin` from the repo root.
+   For the examples: `npm run build:example-plugin` from the repo root.
 3. **Install**: copy `manifest.json` and `index.js` (not the sources) to
-   `<DATA_DIR>/plugins/<id>/`, e.g. `mkdir -p data/plugins/hello-mic && cp docs/examples/plugins/hello-mic/{manifest.json,index.js} data/plugins/hello-mic/`.
+   `<DATA_DIR>/plugins/<id>/`, e.g. `mkdir -p data/plugins/hello-header && cp docs/examples/plugins/hello-header/{manifest.json,index.js} data/plugins/hello-header/`.
    Reload the page: no restart needed. Turn on Community plugins if it is off.
 4. **Check**: Settings › Plugins lists it as "On". If it says "Disabled after an error", the message is
    the exception; fix it and flip the switch.
