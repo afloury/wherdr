@@ -157,9 +157,9 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   const work = c.task.step!.agent
   if (!ev && work && run.role === 'worker') {
     const retry = retriesAction(c.plan, c.task.step!)
-    await deps.store.logTask({ ...c.task, step: agentBack(c.task.step!), needsHuman: undefined }, 'engine', `${work.kind}: the worker says it is done${retry ? `, ${step!.id} is tried again` : ''}`)
+    const back = await deps.store.updateTask(run.task, x => (sameStep(x, c.task) ? { ...x, step: agentBack(x.step!), needsHuman: undefined } : null), { by: 'engine', text: `${work.kind}: the worker says it is done${retry ? `, ${step!.id} is tried again` : ''}` })
     // A failed action it fixed: tried again now; failing again, it is back in Your turn with the new error.
-    if (retry) startAction(deps, run.task, () => {})
+    if (retry && back) startAction(deps, run.task, () => {})
     return
   }
   if (!ev) return
@@ -175,9 +175,12 @@ async function signal(deps: PmLaunchDeps, run: Run, now: number) {
   // A proof is missing: the agent is told which, the step stays.
   if (res.refused) return void await Promise.all([tell(`${res.refused}\n\nWhen done: ${DONE_CMD}`), deps.store.logTask(c.task, 'engine', `${step!.id}: ${res.refused}`)])
   const what = ev.kind === 'verdict' ? `verdict, ${ev.findings.length} finding(s)` : 'done'
-  const fresh = await deps.store.task(run.task)
-  await deps.store.logTask({ ...fresh!, step: res.state, needsHuman: undefined, ...signalKept(fresh!, step!.id, ev, read) }, `${run.role} ${run.program} ${run.model}`, `${step!.id}: ${what}`)
+  // Computed from the step read first: a step moved meanwhile (archived, taken as it is) is kept.
+  await deps.store.updateTask(run.task, x => (sameStep(x, c.task) ? { ...x, step: res.state, needsHuman: undefined, ...signalKept(x, step!.id, ev, read) } : null), { by: `${run.role} ${run.program} ${run.model}`, text: `${step!.id}: ${what}` })
 }
+
+// The task's step is still the one a copy read before its awaits.
+const sameStep = (fresh: Task, read: Task) => JSON.stringify(fresh.step) === JSON.stringify(read.step)
 
 // The worker pushed another branch than the task's: the engine pushes, opens
 // PRs and checks merges on that one from now on, never on the old one.

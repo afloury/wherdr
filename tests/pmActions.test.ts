@@ -108,6 +108,15 @@ describe('runAction', () => {
     expect(await runAction(c.deps, job({ attempt: 2 }))).toMatchObject({ ok: false, error: expect.stringMatching(/interrupted/) })
     expect(c.receipts.get('A-1.2.land')?.state).toBe('uncertain')
     expect(c.calls.length).toBe(1)
+    // A halted task never lands: not before it runs, nor after a wait to try again.
+    const h = fakeDeps([])
+    expect(await runAction(h.deps, job({ halted: async () => true }))).toEqual({ ok: false, error: 'land: the task was stopped' })
+    expect(h.calls).toEqual([])
+    let stop = false
+    const w = fakeDeps([{ code: 1, out: 'fatal error in commit_refs' }])
+    w.deps.sleep = async () => { stop = true }
+    expect(await runAction(w.deps, job({ halted: async () => stop }))).toEqual({ ok: false, error: 'land: the task was stopped' })
+    expect(w.calls.length).toBe(1)
   })
 
   it('merges once checks are green, with the task\'s commit, and alerts on a protected branch', async () => {
