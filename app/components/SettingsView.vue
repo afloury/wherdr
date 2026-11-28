@@ -615,7 +615,7 @@ onMounted(() => {
           <NotificationRules />
           <div class="settings-group" data-ui-target="notifications.private">
             <label class="settings-toggle">
-              <span><b><UIcon name="i-lucide-eye-off" />{{ t('Private notifications') }}</b><small>{{ t('Every notification only says “An agent needs you”: no message, task or conversation title, link or project name on the lock screen. On all devices.') }}</small></span>
+              <span><b>{{ t('Private notifications') }}</b><small>{{ t('Every notification only says “An agent needs you”: no message, task or conversation title, link or project name on the lock screen. On all devices.') }}</small></span>
               <USwitch v-model="privateNotificationsOn" size="xl" />
             </label>
           </div>
