@@ -3,7 +3,7 @@
 // the order they were typed, whatever each one takes on the server.
 import { reactive, watch } from 'vue'
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type OutboxItem, type RecentSend, SendTimeout, addSending, chainSend, failLocal, fromSaved, isRepeat, newOutboxId, prune, recentSends, resend, returnHeld, settle, toSave } from '~/utils/outbox'
+import { type OutboxItem, type RecentSend, SendTimeout, addSending, chainSend, failLocal, fromSaved, isRepeat, mergeSaved, newOutboxId, prune, recentSends, resend, returnHeld, settle, toSave } from '~/utils/outbox'
 import { tl } from '~/utils/i18n'
 import { sendMessage } from './useActions'
 import { ApiError, herdrState, toast } from './useHerdr'
@@ -13,27 +13,41 @@ import { restoreDraft } from '~/utils/queuedCancel'
 // Plain module state: it outlives the views (switching conversations while sending).
 const boxes = reactive(new Map<string, OutboxItem[]>())
 // What still needs the user also outlives a reload (utils/outbox.ts toSave):
-// stored per conversation, gone once confirmed.
-const KEY = 'outbox'
+// stored per conversation, gone once confirmed. Other tabs share that storage:
+// each one writes only its own records (mergeSaved).
+const KEY = 'outbox:'
 // Sending when the page went away: back into its field at the next state (outboxSync).
-const unsure = new Map<string, string[]>()
-if (import.meta.client) {
-  let raw: unknown = null
-  try { raw = JSON.parse(localStorage.getItem(KEY) || 'null') } catch { /* nothing restored */ }
-  const saved = fromSaved(raw)
-  for (const [id, list] of Object.entries(saved.boxes)) boxes.set(id, list)
-  for (const [id, texts] of Object.entries(saved.back)) unsure.set(id, texts)
+const unsure = new Map<string, OutboxItem[]>()
+// The ids of each conversation this tab made or loaded.
+const owned = new Map<string, Set<string>>()
+const own = (paneId: string, list: OutboxItem[]) => {
+  const ids = owned.get(paneId) || new Set<string>()
+  for (const q of list) ids.add(q.id)
+  owned.set(paneId, ids)
 }
-function save() {
-  if (!import.meta.client) return
-  const out: Record<string, OutboxItem[]> = {}
-  for (const id of new Set([...boxes.keys(), ...unsure.keys()])) {
-    const keep = [...toSave(boxes.get(id) || []), ...(unsure.get(id) || []).map((text, n) => ({ id: `w-unsure${n}`, text, unsure: true }))]
-    if (keep.length) out[id] = keep
-  }
+const stored = (paneId: string): unknown => {
+  try { return JSON.parse(localStorage.getItem(KEY + paneId) || 'null') } catch { return null }
+}
+if (import.meta.client) {
+  const raw: Record<string, unknown> = {}
   try {
-    if (Object.keys(out).length) localStorage.setItem(KEY, JSON.stringify(out))
-    else localStorage.removeItem(KEY)
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k?.startsWith(KEY)) raw[k.slice(KEY.length)] = stored(k.slice(KEY.length))
+    }
+  } catch { /* nothing restored */ }
+  const saved = fromSaved(raw)
+  for (const [id, list] of Object.entries(saved.boxes)) { boxes.set(id, list); own(id, list) }
+  for (const [id, list] of Object.entries(saved.back)) { unsure.set(id, list); own(id, list) }
+}
+function save(paneId: string) {
+  if (!import.meta.client) return
+  const mine = [...toSave(boxes.get(paneId) || []), ...(unsure.get(paneId) || [])]
+  own(paneId, [...(boxes.get(paneId) || []), ...mine])
+  const keep = mergeSaved(stored(paneId), owned.get(paneId)!, mine)
+  try {
+    if (keep.length) localStorage.setItem(KEY + paneId, JSON.stringify(keep))
+    else localStorage.removeItem(KEY + paneId)
   } catch { /* storage full or blocked: kept for this page only */ }
 }
 const chains = new Map<string, Promise<unknown>>()
@@ -67,7 +81,7 @@ const update = (paneId: string, f: (l: OutboxItem[]) => OutboxItem[]) => {
   const next = f(boxes.get(paneId) || [])
   if (next.length) boxes.set(paneId, next)
   else boxes.delete(paneId)
-  save()
+  save(paneId)
 }
 
 export const outboxFor = (paneId: string): OutboxItem[] => boxes.get(paneId) || []
@@ -135,8 +149,8 @@ export function outboxSync(paneId: string, p: Pane | undefined, stateOk: boolean
   const lost = unsure.get(paneId)
   if (lost) {
     unsure.delete(paneId)
-    save()
-    for (const text of lost) restoreDraft(useDraft(paneId), text, [], true)
+    save(paneId)
+    for (const q of lost) restoreDraft(useDraft(paneId), q.text, [], true)
     toast(tl('A message was still sending when the page reloaded: it is back in the field, check the conversation before sending it again'))
   }
   const server = p?.queued || []

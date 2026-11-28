@@ -91,18 +91,23 @@ export function toSave(list: OutboxItem[]): OutboxItem[] {
   return list.filter(q => q.local || q.state === 'sending')
     .map(q => ({ id: q.id, text: q.text, at: q.at, state: 'failed' as const, local: true, ...(q.unsure || q.state === 'sending' ? { unsure: true } : {}) }))
 }
-export function fromSaved(raw: unknown): { boxes: SavedOutbox, back: Record<string, string[]> } {
-  const boxes: SavedOutbox = {}, back: Record<string, string[]> = {}
+export function fromSaved(raw: unknown): { boxes: SavedOutbox, back: SavedOutbox } {
+  const boxes: SavedOutbox = {}, back: SavedOutbox = {}
   if (!raw || typeof raw !== 'object') return { boxes, back }
   for (const [paneId, list] of Object.entries(raw as Record<string, unknown>)) {
-    if (!Array.isArray(list)) continue
-    const ok = list.filter((q): q is OutboxItem => Boolean(q) && typeof q.id === 'string' && typeof q.text === 'string')
+    const ok = savedItems(list)
     const kept = ok.filter(q => !q.unsure).map(q => ({ id: q.id, text: q.text, at: q.at, state: 'failed' as const, local: true }))
-    const texts = ok.filter(q => q.unsure).map(q => q.text)
+    const lost = ok.filter(q => q.unsure).map(q => ({ id: q.id, text: q.text, unsure: true }))
     if (kept.length) boxes[paneId] = kept
-    if (texts.length) back[paneId] = texts
+    if (lost.length) back[paneId] = lost
   }
   return { boxes, back }
+}
+const savedItems = (list: unknown): OutboxItem[] => (Array.isArray(list) ? list.filter((q): q is OutboxItem => Boolean(q) && typeof q.id === 'string' && typeof q.text === 'string') : [])
+// Several tabs share the stored list of a conversation: a tab replaces only the
+// records it owns (made or loaded there, `owned`), another tab's stay as they are.
+export function mergeSaved(stored: unknown, owned: Set<string>, mine: OutboxItem[]): OutboxItem[] {
+  return [...savedItems(stored).filter(q => !owned.has(q.id)), ...mine]
 }
 
 // Messages held on the server for Codex (coreHeld.ts) that come back as texts,
