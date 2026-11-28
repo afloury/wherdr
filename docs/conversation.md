@@ -239,7 +239,8 @@ Claude Code, Codex, Devin, Command Code, Antigravity and Hermes Agent terminals 
   or `Enter` complete the highlighted one, `Esc` closes it, a tap picks on a phone, and **+** opens it
   too. It is read from the agent itself, on the pane's own machine and in its folder, followed by a short fixed list of the commands the agent keeps to its screen (`/new`, `/resume`, `/permissions`…; the agent's own entry wins). A command that opens a panel or a
   picker (`/context`, `/model`…) shows the interactive terminal over the conversation. **Stop** (or `Esc`
-  in the empty field) interrupts the agent and says what core observed. When Claude Code
+  in the empty field) interrupts the agent (right after a send the button stays Send for 1.5 s,
+  so a double tap does not stop it) and says what core observed. When Claude Code
   suggests a reply (grayed-out in the empty field), `Tab` takes it on a computer and **Use**,
   inside the field on its right, on a phone. A long pasted text (log, output) becomes a
   tile in the field (*N lines*), sent to the agent as it is and shown as the same tile in the
