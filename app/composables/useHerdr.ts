@@ -375,10 +375,13 @@ export function toastAction(msg: string, label: string, fn: () => void) {
 export class ApiError extends Error {
   code?: string
   status: number
-  constructor(message: string, status: number, code?: string) {
+  // The server may have done it (a message typed, its Enter lost): never redone as is.
+  unconfirmed?: boolean
+  constructor(message: string, status: number, code?: string, unconfirmed?: boolean) {
     super(message)
     this.status = status
     this.code = code
+    if (unconfirmed) this.unconfirmed = true
   }
 }
 
@@ -399,7 +402,7 @@ export async function api<T = Record<string, unknown>>(path: string, body?: unkn
   // herdr-projects' own refusal (a wait in a circle, an unknown task…): its words as they are,
   // never pieced together from the dictionary's templates.
   if (!r.ok && data.code === 'projects_failed' && data.error) throw new ApiError(String(data.error), r.status, data.code)
-  if (!r.ok) throw new ApiError(t(known || data.error || `HTTP ${r.status}`), r.status, data.code)
+  if (!r.ok) throw new ApiError(t(known || data.error || `HTTP ${r.status}`), r.status, data.code, data.unconfirmed === true)
   return data as T
 }
 

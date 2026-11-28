@@ -336,6 +336,38 @@ describe('what a task waits for', () => {
       expect((await store.task(t.id))!.log?.at(-1)?.text).toBe('trusted the task\'s worktree for the worker (/home/u/.wherdr/pm/worktrees/CO-1)')
     } finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
+
+  it('syncWaits: an agent that refused its model blocks its task and wakes its coordinator once', async () => {
+    const fs = await import('node:fs/promises'), os = await import('node:os'), path = await import('node:path')
+    const { createPmStore } = await import('../server/utils/pmStore')
+    const { syncWaits } = await import('../server/utils/pmMechanic')
+    const { refusedModelOf } = await import('../shared/pm/run')
+    expect(refusedModelOf('There\'s an issue with the selected model (opus-9). It may not exist or you may not have access to it.')).toBe('opus-9')
+    expect(refusedModelOf('Model "gpt-9" not found')).toBe('gpt-9')
+    expect(refusedModelOf('Working on the model list')).toBeUndefined()
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-mech-'))
+    try {
+      const store = createPmStore(dir)
+      await store.setEnabled(true)
+      await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'CO', name: 'CO', machine: '', path: '/src', addedAt: 1 }] }))
+      await store.saveCoordinator({ project: 'CO', tokenHash: 'x', terminal: 'h/c1', autopilot: { on: true } })
+      const t = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+      await store.saveRun({ id: 'r4', task: t.id, role: 'worker', program: 'codex', model: 'sonnet', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: 'h/t6', attempt: 1, state: 'running', startedAt: Date.now() })
+      await store.saveTask({ ...t, state: 'working', run: 'r4' })
+      const call = async (method: string) => {
+        if (method === 'terminal.list') return { terminals: [{ address: 'h/t6', status: { state: 'idle' } }] }
+        if (method === 'terminal.read') return { text: '› Read the instructions\n■ The \'sonnet\' model is not supported when using Codex with a ChatGPT account.\n›' }
+        return {}
+      }
+      const deps = { store, call } as unknown as Parameters<typeof syncWaits>[0]
+      await syncWaits(deps)
+      await syncWaits(deps)
+      const why = 'The agent refused model sonnet (codex): start it again with another model.'
+      expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waiting: why })
+      const wakes = await store.wakes()
+      expect(wakes.map(w => [w.coordinator, w.kind, w.reasons])).toEqual([['CO', 'engine', [`${t.id} (Fix): ${why}`]]])
+    } finally { await fs.rm(dir, { recursive: true, force: true }) }
+  })
 })
 
 it('keeps an agent\'s whole question; a huge one cut in its middle, its question and choices kept', async () => {

@@ -3,15 +3,53 @@
 // the order they were typed, whatever each one takes on the server.
 import { reactive, watch } from 'vue'
 import type { Pane, QueuedMessage } from '#shared/types'
-import { type OutboxItem, type RecentSend, SendTimeout, addSending, chainSend, failLocal, isRepeat, newOutboxId, prune, recentSends, resend, returnHeld, settle } from '~/utils/outbox'
+import { type OutboxItem, type RecentSend, SendTimeout, addSending, chainSend, failLocal, fromSaved, isRepeat, mergeSaved, newOutboxId, prune, recentSends, resend, returnHeld, settle, toSave } from '~/utils/outbox'
 import { tl } from '~/utils/i18n'
 import { sendMessage } from './useActions'
-import { herdrState, toast } from './useHerdr'
+import { ApiError, herdrState, toast } from './useHerdr'
 import { useDraft } from './useDraft'
 import { restoreDraft } from '~/utils/queuedCancel'
 
 // Plain module state: it outlives the views (switching conversations while sending).
 const boxes = reactive(new Map<string, OutboxItem[]>())
+// What still needs the user also outlives a reload (utils/outbox.ts toSave):
+// stored per conversation, gone once confirmed. Other tabs share that storage:
+// each one writes only its own records (mergeSaved).
+const KEY = 'outbox:'
+// Sending when the page went away: back into its field at the next state (outboxSync).
+const unsure = new Map<string, OutboxItem[]>()
+// The ids of each conversation this tab made or loaded.
+const owned = new Map<string, Set<string>>()
+const own = (paneId: string, list: OutboxItem[]) => {
+  const ids = owned.get(paneId) || new Set<string>()
+  for (const q of list) ids.add(q.id)
+  owned.set(paneId, ids)
+}
+const stored = (paneId: string): unknown => {
+  try { return JSON.parse(localStorage.getItem(KEY + paneId) || 'null') } catch { return null }
+}
+if (import.meta.client) {
+  const raw: Record<string, unknown> = {}
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i)
+      if (k?.startsWith(KEY)) raw[k.slice(KEY.length)] = stored(k.slice(KEY.length))
+    }
+  } catch { /* nothing restored */ }
+  const saved = fromSaved(raw)
+  for (const [id, list] of Object.entries(saved.boxes)) { boxes.set(id, list); own(id, list) }
+  for (const [id, list] of Object.entries(saved.back)) { unsure.set(id, list); own(id, list) }
+}
+function save(paneId: string) {
+  if (!import.meta.client) return
+  const mine = [...toSave(boxes.get(paneId) || []), ...(unsure.get(paneId) || [])]
+  own(paneId, [...(boxes.get(paneId) || []), ...mine])
+  const keep = mergeSaved(stored(paneId), owned.get(paneId)!, mine)
+  try {
+    if (keep.length) localStorage.setItem(KEY + paneId, JSON.stringify(keep))
+    else localStorage.removeItem(KEY + paneId)
+  } catch { /* storage full or blocked: kept for this page only */ }
+}
 const chains = new Map<string, Promise<unknown>>()
 const recent = new Map<string, RecentSend[]>()
 // When the last successful read of each conversation started (see utils/outbox.ts prune).
@@ -43,6 +81,7 @@ const update = (paneId: string, f: (l: OutboxItem[]) => OutboxItem[]) => {
   const next = f(boxes.get(paneId) || [])
   if (next.length) boxes.set(paneId, next)
   else boxes.delete(paneId)
+  save(paneId)
 }
 
 export const outboxFor = (paneId: string): OutboxItem[] => boxes.get(paneId) || []
@@ -56,7 +95,10 @@ function deliver(p: Pane | undefined, paneId: string, id: string, text: string):
   return run.then(
     (q) => { update(paneId, l => settle(l, id, q, Date.now())); return q },
     (err) => {
-      update(paneId, l => failLocal(l, id))
+      // Typed, its Enter lost (or no answer from core): never "Not sent" with a
+      // Retry that would type it again; it stays as sent, the toast says to check.
+      if (err instanceof ApiError && (err.unconfirmed || err.code === 'timeout')) update(paneId, l => settle(l, id, null, Date.now()))
+      else update(paneId, l => failLocal(l, id))
       throw err instanceof SendTimeout
         ? new Error(tl('No answer from the server: check the conversation before sending it again.', 'Pas de réponse du serveur : vérifie la conversation avant de le renvoyer.'))
         : err
@@ -104,6 +146,13 @@ export function outboxPrune(paneId: string, server: QueuedMessage[]) {
 // prune the rest. A failed or partial state (stateOk false) changes nothing.
 export function outboxSync(paneId: string, p: Pane | undefined, stateOk: boolean) {
   if (!stateOk) return
+  const lost = unsure.get(paneId)
+  if (lost) {
+    unsure.delete(paneId)
+    save(paneId)
+    for (const q of lost) restoreDraft(useDraft(paneId), q.text, [], true)
+    toast(tl('A message was still sending when the page reloaded: it is back in the field, check the conversation before sending it again'))
+  }
   const server = p?.queued || []
   const gone = !p || Boolean(p.stopped)
   const { kept, back } = returnHeld(outboxFor(paneId), server, gone)
@@ -117,5 +166,5 @@ export function outboxSync(paneId: string, p: Pane | undefined, stateOk: boolean
   outboxPrune(paneId, server)
 }
 watch(herdrState, (s) => {
-  for (const id of [...boxes.keys()]) outboxSync(id, s.panes.find(x => x.id === id), s.ok)
+  for (const id of new Set([...boxes.keys(), ...unsure.keys()])) outboxSync(id, s.panes.find(x => x.id === id), s.ok)
 })

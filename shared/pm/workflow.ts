@@ -78,12 +78,17 @@ export interface Guards {
 }
 
 // reviewFallbackAgent and reviewFallbackModel (both, or none): the reviewer
-// started instead when the review agent's account is at its limit.
-export interface Prefs { agent?: string, model?: string, reviewAgent?: string, reviewModel?: string, reviewFallbackAgent?: string, reviewFallbackModel?: string, browser?: string }
+// started instead when the review agent's account is at its limit. models: the
+// worker's model per program, taken when its agent is another program than the
+// one `model` was set for (task add --agent codex on a Claude workflow).
+export interface Prefs { agent?: string, model?: string, models?: Partial<Record<Program, string>>, reviewAgent?: string, reviewModel?: string, reviewFallbackAgent?: string, reviewFallbackModel?: string, browser?: string }
 export const PREF_KEYS = ['agent', 'model', 'reviewAgent', 'reviewModel', 'reviewFallbackAgent', 'reviewFallbackModel', 'browser'] as const
+// The prefs that hold one text (all but models).
+export type TextPref = typeof PREF_KEYS[number]
 
 // Agents the engine knows how to start with a pinned model and a first message.
 export const PROGRAMS = ['claude', 'codex', 'omp'] as const
+export type Program = typeof PROGRAMS[number]
 // reviewModel: the worker's own model, in a new session.
 export const SAME_MODEL = 'same'
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/
@@ -91,17 +96,34 @@ const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._:[\]/-]{0,63}$/
 const OMP_ROLE_RE = /^(?=.{2,64}$)@[A-Za-z0-9._-]+(:[A-Za-z0-9._-]+)?$/
 // Whether `program` can be started pinned to `model`.
 export const validModel = (program: string | undefined, model: string) => MODEL_RE.test(model) || (program === 'omp' && OMP_ROLE_RE.test(model))
+// The program a model name belongs to, by its family; undefined when unknown
+// (omp takes any provider's model, so a name tells nothing of it).
+export function modelProgram(model: string): 'claude' | 'codex' | undefined {
+  if (/^(claude-|sonnet|opus|haiku)/i.test(model)) return 'claude'
+  if (/^(gpt-|o\d|codex-)/i.test(model)) return 'codex'
+}
+// Why `program` cannot run `model` (another program's family), or undefined.
+// fix: where to set another one, for the reason.
+export function modelMisfit(program: string, model: string, fix: string): string | undefined {
+  const of = modelProgram(model)
+  if (!of || of === program || (program !== 'claude' && program !== 'codex')) return
+  return `model ${model} is a ${programName(of)} model; ${program} needs a ${programName(program)} model: set ${fix}`
+}
+// As the interface names it (KIND_LABEL in app/utils/format.ts): omp is "OMP".
+export const programName = (program: string) => (program === 'omp' ? 'OMP' : `${program.charAt(0).toUpperCase()}${program.slice(1)}`)
 
 // A reviewer's agent and model (`field` asked for it): another model than the
 // worker's, or "same" with the worker's program. agent: a program or a named
 // agent (named: the list, when known). Returns the reason it cannot run.
-export function reviewerCheck(worker: { program: string, model: string }, agent: string, asked: string, field: 'reviewModel' | 'reviewFallbackModel', named?: readonly NamedAgent[]): AgentRef & { model: string } | { reason: string } {
+export function reviewerCheck(worker: { program: string, model: string }, agent: string, asked: string, field: 'reviewModel' | 'reviewFallbackModel', named?: readonly NamedAgent[]): AgentRef & { model: string } | { reason: string, misfit?: true } {
   const same = asked === SAME_MODEL, model = same ? worker.model : asked
   const ref = resolveAgent(agent, named)
   if ('reason' in ref) return ref
   const program = 'unknown' in ref ? '' : ref.program
   if (same && program && program !== worker.program) return { reason: `${field} "${SAME_MODEL}" needs the worker's agent (${worker.program})` }
   if (!validModel(program, model)) return { reason: model ? `Invalid review model "${model}"` : `No review model set: add prefs.${field} to the template` }
+  const misfit = program ? modelMisfit(program, model, field === 'reviewModel' ? '--review-model or prefs.reviewModel' : 'prefs.reviewFallbackModel') : undefined
+  if (misfit) return { reason: misfit, misfit: true }
   if (!same && model === worker.model) return { reason: `The reviewer must use another model than the worker (${model}), or set ${field} to "${SAME_MODEL}"` }
   return 'unknown' in ref ? { program: '', agent, model } : { ...ref, model }
 }
@@ -222,9 +244,17 @@ function checkGuards(g: unknown, path: string, errs: WorkflowError[], project = 
 export function checkPrefs(p: unknown, path: string, errs: WorkflowError[], named?: readonly NamedAgent[]) {
   if (p === undefined) return
   if (!isObj(p)) return void errs.push({ path, message: 'must be an object' })
-  checkKeys(p, PREF_KEYS, path, errs)
+  checkKeys(p, [...PREF_KEYS, 'models'], path, errs)
   for (const [k, v] of Object.entries(p)) {
-    if (!isStr(v)) errs.push({ path: `${path}.${k}`, message: 'must be text' })
+    if (k === 'models') {
+      if (!isObj(v)) errs.push({ path: `${path}.models`, message: 'must be an object: { "codex": "<model>" }' })
+      else for (const [prog, m] of Object.entries(v)) {
+        if (!PROGRAMS.includes(prog as Program)) errs.push({ path: `${path}.models.${prog}`, message: `must be one of ${PROGRAMS.join(', ')}` })
+        else if (!isStr(m) || !validModel(prog, m as string)) errs.push({ path: `${path}.models.${prog}`, message: 'must be a model name' })
+        else { const why = modelMisfit(prog, m as string, `prefs.models.${prog}`); if (why) errs.push({ path: `${path}.models.${prog}`, message: why }) }
+      }
+    }
+    else if (!isStr(v)) errs.push({ path: `${path}.${k}`, message: 'must be text' })
     else if (k === 'browser' && v !== 'relay') errs.push({ path: `${path}.browser`, message: 'must be "relay"' })
     else if (AGENT_PREFS.includes(k)) { const r = resolveAgent(v as string, named); if ('reason' in r) errs.push({ path: `${path}.${k}`, message: r.reason }) }
   }
@@ -359,9 +389,9 @@ function checkFallback(t: Template, name: string, shared: Record<string, unknown
   const tt = t.taskTypes[name]!
   const steps = Array.isArray(tt.steps) ? tt.steps.map(s => (typeof s === 'string' ? shared[s] : s)) : []
   if (!steps.some(s => isObj(s) && s.holder === 'reviewer')) return
-  const own = (k: keyof Prefs) => (isObj(tt.prefs) && isStr(tt.prefs[k]) ? tt.prefs[k] as string : '')
-  const pick = (k: keyof Prefs) => own(k) || (isObj(t.prefs) && isStr(t.prefs[k]) ? t.prefs[k] as string : '')
-  const at = (k: keyof Prefs) => (own(k) ? `taskTypes.${name}.prefs.${k}` : `prefs.${k}`)
+  const own = (k: TextPref) => (isObj(tt.prefs) && isStr(tt.prefs[k]) ? tt.prefs[k] as string : '')
+  const pick = (k: TextPref) => own(k) || (isObj(t.prefs) && isStr(t.prefs[k]) ? t.prefs[k] as string : '')
+  const at = (k: TextPref) => (own(k) ? `taskTypes.${name}.prefs.${k}` : `prefs.${k}`)
   const agent = pick('reviewFallbackAgent'), model = pick('reviewFallbackModel')
   if (!agent && !model) return
   const add = (path: string, message: string) => { if (!errs.some(e => e.path === path && e.message === message)) errs.push({ path, message }) }

@@ -333,6 +333,11 @@ or after a reload (the server marks the terminal as sending, with the message), 
 **Send now** / **Clear** are not offered; the box's text shows as the user's own message, never as
 Claude's `[Pasted text #N]` stand-in, also once the send is over and the message is still there. Every change (sending, sent, refused) reaches the open
 conversation at once, without leaving it.
+A message reading **Not sent** survives a page reload, with its Retry; one still reading
+**Sending…** when the page reloaded may have been typed, so it comes back into the message
+field to check, never sent again by itself. A message typed whose Enter then failed (machine
+unreachable) is never **Not sent** with Retry: the text is already in the terminal, a toast
+says to check it.
 A message whose photo still reached Claude as its path is shown as sent, its photo as a
 photo, and leaves one line in the server log (photo count and text size, never the text). This also holds for a
 message sent while Claude works or ends its turn: Enter then puts it in Claude's own queue.
