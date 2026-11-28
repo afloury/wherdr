@@ -7,6 +7,8 @@ import { pushSend } from './push'
 import { projectNotificationAllowed } from './notificationRules'
 import { showIds } from '../../shared/pm/projectKey'
 import { REVIEW_LINK } from '../../shared/appLinks'
+import { coordinatorKey } from '../../shared/pm/workspace'
+import { inHours } from '../../shared/pm/autopilot'
 
 export async function decisions(store: PmStore) {
   if (!(await store.enabled())) return []
@@ -15,7 +17,13 @@ export async function decisions(store: PmStore) {
     const c = await store.coordinator(p.key)
     return { project: p.key, name: p.name, ...(p.coordinatorName ? { coordinatorName: p.coordinatorName } : {}), ...(c?.proposal ? { proposal: { at: c.proposal.at, ...(c.proposal.said ? { said: c.proposal.said } : {}) } } : {}) }
   }))
-  return decisionsOf({ cards: b.cards, tasks, coordinators, wakes })
+  // Who is woken for a question: a task's coordinator (its workspace's) with its autopilot on, running, in its hours (pmWakes.ts).
+  const now = Date.now(), asks: string[] = []
+  for (const p of projects) {
+    const c = await store.coordinator(coordinatorKey(p.key, projects)), ap = c?.autopilot
+    if (ap?.on && c?.terminal && inHours(ap.hours, new Date(now))) asks.push(p.key)
+  }
+  return decisionsOf({ cards: b.cards, tasks, coordinators, wakes, asks, now })
 }
 
 // What was pushed already; null until the first tick, which only notes what

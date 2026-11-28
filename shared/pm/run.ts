@@ -34,6 +34,7 @@ export interface Task {
   waiting?: string // why it waits for the user
   needsHuman?: NeedsHuman // its worker cannot go on without a person (needsHuman.ts): a push now and again, its own list
   waitKind?: 'question' | 'permission' | 'auth' // what it waits for
+  waitAt?: number // when the engine saw that wait: Tasks to review holds a young one back (decisions.ts)
   answered?: number // when a coordinator's tell answered its question; cleared once the agent's question is gone (no second wake: autopilot.ts)
   mech?: Record<string, number> // the engine's mechanical moves made (key → when): never twice
   stateRan?: Partial<Record<StateEvent, number>> // the state changes seen (onState.ts), each once: when

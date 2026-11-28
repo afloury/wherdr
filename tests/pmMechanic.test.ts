@@ -272,7 +272,7 @@ describe('what a task waits for', () => {
   it('syncWaits: a task waits with the kind its terminal shows, and works again once it is gone', async () => {
     const fs = await import('node:fs/promises'), os = await import('node:os'), path = await import('node:path')
     const { createPmStore } = await import('../server/utils/pmStore')
-    const { syncWaits } = await import('../server/utils/pmMechanic')
+    const { clearGoneWaits, syncWaits } = await import('../server/utils/pmMechanic')
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-mech-'))
     try {
       const store = createPmStore(dir)
@@ -291,7 +291,13 @@ describe('what a task waits for', () => {
       }
       const deps = { store, call: async () => ({ terminals: [term] }), panes, chat } as unknown as Parameters<typeof syncWaits>[0]
       await syncWaits(deps)
-      expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'permission' })
+      expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'permission', waitAt: expect.any(Number) })
+      // The state polled for the interface clears it, without the engine's pass: not while the pane still waits, nor for another pane.
+      await clearGoneWaits(store, [{ coreAddress: 'host/t3', wait: 'permission' }, { coreAddress: 'host/t9' }])
+      expect((await store.task(t.id))!.state).toBe('waiting')
+      await clearGoneWaits(store, [{ coreAddress: 'host/t3' }])
+      const cleared = (await store.task(t.id))!
+      expect([cleared.state, cleared.waitKind, cleared.waitAt]).toEqual(['working', undefined, undefined])
       term = { address: 'host/t3', status: { state: 'working' } }
       await syncWaits(deps)
       expect((await store.task(t.id))!.state).toBe('working')
