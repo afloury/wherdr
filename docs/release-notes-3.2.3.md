@@ -31,7 +31,7 @@ wherdr 3.2.3 makes sending and answering dependable: a message is never sent twi
 
 **Private notifications.** A new switch in *Settings › Notifications* makes every push one generic line, so nothing private shows on a lock screen. (#1102)
 
-**For plugins and agents.** Plugins can add header widgets and prepare a draft, and the host cleans up what a plugin registered when it stops. Command Code conversations open on Linux, the `/` list offers omp's and Claude Code's commands and skills, and a worker that needs you for a login or a payment can push you directly. Thanks to [@followcat](https://github.com/followcat) and [@simonsmallchua](https://github.com/simonsmallchua).
+**For plugins and agents.** Plugins can add header widgets and prepare a draft, and the host cleans up what a plugin registered when it stops; the new `hello-header` example shows how. Command Code conversations open on Linux, the `/` list offers omp's and Claude Code's commands and skills, and a worker that needs you for a login or a payment can push you directly. Thanks to [@followcat](https://github.com/followcat) and [@simonsmallchua](https://github.com/simonsmallchua).
 
 ## Improved
 
