@@ -2,7 +2,7 @@
 // removed or changed, each changed field with its value before and after.
 // The coordinator's proposal card and review show it; the JSON diff
 // (templateDiff) stays for the details.
-import { isDefaultWorkflow, programName, type Guards, type Step, type StepAction, type Template, type TaskType } from './workflow'
+import { isDefaultWorkflow, PREF_KEYS, programName, type Guards, type Prefs, type Step, type StepAction, type Template, type TaskType } from './workflow'
 import { lineDiff } from './coordinator'
 
 // before/after: the field's value as text, absent when it was not set.
@@ -143,8 +143,12 @@ export function changeSummary(c: WorkflowChanges, max = 2): string[] {
 }
 
 // The whole change in one line, for the top of the card and the review:
-// its first change, then how many more.
+// its first change, then how many more. Types only added or removed with a
+// change to the whole workflow: each of them, in plain words
+// ("Type study removed · If the task runs Codex: gpt-6.1-sol (was: the workflow's model)").
 export function changeHeadline(c: WorkflowChanges): string {
+  if (c.all.length && c.types.length && c.types.every(t => t.kind !== 'changed'))
+    return [...c.types.map(t => (t.kind === 'added' ? `New type ${t.type}` : `Type ${t.type} removed`)), ...c.all.map(fieldLine)].join(' · ')
   const [first, ...rest] = changeSummary(c, Infinity)
   return first ? (rest.length ? `${first} · and ${rest.length} more ${rest.length === 1 ? 'change' : 'changes'}` : first) : ''
 }
@@ -193,4 +197,26 @@ export function taskImpact(c: WorkflowChanges, type: string, next?: Template): s
 export function impactRepeats(impact: string, headline: string): boolean {
   const body = impact.replace(/^For .+? tasks: /, '')
   return !!body && headline.replace(/ · and \d+ more changes?$/, '').replace(/^[^:]+: /, '') === body
+}
+
+// The prefs as they were before the change: `now` with each changed pref's
+// value before (absent when it was not set).
+function prefsBefore(now: Prefs | undefined, fields: FieldChange[]): Prefs {
+  const out: Prefs = { ...now, models: { ...now?.models } }
+  for (const f of fields) {
+    const prog = modelsProgram(f.field) as keyof NonNullable<Prefs['models']> | undefined
+    if (prog) { if (f.before) out.models![prog] = f.before; else delete out.models![prog] }
+    else if ((PREF_KEYS as readonly string[]).includes(f.field)) { const k = f.field as typeof PREF_KEYS[number]; if (f.before) out[k] = f.before; else delete out[k] }
+  }
+  if (!Object.keys(out.models!).length) delete out.models
+  return out
+}
+
+// A removed type as it was, for its diagram: its removed steps, its own prefs
+// and the workflow's from before the change, so its agents show what they were.
+export function typeBefore(c: WorkflowChanges, type: string, next: Template): Template | undefined {
+  const t = c.types.find(x => x.type === type && x.kind === 'removed')
+  if (!t) return undefined
+  const steps = t.steps.flatMap(s => (s.step ? [s.step] : []))
+  return { ...next, prefs: prefsBefore(next.prefs, c.all), taskTypes: { ...next.taskTypes, [type]: { steps, prefs: prefsBefore(undefined, t.fields) } } }
 }

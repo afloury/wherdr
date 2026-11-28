@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
-import { changeHeadline, changeSummary, changeTitle, impactRepeats, stepMarks, taskImpact, workflowChanges } from '../shared/pm/workflowChanges'
+import { changeHeadline, changeSummary, changeTitle, impactRepeats, stepMarks, taskImpact, typeBefore, workflowChanges } from '../shared/pm/workflowChanges'
+import { workerPlan } from '../shared/pm/run'
 import { defaultWorkflow, type Template } from '../shared/pm/workflow'
 
 const old: Template = {
@@ -79,4 +80,19 @@ it('per-program models read in plain words, mark the worker step, and the impact
   const guard = workflowChanges(old, { ...old, guards: { merge: { others: 'engine' } } })
   expect(impactRepeats(taskImpact(guard, 'task', old), changeHeadline(guard))).toBe(true)
   expect(impactRepeats(taskImpact(c, 'task', next), changeHeadline(c))).toBe(false)
+})
+
+it('a removed type with its own prefs and a workflow-wide model: both in the headline, its worker as it was', () => {
+  const study = { steps: [{ id: 'todo' }, { id: 'work', holder: 'worker' as const, ends: 'report' as const }, { id: 'done' }], prefs: { agent: 'codex', model: 'gpt-6.1-sol' } }
+  const was: Template = { ...old, prefs: { agent: 'claude', model: 'opus' }, taskTypes: { ...old.taskTypes, 'study-codex': study } }
+  const next: Template = { ...old, prefs: { agent: 'claude', model: 'opus', models: { codex: 'gpt-6.1-sol' } } }
+  const c = workflowChanges(was, next)
+  expect(changeTitle(c)).toBe('Workflow change')
+  expect(changeHeadline(c)).toBe('Type study-codex removed · If the task runs Codex: gpt-6.1-sol (was: the workflow\'s model)')
+  expect(workerPlan(next, { type: 'study-codex' })).toHaveProperty('reason')
+  expect(workerPlan(typeBefore(c, 'study-codex', next)!, { type: 'study-codex' })).toMatchObject({ program: 'codex', model: 'gpt-6.1-sol' })
+  // The type's prefs first, then the workflow's as it was (no per-program model yet).
+  const plain = workflowChanges({ ...was, taskTypes: { ...was.taskTypes, 'study-codex': { steps: study.steps } } }, next)
+  expect(workerPlan(typeBefore(plain, 'study-codex', next)!, { type: 'study-codex' })).toMatchObject({ program: 'claude', model: 'opus' })
+  expect(typeBefore(plain, 'study-codex', next)!.prefs).toEqual({ agent: 'claude', model: 'opus' })
 })

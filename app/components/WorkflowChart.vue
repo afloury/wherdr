@@ -15,7 +15,7 @@ import { reviewerPlan, workerPlan, type Task } from '#shared/pm/run'
 import { actionLabel, describeStep } from '#shared/pm/describe'
 import { DEFAULT_ROUNDS } from '#shared/pm/steps'
 import { isPrMerge, type Evidence, type Template } from '#shared/pm/workflow'
-import { ifRuns, impactRepeats, modelsProgram, stepMarks, taskImpact, type ChangeKind, type FieldChange, type StepMark, type WorkflowChanges } from '#shared/pm/workflowChanges'
+import { ifRuns, impactRepeats, modelsProgram, stepMarks, taskImpact, typeBefore, type ChangeKind, type FieldChange, type StepMark, type WorkflowChanges } from '#shared/pm/workflowChanges'
 
 // headline: the change's line shown above, an impact that only repeats it is left out.
 const props = defineProps<{ workflow: Template, type: string, base?: string, coordinator?: string, changes?: WorkflowChanges, compact?: boolean, headline?: string }>()
@@ -50,14 +50,16 @@ const agentOf = (r: { program: string, agent?: string, model: string } | { reaso
   'reason' in r ? tl('not set') : `${r.agent ?? kindLabel(r.program)} · ${r.model}`
 const agents = computed(() => {
   const task = { type: props.type } as Task, named = namedAgents.value
-  const worker = workerPlan(props.workflow, task, named)
+  // A removed type: the agents it had (its prefs, then the workflow's, before the change).
+  const wf = (props.changes && typeBefore(props.changes, props.type, props.workflow)) || props.workflow
+  const worker = workerPlan(wf, task, named)
   // The per-program models (prefs.models, the type's over the workflow's), for
   // the tasks started with another program: under the worker's default, which
   // then says it is the default, so none reads as a fallback.
-  const models = { ...props.workflow.prefs?.models, ...props.workflow.taskTypes[props.type]?.prefs?.models }
+  const models = { ...wf.prefs?.models, ...wf.taskTypes[props.type]?.prefs?.models }
   const others = Object.entries(models).filter(([p, m]) => m && !('program' in worker && worker.program === p)).map(([p, m]) => `${tl(ifRuns(p))}: ${m}`)
   const main = agentOf(worker)
-  return { worker: others.length && !('reason' in worker) ? `${main} ${tl('(default)')}` : main, others, reviewer: agentOf(reviewerPlan(props.workflow, task, undefined, named)) }
+  return { worker: others.length && !('reason' in worker) ? `${main} ${tl('(default)')}` : main, others, reviewer: agentOf(reviewerPlan(wf, task, undefined, named)) }
 })
 
 // Where a merge goes, for the guard line: the land's target, or the PR's base.
