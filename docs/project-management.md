@@ -549,13 +549,36 @@ whose worker or reviewer uses one starts only on a machine that has it; on the
 others it waits (*no named agent omp-sub (Settings › Agents)*). A name that is
 neither a program nor a named agent is refused when the workflow is saved.
 
+A model belongs to its program: `prefs.models` (template or task type) gives
+the worker's model per program, taken when the task's agent is another program
+than the one `model` was set for. With the workflow below, a task whose agent
+is `codex` runs `gpt-5`, the others `sonnet`:
+
+```json
+{ "agent": "claude", "model": "sonnet", "models": { "codex": "gpt-5" } }
+```
+
+A model of another program's family is refused, at `task add`, at `task edit`
+and at the start (*model sonnet is a Claude model; codex needs a Codex model:
+set --model or prefs.models.codex*): Claude's are `claude-*`, `sonnet`, `opus`,
+`haiku`, Codex's `gpt-*` and `o3`-style names. omp takes any provider's model,
+and a name of no known family is allowed. The reviewer follows the same rule:
+a Codex reviewer needs a Codex `reviewModel`.
+
 One task may use another agent than its workflow says: its coordinator adds it
 with `wherdr pm task add "<title>" --type <type> --agent omp-api
-[--review-agent codex]`, or changes it with `wherdr pm task edit <task>
---agent omp-api --reason "<why>"` before its first start (`--agent ""` puts
-back the workflow's). The task's own agent wins over its task type's and the
-project's; its model stays the workflow's. A name that is neither a program nor
-a named agent is refused. The sheet's History names the agent of each run on
+[--model <model>] [--review-agent codex] [--review-model <model>]`, or changes
+it with `wherdr pm task edit <task> --agent codex --model gpt-5 --reason
+"<why>"` (`--agent ""` puts back the workflow's). The task's own agent and
+model win over its task type's and the project's. A name that is neither a
+program nor a named agent is refused.
+
+`task edit --agent`/`--model` works before the task's first start, and on a
+task stopped at its worker's step (out of quota, the wrong model); it is
+refused while the task works. Its next start (Continue, or `task start`) runs
+the new agent in the same worktree, in a new conversation (a Claude session
+cannot be taken up by Codex), with a handover note naming the earlier agent and
+saying that its work is in the worktree. The sheet's History names the agent of each run on
 the line where it starts (*started the task · Worker omp-api*, *review: started
 the reviewer · Reviewer codex*). `autopilot show` gives each machine's agents at
 work by name (*agents omp-api, 2 claude*).
@@ -1879,6 +1902,12 @@ A start wherdr refuses (the agent's program missing, say) puts the task in
 *Your turn* with the reason. An agent stopped on its login prompt is not
 waiting for you: it waits for the login, as an
 [incident](#why-agents-are-gone), and wherdr starts it again once the login is renewed.
+An agent that refuses its model in its first minutes and stays at its prompt
+(Codex's *The 'sonnet' model is not supported*, Claude's *There's an issue
+with the selected model*, omp's *Model "…" not found*) puts the task in *Your
+turn* with *The agent refused model sonnet (codex)*, and its coordinator is
+woken once with that reason (its autopilot on). wherdr does not start it again
+with the same model: give the task another one.
 
 When wherdr hands the worker work of its own (a catch-up with the base branch,
 a CI fix), the task leaves *Your turn* and its card says *the agent is

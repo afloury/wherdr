@@ -113,6 +113,7 @@ describe('a stopped task', () => {
     expect(text).toContain('engine: work: sent to the worker')
     expect(text).toContain('No test')
     expect(text).not.toContain('When done:')
+    expect(handoverText(stop(working()), plan, 'task/WH-1', { program: 'codex', model: 'gpt-5' })).toContain('An earlier agent (codex, gpt-5) worked on this task')
   })
 
   it('taken as it is: on to the next step, whose holder is told', () => {
