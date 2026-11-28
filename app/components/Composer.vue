@@ -139,7 +139,18 @@ const readOnly = computed(() => Boolean(props.pane?.stopped || props.pane?.promp
 // Offline, no Stop: UChatPromptSubmit ignores `disabled` in "streaming" mode.
 // omp running the user's "!" / "$" command stays idle: Stop cancels the command.
 const shellRun = computed(() => Boolean(props.pane && props.pane.agent === 'omp' && props.pane.ompShell && props.pane.status !== 'working'))
-const stopMode = computed(() => Boolean(!readOnly.value && props.pane && props.pane.agent && (props.pane.status === 'working' || shellRun.value) && fieldEmpty.value))
+// Right after Send the button stays Send (inert) a moment: a double tap must
+// not stop the agent the message just reached.
+const SEND_GUARD_MS = 1500
+const justSent = ref(false)
+let justSentTimer: ReturnType<typeof setTimeout> | undefined
+function guardSend() {
+  justSent.value = true
+  clearTimeout(justSentTimer)
+  justSentTimer = setTimeout(() => { justSent.value = false }, SEND_GUARD_MS)
+}
+onBeforeUnmount(() => clearTimeout(justSentTimer))
+const stopMode = computed(() => Boolean(!readOnly.value && !justSent.value && props.pane && props.pane.agent && (props.pane.status === 'working' || shellRun.value) && fieldEmpty.value))
 // Claude Code's grayed-out suggestion (see parseClaudeSuggestion): placeholder of the
 // empty field; Tab puts it in the field, without sending it. A touch screen has no Tab:
 // a "Use" button inside the field, on the right, does the same (`suggestTap`).
@@ -270,6 +281,7 @@ async function submit() {
     toast(t('Already sent'))
     return
   }
+  guardSend()
   const p = props.pane
   if (p?.status === 'working') sentWhileWorking.value = true
   // omp question with "Other": the message is its free answer.

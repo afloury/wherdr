@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import { flushPromises } from '@vue/test-utils'
 import { mountSuspended } from '@nuxt/test-utils/runtime'
 import NotificationRules from '~/components/NotificationRules.vue'
 import SettingsView from '~/components/SettingsView.vue'
 import { desk, herdrState } from '~/composables/useHerdr'
 import { notificationClock, notificationRules } from '~/composables/useNotificationRules'
+import { pushOn } from '~/composables/usePush'
 import { LEVEL_EVENTS, defaultNotifications, type NotificationException, type NotificationSettings } from '#shared/notificationRules'
 import type { Pane } from '#shared/types'
 import { segPick, segValue } from '../helpers/select'
@@ -118,6 +120,9 @@ it('orders the Notifications section: Do not disturb, default, exceptions, this 
   // Computer layout: on a phone, Settings re-routes after mounting (history), past the test's end.
   const wasDesk = desk.value
   desk.value = true
+  // A browser that can be asked (jsdom has no notifications).
+  vi.stubGlobal('Notification', { permission: 'default' })
+  Object.defineProperty(navigator, 'serviceWorker', { value: {}, configurable: true })
   const w = await mountSuspended(SettingsView, { route: '/settings?section=notifications', global: { stubs: { UTooltip: { template: '<span><slot /></span>' } } } })
   const html = w.html()
   const at = (id: string) => html.indexOf(`data-testid="${id}"`)
@@ -126,7 +131,20 @@ it('orders the Notifications section: Do not disturb, default, exceptions, this 
   expect(at('notification-default')).toBeLessThan(at('notification-exceptions'))
   expect(at('notification-exceptions')).toBeLessThan(at('push-card'))
   expect(w.find('[data-testid="notification-quiet"]').text()).toContain('Turns off every notification, no exceptions')
+  // No subscription on this device: its card shows first, with Enable notifications.
+  await flushPromises()
+  const device = () => w.find('[data-ui-target="notifications.device"]')
+  expect(device().classes()).toContain('first')
+  expect(w.find('[data-testid="push-card"]').text()).toContain('What notifies is set below')
+  expect(w.find('[data-testid="push-card"] .settings-action').text()).toBe('Enable notifications')
+  pushOn.value = true
+  await nextTick()
+  expect(device().classes()).not.toContain('first')
   expect(w.find('[data-testid="push-card"]').text()).toContain('What notifies is set above')
+  expect(w.find('[data-testid="push-card"] .settings-action').text()).toBe('Send a test notification')
+  pushOn.value = null
+  vi.unstubAllGlobals()
+  Reflect.deleteProperty(navigator, 'serviceWorker')
   w.unmount()
   desk.value = wasDesk
 })

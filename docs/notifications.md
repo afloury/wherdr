@@ -55,6 +55,9 @@ The screen reads top to bottom:
    exception on a machine wherdr no longer knows shows **Unknown machine**.
 4. **This device's notifications** only asks this browser or phone for permission to
    show push notifications, and shows whether it is allowed, blocked or not asked yet.
+   While this device has no subscription, the card comes first in the section with one
+   main button, **Enable notifications**; once on, it goes back to the end with **Send a test
+   notification**.
    Below it, every registered device is listed with the result of the last push sent to it:
    delivered, expired (404/410: the browser dropped the subscription), rejected (401/403),
    push service unreachable, or failed with its HTTP status. Each device keeps its own result,

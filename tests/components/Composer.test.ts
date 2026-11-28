@@ -317,6 +317,32 @@ describe('Composer: Escape stops on the second press', () => {
   })
 })
 
+// A double tap on Send must not stop the agent the message just reached.
+describe('Composer: Send does not turn into Stop under the finger', () => {
+  beforeEach(() => { eventsOpen.value = true; interrupts.length = 0 })
+  afterEach(() => { eventsOpen.value = false; vi.useRealTimers() })
+
+  it('stays Send for a moment after a send while the agent works', async () => {
+    const id = 'w1:g1'
+    const w = await mountSuspended(Composer, { props: { pane: pane(id, 'working'), paneId: id, sendKeys: async () => {} } })
+    await w.find('textarea').setValue('One more thing')
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const btn = () => w.find('button.prompt-send')
+    await btn().trigger('click')
+    await nextTick()
+    expect(btn().classes()).not.toContain('stop')
+    await btn().trigger('click')
+    await flushPromises()
+    expect(interrupts).toEqual([])
+    vi.advanceTimersByTime(1500)
+    await nextTick()
+    expect(btn().classes()).toContain('stop')
+    vi.useRealTimers()
+    releaseNext()
+    w.unmount()
+  })
+})
+
 // References in the field (shared/reference.ts): the text is the only state.
 describe('Composer references', () => {
   beforeEach(() => { eventsOpen.value = true })
