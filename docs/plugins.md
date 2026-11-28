@@ -111,7 +111,7 @@ To follow the steps without writing code, install either example as is.
    before it activates.
 2. **Build** one ES module with no external imports (the example uses esbuild, installed with the repo's
    dependencies; any bundler works): `npx esbuild src/index.ts --bundle --format=esm --target=es2020 --outfile=index.js`.
-   For the example: `npm run build:example-plugin` from the repo root.
+   For the examples: `npm run build:example-plugin` from the repo root.
 3. **Install**: copy `manifest.json` and `index.js` (not the sources) to
    `<DATA_DIR>/plugins/<id>/`, e.g. `mkdir -p data/plugins/hello-header && cp docs/examples/plugins/hello-header/{manifest.json,index.js} data/plugins/hello-header/`.
    Reload the page: no restart needed. Turn on Community plugins if it is off.
