@@ -3,11 +3,13 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { parseChoices } from '../server/utils/choices'
-import { isPermissionQuestion, lineStats, pendingClaudeTool, pendingCodexTool } from '../server/utils/promptDetail'
+import { isPermissionQuestion, lineStats, pendingClaudeCalls, pendingCodexCalls } from '../server/utils/promptDetail'
 import { detailLine, diffKind } from '../app/utils/promptDetail'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 const HOME = '/home/user'
+const pendingClaudeTool = (lines: string[], home?: string) => pendingClaudeCalls(lines, home)[0]?.detail ?? null
+const pendingCodexTool = (lines: string[]) => pendingCodexCalls(lines)[0]?.detail ?? null
 
 const user = (text: string) => JSON.stringify({ type: 'user', message: { role: 'user', content: text } })
 const toolUse = (id: string, name: string, input: object) => JSON.stringify({ type: 'assistant', message: { role: 'assistant', content: [{ type: 'tool_use', id, name, input }] } })
@@ -55,12 +57,11 @@ describe('Claude transcript: pending tool call', () => {
     expect(pendingClaudeTool([toolUse('t1', 'Task', { prompt: 'x' })])).toBeNull()
   })
 
-  it('takes the first pending call of a parallel batch', () => {
-    const d = pendingClaudeTool([
+  it('lists a parallel batch in order, by tool_use id', () => {
+    expect(pendingClaudeCalls([
       toolUse('a', 'Bash', { command: 'echo one' }),
       toolUse('b', 'Bash', { command: 'echo two' }),
-    ])!
-    expect(d.command).toBe('echo one')
+    ]).map(c => [c.call, c.detail.command])).toEqual([['a', 'echo one'], ['b', 'echo two']])
   })
 
   it('very long command: cut and flagged', () => {

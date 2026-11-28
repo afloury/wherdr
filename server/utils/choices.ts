@@ -39,7 +39,7 @@
 // from the transcript (pendingClaudeAsk, completeClaudeAsk).
 import { createHash } from 'node:crypto'
 import type { ChoiceOption, Choices, PromptDetail } from '../../shared/types'
-import { isPermissionQuestion, screenDetail } from './promptDetail'
+import { isPermissionQuestion, screenDetail, type PendingCall } from './promptDetail'
 import { OMP_CURSOR, OMP_UP_DOWN, ompAlt } from '../../shared/ompSymbols'
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -879,7 +879,7 @@ export function completeOmpAsk(choices: Choices, asked: OmpAsked[]): Choices {
 // Claude's AskUserQuestion call still unanswered (JSON lines of its
 // transcript): its questions, in full, with every option. The box may show
 // only a window of the options (short pane) and wraps the question.
-export interface ClaudeAsked extends OmpAsked { multi: boolean }
+export interface ClaudeAsked extends OmpAsked { multi: boolean, call?: string }
 export function pendingClaudeAsk(lines: string[]): ClaudeAsked[] {
   const pending = new Map<string, ClaudeAsked[]>()
   for (const line of lines) {
@@ -897,6 +897,7 @@ export function pendingClaudeAsk(lines: string[]): ClaudeAsked[] {
         if (!part || part.type !== 'tool_use' || part.name !== 'AskUserQuestion' || !part.id) continue
         const qs: Json[] = part.input && Array.isArray(part.input.questions) ? part.input.questions : []
         pending.set(part.id, qs.filter(q => q && typeof q.question === 'string').map(q => ({
+          call: part.id,
           question: q.question.trim(),
           multi: Boolean(q.multiSelect),
           options: (Array.isArray(q.options) ? q.options : []).filter((o: Json) => o && typeof o.label === 'string')
@@ -935,6 +936,8 @@ export function completeClaudeAsk(choices: Choices, asked: ClaudeAsked[], checks
   }
   const q = asked.find(a => sameQuestion(choices.question, a.question) && fits(a)) || asked.find(fits)
   if (!q) return choices
+  // The pending call names the request; each of its questions is its own card.
+  if (q.call) choices = { ...choices, identity: callIdentity(q.call, q.question) }
   const k = q.options.length
   const free = choices.options.find(o => o.free)
   if (!multi) {
@@ -967,18 +970,63 @@ export function sameQuestion(a: string | null | undefined, b: string | null | un
   return x && y ? x.startsWith(y) || y.startsWith(x) : x === y
 }
 
-// Identity describes the native question, not surrounding output or selection.
-// Permission details are part of the question; checkbox/cursor state is not.
+// Claude's auto-block countdown, a windowed body's "↑ 3 more lines".
+const VOLATILE = /will automatically block this request in|^\s*[↑↓]\s*\d+\s+more\b/i
+// Exact screen identity: any byte of the question, options or detail, but for
+// lines that change on their own (VOLATILE). Only used to see that an answer
+// field opened (coreChoose).
 const identity = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex')
-export function promptIdentity(text: string | null | undefined, agent?: string | null): string {
+export function promptIdentity(screen: string | null | undefined, agent?: string | null): string {
+  const text = screen?.split('\n').filter(l => !VOLATILE.test(l)).join('\n')
   const c = agent === 'omp' ? parseOmpPrompt(text, true) : agent ? parseChoices(text, { full: true, agent }) : parseChoices(text, { full: true }) || parseOmpPrompt(text, true)
   return identity(c ? { question: c.question, options: c.options.map(({ label, hint, n, free }) => ({ label, hint, n, free })), detail: c.detail, multi: c.multi, tabs: c.tabs } : null)
+}
+
+// Card identity (WHR-607): what the answer is about, not how the screen draws it.
+// The pending tool call's id when the transcript names it (callIdentity), else a
+// loose key of the screen: question, option numbers and the start of each
+// option's text, the detail without whitespace (wrapping and terminal size move
+// none of them), VOLATILE lines left out. Cursor and checkboxes never count.
+const squash = (s: string | null | undefined) => (s || '').replace(/\s+/g, '').replace(/…/g, '')
+const LABEL_KEY = 24
+export function looseIdentity(c: Choices): string {
+  const d = c.detail
+  const body = d && [d.file, d.command].filter(Boolean).join('\n').split('\n').filter(l => !VOLATILE.test(l)).join('')
+  return 'screen:' + identity({
+    q: squash(c.question).slice(0, 200),
+    o: c.options.map((o, i) => [o.n ?? i, Boolean(o.free), squash(o.label + (o.hint || '')).slice(0, LABEL_KEY)]),
+    d: d ? squash(d.tool) + squash(body) : null,
+    multi: Boolean(c.multi),
+    tabs: c.tabs?.map(squash),
+  })
+}
+export const callIdentity = (call: string, question?: string | null) => 'call:' + identity({ call, q: squash(question) })
+
+// The option tapped and the one on screen now: one label starts the other
+// (the screen may wrap it, or the card hold its full text).
+export function sameOptionLabel(a: string | null | undefined, b: unknown): boolean {
+  const x = squash(a)
+  const y = typeof b === 'string' ? squash(b) : ''
+  return Boolean(x && y) && (x.startsWith(y) || y.startsWith(x))
+}
+
+// Among the pending tool calls, the one this permission prompt asks for: the
+// screen shows its file or the start of its command. A call the screen does not
+// name is never taken (a parallel call still running, a lagging transcript).
+export function pickCall(calls: PendingCall[], text: string, c: Choices): PendingCall | null {
+  if (!calls.length || !(c.detail || isPermissionQuestion(c.question))) return null
+  const screen = squash(text)
+  const named = (d: PromptDetail) => {
+    const key = d.file ? squash(d.file.split('/').pop()) : squash(d.command).slice(0, LABEL_KEY)
+    return Boolean(key) && screen.includes(key)
+  }
+  return calls.find(k => named(k.detail)) ?? null
 }
 
 // On-screen prompt re-read before choose/nav; Claude questions can be
 // completed by the pending transcript call after their screen identity is set.
 export function screenChoices(text: string | null | undefined, agent: string | null | undefined, asked: ClaudeAsked[] = []): Choices | null {
   const c = agent === 'omp' ? parseOmpPrompt(text) : parseChoices(text, { agent }) || parseChoices(text, { strict: true, agent })
-  if (c) c.identity = promptIdentity(text, agent)
+  if (c) c.identity = looseIdentity(c)
   return c && agent === 'claude' ? completeClaudeAsk(c, asked) : c
 }
