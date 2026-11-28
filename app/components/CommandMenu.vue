@@ -15,7 +15,7 @@ import { UI_TARGETS, projectTarget, uiTargetLink, uiTargetName, type UiTargetId 
 import { settingsSectionIcons, settingsSectionLabels } from '~/utils/settingsNav'
 import { shortcutKbds, shortcutsOpen } from '~/composables/useShortcuts'
 
-type Item = CommandPaletteItem & { id: string, pane?: Pane, hit?: ConversationHit }
+type Item = CommandPaletteItem & { id: string, pane?: Pane, hit?: ConversationHit, badge?: { text: string, color?: string } | null }
 
 const open = defineModel<boolean>('open', { default: false })
 const query = ref('')
@@ -29,9 +29,16 @@ let controller: AbortController | undefined
 let sequence = 0
 
 const space = (p: Pane) => herdrState.value.workspaces.find(w => w.id === p.workspace)
-const paneTitle = (p: Pane) => paneTaskTitle(p) || homeTitle(p, space(p))
+// A pane's colored key badge, as on its home card: a task agent's task id in
+// its project's color, else paneBadge's (a coordinator's key); none for a plain agent.
+const badgeOf = (p: Pane) => {
+  const task = taskAgentOf(p)
+  return task ? { text: task.shown, color: paneBadge({ ...p, task: task.task })?.color } : paneBadge(p)
+}
+// The title leaves the task's key out when its badge shows it.
+const paneTitle = (p: Pane) => paneTaskTitle(p, !badgeOf(p)) || homeTitle(p, space(p))
 const roleLabel = (hit: ConversationHit) => (hit.role === 'user' ? t('You') : kindLabel(hit.agent))
-const agentItem = (p: Pane): Item => ({ id: `agent:${p.id}`, label: paneTitle(p), slot: 'agent', pane: p, onSelect: () => go(`/a/${encodeURIComponent(p.id)}`) })
+const agentItem = (p: Pane): Item => ({ id: `agent:${p.id}`, label: paneTitle(p), slot: 'agent', pane: p, badge: badgeOf(p), onSelect: () => go(`/a/${encodeURIComponent(p.id)}`) })
 
 const recent = computed(() => herdrState.value.panes.filter(p => p.agent).sort((a, b) => (b.since ?? 0) - (a.since ?? 0) || (b.stateSeq ?? 0) - (a.stateSeq ?? 0)).slice(0, 6))
 const agentMatches = computed(() => {
@@ -48,7 +55,7 @@ const hitGroups = computed(() => {
     const key = machineOf(id)
     return {
       id: `hits:${id}`, slot: 'hit', ignoreFilter: true, label: pane ? paneTitle(pane) : items[0]!.title,
-      agent: items[0]!.agent || pane?.agent, pane, count: items.length,
+      agent: items[0]!.agent || pane?.agent, pane, count: items.length, badge: pane ? badgeOf(pane) : null,
       subtitle: pane ? conversationSubtitle(pane, space(pane)) : '',
       machine: multiMachine.value ? machineName(key) : '',
       machineIcon: machineInfo(key)?.local ? 'i-lucide-server' : 'i-lucide-laptop',
@@ -75,7 +82,7 @@ const groups = computed<CommandPaletteGroup[]>(() => {
   if (!query.value.trim()) return [{ id: 'recent', label: tl('Recent conversations'), ignoreFilter: true, items: recent.value.map(agentItem) }, { id: 'actions', label: tl('Actions'), ignoreFilter: true, items: actions.value }]
   return [
     { id: 'conversations', label: tl('Conversations'), ignoreFilter: true, items: agentMatches.value.map(agentItem) },
-    { id: 'tasks', label: tl('Tasks'), items: (board.value?.cards ?? []).map(c => ({ id: `task:${c.id}`, label: c.title, suffix: c.shown, icon: 'i-lucide-square-check', onSelect: () => { close(); openTaskSheet(c.id) } })) },
+    { id: 'tasks', label: tl('Tasks'), items: (board.value?.cards ?? []).map(c => ({ id: `task:${c.id}`, label: c.title, suffix: c.shown, slot: 'task', badge: { text: c.shown, color: c.color }, ui: { itemLabelSuffix: 'hidden' }, icon: 'i-lucide-square-check', onSelect: () => { close(); openTaskSheet(c.id) } })) },
     { id: 'projects', label: tl('Projects'), items: (board.value?.projects ?? []).map(p => ({ id: `project:${p.key}`, label: p.name, suffix: p.label || p.key, icon: 'i-lucide-kanban', onSelect: () => go(coordinatorBoardPath(p.key)) })) },
     { id: 'settings', label: t('Settings'), items: settings.value },
     // The messages last but the actions: the short groups above stay in sight.
@@ -140,14 +147,19 @@ const paletteUi = {
       >
         <template #agent="{ item }">
           <AgentAvatar :agent="item.pane.agent" />
-          <span class="global-search-agent-main"><span class="global-search-agent-title">{{ item.label }}</span><span class="global-search-agent-meta"><StatusPill :pane="item.pane" kind /><span v-if="conversationSubtitle(item.pane, space(item.pane))">{{ conversationSubtitle(item.pane, space(item.pane)) }}</span></span></span>
+          <span class="global-search-agent-main"><span class="global-search-agent-title"><ProjectBadge v-if="item.badge" class="global-search-badge" :text="item.badge.text" :color="item.badge.color" />{{ item.label }}</span><span class="global-search-agent-meta"><StatusPill :pane="item.pane" kind /><span v-if="conversationSubtitle(item.pane, space(item.pane))">{{ conversationSubtitle(item.pane, space(item.pane)) }}</span></span></span>
           <UIcon name="i-lucide-arrow-up-right" />
+        </template>
+        <!-- A task: its id in its project's colored badge before the title (the suffix, still searched, stays hidden). -->
+        <template #task-leading="{ item }">
+          <UIcon :name="item.icon" />
+          <ProjectBadge :text="item.badge.text" :color="item.badge.color" />
         </template>
         <template #hit-group-label="{ group: g }">
           <div v-for="group in hitGroups.filter(h => h.id === g.id)" :key="group.id" class="global-search-agent">
             <AgentAvatar :agent="group.agent" />
             <div class="global-search-agent-main">
-              <div class="global-search-agent-title">{{ group.label }}</div>
+              <div class="global-search-agent-title"><ProjectBadge v-if="group.badge" class="global-search-badge" :text="group.badge.text" :color="group.badge.color" />{{ group.label }}</div>
               <div class="global-search-agent-meta">
                 <StatusPill :pane="group.pane" />
                 <span v-if="group.subtitle">{{ group.subtitle }}</span>
