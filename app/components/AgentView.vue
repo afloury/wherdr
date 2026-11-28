@@ -308,11 +308,11 @@ function syncInteraction() {
   clearTimeout(interactionTimer)
   interactionTimer = undefined
   const now = Date.now()
-  interactionOpen.value = interactionWindow.update(pane.value?.interaction || 'unknown', now)
+  interactionOpen.value = interactionWindow.update(pane.value?.interaction || 'unknown', now, mode.value === 'term')
   const due = interactionWindow.deadline()
   if (due !== null && pageVisible.value) interactionTimer = setTimeout(syncInteraction, Math.max(0, due - now))
 }
-watch([() => pane.value?.interaction, pageVisible], syncInteraction, { immediate: true })
+watch([() => pane.value?.interaction, pageVisible, mode], syncInteraction, { immediate: true })
 const unsubscribeInteraction = interactionWindow.subscribe(syncInteraction)
 onUnmounted(() => {
   clearTimeout(interactionTimer)

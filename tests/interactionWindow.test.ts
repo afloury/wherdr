@@ -41,16 +41,20 @@ describe('interactive terminal episode', () => {
     w.update('terminal', 5200)
     expect(w.update('terminal', 5700)).toBe(true)
   })
-  it('yields on lost state and debounces a fresh terminal observation', () => {
+  it('stays open through a failed read, and debounces a fresh terminal observation after a card', () => {
     const w = createInteractionWindow()
     w.update('terminal', 0)
     w.update('terminal', 500)
-    expect(w.update('unknown', 1000)).toBe(false)
-    expect(w.update('input', 1100)).toBe(false)
-    expect(w.update('terminal', 1600)).toBe(false)
-    expect(w.update('managed', 1700)).toBe(false)
-    expect(w.update('terminal', 1800)).toBe(false)
-    expect(w.update('terminal', 2300)).toBe(true)
+    // A failed or timed-out read is not the field coming back.
+    expect(w.update('unknown', 1000)).toBe(true)
+    expect(w.update('unknown', 60_000)).toBe(true)
+    expect(w.update('terminal', 60_100)).toBe(true)
+    expect(w.update('native', 60_200)).toBe(false)
+    expect(w.update('terminal', 60_300)).toBe(false)
+    expect(w.update('terminal', 60_800)).toBe(true)
+    expect(w.update('managed', 60_900)).toBe(false)
+    expect(w.update('terminal', 61_000)).toBe(false)
+    expect(w.update('terminal', 61_500)).toBe(true)
   })
   it('never reattaches a stale window when returning to a pane already at its field', () => {
     const w = createInteractionWindow()
@@ -66,15 +70,34 @@ describe('interactive terminal episode', () => {
     expect(w.update('native', 600)).toBe(false)
   })
 
-  for (const next of ['working', 'unknown'] as const) it(`closes and never resumes stale state during ${next}`, () => {
+  for (const next of ['working', 'unknown'] as const) it(`never resumes stale state during ${next}`, () => {
     const w = createInteractionWindow()
     w.update('terminal', 0)
     w.update('terminal', 500)
     expect(w.resume(next)).toBe(false)
-    w.update('terminal', 1000)
-    w.update('terminal', 1500)
-    expect(w.update(next, 2000)).toBe(false)
-    expect(w.update(next, 120_000)).toBe(false)
+  })
+  it('closes on work', () => {
+    const w = createInteractionWindow()
+    w.update('terminal', 0)
+    w.update('terminal', 500)
+    expect(w.update('working', 2000)).toBe(false)
+    expect(w.update('working', 120_000)).toBe(false)
+  })
+  it('an episode seen in Terminal view is handled: back in Conversation, no window for it', () => {
+    const w = createInteractionWindow()
+    w.update('terminal', 0, true)
+    expect(w.update('terminal', 2000, true)).toBe(false)
+    expect(w.update('terminal', 3000)).toBe(false)
+    // A window already open when switching to Terminal view is handled too.
+    const v = createInteractionWindow()
+    v.update('terminal', 0)
+    expect(v.update('terminal', 500)).toBe(true)
+    expect(v.update('terminal', 600, true)).toBe(false)
+    expect(v.update('terminal', 5000)).toBe(false)
+    // The next episode, after work, opens again.
+    v.update('working', 6000)
+    v.update('terminal', 7000)
+    expect(v.update('terminal', 7500)).toBe(true)
   })
   it('starts a new episode after work, including after manual dismissal', () => {
     const w = createInteractionWindow()
