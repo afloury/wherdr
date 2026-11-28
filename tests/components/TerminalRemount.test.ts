@@ -61,12 +61,12 @@ class FakeSocket {
   resizes() { return this.sent.filter(m => m.type === 'terminal.resize').map(m => [m.cols, m.rows]) }
 }
 
-function setup() {
+function setup(extra: { watchOnly?: boolean } = {}) {
   let ctl!: ReturnType<typeof createTerminal>
   let banner: unknown = null
   const wrapper = mount(defineComponent({
     setup() {
-      ctl = createTerminal('w1:p1', { setBanner: (b) => { banner = b }, hasBanner: () => banner !== null })
+      ctl = createTerminal('w1:p1', { setBanner: (b) => { banner = b }, hasBanner: () => banner !== null, ...extra })
       return () => h('div')
     },
   }), { attachTo: document.body })
@@ -158,5 +158,20 @@ it('offers to fit again when the terminal reopens on another viewer\'s size', as
     attach(second, false)
     second.receive({ type: 'terminal.frame', width: 152, height: 50, bytes: '' })
     expect(banner()).not.toBeNull()
+  } finally { ctl.dispose(); wrapper.unmount() }
+})
+
+it('a watch-only window keeps the pane\'s size until the first tap or key', async () => {
+  const { ctl, open, wrapper, banner } = setup({ watchOnly: true })
+  try {
+    const ws = await open()
+    expect(new URL(ws.url, 'http://x').searchParams.get('takeover')).toBe('0')
+    attach(ws, false)
+    ws.receive({ type: 'terminal.frame', width: 152, height: 50, bytes: '' })
+    // Watching: no "fit to this screen" offer, and nothing asks for control.
+    expect(banner()).toBeNull()
+    expect(ws.sent.some(m => m.type === 'take.control')).toBe(false)
+    ctl.takeControl()
+    expect(ws.sent.some(m => m.type === 'take.control')).toBe(true)
   } finally { ctl.dispose(); wrapper.unmount() }
 })

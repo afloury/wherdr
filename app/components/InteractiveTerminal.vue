@@ -1,6 +1,8 @@
 <script setup lang="ts">
-// The pane's real terminal in a modal window, fitted with the same size lease as
-// Terminal view. The scrim of the other windows covers the app and keeps the focus
+// The pane's real terminal in a modal window. It opens watch-only, at the pane's
+// current size: resizing would make the agent redraw the very screen the window
+// opened for. The first key, text or tap takes the same size lease as Terminal
+// view. The scrim of the other windows covers the app and keeps the focus
 // here. Escape belongs to the agent: only the Close button or a click on the scrim
 // closes the window, and closing only releases the lease.
 const props = defineProps<{ paneId: string, active: boolean, title?: string }>()
@@ -11,6 +13,7 @@ const ctl = createTerminal(props.paneId, {
   hasBanner: () => Boolean(banner.value),
   fill: () => true,
   input: () => props.active,
+  watchOnly: true,
 })
 watch(pageVisible, v => ctl.setVisible(v))
 
@@ -52,7 +55,7 @@ const ui = { overlay: 'hw-scrim interactive-terminal-scrim', content: 'interacti
         <span>{{ banner.text }}</span>
         <UButton size="xs" color="warning" variant="outline" @click="banner.fn()">{{ banner.btn }}</UButton>
       </div>
-      <TerminalView :ctl="ctl" @keydown.stop />
+      <TerminalView :ctl="ctl" @keydown.stop @pointerdown.once="ctl.takeControl()" />
       <Keybar :ctl="ctl" all-digits @keydown.stop />
     </template>
   </UModal>

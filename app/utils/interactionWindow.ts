@@ -17,13 +17,18 @@ export function createInteractionWindow() {
       kind = 'unknown'
       return open
     },
-    update(next: ScreenInteraction, now: number) {
+    // `elsewhere`: the pane's terminal is already in front (Terminal view). The
+    // user handles the episode there; coming back to Conversation for the same
+    // prompt must not pop the window up.
+    update(next: ScreenInteraction, now: number, elsewhere = false) {
       if (next !== kind) { kind = next; since = now }
       // A server-owned operation or recovery card must never share input with
-      // the TUI. It does not end an episode or undo a manual dismissal.
-      if (next === 'managed' || next === 'native' || next === 'working' || next === 'unknown') open = false
+      // the TUI. It does not end an episode or undo a manual dismissal. A failed
+      // read ('unknown') says nothing of the screen: an open window stays.
+      if (next === 'managed' || next === 'native' || next === 'working') open = false
       if (next === 'working') dismissed = false
       if (next === 'input' && now - since >= 900) { open = false; dismissed = false }
+      if (elsewhere && (open || next === 'terminal')) { dismissed = true; open = false }
       if (next === 'terminal' && now - since >= 500 && !dismissed) open = true
       return open
     },

@@ -129,13 +129,12 @@ export function createCoreScreens(deps: CoreScreenDeps) {
   // omp's status line and context gauge, kept between reads (an unviewed resting omp
   // is read at the background pace), and its running step while it works.
   const omps = new Map<string, { at: number, status: OmpStatus | null, activity?: OmpActivity | null }>()
-  // Consecutive 'terminal' observations per Devin or Antigravity pane, keyed to
-  // the read that produced them (at): both mid-redraw (footer or rule not yet
-  // painted) classify 'terminal' for one read, and the overlay that opens on it
-  // flaps. Only a reading seen in two consecutive reads is published; while
-  // unconfirmed the pane keeps its last published interaction instead of
-  // dropping to 'unknown'. Re-parsing the same cached text never counts.
-  // Other agents publish every read at once.
+  // Consecutive 'terminal' observations per pane, keyed to the read that
+  // produced them (at): a frame caught mid-redraw (footer or rule not yet
+  // painted, a resize) classifies 'terminal' for one read, and the window that
+  // opens on it flaps. Only a reading seen in two consecutive reads is
+  // published; while unconfirmed the pane keeps its last published interaction
+  // instead of dropping to 'unknown'. Re-parsing the same cached text never counts.
   const terms = new Map<string, { at: number, streak: number, published?: NonNullable<Pane['interaction']> }>()
   const terminalPending = (id: string) => {
     const t = terms.get(id)
@@ -245,21 +244,14 @@ export function createCoreScreens(deps: CoreScreenDeps) {
         if (error) p.error = error
         else delete p.error
         const raw = failed.has(p.id) ? 'unknown' : r.interaction
-        // Devin and Antigravity redraw their whole normal-buffer screen: a
-        // frame caught mid-repaint classifies 'terminal' for one read, and the
-        // overlay that opens on it flaps over the conversation. Only a reading
-        // seen in two consecutive reads is published.
-        if (p.agent !== 'devin' && p.agent !== 'agy') {
-          terms.delete(p.id)
-          p.interaction = raw
-        } else {
-          const prev = terms.get(p.id)
-          // Only a new read (another c.at) advances the streak.
-          const streak = raw !== 'terminal' ? 0 : prev?.at === c.at && prev.streak ? prev.streak : (prev?.streak ?? 0) + 1
-          const published = raw === 'terminal' && streak < 2 ? prev?.published ?? 'unknown' : raw
-          terms.set(p.id, { at: c.at, streak, published })
-          p.interaction = published
-        }
+        // Any agent can be caught mid-repaint: only a 'terminal' seen in two
+        // consecutive reads is published (see terms).
+        const prev = terms.get(p.id)
+        // Only a new read (another c.at) advances the streak.
+        const streak = raw !== 'terminal' ? 0 : prev?.at === c.at && prev.streak ? prev.streak : (prev?.streak ?? 0) + 1
+        const published = raw === 'terminal' && streak < 2 ? prev?.published ?? 'unknown' : raw
+        terms.set(p.id, { at: c.at, streak, published })
+        p.interaction = published
         if (choices) p.prompt = choices
         if (parsed.sendNow) p.queueSendNow = true
         // wherdr is still submitting a message here (a photo becoming an image):

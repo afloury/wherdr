@@ -12,7 +12,7 @@ let wakeTimer: ReturnType<typeof setTimeout> | null = null
 export function coreScreens() {
   return screens ||= createCoreScreens({
     call: (method, params, timeout) => coreCall(process.env.HC_SOCKET || '', method, params, timeout),
-    viewed: id => isViewed(id),
+    viewed: id => isShown(id),
     asked: p => transcripts.pendingClaudeQuestions(p),
     pending: p => transcripts.pendingTool(p),
     colors: p => corePaint(process.env.HC_SOCKET || '', p.coreAddress || ''),
