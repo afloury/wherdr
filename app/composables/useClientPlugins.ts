@@ -2,6 +2,7 @@
 import { effectScope, onBeforeUnmount, watch } from 'vue'
 import { readPrefs } from '#shared/clientPlugins'
 import type { ClientPluginInfo, PluginPrefs, PluginSource } from '#shared/clientPlugins'
+import { createHeaderActionsMount } from '~/utils/headerActions'
 import { createPluginHost, type HostDeps, type PluginRow } from '~/utils/pluginHost'
 import { settingsSync, syncedRef } from './useSyncedSettings'
 
@@ -32,6 +33,7 @@ const savePrefs = (p: PluginPrefs) => { try { localStorage.setItem(PREFS_KEY, JS
 // Host dependencies wired to the running app (exported for the component tests).
 export function createAppPluginDeps(changed: () => void, overrides: Partial<HostDeps> = {}): HostDeps {
   const router = useRouter()
+  const mountHeaderAction = createHeaderActionsMount()
   return {
     list: () => api<{ plugins: ClientPluginInfo[], enabled: boolean }>('/api/client-plugins'),
     // The commit sits in the folder part (`<id>@<commit>/`), so the bundle's
@@ -61,6 +63,7 @@ export function createAppPluginDeps(changed: () => void, overrides: Partial<Host
       return p ? { id: p.id, agent: p.agent, name: p.name || p.label || null, machine: p.machine || null } : null
     },
     subscribeNavigate: cb => router.afterEach(to => cb(to.fullPath)),
+    mountHeaderAction,
     prefs: loadPrefs,
     savePrefs,
     changed,

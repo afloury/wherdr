@@ -102,7 +102,8 @@ writing code, install it as is.
 1. **Write** `src/index.ts` (or plain `index.js`). Export an object `{ activate(wherdr), deactivate() }`
    (or a function) as described in [The module](#the-module). Find your zone with its
    `data-wherdr` marker, and attach to it again when it reappears (use a `MutationObserver` and/or
-   `wherdr.onNavigate`). Undo your own DOM side effects in `deactivate()`; what you registered
+   `wherdr.onNavigate`), or use a host helper such as `wherdr.mountHeaderAction` where one is
+   offered. Undo your own DOM side effects in `deactivate()`; what you registered
    through the `wherdr` object is disposed automatically when the plugin stops. Do nothing at the
    top level of the module: it runs as soon as the file loads, even when the plugin is turned off
    before it activates.
@@ -141,6 +142,7 @@ export default function (wherdr) {
 | `wherdr.draft.focus()` | Focuses the open conversation's composer. Never steals the focus of an open window; on iOS it raises the keyboard only inside a user gesture. |
 | `wherdr.currentAgent()` | `{ id, agent, name, machine }` of the open conversation, or `null` (`agent` is `claude`, `codex`, `omp`… or `null` for a terminal). |
 | `wherdr.onNavigate(cb)` | `cb(path)` after each page change (`/`, `/settings?section=plugins`…). Returns a tracked, idempotent disposer. |
+| `wherdr.mountHeaderAction(render)` | Mounts a widget into every `[data-wherdr="header-actions"]` slot (the Home header and each agent header). Returns a tracked, idempotent disposer. |
 
 ### Drafts (`wherdr.draft`)
 
@@ -153,11 +155,26 @@ A plugin can prepare input in the open conversation's composer; sending stays wi
 
 **Nothing is ever sent.** No plugin call submits a draft, sends a message or answers an agent's question, menu or permission prompt: the human stays the sender.
 
+### Header actions (`wherdr.mountHeaderAction`)
+
+`wherdr.mountHeaderAction(render)` mounts small header widgets without querying the DOM or
+managing a `MutationObserver`:
+
+- **wherdr owns the container.** Whenever a `[data-wherdr="header-actions"]` slot exists — the
+  Home header and each agent header, now and after later navigations — wherdr creates a child
+  element in it and calls `render(el)`.
+- **Cleanup.** `render(el)` may return a cleanup function `() => void`, called when that header
+  goes away or the widget is disposed. Everything appended to the given element goes with it.
+- **Disposer.** The returned disposer unmounts every copy at once.
+- Keep widgets small: the slot's populated width is measured and the header's own buttons fold
+  into their menu first. A renderer that throws or rejects disables the plugin, like any other
+  host-invoked callback.
+
 ### Lifecycle and failure isolation
 
 The host owns the lifecycle of what a plugin registers:
 
-- **Tracked, idempotent disposers.** Every call that registers something (`onNavigate`) returns a
+- **Tracked, idempotent disposers.** Every call that registers something (`onNavigate`, `mountHeaderAction`) returns a
   disposer `() => void`; calling it more than once, or after the plugin stopped, is safe.
 - **Cleaned up on stop.** When a plugin stops — its switch, an update, a removal, [Community
   plugins](#community-plugins-switch) turned off, or a failure — the host disposes everything it
@@ -180,12 +197,14 @@ not renamed or removed within a major version; the markup inside a zone is not p
 | `composer` | The whole message box of a conversation. |
 | `composer-field` | The text field. |
 | `composer-actions` | An empty slot in the field's footer, just before Send: append your buttons to it. |
+| `header-actions` | An empty, zero-width slot in the Home header and in each agent header, before the existing buttons; its populated width is accounted for by header folding. Prefer `wherdr.mountHeaderAction` to filling it yourself. |
 | `conversation` | The conversation view (the messages). |
 | `home-list` | The home screen with the list of agents. |
 | `settings` | The Settings page. |
 | `settings-plugins` | The wherdr plugins block of Settings › Plugins. |
 
-Plugins run before or after a zone is created (zones come and go with navigation): look up the
+Plugins run before or after a zone is created (zones come and go with navigation): use the host
+helpers where one is offered (`wherdr.mountHeaderAction`), or look up the
 marker on each `onNavigate`, or observe the document, rather than once at load.
 
 ### Not yet
