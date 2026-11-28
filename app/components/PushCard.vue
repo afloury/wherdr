@@ -1,7 +1,7 @@
 <script setup lang="ts">
 // Push notifications card: allow them on this device, then send a test.
 // Settings › Notifications (`detailed`: says what the browser allows, and
-// that what notifies is set above) and the onboarding's security step.
+// where what notifies is set: the card is on top until this device is on) and the onboarding's security step.
 defineProps<{ detailed?: boolean }>()
 type Permission = 'granted' | 'denied' | 'default' | 'unsupported'
 const permission = ref<Permission>('default')
@@ -33,11 +33,11 @@ onMounted(() => { readPermission(); refreshPushOn() })
 
 <template>
   <div v-if="detailed" class="settings-card push-card" data-testid="push-card">
-    <p class="muted">{{ t('This only asks this browser or phone for permission to show notifications. What notifies is set above.') }}</p>
+    <p class="muted">{{ pushOn ? t('This only asks this browser or phone for permission to show notifications. What notifies is set above.') : t('This only asks this browser or phone for permission to show notifications. What notifies is set below.') }}</p>
     <p class="push-state"><span>{{ t('Permission') }}</span><b :class="`push-${permission}`">{{ stateLabel }}</b></p>
     <p v-if="stateHint" class="muted">{{ stateHint }}</p>
-    <button v-if="permission !== 'denied' && permission !== 'unsupported'" type="button" class="settings-action" @click="pushAction">
-      <UIcon :name="pushOn ? 'i-lucide-send' : 'i-lucide-bell'" />{{ pushOn ? t('Send a test notification') : t('Allow') }}
+    <button v-if="permission !== 'denied' && permission !== 'unsupported'" type="button" class="settings-action" :class="{ 'push-enable': !pushOn }" @click="pushAction">
+      <UIcon :name="pushOn ? 'i-lucide-send' : 'i-lucide-bell'" />{{ pushOn ? t('Send a test notification') : t('Enable notifications') }}
     </button>
   </div>
   <div v-else class="settings-card">
@@ -54,4 +54,7 @@ onMounted(() => { readPermission(); refreshPushOn() })
 .push-state { display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; }
 .push-granted { color:var(--green); }
 .push-denied { color:var(--danger); }
+/* Not on yet: the one main action of the card, filled. */
+.push-card .settings-action.push-enable { align-self:flex-start; padding:12px 14px; background:var(--accent); color:var(--on-accent); }
+.push-card .settings-action.push-enable :deep(.iconify) { color:currentColor; }
 </style>

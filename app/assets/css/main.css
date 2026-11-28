@@ -2326,6 +2326,9 @@ body.kb .composer { padding-bottom: 8px; }
 .settings-section-title { display: none; }
 .settings-version { font: 500 12px/1.5 var(--mono); color: var(--muted); }
 .settings-group { margin: 0 0 30px; }
+/* Notifications: while this device has no subscription, its card comes first. */
+.notify-section { display: flex; flex-direction: column; }
+.notify-section > .notify-device.first { order: -1; }
 .settings-tabs { margin: 0 0 26px; }
 .settings-group h3, .theme-section-title {
   display: flex; align-items: center; gap: 10px; margin: 0 0 10px;
