@@ -597,7 +597,7 @@ onMounted(() => {
           <CoreMachines />
         </div>
 
-        <div v-show="activeSection === 'notifications'" class="settings-section">
+        <div v-show="activeSection === 'notifications'" class="settings-section notify-section">
           <div class="settings-group" data-testid="notification-quiet" data-ui-target="notifications.do-not-disturb">
             <label class="settings-toggle quiet-toggle">
               <span><b><UIcon :name="quietOn ? 'i-lucide-bell-off' : 'i-lucide-bell'" />{{ tl('Do not disturb', 'Silence') }}</b><small>{{ tl('Turns off every notification, no exceptions: the rules below are ignored.', 'Coupe toutes les notifications, sans exception : les réglages ci-dessous sont ignorés.') }}</small></span>
@@ -605,13 +605,13 @@ onMounted(() => {
             </label>
             <p class="notify-caption">{{ tl('Silence on', 'Couper pour') }}</p>
             <SettingsChoice :model-value="quietScope" :items="quietScopeItems" :label="tl('Silence on', 'Couper pour')" @update:model-value="v => v && pickQuietScope(v)" />
-            <p v-if="!subscribed" class="muted notify-hint">{{ tl('“This device” needs notifications turned on below.', '« Cet appareil » demande d’activer les notifications ci-dessous.') }}</p>
+            <p v-if="subscribed === false" class="muted notify-hint">{{ t('“This device” needs notifications turned on above.') }}</p>
             <p class="notify-caption">{{ tl('Duration', 'Durée') }}</p>
             <SettingsChoice :model-value="quietDuration" :items="quietDurationItems" :label="tl('Duration', 'Durée')" @update:model-value="v => v && pickQuietDuration(v)" />
             <p class="muted notify-hint" :class="{ 'quiet-end': quietOn }">{{ quietEnd || tl('Notifications come back on by themselves at the end.', 'Retour automatique à la normale à la fin de la durée choisie.') }}</p>
           </div>
           <NotificationRules />
-          <div data-ui-target="notifications.device" class="settings-group">
+          <div data-ui-target="notifications.device" class="settings-group notify-device" :class="{ first: subscribed === false }">
             <h3>{{ tl('This device’s notifications', 'Notifications de cet appareil') }}</h3>
             <PushCard detailed />
             <PushDevices v-if="activeSection === 'notifications'" />

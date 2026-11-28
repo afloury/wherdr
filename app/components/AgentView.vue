@@ -467,18 +467,24 @@ onBeforeUnmount(() => {
 const notesInHeader = computed(() => !compactPhone.value && (!headerWidth.value || headerWidth.value - (headerActionsWidth.value > 0 ? headerActionsWidth.value + 6 : 0) >= NOTES_HEADER_MIN))
 const notesItem = computed<MenuItem>(() => ({ label: t('Notes'), icon: 'i-lucide-sticky-note', kbds: desk.value ? shortcutKbds('notes') : undefined, run: toggleNotes }))
 // A project's or workspace's coordinator: its board, settings and autopilot first, as on its sidebar row.
-const agentMenu = computed<MenuItem[]>(() => [...paneCoordinatorItems(pane.value), ...(notesInHeader.value ? [] : [notesItem.value]), ...coreMenuItems(pane.value)])
+// Phone conversation: the terminal keys open from here, nothing floats over the chat's corner.
+const keysItem = computed<MenuItem[]>(() => (phoneKeysAllowed.value && mode.value === 'chat'
+  ? [{ label: t(phoneKeysOpen.value ? 'Hide terminal keys' : 'Terminal keys'), icon: 'i-lucide-keyboard', run: togglePhoneKeys }]
+  : []))
+const agentMenu = computed<MenuItem[]>(() => [...paneCoordinatorItems(pane.value), ...(notesInHeader.value ? [] : [notesItem.value]), ...keysItem.value, ...coreMenuItems(pane.value)])
 const dropdownItems = computed(() => toDropdown(agentMenu.value))
 function openAgentMenu() { openMenu(agentMenu.value) }
 
 // Terminal keys: under the terminal, and in the active side-by-side cell on a
 // touch screen (iPad without a hardware keyboard: Esc, arrows, ^C).
 const keysAvailable = computed(() => Boolean(pane.value) && live.value && linkShown.value && !offlineView.value && !machineDown.value)
-const keybarToggleShown = computed(() => compactPhone.value && keysAvailable.value && !interactionShown.value)
+const phoneKeysAllowed = computed(() => compactPhone.value && keysAvailable.value && !interactionShown.value)
+// The floating toggle: terminal mode only (conversation: the Options menu).
+const keybarToggleShown = computed(() => phoneKeysAllowed.value && mode.value === 'term')
 const keybarId = computed(() => `pane-keys-${encodeURIComponent(props.paneId)}`)
 const keybarShown = computed(() => keysAvailable.value && (compactPhone.value ? phoneKeysOpen.value
   : mode.value === 'term' && (!props.cell || Boolean(coarse.value && props.active))))
-watch(keybarToggleShown, on => { if (!on) phoneKeysOpen.value = false })
+watch(phoneKeysAllowed, on => { if (!on) phoneKeysOpen.value = false })
 watch(phoneKeysOpen, on => { if (!on) ctl.clearVirtualModifiers() })
 function toggleComposerKeyboard() {
   if (document.activeElement?.matches('.composer textarea')) composer.value?.blur()

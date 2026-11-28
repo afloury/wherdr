@@ -76,6 +76,9 @@
 - **Web Push notifications** when an agent finishes or needs you.
 - **Quick replies**: answer permissions and questions in one tap from the agent list.
 - **Terminal key bar** (Esc, Enter, arrows, Shift+Tab, Ctrl+C…) and touch scrolling.
+  In the terminal the square ^ button at the bottom right shows or hides it; in the
+  conversation it opens from the **⋯** menu (**Terminal keys**), and the bottom right is the
+  **↓** button's.
   On iPhone and iPad a tap on the terminal does not open the on-screen keyboard: type in the
   message field, or tap the key bar's keyboard button to type in the terminal.
   In **Settings › Terminal › Phone key bar**, reorder the keys and uncheck the ones you never
