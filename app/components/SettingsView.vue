@@ -208,6 +208,8 @@ const quotaItems = computed(() => [
 // ------------------------------------------------------------ notifications
 const subscribed = pushOn
 const refreshPush = refreshPushOn
+// Private notifications: the server sends one generic line instead (server/utils/push.ts).
+const privateNotificationsOn = syncedRef('privateNotifications', flag.read(false), flag.write)
 
 // Quiet mode: scope (this device = its subscription, or all) and duration.
 // The server keeps the setting and filters before sending (shared/quiet.ts).
@@ -611,6 +613,12 @@ onMounted(() => {
             <p class="muted notify-hint" :class="{ 'quiet-end': quietOn }">{{ quietEnd || tl('Notifications come back on by themselves at the end.', 'Retour automatique à la normale à la fin de la durée choisie.') }}</p>
           </div>
           <NotificationRules />
+          <div class="settings-group">
+            <label class="settings-toggle">
+              <span><b>{{ t('Private notifications') }}</b><small>{{ t('Every notification only says “An agent needs you”: no message, task or conversation title, link or project name on the lock screen. On all devices.') }}</small></span>
+              <USwitch v-model="privateNotificationsOn" size="xl" />
+            </label>
+          </div>
           <div data-ui-target="notifications.device" class="settings-group">
             <h3>{{ tl('This device’s notifications', 'Notifications de cet appareil') }}</h3>
             <PushCard detailed />

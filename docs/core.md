@@ -234,14 +234,17 @@ back to the last whole frame (a frame's 24-byte header and its page are
 separate writes), so a partial frame is never trusted across reads — and both
 files are stat'ed fresh after the copy so a move under it retries rather than
 opening a torn pair.
-A WAL-mode checkpoint rewrites the database file, so the next read ships it
-in full again; a page-level delta would need a page-hash helper on the remote
-machine (no such primitive exists on `MachineFs` today), which is why the
-copy stays whole — bounded by the snapshot limit — until one lands. Kept
+A WAL-mode checkpoint rewrites changed database pages: remote machines ask for
+1 MiB block checksums in one POSIX `dd`/`cksum` exec, fetch only the changed blocks,
+and verify size, SQLite header and block checksums — falling back to a full copy
+when the tools are unavailable or verification fails. Kept
 copies live in the system temp dir under `wherdr-agy-<pid>-*` (often tmpfs, up
-to 256 MiB each): a restart removes the folders whose process no longer runs
-(so a second server on the same host keeps its own), and a pane that goes
-takes its copy with it. Step
+to 256 MiB each), and the cache is sized so a few viewed panes do not thrash
+while staying under a shared 512 MiB byte budget across machines and trimming
+concurrent reads back to the limit on completion: startup, periodic
+sweeps and shutdown remove the folders whose process no longer runs or belongs
+to the exiting server (another live server's copies and pid-less folders stay
+untouched), and a pane that goes takes its copy with it. Step
 payloads are protobuf blobs decoded by a small bounds-checked reader
 (`server/utils/agyProtobuf.ts`).
 The session is resolved fail-closed from what the `agy` process holds open —
@@ -330,6 +333,11 @@ or after a reload (the server marks the terminal as sending, with the message), 
 **Send now** / **Clear** are not offered; the box's text shows as the user's own message, never as
 Claude's `[Pasted text #N]` stand-in, also once the send is over and the message is still there. Every change (sending, sent, refused) reaches the open
 conversation at once, without leaving it.
+A message reading **Not sent** survives a page reload, with its Retry; one still reading
+**Sending…** when the page reloaded may have been typed, so it comes back into the message
+field to check, never sent again by itself. A message typed whose Enter then failed (machine
+unreachable) is never **Not sent** with Retry: the text is already in the terminal, a toast
+says to check it.
 A message whose photo still reached Claude as its path is shown as sent, its photo as a
 photo, and leaves one line in the server log (photo count and text size, never the text). This also holds for a
 message sent while Claude works or ends its turn: Enter then puts it in Claude's own queue.

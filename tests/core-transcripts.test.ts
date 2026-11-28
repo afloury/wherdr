@@ -487,3 +487,51 @@ it('reads a remote Claude line longer than one reply in chunks that share a dead
   expect(Math.max(...asks)).toBe(READ_CHUNK)
   expect(Math.min(...asks)).toBeGreaterThan(0)
 })
+
+describe('remote process table', () => {
+  it('runs at most one remote ps per machine per 10 s', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(1000)
+      const psExecs = new Map<string, number>()
+      const panes = Array.from({ length: 5 }, (_, i) => pane(`a${i + 1}`, `host-a/t${i + 1}`, 'agy', '/work/proj', { agentSession: SESSION }))
+      panes.push(pane('b1', 'host-b/t1', 'agy', '/work/proj', { agentSession: SESSION }))
+      const call = vi.fn(async (method: string, params: any): Promise<any> => {
+        const on = params.on || ''
+        if (method === 'terminal.get') {
+          const idx = Number(String(params.terminal).split('t')[1] || 1)
+          // A shell in front: the agent is found through the process table.
+          return { pid: 100 + idx, argv: ['bash'], created_ms: 1000, foreground: { pid: 100 + idx, name: 'bash', argv: ['bash'], cwd: '/work/proj' } }
+        }
+        if (method === 'machine.exec') {
+          if (params.argv?.[0] === 'ps') {
+            psExecs.set(on, (psExecs.get(on) ?? 0) + 1)
+            const rows = Array.from({ length: 5 }, (_, i) => `${101 + i} 1 sh\n${201 + i} ${101 + i} agy --conversation ${SESSION}\n`).join('')
+            return { code: 0, stdout: Buffer.from(rows).toString('base64') }
+          }
+          if (params.argv?.[2] === 'printf %s "$HOME"') return { code: 0, stdout: Buffer.from('/home/user').toString('base64') }
+          return { code: 1, stdout: '', stderr: '' }
+        }
+        throw new CoreError('rpc', method)
+      })
+      const t = createCoreTranscripts({ call, pane: id => panes.find(x => x.id === id), localHome: '/unrelated' })
+
+      await Promise.all(panes.slice(0, 5).map(p => t.locate(p)))
+      expect(psExecs.get('host-a') ?? 0).toBe(1)
+
+      // Past the terminal (1.5 s) and locate (8 s) caches, the process table is still the same one.
+      vi.setSystemTime(9500)
+      await t.locate(panes[0]!)
+      expect(psExecs.get('host-a') ?? 0).toBe(1)
+
+      // Another machine has its own table.
+      await t.locate(panes[5]!)
+      expect(psExecs.get('host-b') ?? 0).toBe(1)
+
+      // After 10 s, one new table for host-a.
+      vi.setSystemTime(18_000)
+      await t.locate(panes[0]!)
+      expect(psExecs.get('host-a') ?? 0).toBe(2)
+    } finally { vi.useRealTimers() }
+  })
+})

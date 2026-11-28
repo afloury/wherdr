@@ -74,7 +74,8 @@ export async function updateProject(store: PmStore, key: unknown, body: Record<s
   const member = !!p?.workspace && !(await store.savedWorkflow(p.key))
   if (body.prefs !== undefined) {
     const { t } = await workflowOf(store, key)
-    const prefs = cleanPrefs(body.prefs)
+    // models (per program) is set in the workflow's JSON only: kept.
+    const prefs = { ...cleanPrefs(body.prefs), ...(!member && t.prefs?.models ? { models: t.prefs.models } : {}) }
     const { prefs: _old, ...rest } = t
     if (member) await store.setMemberSetup(key, { prefs })
     else await store.saveWorkflow(t.id.toUpperCase(), Object.keys(prefs).length ? { ...rest, prefs } : rest)

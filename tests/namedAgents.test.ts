@@ -55,8 +55,8 @@ describe('named agents', () => {
 
   it('a task\'s own agent wins over its task type\'s, which wins over the project\'s', () => {
     const api: NamedAgent = { ...sub, name: 'omp-api', command: 'omp-api' }
-    const t: Template = { ...template, prefs: { agent: 'claude', model: 'sonnet', reviewModel: 'opus' }, taskTypes: { simple: { ...template.taskTypes.simple!, prefs: { agent: 'codex' } } } }
-    expect(workerPlan(t, task, [api])).toMatchObject({ program: 'codex' })
+    const t: Template = { ...template, prefs: { agent: 'claude', model: 'sonnet', models: { codex: 'gpt-5' }, reviewModel: 'opus' }, taskTypes: { simple: { ...template.taskTypes.simple!, prefs: { agent: 'codex' } } } }
+    expect(workerPlan(t, task, [api])).toMatchObject({ program: 'codex', model: 'gpt-5' })
     expect(workerPlan({ ...t, taskTypes: { simple: template.taskTypes.simple! } }, task, [api])).toMatchObject({ program: 'claude' })
     const own = { ...task, prefs: { agent: 'omp-api', reviewAgent: 'claude' } }
     expect(workerPlan(t, own, [api])).toMatchObject({ agent: 'omp-api', program: 'omp', model: 'sonnet' })

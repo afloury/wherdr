@@ -6,6 +6,7 @@ import { boardLanes, cardOf, cardStatus, mayAccept, statusText, toHandle } from 
 import { inMergeQueue } from '../shared/pm/mergeQueue'
 import { agentBack, handToAgent } from '../shared/pm/release'
 import { addShot } from '../shared/pm/shots'
+import { stoppedTask } from '../shared/pm/stop'
 import type { Task } from '../shared/pm/run'
 
 const plan: PlannedStep[] = [
@@ -282,7 +283,12 @@ describe('what a task waits for', () => {
       await store.saveTask({ ...t, state: 'working', run: 'r1' })
       let term: Record<string, unknown> = { address: 'host/t3', status: { state: 'blocked' } }
       // The agent's conversation, for the question's text.
-      const panes = () => [{ id: 'w1:p1', coreAddress: 'host/t3' }], chat = async () => [{ role: 'assistant', text: 'Two options.\nPostgres or SQLite?', ts: null }]
+      // stopNow: the user stops the task while its question is read.
+      let stopNow = false
+      const panes = () => [{ id: 'w1:p1', coreAddress: 'host/t3' }], chat = async () => {
+        if (stopNow) { stopNow = false; await store.saveTask(stoppedTask((await store.task(t.id))!, { by: 'the user', why: 'wrong way', at: 5 })) }
+        return [{ role: 'assistant', text: 'Two options.\nPostgres or SQLite?', ts: null }]
+      }
       const deps = { store, call: async () => ({ terminals: [term] }), panes, chat } as unknown as Parameters<typeof syncWaits>[0]
       await syncWaits(deps)
       expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'permission' })
@@ -301,6 +307,14 @@ describe('what a task waits for', () => {
       term = { address: 'host/t3', status: { state: 'blocked', msg: 'approve Bash: npm test' } }
       await syncWaits(deps)
       expect(await store.task(t.id)).toMatchObject({ waitKind: 'permission', waiting: 'approve Bash: npm test' })
+      // A stop made during the engine's read is never overwritten by its older copy.
+      await store.saveTask({ ...(await store.task(t.id))!, state: 'working', waitKind: undefined, waiting: undefined, question: undefined })
+      term = { address: 'host/t3', labels: { 'wherdr.report': 'blocked:question' }, status: { state: 'idle' } }
+      stopNow = true
+      await syncWaits(deps)
+      const kept = (await store.task(t.id))!
+      expect(kept).toMatchObject({ state: 'waiting', stopped: { by: 'the user' } })
+      expect(kept.question).toBeUndefined()
     } finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
 
@@ -334,6 +348,38 @@ describe('what a task waits for', () => {
       await syncWaits(deps)
       expect(keys).toEqual([['h/t4', ['down', 'enter']]])
       expect((await store.task(t.id))!.log?.at(-1)?.text).toBe('trusted the task\'s worktree for the worker (/home/u/.wherdr/pm/worktrees/CO-1)')
+    } finally { await fs.rm(dir, { recursive: true, force: true }) }
+  })
+
+  it('syncWaits: an agent that refused its model blocks its task and wakes its coordinator once', async () => {
+    const fs = await import('node:fs/promises'), os = await import('node:os'), path = await import('node:path')
+    const { createPmStore } = await import('../server/utils/pmStore')
+    const { syncWaits } = await import('../server/utils/pmMechanic')
+    const { refusedModelOf } = await import('../shared/pm/run')
+    expect(refusedModelOf('There\'s an issue with the selected model (opus-9). It may not exist or you may not have access to it.')).toBe('opus-9')
+    expect(refusedModelOf('Model "gpt-9" not found')).toBe('gpt-9')
+    expect(refusedModelOf('Working on the model list')).toBeUndefined()
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-mech-'))
+    try {
+      const store = createPmStore(dir)
+      await store.setEnabled(true)
+      await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'CO', name: 'CO', machine: '', path: '/src', addedAt: 1 }] }))
+      await store.saveCoordinator({ project: 'CO', tokenHash: 'x', terminal: 'h/c1', autopilot: { on: true } })
+      const t = await store.addTask({ project: 'CO', title: 'Fix', type: 'feature' })
+      await store.saveRun({ id: 'r4', task: t.id, role: 'worker', program: 'codex', model: 'sonnet', machine: '', worktree: '/w', branch: 'b', instructions: '', terminal: 'h/t6', attempt: 1, state: 'running', startedAt: Date.now() })
+      await store.saveTask({ ...t, state: 'working', run: 'r4' })
+      const call = async (method: string) => {
+        if (method === 'terminal.list') return { terminals: [{ address: 'h/t6', status: { state: 'idle' } }] }
+        if (method === 'terminal.read') return { text: '› Read the instructions\n■ The \'sonnet\' model is not supported when using Codex with a ChatGPT account.\n›' }
+        return {}
+      }
+      const deps = { store, call } as unknown as Parameters<typeof syncWaits>[0]
+      await syncWaits(deps)
+      await syncWaits(deps)
+      const why = 'The agent refused model sonnet (codex): start it again with another model.'
+      expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waiting: why })
+      const wakes = await store.wakes()
+      expect(wakes.map(w => [w.coordinator, w.kind, w.reasons])).toEqual([['CO', 'engine', [`${t.id} (Fix): ${why}`]]])
     } finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
 })

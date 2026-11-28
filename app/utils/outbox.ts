@@ -13,6 +13,8 @@ export interface OutboxItem extends Omit<QueuedMessage, 'state'> {
   settledAt?: number
   // When a state first no longer listed this record (the agent took it).
   goneAt?: number
+  // Saved while sending (see toSave): it may have reached the agent.
+  unsure?: boolean
 }
 
 // A record the server no longer lists (the agent took the message) stays
@@ -76,6 +78,36 @@ export function prune(list: OutboxItem[], server: QueuedMessage[], now: number, 
     }
   }
   return out
+}
+
+// What outlives a page reload (useOutbox.ts keeps it in localStorage): the
+// messages the user still has to act on. "Not sent" (the server never got it)
+// comes back as it is, with Retry / Cancel; "Sending…" whose answer the reload
+// lost may have been typed, so it is marked `unsure`: it comes back into the
+// message field for the user to check, never sent again by itself or by Retry.
+// A confirmed message (the server answered) is not kept.
+export type SavedOutbox = Record<string, OutboxItem[]>
+export function toSave(list: OutboxItem[]): OutboxItem[] {
+  return list.filter(q => q.local || q.state === 'sending')
+    .map(q => ({ id: q.id, text: q.text, at: q.at, state: 'failed' as const, local: true, ...(q.unsure || q.state === 'sending' ? { unsure: true } : {}) }))
+}
+export function fromSaved(raw: unknown): { boxes: SavedOutbox, back: SavedOutbox } {
+  const boxes: SavedOutbox = {}, back: SavedOutbox = {}
+  if (!raw || typeof raw !== 'object') return { boxes, back }
+  for (const [paneId, list] of Object.entries(raw as Record<string, unknown>)) {
+    const ok = savedItems(list)
+    const kept = ok.filter(q => !q.unsure).map(q => ({ id: q.id, text: q.text, at: q.at, state: 'failed' as const, local: true }))
+    const lost = ok.filter(q => q.unsure).map(q => ({ id: q.id, text: q.text, unsure: true }))
+    if (kept.length) boxes[paneId] = kept
+    if (lost.length) back[paneId] = lost
+  }
+  return { boxes, back }
+}
+const savedItems = (list: unknown): OutboxItem[] => (Array.isArray(list) ? list.filter((q): q is OutboxItem => Boolean(q) && typeof q.id === 'string' && typeof q.text === 'string') : [])
+// Several tabs share the stored list of a conversation: a tab replaces only the
+// records it owns (made or loaded there, `owned`), another tab's stay as they are.
+export function mergeSaved(stored: unknown, owned: Set<string>, mine: OutboxItem[]): OutboxItem[] {
+  return [...savedItems(stored).filter(q => !owned.has(q.id)), ...mine]
 }
 
 // Messages held on the server for Codex (coreHeld.ts) that come back as texts,

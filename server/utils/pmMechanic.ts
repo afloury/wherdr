@@ -12,7 +12,7 @@ import { MAIN } from '../../shared/pm/coordinator'
 import { inMergeQueue, mergeAfterWake, mergeOrder, ordinal, queueOut } from '../../shared/pm/mergeQueue'
 import { awaitsHolder } from '../../shared/pm/blocked'
 import { caughtUpSettled, onEvent, reviewedCommit, waitsToMerge, type PlannedStep, type StepEvent } from '../../shared/pm/steps'
-import { LABEL, isLoginPrompt, linkedPr, prLink, taskPlan, trustKeys, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
+import { LABEL, isLoginPrompt, refusedModelOf, linkedPr, prLink, taskPlan, trustKeys, waitOf, type LabelledTerminal, type Run, type Task } from '../../shared/pm/run'
 import { PATH_SETUP } from './coreCreate'
 import { HerdrError } from './herdr'
 import { CoreError } from './core'
@@ -75,6 +75,7 @@ export async function syncWaits(deps: PmLaunchDeps) {
     const run = runs.find(r => r.id === task.run)
     const term = run?.terminal && run.state !== 'ended' ? terminals.find(x => x.address === run.terminal) : undefined
     if (!term || term.state === 'finished') continue
+    if (task.state === 'working' && await refusedModel(deps, task, run!)) continue
     const kind = waitOf(term)
     // A login prompt, not a permission: one login incident for the machine's account, the task waits for the engine.
     if (kind === 'permission' && (task.state === 'working' || task.waitKind === 'permission')) {
@@ -86,13 +87,37 @@ export async function syncWaits(deps: PmLaunchDeps) {
     // A question carries its text, for the board and the coordinator's wake.
     // A question waiting from before its whole message was kept: read once more.
     const asked = kind === 'question' && (task.state === 'working' || (task.waitKind === 'question' && !task.question)) ? await askedQuestion(deps, run!.terminal!) : undefined
-    if (task.state === 'waiting' && task.waitKind === 'question' && kind === 'question' && asked && !task.question) { await store.saveTask({ ...task, question: asked.full }); continue }
-    if (task.state === 'working' && kind) await store.saveTask({ ...task, state: 'waiting', waiting: (kind === 'permission' && msg) || (asked ? `${WAITS.question}: ${asked.line}` : WAITS[kind]), waitKind: kind, question: asked?.full })
+    // Each change is made on the task as it is now, and only if a stop, an
+    // answer or an archive did not change it during the reads above.
+    const set = (change: Partial<Task>) => store.updateTask(task.id, x => (sameWait(x, task) ? { ...x, ...change } : null))
+    if (task.state === 'waiting' && task.waitKind === 'question' && kind === 'question' && asked && !task.question) { await set({ question: asked.full }); continue }
+    if (task.state === 'working' && kind) await set({ state: 'waiting', waiting: (kind === 'permission' && msg) || (asked ? `${WAITS.question}: ${asked.line}` : WAITS[kind]), waitKind: kind, question: asked?.full })
     else if (task.state === 'waiting' && (task.waitKind === 'question' || task.waitKind === 'permission') && !kind)
-      await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, answered: undefined, question: undefined })
+      await set({ state: 'working', waiting: undefined, waitKind: undefined, answered: undefined, question: undefined })
     // The answered question gone from its agent: the next one wakes the coordinator again.
-    else if (task.answered && task.state === 'working' && !kind) await store.saveTask({ ...task, answered: undefined })
+    else if (task.answered && task.state === 'working' && !kind) await set({ answered: undefined })
   }
+}
+
+// Nothing a wait depends on moved since `read`: its state, wait, stop, answer, question, run and step.
+const sameWait = (fresh: Task, read: Task) => fresh.state === read.state && fresh.waitKind === read.waitKind && fresh.stopped?.at === read.stopped?.at
+  && fresh.answered === read.answered && !!fresh.question === !!read.question && fresh.run === read.run && JSON.stringify(fresh.step) === JSON.stringify(read.step)
+
+// A young agent that refused its model sits at its prompt without exiting, so
+// the quick-exit retry never fires: the task waits with why, its coordinator
+// woken once (none: the user's). No retry, the same model would be refused again.
+const refused = new Set<string>() // runs already said to have refused their model
+async function refusedModel(deps: PmLaunchDeps, task: Task, run: Run, now = Date.now()) {
+  if (refused.has(run.id) || now - run.startedAt > 10 * 60_000) return false
+  const screen = String((await deps.call<{ text?: string }>('terminal.read', { terminal: run.terminal, lines: 30 }, 3000).catch(() => null))?.text || '')
+  const named = refusedModelOf(screen)
+  if (named === undefined) return false
+  refused.add(run.id)
+  const model = named || run.model || 'its default model'
+  const why = `The agent refused model ${model} (${run.program}): start it again with another model.`
+  const woken = await wakeCoordinators(deps, task, showIds(await deps.store.projects(), `${task.id} (${task.title}): ${why}`), now)
+  await deps.store.logTask({ ...task, state: 'waiting', waiting: why, waitKind: undefined }, 'engine', `${why} ${woken.length ? `Woke ${woken.join(' and ')}.` : 'In Your turn.'}`)
+  return true
 }
 
 // A task with "after" starts once those tasks are done, within its

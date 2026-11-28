@@ -17,6 +17,15 @@ keeps it across restarts (`data/quiet.json` for all devices). While it is on, th
 shows one line, “Notifications silenced until 08:00”, that opens these settings (a crossed-out bell
 under the counters when the list is collapsed).
 
+**Private notifications** (Settings → Notifications, off by default) makes every push say only
+“wherdr · An agent needs you”: no message, question, task or terminal title, link or project
+name, so nothing private shows on a lock screen. A tap opens the app. It applies to every
+device (`privateNotifications` in `settings.json`), the test notification included.
+
+Every push goes through the same rules: the grouped *decisions wait for you* push leaves out
+the projects whose coordinator is muted, and *the coordinator is not answering* follows that
+coordinator's exception, like an agent's push.
+
 ## A default and exceptions
 
 Settings → Notifications stores one policy, synchronized across devices

@@ -565,4 +565,38 @@ describe('advanceTick (store and a fake herdr-core)', () => {
       expect((await store.task(third.id))!.waiting).toBeUndefined()
     } finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
+
+  it('a stop made while the worker\'s done is read keeps the step, and the signal waits', async () => {
+    const { createPmStore } = await import('../server/utils/pmStore')
+    const { advanceTick } = await import('../server/utils/pmAdvance')
+    const { stoppedTask } = await import('../shared/pm/stop')
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pm-advance-'))
+    try {
+      const store = createPmStore(dir)
+      await store.setEnabled(true)
+      await store.saveTemplate(github)
+      await store.addProject({ key: 'CO', machine: '', path: '/src', template: 'github' }, async (_m, p) => p)
+      const t = await store.addTask({ project: 'CO', title: 'Fix', type: 'simple' })
+      const plan = planSteps(github, { type: 'simple' })
+      const first = onEvent(plan, initialState(), { kind: 'start' }, 1).state
+      await store.saveRun({ id: 'r1', task: t.id, role: 'worker', program: 'claude', model: 'sonnet', machine: '', worktree: '/w', branch: 'task/CO-1', instructions: '/h/.wherdr/pm/tasks/CO-1/instructions.md', terminal: 'h/t1', attempt: 1, state: 'running', startedAt: 1 })
+      await store.saveTask({ ...t, state: 'working', run: 'r1', step: { ...first, told: first.since } })
+      const labels: Record<string, string> = { 'wherdr.report': 'done' }
+      const call = async (method: string, p: Record<string, unknown>) => {
+        if (method === 'terminal.list') return { terminals: [{ address: 'h/t1', labels }] }
+        if (method === 'terminal.label') Object.assign(labels, p.labels)
+        if (method !== 'machine.exec') return {}
+        const argv = p.argv as string[]
+        if (argv[2] !== SIGNAL_READ_SCRIPT) return { code: 0, stdout: '' }
+        // The user stops the task while the engine reads the worker's report.
+        await store.saveTask(stoppedTask((await store.task(t.id))!, { by: 'the user', why: 'wrong way', at: 5 }))
+        return { code: 0, stdout: Buffer.from(['abc1234', '5', '', '', 'task/CO-1'].join(`\n${argv.at(-1)}\n`)).toString('base64') }
+      }
+      await advanceTick({ store, call, machines: () => [{ key: '', local: true, label: 'host' }], launchWatchMs: 0 } as unknown as Parameters<typeof advanceTick>[0])
+      const task = (await store.task(t.id))!
+      expect(task).toMatchObject({ state: 'waiting', stopped: { by: 'the user' } })
+      expect(task.step!.at).toBe(first.at)
+      expect(labels['wherdr.report']).toBe('done')
+    } finally { await fs.rm(dir, { recursive: true, force: true }) }
+  })
 })
