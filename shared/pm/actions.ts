@@ -124,7 +124,11 @@ git rev-parse HEAD`,
   // checked out in the worktree: <first branch>-2 (then -3…), the commits
   // after that PR's head rebased onto the base; its line "branch <name>" comes
   // before the new PR's link, and the engine follows it (pmBoard.ts).
+  // A run that rotated the branch but failed after (gh pr create): the worktree
+  // is on that new branch already, which the next run takes up again.
   pr: `${IN} ${CLEAN} b=$1 base=$2 h=$(git rev-parse HEAD) || exit 1
+r=$(git config "branch.$b.wherdrroot") || r=$b; c=$(git symbolic-ref -q --short HEAD)
+if [ -n "$c" ] && [ "$c" != "$b" ] && [ "$(git config "branch.$c.wherdrroot")" = "$r" ]; then b=$c; printf 'branch %s\\n' "$b"; fi
 cur=$(gh pr list --head "$b" --state open --json url,baseRefName -q '.[] | .baseRefName+" "+.url' 2>"$_e") || { cat "$_e"; exit 1; }
 cur=$(printf '%s\\n' "$cur" | head -1)
 if [ -z "$cur" ]; then
@@ -137,7 +141,7 @@ EOF
 $m
 EOF
     u=$(printf '%s\\n' "$m" | head -1); [ -n "$o" ] || { printf '%s\\n' "$b already had PR \${u#* } merged and HEAD does not follow its head: put the new commits on a new branch and name it in your note (Branch: <name>)"; exit ${CODE.SEND_BACK}; }
-    r=$(git config "branch.$b.wherdrroot") || r=$b; n=2
+    n=2
     while [ $n -lt 50 ] && { git rev-parse -q --verify "refs/heads/$r-$n" >/dev/null || git ls-remote -q --exit-code --heads origin "$r-$n" >/dev/null 2>&1 || [ -n "$(gh pr list --head "$r-$n" --state all --json url -q '.[].url' 2>/dev/null)" ]; }; do n=$((n + 1)); done
     nb="$r-$n"
     git fetch -q origin "$base" 2>"$_e" || { cat "$_e"; exit 1; }
