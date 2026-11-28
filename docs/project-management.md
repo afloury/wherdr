@@ -433,6 +433,11 @@ project's, the step's, the task type's `start`) nor the repository's default bra
 and the task's log says why (*kept the remote branch task/WHR-12: commit
 1a2b3c4 was pushed after its merge*). A PR closed without a merge, or an
 archived task, keeps its branch.
+A task sent back after its PR was merged (from a later step, say) goes on with
+a new branch: at its PR step, the commits after the merged PR go on
+`task/WHR-12-2` (then `-3`…), rebased onto the base, with a new PR. The task
+follows that branch and PR from then on. When the PR's head already holds
+the task's commit, that merged PR is the step's PR, as before.
 In JSON, a task type may set `weight` (`light`, `standard` or `heavy`, see
 *Add task* under [Board](#board)).
 In a workspace's member project, a task type may also set `context` (`"all"` or

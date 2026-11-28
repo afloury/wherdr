@@ -120,7 +120,10 @@ git rev-parse HEAD`,
   // Opens the PR, or puts an open one back on the right base. Body on stdin.
   // A PR of the branch already merged (by hand, or a merge GitHub did but
   // answered with an error) whose head holds HEAD is the PR: no second one.
-  // Commits after it need a new branch. As Shepherdr #706 (SHEP-59, MIT).
+  // As Shepherdr #706 (SHEP-59, MIT). Commits after it go on a new branch,
+  // checked out in the worktree: <first branch>-2 (then -3…), the commits
+  // after that PR's head rebased onto the base; its line "branch <name>" comes
+  // before the new PR's link, and the engine follows it (pmBoard.ts).
   pr: `${IN} ${CLEAN} b=$1 base=$2 h=$(git rev-parse HEAD) || exit 1
 cur=$(gh pr list --head "$b" --state open --json url,baseRefName -q '.[] | .baseRefName+" "+.url' 2>"$_e") || { cat "$_e"; exit 1; }
 cur=$(printf '%s\\n' "$cur" | head -1)
@@ -130,7 +133,22 @@ if [ -z "$cur" ]; then
     while read -r p u; do ${HOLDS} && { printf '%s\\n' "$u"; exit 0; }; done <<EOF
 $m
 EOF
-    u=$(printf '%s\\n' "$m" | head -1); printf '%s\\n' "$b already had PR \${u#* } merged: new commits need a new branch"; exit 1
+    o=; while read -r p u; do [ -z "$o" ] && git merge-base --is-ancestor "$p" HEAD 2>/dev/null && o=$p ou=$u; done <<EOF
+$m
+EOF
+    u=$(printf '%s\\n' "$m" | head -1); [ -n "$o" ] || { printf '%s\\n' "$b already had PR \${u#* } merged and HEAD does not follow its head: put the new commits on a new branch and name it in your note (Branch: <name>)"; exit ${CODE.SEND_BACK}; }
+    r=$(git config "branch.$b.wherdrroot") || r=$b; n=2
+    while [ $n -lt 50 ] && { git rev-parse -q --verify "refs/heads/$r-$n" >/dev/null || git ls-remote -q --exit-code --heads origin "$r-$n" >/dev/null 2>&1 || [ -n "$(gh pr list --head "$r-$n" --state all --json url -q '.[].url' 2>/dev/null)" ]; }; do n=$((n + 1)); done
+    nb="$r-$n"
+    git fetch -q origin "$base" 2>"$_e" || { cat "$_e"; exit 1; }
+    git checkout -q -b "$nb" 2>"$_e" || { cat "$_e"; exit 1; }
+    back() { git checkout -q "$b"; git branch -q -D "$nb"; }
+    if ! git rebase -q --onto "origin/$base" "$o" >/dev/null 2>&1; then
+      f=$(git diff --name-only --diff-filter=U | head -3 | paste -sd ' ' -); git rebase --abort; back
+      printf '%s\\n' "$b already had PR $ou merged; its later commits conflict with $base in $f: put them on a new branch from origin/$base and name it in your note (Branch: <name>)"; exit ${CODE.SEND_BACK}; fi
+    [ "$(git rev-parse HEAD)" != "$(git rev-parse "origin/$base")" ] || { back; printf '%s\\n' "$b already had PR $ou merged: its later commits are all in $base already"; exit 1; }
+    git config "branch.$nb.wherdrroot" "$r"; git config "branch.$nb.wherdrstart" "$(git rev-parse "origin/$base")"
+    b=$nb; printf 'branch %s\\n' "$b"
   fi
 fi
 git push -q origin "HEAD:refs/heads/$b" 2>"$_e" || { cat "$_e"; exit 1; }
@@ -400,9 +418,10 @@ export function leaks(g: ResolvedGuards, remoteBranches: string[], allowed: stri
 // later: a pipeline still running, polled again. report: a watch's output, its
 // proof. detail: what a failed watch printed, for the log and the coordinator.
 // catchUp: the PR's base, when the merge is refused because the PR conflicts with or is behind it.
-// base: the branch a merge went to (the PR's base on its host).
+// base: the branch a merge went to (the PR's base on its host). branch: the
+// task's new branch, from a PR opened after its earlier one was merged.
 // A merge found the task's own interface changed since the user's approval: between which commits, in which files.
 export interface Unapproved { since: string, head: string, files: string[] }
-export interface ActionResult { ok: boolean, later?: boolean, report?: string, detail?: string, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, unapproved?: Unapproved, link?: string, commit?: string, alert?: string, note?: string, base?: string }
+export interface ActionResult { ok: boolean, later?: boolean, report?: string, detail?: string, error?: string, toAgent?: boolean, review?: { since: string, head: string }, catchUp?: string, unapproved?: Unapproved, link?: string, commit?: string, alert?: string, note?: string, base?: string, branch?: string }
 export interface Receipt { id: string, task: string, step: string, action: StepAction, state: 'pending' | 'done' | 'uncertain' | 'later', result?: ActionResult, at: number, by?: MergeBy, resumes?: number }
 export const receiptId = (task: string, step: string, attempt: number) => `${task}.${attempt}.${encodeURIComponent(step)}`

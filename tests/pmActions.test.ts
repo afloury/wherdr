@@ -607,12 +607,18 @@ esac
     expect(await s.go('merge', { kind: 'github.merge' }, 5)).toMatchObject({ ok: true, link: 'https://pr/2', commit: head, note: 'already merged on GitHub' })
   })
 
-  it('is the PR step\'s PR at its head, and refuses new commits after it', async () => {
+  it('is the PR step\'s PR at its head, and puts new commits after it on a new branch', async () => {
     const s = setup('merged-pr')
     const pr = (attempt: number) => s.go('pr', { kind: 'github.pr', base: 'dev' }, attempt)
     expect(await pr(1)).toEqual({ ok: true, link: 'https://pr/1' })
+    // Merged into dev; a fix after it: task/A-1-2 from dev with only the fix, and its own PR.
+    git(s.repo, 'push', '-q', 'origin', 'HEAD:refs/heads/dev')
     git(s.repo, 'commit', '-q', '--allow-empty', '-m', 'after review')
-    expect(await pr(2)).toEqual({ ok: false, error: 'pr: task/A-1 already had PR https://pr/1 merged: new commits need a new branch' })
+    expect(await pr(2)).toEqual({ ok: true, link: 'https://pr/new', branch: 'task/A-1-2', note: 'task/A-1 already had a merged PR: its later commits go on task/A-1-2' })
+    expect(git(s.repo, 'branch', '--show-current')).toBe('task/A-1-2')
+    expect(git(s.repo, 'log', '--format=%s', 'origin/dev..HEAD')).toBe('after review')
+    expect(git(s.repo, 'ls-remote', 'origin', 'refs/heads/task/A-1-2').split('\t')[0]).toBe(git(s.repo, 'rev-parse', 'HEAD'))
+    git(s.repo, 'checkout', '-q', 'task/A-1')
     // No merged PR: a new one, as before.
     fs.writeFileSync(s.merged, '')
     expect(await pr(3)).toEqual({ ok: true, link: 'https://pr/new' })
