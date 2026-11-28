@@ -7,7 +7,7 @@
 // read-only, only while agy holds both sidecars (node:sqlite would create
 // them otherwise); every other local read uses the same kept copy.
 import { createHash } from 'node:crypto'
-import { closeSync, existsSync, mkdtempSync, openSync, readdirSync, readSync, rmSync, truncateSync, writeSync } from 'node:fs'
+import { closeSync, existsSync, ftruncateSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, rmSync, statSync, truncateSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import type { ChatItem, ChatResponse, ModelInfo } from '../../shared/types'
@@ -27,9 +27,16 @@ const PAGE_ITEMS = 120
 // than copying hundreds of MB per poll on a small host.
 const MAX_SNAPSHOT_BYTES = 256 * 1024 * 1024
 const READ_CHUNK_BYTES = 4 * 1024 * 1024
+// Delta sync works in blocks this size: a checkpoint rewrites pages spread over
+// the file, so only the blocks whose bytes changed are fetched.
+const BLOCK_BYTES = 1024 * 1024
 const FAIL_QUIET_MS = 1500
-// A host may be a Raspberry Pi; do not retain dozens of parsed transcripts.
-const DOCUMENT_CACHE_ENTRIES = 4
+// A host may be a Raspberry Pi; retain enough viewed panes (a phone and a
+// computer, a few tabs) without retaining dozens of parsed transcripts.
+const DOCUMENT_CACHE_ENTRIES = 8
+// Shared byte budget across every machine's kept-copy cache in tmpdir (often
+// tmpfs): keeps viewed panes from thrashing while bounding total temp space.
+const MAX_KEPT_BYTES = 512 * 1024 * 1024
 // The 32-byte WAL header: magic, page size, checkpoint sequence and salts —
 // unchanged while a generation only appends, rewritten by every restart.
 const WAL_HEADER_BYTES = 32
@@ -55,9 +62,24 @@ const KEPT_PREFIX = 'wherdr-agy-'
 const KEPT_NAME = /^wherdr-agy-(\d+)-/
 
 // Whether a process with this pid exists: another user's (EPERM) counts as
-// alive, only a missing one (ESRCH) does not.
+// alive; a missing one (ESRCH) or an exited Linux zombie (`Z`) does not.
 function alive(pid: number): boolean {
-  try { process.kill(pid, 0); return true } catch (e) { return (e as { code?: string } | null)?.code !== 'ESRCH' }
+  try { process.kill(pid, 0) } catch (e) { return (e as { code?: string } | null)?.code !== 'ESRCH' }
+  try {
+    const stat = readFileSync(`/proc/${pid}/stat`, 'utf8')
+    const rparen = stat.lastIndexOf(')')
+    if (rparen >= 0 && stat.slice(rparen + 1).trimStart().startsWith('Z')) return false
+  } catch { /* non-Linux, or exited meanwhile */ }
+  return true
+}
+
+const agyDisposers = new Set<() => void>()
+
+// Removes the kept copies of this process on shutdown (see poller.ts): a
+// graceful restart would otherwise leave up to the snapshot limit per pane in
+// the temp dir — often tmpfs — until the next start sweeps them.
+export function disposeAgyCopies(): void {
+  for (const fn of agyDisposers) fn()
 }
 
 // A kept copy of a previous run (a restart while one was open) stays in the
@@ -75,6 +97,84 @@ export function sweepAgyCopies(dir = tmpdir()): void {
     if (!pid || !Number.isSafeInteger(pid) || alive(pid)) continue
     try { rmSync(path.join(dir, name), { recursive: true, force: true }) } catch { /* held by another process */ }
   }
+}
+
+const SQLITE_MAGIC = Buffer.from('SQLite format 3\0')
+// One remote exec reporting `<cksum> <len>` per 1 MiB block, with POSIX tools only.
+const BLOCK_CHECKSUM_SCRIPT = [
+  'set -eu',
+  'f=$1',
+  '[ -f "$f" ] && [ -r "$f" ] || exit 1',
+  'command -v dd >/dev/null 2>&1 && command -v cksum >/dev/null 2>&1 || exit 1',
+  'i=0',
+  'while :; do',
+  '  out=$(dd if="$f" bs=1048576 skip="$i" count=1 2>/dev/null | cksum) || exit 1',
+  '  set -- $out',
+  '  [ "${2:-0}" -gt 0 ] || break',
+  '  printf "%s %s\\n" "$1" "$2"',
+  '  [ "$2" -lt 1048576 ] && break',
+  '  i=$((i + 1))',
+  'done',
+].join('\n')
+
+// POSIX cksum (CRC-32/CKSUM with the length folded in), computed locally over a
+// kept block so a changed block is detected without shipping the file.
+const CKSUM_TABLE = (() => {
+  const t = new Uint32Array(256)
+  for (let i = 0; i < 256; i++) {
+    let c = i << 24
+    for (let j = 0; j < 8; j++) c = (c & 0x80000000) ? ((c << 1) ^ 0x04c11db7) : (c << 1)
+    t[i] = c >>> 0
+  }
+  return t
+})()
+
+function posixCksum(buf: Buffer): number {
+  let crc = 0
+  for (let i = 0; i < buf.length; i++) crc = ((crc << 8) ^ CKSUM_TABLE[((crc >>> 24) ^ buf[i]!) & 0xff]!) >>> 0
+  for (let n = buf.length; n > 0; n = Math.floor(n / 256)) crc = ((crc << 8) ^ CKSUM_TABLE[((crc >>> 24) ^ (n & 0xff)) & 0xff]!) >>> 0
+  return (~crc) >>> 0
+}
+
+type BlockSum = { crc: number, len: number }
+
+function parseBlockChecksums(out: Buffer, expectedSize: number): BlockSum[] | null {
+  const lines = out.toString('utf8').split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+  const expectedBlocks = Math.ceil(expectedSize / BLOCK_BYTES)
+  if (!lines.length || lines.length !== expectedBlocks) return null
+  const blocks: BlockSum[] = []
+  let total = 0
+  for (let i = 0; i < lines.length; i++) {
+    const m = /^(\d+)\s+(\d+)$/.exec(lines[i]!)
+    if (!m) return null
+    const crc = Number(m[1]), len = Number(m[2])
+    if (!Number.isSafeInteger(crc) || crc < 0 || crc > 0xffffffff) return null
+    if (!Number.isSafeInteger(len) || len <= 0 || len > BLOCK_BYTES) return null
+    if (i < lines.length - 1 && len !== BLOCK_BYTES) return null
+    blocks.push({ crc, len })
+    total += len
+  }
+  return total === expectedSize ? blocks : null
+}
+
+// A delta-written database must still be a whole SQLite file of the expected
+// size before node:sqlite opens it.
+function validSqliteDb(file: string, expectedSize: number): boolean {
+  try {
+    if (statSync(file).size !== expectedSize || expectedSize < 100) return false
+    const hdr = Buffer.allocUnsafe(100)
+    const fd = openSync(file, 'r')
+    try {
+      if (readSync(fd, hdr, 0, 100, 0) !== 100) return false
+    } finally { closeSync(fd) }
+    if (!hdr.subarray(0, 16).equals(SQLITE_MAGIC)) return false
+    const rawPage = hdr.readUInt16BE(16)
+    const pageSize = rawPage === 1 ? 65536 : rawPage
+    if (pageSize < 512 || pageSize > 65536 || (pageSize & (pageSize - 1)) !== 0) return false
+    const pageCount = hdr.readUInt32BE(28)
+    if (pageCount > 0 && pageCount * pageSize !== expectedSize) return false
+    return true
+  } catch { return false }
 }
 
 
@@ -257,24 +357,80 @@ export interface AgyDoc {
   results: Map<string, { out: string, error: boolean }>
 }
 
+interface BudgetEntry {
+  bytes: number
+  refs: number
+  drop: () => void
+}
+
+export interface AgyCacheBudget {
+  readonly maxBytes: number
+  totalBytes: () => number
+  touch: (entry: BudgetEntry) => void
+  update: (entry: BudgetEntry, bytes: number) => void
+  remove: (entry: BudgetEntry) => void
+  trim: (headroom?: number, keep?: BudgetEntry) => void
+}
+
+/** Shared byte budget across `createAgyTranscripts` instances for kept temp copies. */
+export function createAgyCacheBudget(maxBytes = MAX_KEPT_BYTES): AgyCacheBudget {
+  const entries = new Set<BudgetEntry>()
+  let total = 0
+  function touch(e: BudgetEntry) {
+    if (entries.has(e)) {
+      entries.delete(e)
+      entries.add(e)
+    } else {
+      entries.add(e)
+      total += e.bytes
+    }
+  }
+  function update(e: BudgetEntry, bytes: number) {
+    if (!entries.has(e)) {
+      entries.add(e)
+      total += bytes
+    } else {
+      total += bytes - e.bytes
+    }
+    e.bytes = bytes
+  }
+  function remove(e: BudgetEntry) {
+    if (!entries.delete(e)) return
+    total -= e.bytes
+    e.bytes = 0
+  }
+  function trim(headroom = 0, keep?: BudgetEntry) {
+    for (const e of [...entries]) {
+      if (total + headroom <= maxBytes) break
+      if (e.refs || e === keep) continue
+      remove(e)
+      e.drop()
+    }
+  }
+  return { maxBytes, totalBytes: () => total, touch, update, remove, trim }
+}
+
+const sharedCacheBudget = createAgyCacheBudget(MAX_KEPT_BYTES)
+
 // A conversation kept on local disk between reads: conv.db holds the main
-// database (recopied only when its own identity moves) and conv.db-wal the
-// WAL bytes (a matching generation ships only its grown tail, appended to
-// the kept file; a restart rewrites it once). walHead is the kept WAL's
-// 32-byte header for the generation compare — the WAL body stays on disk.
-// refs pins the directory against cache eviction while a read is open; queue
-// serializes reads of the same file — two generations can race the inflight
-// dedup and interleaved copies would tear the pair.
-interface SnapBase {
+// database (recopied or delta-synced when its own identity moves, with its
+// verified 1 MiB block checksums kept in dbBlocks so checkpoints never re-read
+// the kept file synchronously) and conv.db-wal the WAL bytes (a matching
+// generation ships only its grown tail, appended to the kept file; a restart
+// rewrites it once). walHead is the kept WAL's 32-byte header for the
+// generation compare — the WAL body stays on disk. refs pins the directory
+// against cache eviction while a read is open; queue serializes reads of the
+// same file — two generations can race the inflight dedup and interleaved
+// copies would tear the pair.
+interface SnapBase extends BudgetEntry {
   dir: string
   db: string
   wal: string
   shm: string
   dbId: string | null
+  dbBlocks: BlockSum[] | null
   walSize: number
   walHead: Buffer | null
-  refs: number
-  // Its pane is gone: the directory goes as soon as no read holds it.
   gone: boolean
   queue: Promise<void>
 }
@@ -346,12 +502,14 @@ export function hasStep(steps: AgyStep[], idx: number): boolean {
 }
 
 export function createAgyTranscripts({
-  home, fs = localFs, now = Date.now, failQuietMs = FAIL_QUIET_MS, sqlite,
+  home, fs = localFs, now = Date.now, failQuietMs = FAIL_QUIET_MS, sqlite, cacheEntries = DOCUMENT_CACHE_ENTRIES, cacheBudget = sharedCacheBudget,
 }: {
   home: string
   fs?: MachineFs
   now?: () => number
   failQuietMs?: number
+  cacheEntries?: number
+  cacheBudget?: AgyCacheBudget
   // `sqlite` injects the DatabaseSync class: `null` simulates a Node built
   // without node:sqlite (every read degrades to `unsupported`); left
   // undefined, the class is imported lazily on the first conversation read.
@@ -389,39 +547,69 @@ export function createAgyTranscripts({
   // arrive, in bounded chunks: a conversation at the snapshot limit never sits
   // in memory. A short read means the file shrank under the copy — a move, to
   // be retried.
-  async function copyInto(src: string, size: number, dest: string, start = 0, append = false): Promise<void> {
+  async function copyInto(src: string, size: number, dest: string, start = 0, append = false, onChunk?: (chunk: Buffer) => void): Promise<void> {
     const fd = openSync(dest, append ? 'a' : 'w')
     try {
       for (let pos = start; pos < size; pos += READ_CHUNK_BYTES) {
         const len = Math.min(READ_CHUNK_BYTES, size - pos)
         const chunk = await fs.read(src, pos, len)
         if (chunk.length !== len) throw moved('Incomplete Antigravity conversation read')
+        onChunk?.(chunk)
         writeSync(fd, chunk)
       }
     } finally { closeSync(fd) }
   }
 
+  function baseSize(base: SnapBase): number {
+    let total = 0
+    for (const p of [base.db, base.wal]) {
+      try { total += statSync(p).size } catch { /* absent */ }
+    }
+    return total
+  }
+
   const bases = new Map<string, SnapBase>()
+  const dispose = () => {
+    for (const [file, base] of [...bases]) {
+      base.gone = true
+      if (!base.refs) dropBase(file, base)
+    }
+  }
+  agyDisposers.add(dispose)
+
+  // Drops the oldest copies down to `cacheEntries` and the shared byte budget,
+  // skipping the ones a read still holds; unlock() trims again once the last
+  // one lets go, so concurrent reads cannot leave extra directories behind.
+  function trimBases(keep?: SnapBase): void {
+    for (const [key, older] of bases) {
+      if (bases.size <= cacheEntries) break
+      if (older.refs || older === keep) continue
+      dropBase(key, older)
+    }
+    cacheBudget.trim(0, keep)
+  }
 
   // One base copy per file, evicted with its directory once the cache
-  // overflows (DOCUMENT_CACHE_ENTRIES, like the parsed documents). The temp
-  // dir is private (mkdtemp mode 0700).
+  // overflows (`cacheEntries`, like the parsed documents, or the shared byte
+  // budget across instances). The temp dir is private (mkdtemp mode 0700).
   function acquireBase(file: string): SnapBase {
     let base = bases.get(file)
     if (!base) {
       const dir = mkdtempSync(path.join(tmpdir(), `${KEPT_PREFIX}${process.pid}-`))
       const db = path.join(dir, 'conv.db')
-      base = { dir, db, wal: `${db}-wal`, shm: `${db}-shm`, dbId: null, walSize: 0, walHead: null, refs: 0, gone: false, queue: Promise.resolve() }
+      const created: SnapBase = {
+        dir, db, wal: `${db}-wal`, shm: `${db}-shm`,
+        dbId: null, dbBlocks: null, walSize: 0, walHead: null,
+        bytes: 0, refs: 0, gone: false, queue: Promise.resolve(),
+        drop: () => dropBase(file, created),
+      }
+      base = created
     }
+    base.gone = false
     bases.delete(file)
     bases.set(file, base)
-    for (const [key, older] of bases) {
-      if (bases.size <= DOCUMENT_CACHE_ENTRIES) break
-      // The base being acquired has no ref yet: the caller takes it right after.
-      if (older.refs || older === base) continue
-      bases.delete(key)
-      rmSync(older.dir, { recursive: true, force: true })
-    }
+    cacheBudget.touch(base)
+    trimBases(base)
     return base
   }
 
@@ -437,6 +625,7 @@ export function createAgyTranscripts({
 
   function dropBase(file: string, base: SnapBase): void {
     if (bases.get(file) === base) bases.delete(file)
+    cacheBudget.remove(base)
     rmSync(base.dir, { recursive: true, force: true })
   }
 
@@ -453,24 +642,94 @@ export function createAgyTranscripts({
         base.refs--
         release()
         if (base.gone && !base.refs) dropBase(file, base)
+        trimBases()
       },
     }
+  }
+
+  // On a checkpoint, ask POSIX dd+cksum for 1 MiB block checksums in one exec
+  // and fetch only the changed blocks; false (full copy) on missing tools,
+  // corrupt output or a failed verification.
+  async function deltaSyncDb(base: SnapBase, file: string, dbSt: FsStat): Promise<boolean> {
+    if (!fs.run || !base.dbId || !base.dbBlocks || dbSt.size < 100 || !existsSync(base.db)) return false
+    const raw = await fs.run(BLOCK_CHECKSUM_SCRIPT, [file], { timeoutMs: 30_000, maxBytes: 128 * 1024 }).catch(() => null)
+    const remote = raw ? parseBlockChecksums(raw, dbSt.size) : null
+    if (!remote) return false
+    const local = base.dbBlocks
+    const changed: number[] = []
+    for (let i = 0; i < remote.length; i++) {
+      const l = local[i], r = remote[i]!
+      if (!l || l.crc !== r.crc || l.len !== r.len) changed.push(i)
+    }
+    if (changed.length === remote.length) return false
+    if (changed.length > 0 || local.length > remote.length) {
+      const spans: { startBlock: number, count: number, offset: number, len: number }[] = []
+      const maxSpanBlocks = Math.max(1, Math.floor(READ_CHUNK_BYTES / BLOCK_BYTES))
+      for (const b of changed) {
+        const last = spans.at(-1)
+        const blkLen = remote[b]!.len
+        if (last && b === last.startBlock + last.count && last.count < maxSpanBlocks) {
+          last.count++
+          last.len += blkLen
+        } else {
+          spans.push({ startBlock: b, count: 1, offset: b * BLOCK_BYTES, len: blkLen })
+        }
+      }
+      // Until every block is written and verified, the kept state must not
+      // claim the new database: a failure leads to a full copy.
+      base.dbId = null
+      base.dbBlocks = null
+      const fd = openSync(base.db, 'r+')
+      try {
+        for (const s of spans) {
+          const chunk = await fs.read(file, s.offset, s.len)
+          if (chunk.length !== s.len) throw moved('Incomplete Antigravity conversation block read')
+          for (let j = 0, pos = 0; j < s.count; j++) {
+            const r = remote[s.startBlock + j]!
+            if (posixCksum(chunk.subarray(pos, pos + r.len)) !== r.crc) return false
+            pos += r.len
+          }
+          writeSync(fd, chunk, 0, chunk.length, s.offset)
+        }
+        ftruncateSync(fd, dbSt.size)
+      } finally { closeSync(fd) }
+    }
+    if (!validSqliteDb(base.db, dbSt.size)) {
+      base.dbId = null
+      base.dbBlocks = null
+      return false
+    }
+    base.dbBlocks = remote
+    return true
   }
 
   // Brings the kept copy to the remote state dbSt/walSt describe, then stats
   // both files again *fresh*: an identity change, another WAL header or a
   // shrink under the copy throws `moved` — the pair on disk never mixes
   // generations. A WAL that only grew ships and appends just its tail.
-  async function syncBase(base: SnapBase, file: string, dbSt: FsStat, walSt: FsStat | null): Promise<void> {
+  async function syncBase(base: SnapBase, file: string, dbSt: FsStat, walSt: FsStat | null, allowDelta = true): Promise<boolean> {
     if (dbSt.size + (walSt?.size ?? 0) > MAX_SNAPSHOT_BYTES) throw new Error('Antigravity conversation exceeds the supported size limit')
+    cacheBudget.trim(Math.max(0, dbSt.size + (walSt?.size ?? 0) - base.bytes), base)
     const walPath = `${file}-wal`
+    let deltaUsed = false
     try {
       if (base.dbId !== idOf(dbSt)) {
-        // The copy truncates the kept file before its first chunk: until it
-        // completes, the kept state must not claim the old database is there,
-        // or a failure would leave the next read appending to a partial copy.
-        base.dbId = null
-        await copyInto(file, dbSt.size, base.db)
+        deltaUsed = allowDelta && await deltaSyncDb(base, file, dbSt)
+        if (!deltaUsed) {
+          // The copy truncates the kept file before its first chunk: until it
+          // completes, the kept state must not claim the old database is there,
+          // or a failure would leave the next read appending to a partial copy.
+          base.dbId = null
+          base.dbBlocks = null
+          const blocks: BlockSum[] = []
+          await copyInto(file, dbSt.size, base.db, 0, false, (chunk) => {
+            for (let off = 0; off < chunk.length; off += BLOCK_BYTES) {
+              const blk = chunk.subarray(off, Math.min(off + BLOCK_BYTES, chunk.length))
+              blocks.push({ crc: posixCksum(blk), len: blk.length })
+            }
+          })
+          base.dbBlocks = blocks
+        }
         base.dbId = idOf(dbSt)
       }
       const live = walSt && walSt.size > 0 ? walSt : null
@@ -520,6 +779,9 @@ export function createAgyTranscripts({
     } catch (e) {
       if (isMissing(e)) throw moved('Antigravity conversation moved during the read')
       throw e
+    } finally {
+      cacheBudget.update(base, baseSize(base))
+      cacheBudget.trim(0, base)
     }
     const dbNow = await fs.stat(file, { fresh: true }).catch(e => { if (isMissing(e)) return null; throw e })
     if (!dbNow?.isFile || idOf(dbNow) !== base.dbId) throw moved('Antigravity conversation changed during the read')
@@ -527,7 +789,7 @@ export function createAgyTranscripts({
     const liveNow = walNow?.isFile && walNow.size > 0 ? walNow : null
     if (!liveNow || !base.walSize) {
       if (liveNow || base.walSize) throw moved('Antigravity conversation changed during the read')
-      return
+      return deltaUsed
     }
     // A grown WAL is fine — the kept bytes stay a consistent prefix — a
     // shrunk or restarted one is not.
@@ -540,6 +802,7 @@ export function createAgyTranscripts({
     if (head.length < expected.length || !head.subarray(0, expected.length).equals(expected)) {
       throw moved('Antigravity conversation changed during the read')
     }
+    return deltaUsed
   }
 
   function readSteps(db: DatabaseSync, session: string, file: string): AgyDoc {
@@ -593,7 +856,7 @@ export function createAgyTranscripts({
           try {
             const doc = readSteps(db, session, file)
             db.close()
-            remember(loaded, file, { gen, size, doc }, DOCUMENT_CACHE_ENTRIES)
+            remember(loaded, file, { gen, size, doc }, cacheEntries)
             return { doc, size, gen }
           } catch { db.close() }
         } catch { /* WAL/shm not readable in place: copy below */ }
@@ -601,18 +864,29 @@ export function createAgyTranscripts({
       const { base, unlock } = await lockBase(file)
       try {
         let cur = { db: dbSt, wal: walSt, size, gen }
+        let allowDelta = true
         for (let attempt = 0; ; attempt++) {
+          let usedDelta = false
           try {
-            await syncBase(base, file, cur.db, cur.wal)
+            usedDelta = await syncBase(base, file, cur.db, cur.wal, allowDelta)
             // The shm is rebuilt from the WAL on every open.
             rmSync(base.shm, { force: true })
             const db = new Db(base.db, { readOnly: true })
             try {
               const doc = readSteps(db, session, file)
-              remember(loaded, file, { gen: cur.gen, size: cur.size, doc }, DOCUMENT_CACHE_ENTRIES)
+              remember(loaded, file, { gen: cur.gen, size: cur.size, doc }, cacheEntries)
               return { doc, size: cur.size, gen: cur.gen }
             } finally { db.close() }
           } catch (e) {
+            if (usedDelta && !isMoved(e) && attempt < 2) {
+              // The delta copy did not verify as SQLite: discard it and copy in full once.
+              allowDelta = false
+              base.dbId = null
+              base.dbBlocks = null
+              const next = await statDb(file)
+              cur = { db: next.db, wal: next.wal, size: next.size, gen: next.gen }
+              continue
+            }
             if (!isMoved(e) || attempt >= 2) throw e
             const next = await statDb(file)
             cur = { db: next.db, wal: next.wal, size: next.size, gen: next.gen }
