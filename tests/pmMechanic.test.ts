@@ -6,6 +6,7 @@ import { boardLanes, cardOf, cardStatus, mayAccept, statusText, toHandle } from 
 import { inMergeQueue } from '../shared/pm/mergeQueue'
 import { agentBack, handToAgent } from '../shared/pm/release'
 import { addShot } from '../shared/pm/shots'
+import { stoppedTask } from '../shared/pm/stop'
 import type { Task } from '../shared/pm/run'
 
 const plan: PlannedStep[] = [
@@ -282,7 +283,12 @@ describe('what a task waits for', () => {
       await store.saveTask({ ...t, state: 'working', run: 'r1' })
       let term: Record<string, unknown> = { address: 'host/t3', status: { state: 'blocked' } }
       // The agent's conversation, for the question's text.
-      const panes = () => [{ id: 'w1:p1', coreAddress: 'host/t3' }], chat = async () => [{ role: 'assistant', text: 'Two options.\nPostgres or SQLite?', ts: null }]
+      // stopNow: the user stops the task while its question is read.
+      let stopNow = false
+      const panes = () => [{ id: 'w1:p1', coreAddress: 'host/t3' }], chat = async () => {
+        if (stopNow) { stopNow = false; await store.saveTask(stoppedTask((await store.task(t.id))!, { by: 'the user', why: 'wrong way', at: 5 })) }
+        return [{ role: 'assistant', text: 'Two options.\nPostgres or SQLite?', ts: null }]
+      }
       const deps = { store, call: async () => ({ terminals: [term] }), panes, chat } as unknown as Parameters<typeof syncWaits>[0]
       await syncWaits(deps)
       expect(await store.task(t.id)).toMatchObject({ state: 'waiting', waitKind: 'permission' })
@@ -301,6 +307,14 @@ describe('what a task waits for', () => {
       term = { address: 'host/t3', status: { state: 'blocked', msg: 'approve Bash: npm test' } }
       await syncWaits(deps)
       expect(await store.task(t.id)).toMatchObject({ waitKind: 'permission', waiting: 'approve Bash: npm test' })
+      // A stop made during the engine's read is never overwritten by its older copy.
+      await store.saveTask({ ...(await store.task(t.id))!, state: 'working', waitKind: undefined, waiting: undefined, question: undefined })
+      term = { address: 'host/t3', labels: { 'wherdr.report': 'blocked:question' }, status: { state: 'idle' } }
+      stopNow = true
+      await syncWaits(deps)
+      const kept = (await store.task(t.id))!
+      expect(kept).toMatchObject({ state: 'waiting', stopped: { by: 'the user' } })
+      expect(kept.question).toBeUndefined()
     } finally { await fs.rm(dir, { recursive: true, force: true }) }
   })
 

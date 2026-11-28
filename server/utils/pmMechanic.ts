@@ -87,14 +87,21 @@ export async function syncWaits(deps: PmLaunchDeps) {
     // A question carries its text, for the board and the coordinator's wake.
     // A question waiting from before its whole message was kept: read once more.
     const asked = kind === 'question' && (task.state === 'working' || (task.waitKind === 'question' && !task.question)) ? await askedQuestion(deps, run!.terminal!) : undefined
-    if (task.state === 'waiting' && task.waitKind === 'question' && kind === 'question' && asked && !task.question) { await store.saveTask({ ...task, question: asked.full }); continue }
-    if (task.state === 'working' && kind) await store.saveTask({ ...task, state: 'waiting', waiting: (kind === 'permission' && msg) || (asked ? `${WAITS.question}: ${asked.line}` : WAITS[kind]), waitKind: kind, question: asked?.full })
+    // Each change is made on the task as it is now, and only if a stop, an
+    // answer or an archive did not change it during the reads above.
+    const set = (change: Partial<Task>) => store.updateTask(task.id, x => (sameWait(x, task) ? { ...x, ...change } : null))
+    if (task.state === 'waiting' && task.waitKind === 'question' && kind === 'question' && asked && !task.question) { await set({ question: asked.full }); continue }
+    if (task.state === 'working' && kind) await set({ state: 'waiting', waiting: (kind === 'permission' && msg) || (asked ? `${WAITS.question}: ${asked.line}` : WAITS[kind]), waitKind: kind, question: asked?.full })
     else if (task.state === 'waiting' && (task.waitKind === 'question' || task.waitKind === 'permission') && !kind)
-      await store.saveTask({ ...task, state: 'working', waiting: undefined, waitKind: undefined, answered: undefined, question: undefined })
+      await set({ state: 'working', waiting: undefined, waitKind: undefined, answered: undefined, question: undefined })
     // The answered question gone from its agent: the next one wakes the coordinator again.
-    else if (task.answered && task.state === 'working' && !kind) await store.saveTask({ ...task, answered: undefined })
+    else if (task.answered && task.state === 'working' && !kind) await set({ answered: undefined })
   }
 }
+
+// Nothing a wait depends on moved since `read`: its state, wait, stop, answer, question, run and step.
+const sameWait = (fresh: Task, read: Task) => fresh.state === read.state && fresh.waitKind === read.waitKind && fresh.stopped?.at === read.stopped?.at
+  && fresh.answered === read.answered && !!fresh.question === !!read.question && fresh.run === read.run && JSON.stringify(fresh.step) === JSON.stringify(read.step)
 
 // A young agent that refused its model sits at its prompt without exiting, so
 // the quick-exit retry never fires: the task waits with why, its coordinator

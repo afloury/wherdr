@@ -152,12 +152,16 @@ export async function runAction(deps: ActionDeps, job: ActionJob): Promise<Actio
 }
 
 // Runs a script in the worktree; a transient error is tried again, a timeout
-// too unless `once` (a merge cut off may have gone through).
-async function run(deps: ActionDeps, script: string, args: string[], input?: string, once = false) {
+// too unless `once` (a merge cut off may have gone through). halted: the task
+// stopped during a wait, no new try (null).
+async function run(deps: ActionDeps, script: string, args: string[], input?: string, once?: boolean): Promise<ShellResult>
+async function run(deps: ActionDeps, script: string, args: string[], input: string | undefined, once: boolean, halted: ActionJob['halted']): Promise<ShellResult | null>
+async function run(deps: ActionDeps, script: string, args: string[], input?: string, once = false, halted?: ActionJob['halted']) {
   for (let i = 0; ; i++) {
     const r = await deps.sh(script, args, input)
     if (r.code === 0 || (once && r.code === null) || !isTransient(r.code, allText(r)) || i >= RETRY_MS.length) return r
     await (deps.sleep ?? pause)(RETRY_MS[i]!)
+    if (await halted?.()) return null
   }
 }
 
@@ -175,7 +179,13 @@ async function perform(deps: ActionDeps, job: ActionJob, resumed = false): Promi
     return r.code === 0 ? { ok: true, commit: lastLine(r.out) } : fail(r)
   }
   switch (a.kind) {
-    case 'git.land': return commit(SCRIPT.land, [a.target!, job.message ?? ''])
+    case 'git.land': {
+      // Stopped before it runs or while it waits to try again: never landed, like a PR merge.
+      const stopped = { ok: false, error: 'land: the task was stopped' }
+      if (await job.halted?.()) return stopped
+      const r = await run(deps, SCRIPT.land, [wt, a.target!, job.message ?? ''], undefined, false, job.halted)
+      return !r ? stopped : r.code === 0 ? { ok: true, commit: lastLine(r.out) } : fail(r)
+    }
     case 'git.push': return commit(SCRIPT.push, [branch])
     case 'git.verify-merged': {
       const r = await run(deps, SCRIPT.verify, [wt, a.target!, branch])
