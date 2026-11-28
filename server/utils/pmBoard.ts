@@ -236,6 +236,12 @@ async function stepActionOf(deps: CoreAdminDeps & { store: PmStore }, task: Task
       : { ok: false, error: 'No worktree: the task never started' }
     // Past its time limit, the step was the engine's again: this late result is only said.
     if (lost()) return store.logTask(await fresh(), 'engine', `${act.step}: a run past its time limit ended (${result.ok ? 'done' : result.error ?? 'failed'}): its result is dropped`)
+    // A PR opened on a new branch (the old one's PR was merged): the task follows it from now on.
+    if (result.ok && run && result.branch && result.branch !== run.branch) {
+      for (const r of (await store.runs()).filter(x => x.task === task.id && x.branch === run.branch)) await store.saveRun({ ...r, branch: result.branch })
+      await store.saveTask({ ...(await fresh()), branch: result.branch })
+      run.branch = result.branch
+    }
     if (userSaid && by === 'user' && !result.ok && act.action.kind === 'git.verify-merged')
       result = { ok: true, ...(result.commit ? { commit: result.commit } : {}), note: `verify-merged disagreed: ${(result.error ?? 'no answer').replace(/^verify-merged: /, '')}` }
     if (result.ok && early.length) result = { ...result, note: [result.note, `merged before ${early.join(', ')} ${early.length > 1 ? 'were' : 'was'} done: the merge order (merge after) was not kept`].filter(Boolean).join('. ') }
