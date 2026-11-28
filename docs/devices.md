@@ -63,8 +63,9 @@
   show their position, never 1/1.
   Options keeps the conversation, the agent and its tools: Terminal/Conversation, search,
   notifications, browse files, keep after restart, take control, reconnect and settings.
-- **Terminal function keys** start closed. They show or hide one horizontally scrolling row: in
-  Terminal with the square chevron button above Send, in Conversation from Options (**Terminal keys**). It holds Ctrl, Esc, Tab,
+- **Terminal function keys** start closed. The square chevron button above Send shows or hides
+  one horizontally scrolling row in both Conversation and Terminal (in Conversation, Options ›
+  **Terminal keys** does the same). It holds Ctrl, Esc, Tab,
   arrows, Enter, Ctrl+C, Backspace and the remaining modifiers and function keys. The phone-keyboard
   toggle comes first, and Home, End, PgUp, PgDn, Insert and Delete are available in both modes.
   In Conversation the keyboard toggle focuses the message field, and navigation uses the
@@ -76,9 +77,8 @@
 - **Web Push notifications** when an agent finishes or needs you.
 - **Quick replies**: answer permissions and questions in one tap from the agent list.
 - **Terminal key bar** (Esc, Enter, arrows, Shift+Tab, Ctrl+C…) and touch scrolling.
-  In the terminal the square ^ button at the bottom right shows or hides it; in the
-  conversation it opens from the **⋯** menu (**Terminal keys**), and the bottom right is the
-  **↓** button's.
+  The square ^ button at the bottom right shows or hides it, in the terminal and the
+  conversation; in the conversation the **⋯** menu's **Terminal keys** does it too.
   On iPhone and iPad a tap on the terminal does not open the on-screen keyboard: type in the
   message field, or tap the key bar's keyboard button to type in the terminal.
   In **Settings › Terminal › Phone key bar**, reorder the keys and uncheck the ones you never

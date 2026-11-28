@@ -1495,8 +1495,6 @@ button.omp-tool-head:hover .omp-tool-chev { color: var(--text-strong); }
 
 /* UChatMessages "scroll to bottom" button. */
 .hw-jump-vp { top: auto; bottom: 14px; pointer-events: none; z-index: 2; }
-/* Phone: bottom right, clear of the "questions unanswered" chip on the left. */
-.phone-chrome .hw-jump { right: 12px; translate: none; }
 .hw-jump {
   pointer-events: auto; border-radius: 0; width: 38px; height: 38px; justify-content: center;
   background: var(--surface-2); border: 1px solid var(--line); box-shadow: 0 8px 22px var(--shadow);

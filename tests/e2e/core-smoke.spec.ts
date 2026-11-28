@@ -79,9 +79,7 @@ test('core smoke: home, conversation attach and key bar, terminal attach', async
     // Key bar from the conversation (no terminal attached): one key proves the chain
     // button → /api/input → terminal.keys. Every key's name is checked lower, in
     // tests/keybarKeys.test.ts and tests/core-input.test.ts.
-    // On a phone in Conversation the keys open from Options (the floating toggle is Terminal's).
-    await page.getByRole('button', { name: 'Options', exact: true }).click()
-    await page.getByRole('menuitem', { name: 'Terminal keys', exact: true }).or(page.getByRole('button', { name: 'Terminal keys', exact: true })).first().click()
+    await page.getByRole('button', { name: 'Show or hide terminal keys', exact: true }).click()
     const bar = page.getByRole('group', { name: 'Terminal function keys', exact: true })
     const response = page.waitForResponse(r => r.url().endsWith('/api/input') && r.request().method() === 'POST')
     await bar.getByRole('button', { name: 'PgUp', exact: true }).click()
