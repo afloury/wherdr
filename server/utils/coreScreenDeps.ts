@@ -14,6 +14,7 @@ export function coreScreens() {
     call: (method, params, timeout) => coreCall(process.env.HC_SOCKET || '', method, params, timeout),
     viewed: id => isViewed(id),
     asked: p => transcripts.pendingClaudeQuestions(p),
+    pending: p => transcripts.pendingTool(p),
     colors: p => corePaint(process.env.HC_SOCKET || '', p.coreAddress || ''),
     wake: (ms) => { wakeTimer ??= setTimeout(() => { wakeTimer = null; wakeCorePoll() }, ms) },
   })
@@ -22,7 +23,7 @@ export function coreScreens() {
 export function coreChooseDeps(): CoreChooseDeps {
   const s = coreScreens()
   const base = coreInputDeps()
-  return { ...base, refresh: () => { for (const p of base.panes()) s.forget(p.id); base.refresh() }, read: p => s.fresh(p), asked: p => transcripts.pendingClaudeQuestions(p) }
+  return { ...base, refresh: () => { for (const p of base.panes()) s.forget(p.id); base.refresh() }, read: p => s.fresh(p), asked: p => transcripts.pendingClaudeQuestions(p), pending: p => transcripts.pendingTool(p) }
 }
 
 export function coreDraftDeps(): CoreDraftDeps {

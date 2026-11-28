@@ -22,8 +22,10 @@
   conversation header. omp's own status line, gauge and welcome screen never stand as the card's
   preview.
 - **Quick answers**: a waiting agent's card shows its question and options; **answer in one tap**
-  without opening it. The question is read again before the answer is sent; if it changed, the
-  answer is refused.
+  without opening it. The question is read again before the answer is sent; if the agent now
+  asks something else, the answer is refused. The same request still takes it, whatever the
+  terminal's size or a live line such as Claude's auto-block countdown: a permission is known by
+  its tool call in the transcript (Claude, Codex, omp), whose full command the card shows.
 - **Rows**: one line per card; an agent outside a task adds its current activity on a second
   line, and terminal spaces are filed under Ready. Every agent terminal is its own row, with its
   pane or tab label.

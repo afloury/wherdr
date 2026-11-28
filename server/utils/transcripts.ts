@@ -1,8 +1,8 @@
 import { createHash, type Hash } from 'node:crypto'
 import { imageTagCount, uploadNames, withoutUploads } from '../../shared/queuedMatch'
-import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, PromptDetail, ToolUpdate } from '../../shared/types'
+import type { ChatItem, ChatResponse, ClaudeQueueEntry, ModelInfo, ToolUpdate } from '../../shared/types'
 import { ompToolCall, ompToolResult, ompUserRun } from './ompTools'
-import { pendingClaudeTool, pendingCodexTool, pendingOmpTool } from './promptDetail'
+import { pendingClaudeCalls, pendingCodexCalls, pendingOmpCalls, type PendingCall } from './promptDetail'
 import { type ClaudeAsked, type OmpAsked, pendingClaudeAsk, pendingOmpAsk } from './choices'
 import { cleanModelName, lastModel, mergeOmpModel, ompLastModel, ompModelComplete, ompModelLabel, ompModelResult } from './models'
 import { type FsStat, type MachineFs, localFs } from './fsx'
@@ -2638,29 +2638,29 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, l
     return info
   }
 
-  // Tool call waiting for a permission: the last one without a result, read
-  // from the end of the transcript (re-read only if the file has grown).
-  // `tool`: name shown on screen (omp's dialog title), to pick among parallel calls.
+  // Tool calls waiting for a permission: those without a result, read from the
+  // end of the transcript (re-read only if the file has grown). The screen
+  // says which one is asked (pickCall).
   const PENDING_WINDOW = 1024 * 1024
-  const pendingCache = new Map<string, { file: string, size: number, tool: string | null, detail: PromptDetail | null }>()
-  async function pendingTool(pane: TranscriptPane, tool: string | null = null): Promise<PromptDetail | null> {
-    if (pane.agent !== 'claude' && pane.agent !== 'codex' && pane.agent !== 'omp') return null
+  const pendingCache = new Map<string, { file: string, size: number, calls: PendingCall[] }>()
+  async function pendingTool(pane: TranscriptPane): Promise<PendingCall[]> {
+    if (pane.agent !== 'claude' && pane.agent !== 'codex' && pane.agent !== 'omp') return []
     const loc = await locate(pane)
-    if (!loc) return null
+    if (!loc) return []
     let size: number
     try { size = (await fs.stat(loc.file)).size }
-    catch { return null }
+    catch { return [] }
     const c = pendingCache.get(pane.id)
-    if (c && c.file === loc.file && c.size === size && c.tool === tool) return c.detail
-    let detail: PromptDetail | null = null
+    if (c && c.file === loc.file && c.size === size) return c.calls
+    let calls: PendingCall[] = []
     try {
       const r = await reads.readRange(loc.file, Math.max(0, size - PENDING_WINDOW), size)
       const lines = r.text.split('\n').map(stripBlobs)
       const kind = transcriptKind(loc.file) || pane.agent
-      detail = kind === 'codex' ? pendingCodexTool(lines) : kind === 'omp' ? pendingOmpTool(lines, tool) : pendingClaudeTool(lines, home)
-    } catch { detail = null }
-    pendingCache.set(pane.id, { file: loc.file, size, tool, detail })
-    return detail
+      calls = kind === 'codex' ? pendingCodexCalls(lines) : kind === 'omp' ? pendingOmpCalls(lines) : pendingClaudeCalls(lines, home)
+    } catch { calls = [] }
+    pendingCache.set(pane.id, { file: loc.file, size, calls })
+    return calls
   }
 
   // omp: the "ask" call still unanswered (see pendingOmpAsk).
