@@ -39,8 +39,9 @@ export const REPAINT_SETTLE_MS = 150
 export interface Banner { text: string, btn: string, fn: () => void }
 
 // `fill`: side-by-side cell, the terminal takes the whole cell instead of the
-// reading column of a pane opened alone.
-export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | null) => void, hasBanner: () => boolean, fill?: () => boolean, input?: () => boolean, wheelAccel?: () => boolean, keepSavedLines?: () => boolean }) {
+// reading column of a pane opened alone. `watchOnly`: herdr-core attaches keep the
+// terminal's current size (takeover=0) until the first key, text or takeControl().
+export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | null) => void, hasBanner: () => boolean, fill?: () => boolean, input?: () => boolean, wheelAccel?: () => boolean, keepSavedLines?: () => boolean, watchOnly?: boolean }) {
   let term: Terminal | null = null
   let fit: FitAddon | null = null
   let webgl: WebglAddon | null = null
@@ -97,7 +98,10 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
   let sizeBanner: Banner | null = null
   // Asked before the stream was attached (composer focused on arrival): sent once it is.
   let controlPending = false
+  // Watch-only until this viewer first types or takes control: no fit banner meanwhile.
+  let watching = Boolean(opts.watchOnly)
   function takeControl() {
+    watching = false
     if (coreStream && sendTerm({ type: 'take.control' })) controlPending = false
     else controlPending = true
   }
@@ -165,7 +169,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
       const p = proposeTerminalSize(term!)
       return !p || (p.cols === term!.cols && p.rows === term!.rows)
     })()
-    if (!coreStream || coreControl || fits) {
+    if (!coreStream || coreControl || fits || watching) {
       if (sizeBanner) { sizeBanner = null; opts.setBanner(null) }
       return
     }
@@ -356,6 +360,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
 
   function sendTerm(obj: unknown): boolean {
     if ((obj as { type?: string })?.type === 'paste') clearVirtualModifiers()
+    if (['terminal.input', 'paste', 'keys'].includes((obj as { type?: string })?.type || '')) watching = false
     if (smoothTouchScrolling.value && ['terminal.input', 'paste'].includes((obj as { type?: string })?.type || '')) {
       scrollInputVersion.value++
       cancelTouchScroll()
@@ -597,6 +602,7 @@ export function createTerminal(paneId: string, opts: { setBanner: (b: Banner | n
     const asked = { cols: term.cols, rows: term.rows }
     const q = new URLSearchParams({ pane: paneId, cols: String(asked.cols), rows: String(asked.rows) })
     if (takeover) q.set('takeover', '1')
+    else if (watching) q.set('takeover', '0')
     loading.value = true
     twsIntent = true
     let closedReason: string | null = null

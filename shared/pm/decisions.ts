@@ -34,10 +34,21 @@ export interface Decision {
 
 export interface DecisionsInput {
   cards: Card[]
-  tasks: Pick<Task, 'id' | 'state' | 'waiting' | 'waitKind' | 'stopped'>[]
+  tasks: Pick<Task, 'id' | 'state' | 'waiting' | 'waitKind' | 'waitAt' | 'stopped'>[]
   coordinators: { project: string, name: string, coordinatorName?: string, proposal?: { at: number, said?: string } }[]
   wakes: Wake[]
+  asks?: string[] // the projects whose coordinator is woken for an agent's question (its autopilot on, running, in its hours)
+  now?: number
 }
+
+// An agent's wait shows only once it needs the user: a permission (always
+// theirs) once it has lasted HOLD.permission, so one that goes by itself never
+// alerts; a question its coordinator is woken for once that coordinator has
+// not answered it in HOLD.question (an answer clears the wait). The coordinator's
+// own view (pm list, its wake) shows every wait at once.
+export const HOLD = { permission: 20_000, question: 3 * 60_000 } as const
+const heldBack = (t: Pick<Task, 'waitKind' | 'waitAt'>, woken: boolean, now: number) =>
+  t.waitKind === 'permission' || (t.waitKind === 'question' && woken) ? now - (t.waitAt ?? 0) < HOLD[t.waitKind] : false
 
 // The choices offered on an advice, recommended first: the coordinator's
 // options when it has some, else any choice (the user may choose any).
@@ -49,14 +60,14 @@ export function adviceChoices(a: Advice): { options: Choice[], recommend?: Choic
 
 const KIND_TEXT: Record<WaitKind, string> = { permission: 'Asks for a permission', question: 'Asks a question', auth: 'Needs its login again' }
 
-export function decisionsOf({ cards, tasks, coordinators, wakes }: DecisionsInput): Decision[] {
+export function decisionsOf({ cards, tasks, coordinators, wakes, asks = [], now = Date.now() }: DecisionsInput): Decision[] {
   const out: Decision[] = []
   for (const c of cards) {
     const t = tasks.find(x => x.id === c.id)
     const base = { project: c.project, task: c.id, title: c.title, at: c.state?.since ?? 0, ...(c.terminal ? { terminal: c.terminal } : {}) }
     // Stopped: how to go on is the only thing asked.
     if (t?.stopped) { out.push({ ...base, id: `stopped:${c.id}:${t.stopped.at}`, group: 'stopped', text: stoppedText(t.stopped), at: t.stopped.at }); continue }
-    if (t?.state === 'waiting' && t.waitKind)
+    if (t?.state === 'waiting' && t.waitKind && !heldBack(t, asks.includes(c.project), now))
       out.push({ ...base, id: `agent:${c.id}:${t.waitKind}`, group: 'agent', kind: t.waitKind, text: t.waiting?.split('\n')[0] || KIND_TEXT[t.waitKind] })
     const y = c.state?.yourTurn
     if (!y || c.state?.done) continue

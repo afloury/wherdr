@@ -25,9 +25,11 @@ export default defineWebSocketHandler({
     if (c && m && m.type === 'viewing') {
       const pane = PANE_RE.test(m.pane || '') ? m.pane : null
       const visible = m.visible === true
-      const newlyViewed = Boolean(pane && visible && !isViewed(pane))
+      const shown = m.shown === true
+      const newlyViewed = Boolean(pane && (visible || shown) && !isShown(pane))
       c.pane = pane
       c.visible = visible
+      c.shown = shown
       if (m.device === 'phone' || m.device === 'computer') c.device = m.device
       const used = usedAt(m, Date.now())
       if (used !== null) c.activeAt = used

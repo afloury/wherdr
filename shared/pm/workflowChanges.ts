@@ -2,7 +2,7 @@
 // removed or changed, each changed field with its value before and after.
 // The coordinator's proposal card and review show it; the JSON diff
 // (templateDiff) stays for the details.
-import { isDefaultWorkflow, type Guards, type Step, type StepAction, type Template, type TaskType } from './workflow'
+import { isDefaultWorkflow, PREF_KEYS, programName, type Guards, type Prefs, type Step, type StepAction, type Template, type TaskType } from './workflow'
 import { lineDiff } from './coordinator'
 
 // before/after: the field's value as text, absent when it was not set.
@@ -46,7 +46,9 @@ function compare(a: Record<string, string | undefined>, b: Record<string, string
   return out
 }
 
-const prefFields = (p?: Template['prefs']) => Object.fromEntries(Object.entries(p ?? {}).map(([k, v]) => [k, text(v)]))
+// The per-program models, one field each: "models.codex".
+const prefFields = (p?: Template['prefs']) => Object.fromEntries(Object.entries(p ?? {}).flatMap(([k, v]) =>
+  (k === 'models' && v && typeof v === 'object' ? Object.entries(v).map(([prog, m]) => [`models.${prog}`, text(m)]) : [[k, text(v)]])))
 const setupFields = (w?: Template['worktree']) => Object.fromEntries(Object.entries(w ?? {}).map(([k, v]) => [`worktree ${k}`, text(v)]))
 const ownFields = (o?: { guards?: Guards, instructions?: string, prefs?: Template['prefs'], worktree?: Template['worktree'] }) =>
   ({ ...guardFields(o?.guards), 'instructions': text(o?.instructions), ...prefFields(o?.prefs), ...setupFields(o?.worktree) })
@@ -119,7 +121,15 @@ export function changeTitle(c?: WorkflowChanges): ChangeTitle {
   return only('added') ? (many ? 'New task types' : 'New task type') : only('removed') ? (many ? 'Task types removed' : 'Task type removed') : 'Workflow change'
 }
 
-const fieldLine = (f: FieldChange) => (f.field === 'instructions' ? 'instructions edited' : `${f.field}: ${f.before ?? 'none'} → ${f.after ?? 'none'}`)
+// A per-program model in plain words: "If the task runs Codex: gpt-6.1-sol (was: the workflow's model)".
+const OWN = 'the workflow\'s model'
+export const modelsProgram = (field: string) => (field.startsWith('models.') ? field.slice(7) : undefined)
+export const ifRuns = (program: string) => `If the task runs ${programName(program)}`
+const fieldLine = (f: FieldChange) => {
+  const prog = modelsProgram(f.field)
+  if (prog) return `${ifRuns(prog)}: ${f.after ?? OWN} (was: ${f.before ?? OWN})`
+  return f.field === 'instructions' ? 'instructions edited' : `${f.field}: ${f.before ?? 'none'} → ${f.after ?? 'none'}`
+}
 const stepLine = (s: StepChange) => (s.kind === 'added' ? `+ ${s.id}` : s.kind === 'removed' ? `− ${s.id}` : [`${s.id}${s.kind === 'moved' ? ' moved' : ''}`, s.fields.map(fieldLine).join(', ')].filter(Boolean).join(' '))
 
 // The change in a few plain lines, one per type: "task: merge: you → automatic, land action: … checks smoke".
@@ -133,8 +143,12 @@ export function changeSummary(c: WorkflowChanges, max = 2): string[] {
 }
 
 // The whole change in one line, for the top of the card and the review:
-// its first change, then how many more.
+// its first change, then how many more. Types only added or removed with a
+// change to the whole workflow: each of them, in plain words
+// ("Type study removed · If the task runs Codex: gpt-6.1-sol (was: the workflow's model)").
 export function changeHeadline(c: WorkflowChanges): string {
+  if (c.all.length && c.types.length && c.types.every(t => t.kind !== 'changed'))
+    return [...c.types.map(t => (t.kind === 'added' ? `New type ${t.type}` : `Type ${t.type} removed`)), ...c.all.map(fieldLine)].join(' · ')
   const [first, ...rest] = changeSummary(c, Infinity)
   return first ? (rest.length ? `${first} · and ${rest.length} more ${rest.length === 1 ? 'change' : 'changes'}` : first) : ''
 }
@@ -146,16 +160,19 @@ export function changeHeadline(c: WorkflowChanges): string {
 // whose steps did not change (a change to the whole workflow only).
 export interface StepMark { kind: ChangeKind, holder: string, ends?: string, fields: FieldChange[], step?: Step }
 // Plain words for the fields named in taskImpact.
+const words = (field: string) => { const prog = modelsProgram(field); return prog ? `model if the task runs ${programName(prog)}` : WORDS[field] ?? field }
 const WORDS: Record<string, string> = { agent: 'agent', model: 'model', reviewAgent: 'agent', reviewModel: 'model', reviewFallbackAgent: 'fallback agent', reviewFallbackModel: 'fallback model', ends: 'ending', sendBack: 'send-back step', evidence: 'proofs' }
+// The per-program models are the worker's (the reviewer's model is reviewModel).
 const HOLDER_PREFS: Record<string, string> = { agent: 'worker', model: 'worker', reviewAgent: 'reviewer', reviewModel: 'reviewer', reviewFallbackAgent: 'reviewer', reviewFallbackModel: 'reviewer' }
+const holderOf = (field: string) => HOLDER_PREFS[field] ?? (modelsProgram(field) ? 'worker' : undefined)
 export function stepMarks(c: WorkflowChanges, type: string, next?: Template): Map<string, StepMark> {
   const t = c.types.find(x => x.type === type)
-  const prefs = [...c.all, ...(t?.fields ?? [])].filter(f => HOLDER_PREFS[f.field])
+  const prefs = [...c.all, ...(t?.fields ?? [])].filter(f => holderOf(f.field))
   const out = new Map<string, StepMark>()
   const tt = next?.taskTypes[type]
   const steps = t?.steps ?? (tt ? stepsOf(next!, tt).map((x): StepChange => ({ id: x.id, kind: 'same', holder: x.holder ?? 'none', ...(x.ends ? { ends: x.ends } : {}), fields: [] })) : [])
   for (const s of steps) {
-    const own = prefs.filter(f => HOLDER_PREFS[f.field] === s.holder && s.kind !== 'added' && s.kind !== 'removed')
+    const own = prefs.filter(f => holderOf(f.field) === s.holder && s.kind !== 'added' && s.kind !== 'removed')
     const kind = own.length && s.kind === 'same' ? 'changed' : s.kind
     out.set(s.id, { kind, holder: s.holder, ...(s.ends ? { ends: s.ends } : {}), fields: [...s.fields, ...own], ...(s.step ? { step: s.step } : {}) })
   }
@@ -169,8 +186,37 @@ export function taskImpact(c: WorkflowChanges, type: string, next?: Template): s
   if (t?.kind === 'added') return `A new task type ${type}${t.about ? `: ${t.about}` : ''}`
   if (t?.kind === 'removed') return `No more ${type} tasks: the type is removed`
   const steps = [...stepMarks(c, type, next)].flatMap(([id, m]) => m.kind === 'added' ? [`a new step ${id}`] : m.kind === 'removed' ? [`no more step ${id}`]
-    : m.kind === 'moved' ? [`${id} moves`] : m.kind === 'changed' ? [`${id} changes its ${[...new Set(m.fields.map(f => WORDS[f.field] ?? f.field))].join(', ')}`] : [])
-  const own = [...c.all, ...(t?.fields ?? [])].filter(f => !HOLDER_PREFS[f.field]).map(fieldLine)
+    : m.kind === 'moved' ? [`${id} moves`] : m.kind === 'changed' ? [`${id} changes its ${[...new Set(m.fields.map(f => words(f.field)))].join(', ')}`] : [])
+  const own = [...c.all, ...(t?.fields ?? [])].filter(f => !holderOf(f.field)).map(fieldLine)
   const parts = [...steps, ...own]
   return parts.length ? `For ${type} tasks: ${parts.join('; ')}` : ''
+}
+
+// The impact line says no more than the headline above it: the same changes
+// once their "For task tasks:" and "all types:" / "task:" are left out.
+export function impactRepeats(impact: string, headline: string): boolean {
+  const body = impact.replace(/^For .+? tasks: /, '')
+  return !!body && headline.replace(/ · and \d+ more changes?$/, '').replace(/^[^:]+: /, '') === body
+}
+
+// The prefs as they were before the change: `now` with each changed pref's
+// value before (absent when it was not set).
+function prefsBefore(now: Prefs | undefined, fields: FieldChange[]): Prefs {
+  const out: Prefs = { ...now, models: { ...now?.models } }
+  for (const f of fields) {
+    const prog = modelsProgram(f.field) as keyof NonNullable<Prefs['models']> | undefined
+    if (prog) { if (f.before) out.models![prog] = f.before; else delete out.models![prog] }
+    else if ((PREF_KEYS as readonly string[]).includes(f.field)) { const k = f.field as typeof PREF_KEYS[number]; if (f.before) out[k] = f.before; else delete out[k] }
+  }
+  if (!Object.keys(out.models!).length) delete out.models
+  return out
+}
+
+// A removed type as it was, for its diagram: its removed steps, its own prefs
+// and the workflow's from before the change, so its agents show what they were.
+export function typeBefore(c: WorkflowChanges, type: string, next: Template): Template | undefined {
+  const t = c.types.find(x => x.type === type && x.kind === 'removed')
+  if (!t) return undefined
+  const steps = t.steps.flatMap(s => (s.step ? [s.step] : []))
+  return { ...next, prefs: prefsBefore(next.prefs, c.all), taskTypes: { ...next.taskTypes, [type]: { steps, prefs: prefsBefore(undefined, t.fields) } } }
 }

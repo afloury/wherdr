@@ -1,5 +1,6 @@
 import { expect, it } from 'vitest'
-import { changeSummary, changeTitle, workflowChanges } from '../shared/pm/workflowChanges'
+import { changeHeadline, changeSummary, changeTitle, impactRepeats, stepMarks, taskImpact, typeBefore, workflowChanges } from '../shared/pm/workflowChanges'
+import { workerPlan } from '../shared/pm/run'
 import { defaultWorkflow, type Template } from '../shared/pm/workflow'
 
 const old: Template = {
@@ -63,4 +64,35 @@ it('titles a proposal by what it does: first workflow, types only added or remov
   expect(changeTitle(workflowChanges(null, old))).toBe('First workflow')
   expect(changeTitle(workflowChanges(defaultWorkflow('CO'), add(old, 'release')))).toBe('First workflow')
   expect(changeTitle(workflowChanges(old, { ...add(old, 'release'), guards: { merge: { others: 'engine' } } }))).toBe('Workflow change')
+})
+
+it('per-program models read in plain words, mark the worker step, and the impact does not repeat the headline', () => {
+  const was: Template = { ...old, prefs: { agent: 'claude', model: 'opus', reviewAgent: 'codex', reviewModel: 'gpt-6.1' } }
+  const next: Template = { ...was, prefs: { ...was.prefs, models: { codex: 'gpt-6.1-sol' } } }
+  const c = workflowChanges(was, next)
+  expect(changeHeadline(c)).toBe('all types: If the task runs Codex: gpt-6.1-sol (was: the workflow\'s model)')
+  expect(changeSummary(workflowChanges(next, was))).toEqual(['all types: If the task runs Codex: the workflow\'s model (was: gpt-6.1-sol)'])
+  const marks = stepMarks(c, 'task', next)
+  expect(marks.get('work')).toMatchObject({ kind: 'changed', fields: [{ field: 'models.codex', after: 'gpt-6.1-sol' }] })
+  // The reviewer's model is reviewModel, whatever its program.
+  expect(marks.get('review')!.kind).toBe('same')
+  expect(taskImpact(c, 'task', next)).toBe('For task tasks: work changes its model if the task runs Codex')
+  const guard = workflowChanges(old, { ...old, guards: { merge: { others: 'engine' } } })
+  expect(impactRepeats(taskImpact(guard, 'task', old), changeHeadline(guard))).toBe(true)
+  expect(impactRepeats(taskImpact(c, 'task', next), changeHeadline(c))).toBe(false)
+})
+
+it('a removed type with its own prefs and a workflow-wide model: both in the headline, its worker as it was', () => {
+  const study = { steps: [{ id: 'todo' }, { id: 'work', holder: 'worker' as const, ends: 'report' as const }, { id: 'done' }], prefs: { agent: 'codex', model: 'gpt-6.1-sol' } }
+  const was: Template = { ...old, prefs: { agent: 'claude', model: 'opus' }, taskTypes: { ...old.taskTypes, 'study-codex': study } }
+  const next: Template = { ...old, prefs: { agent: 'claude', model: 'opus', models: { codex: 'gpt-6.1-sol' } } }
+  const c = workflowChanges(was, next)
+  expect(changeTitle(c)).toBe('Workflow change')
+  expect(changeHeadline(c)).toBe('Type study-codex removed · If the task runs Codex: gpt-6.1-sol (was: the workflow\'s model)')
+  expect(workerPlan(next, { type: 'study-codex' })).toHaveProperty('reason')
+  expect(workerPlan(typeBefore(c, 'study-codex', next)!, { type: 'study-codex' })).toMatchObject({ program: 'codex', model: 'gpt-6.1-sol' })
+  // The type's prefs first, then the workflow's as it was (no per-program model yet).
+  const plain = workflowChanges({ ...was, taskTypes: { ...was.taskTypes, 'study-codex': { steps: study.steps } } }, next)
+  expect(workerPlan(typeBefore(plain, 'study-codex', next)!, { type: 'study-codex' })).toMatchObject({ program: 'claude', model: 'opus' })
+  expect(typeBefore(plain, 'study-codex', next)!.prefs).toEqual({ agent: 'claude', model: 'opus' })
 })

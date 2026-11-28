@@ -55,7 +55,7 @@ export const transcripts = {
   image: (p: TranscriptPane, file: string | null, ref: string | null, i: number) => coreTranscriptsOf().image(p, file, ref, i),
   model: (p: TranscriptPane) => coreTranscriptsOf().model(p),
   locate: (p: TranscriptPane) => coreTranscriptsOf().locate(p),
-  pendingTool: (p: TranscriptPane, tool?: string | null) => coreTranscriptsOf().pendingTool(p, tool),
+  pendingTool: (p: TranscriptPane) => coreTranscriptsOf().pendingTool(p),
   pendingAsk: (p: TranscriptPane) => coreTranscriptsOf().pendingAsk(p),
   pendingClaudeQuestions: (p: TranscriptPane) => coreTranscriptsOf().pendingClaudeQuestions(p),
   search: (p: TranscriptPane, query: string, deadline: number) => coreTranscriptsOf().search(p, query, deadline),
@@ -65,7 +65,9 @@ export const transcripts = {
 // ---------------------------------------------------------------- clients
 // What each device is looking at (no notification for the agent shown on screen),
 // its kind and when the user last used it (`ui open` goes to that one).
-export interface EventClient { send: (data: string) => void, pane: string | null, visible: boolean, device?: 'phone' | 'computer', activeAt?: number }
+// `visible`: on screen, focused and recently used (the notification lease).
+// `shown`: only on screen, which is what the screen poll's pace follows.
+export interface EventClient { send: (data: string) => void, pane: string | null, visible: boolean, shown?: boolean, device?: 'phone' | 'computer', activeAt?: number }
 export const eventClients = new Map<string, EventClient>()
 
 let state: HerdrState = startingState()
@@ -93,6 +95,12 @@ export function announceRestart() {
 
 export function isViewed(paneId: string) {
   for (const v of eventClients.values()) if (v.pane === paneId && v.visible) return true
+  return false
+}
+// On someone's screen, used or not: a conversation (or its terminal window)
+// watched without touching it is still read at the viewed pace.
+export function isShown(paneId: string) {
+  for (const v of eventClients.values()) if (v.pane === paneId && (v.visible || v.shown)) return true
   return false
 }
 
@@ -175,6 +183,8 @@ export async function poll() {
   await coreScreens().enrich(state.panes).catch(() => {})
   void coreTranscriptsOf().observe(state.panes)
   corePreviews().apply(state.panes)
+  // A task's question or permission gone from its agent leaves Tasks to review now (pmMechanic.ts).
+  if (state.ok !== false) { const panes = state.panes; void import('./pmMechanic').then(m => m.clearGoneWaits(pmStore(), panes)).catch(() => {}) }
   const json = JSON.stringify(state)
   if (json !== stateJson) { stateJson = json; broadcastState() }
 }

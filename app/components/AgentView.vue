@@ -308,11 +308,11 @@ function syncInteraction() {
   clearTimeout(interactionTimer)
   interactionTimer = undefined
   const now = Date.now()
-  interactionOpen.value = interactionWindow.update(pane.value?.interaction || 'unknown', now)
+  interactionOpen.value = interactionWindow.update(pane.value?.interaction || 'unknown', now, mode.value === 'term')
   const due = interactionWindow.deadline()
   if (due !== null && pageVisible.value) interactionTimer = setTimeout(syncInteraction, Math.max(0, due - now))
 }
-watch([() => pane.value?.interaction, pageVisible], syncInteraction, { immediate: true })
+watch([() => pane.value?.interaction, pageVisible, mode], syncInteraction, { immediate: true })
 const unsubscribeInteraction = interactionWindow.subscribe(syncInteraction)
 onUnmounted(() => {
   clearTimeout(interactionTimer)
@@ -467,7 +467,11 @@ onBeforeUnmount(() => {
 const notesInHeader = computed(() => !compactPhone.value && (!headerWidth.value || headerWidth.value - (headerActionsWidth.value > 0 ? headerActionsWidth.value + 6 : 0) >= NOTES_HEADER_MIN))
 const notesItem = computed<MenuItem>(() => ({ label: t('Notes'), icon: 'i-lucide-sticky-note', kbds: desk.value ? shortcutKbds('notes') : undefined, run: toggleNotes }))
 // A project's or workspace's coordinator: its board, settings and autopilot first, as on its sidebar row.
-const agentMenu = computed<MenuItem[]>(() => [...paneCoordinatorItems(pane.value), ...(notesInHeader.value ? [] : [notesItem.value]), ...coreMenuItems(pane.value)])
+// Phone conversation: the terminal keys also open from here (besides the floating toggle).
+const keysItem = computed<MenuItem[]>(() => (keybarToggleShown.value && mode.value === 'chat'
+  ? [{ label: t(phoneKeysOpen.value ? 'Hide terminal keys' : 'Terminal keys'), icon: 'i-lucide-keyboard', run: togglePhoneKeys }]
+  : []))
+const agentMenu = computed<MenuItem[]>(() => [...paneCoordinatorItems(pane.value), ...(notesInHeader.value ? [] : [notesItem.value]), ...keysItem.value, ...coreMenuItems(pane.value)])
 const dropdownItems = computed(() => toDropdown(agentMenu.value))
 function openAgentMenu() { openMenu(agentMenu.value) }
 

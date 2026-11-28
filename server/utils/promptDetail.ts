@@ -2,9 +2,8 @@
 // question: the tool, its description, the full command, or the file.
 //
 // Two sources:
-//  - the transcript: the last tool call still without a result is
-//    the one waiting for permission (full command, never cut by the
-//    terminal width);
+//  - the transcript: a tool call still without a result, the one the
+//    screen shows (full command, never cut by the terminal width);
 //  - the screen, failing that: in Claude Code, the block between the ─── rule and the
 //    question; in Codex, the lines between the question and the options:
 //
@@ -15,6 +14,10 @@
 //    Do you want to proceed?
 //    ❯ 1. Yes
 import type { PromptDetail } from '../../shared/types'
+
+// A tool call still without a result, by its id in the transcript (Claude's
+// tool_use.id, Codex's call_id, omp's toolCall.id): the prompt's identity (WHR-607).
+export interface PendingCall { call: string, detail: PromptDetail }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any
@@ -119,9 +122,9 @@ export function claudeToolDetail(name: string, input: Json, home = ''): PromptDe
   }
 }
 
-// First tool call without a result since the user's last
-// message (JSON lines of a Claude Code transcript).
-export function pendingClaudeTool(lines: string[], home = ''): PromptDetail | null {
+// Tool calls without a result since the user's last message, in order (JSON
+// lines of a Claude Code transcript). Questions and subagents are left out.
+export function pendingClaudeCalls(lines: string[], home = ''): PendingCall[] {
   const pending = new Map<string, { name: string, input: Json }>()
   for (const line of lines) {
     if (!line || !line.includes('"type"')) continue
@@ -141,16 +144,18 @@ export function pendingClaudeTool(lines: string[], home = ''): PromptDetail | nu
       for (const part of content) if (part.type === 'tool_use' && part.id) pending.set(part.id, { name: part.name, input: part.input })
     }
   }
-  const first = pending.values().next().value
-  return first ? claudeToolDetail(String(first.name || ''), first.input, home) : null
+  return [...pending].flatMap(([call, t]) => {
+    const detail = claudeToolDetail(String(t.name || ''), t.input, home)
+    return detail ? [{ call, detail }] : []
+  })
 }
 
 // ------------------------------------------------------------ omp
-// The call waiting for approval: started (tool_execution_start) with no
-// result yet. Its full input comes from the assistant message's toolCall
+// The calls waiting for approval: started (tool_execution_start) with no
+// result yet. Their full input comes from the assistant message's toolCall
 // (omp cuts it on screen, and a long one scrolls the dialog's title away).
-// `tool`: name read in the dialog's title, when shown (calls run in parallel).
-export function pendingOmpTool(lines: string[], tool?: string | null): PromptDetail | null {
+// Calls run in parallel: the screen says which one is asked (pickCall).
+export function pendingOmpCalls(lines: string[]): PendingCall[] {
   const calls = new Map<string, { name: string, args: Json, intent?: string }>()
   const started: string[] = []
   for (const line of lines) {
@@ -170,14 +175,14 @@ export function pendingOmpTool(lines: string[], tool?: string | null): PromptDet
       if (!calls.has(d.data.toolCallId)) calls.set(d.data.toolCallId, { name: String(d.data.toolName || ''), args: d.data.args, intent: d.data.intent })
     }
   }
-  const ids = started.filter(id => calls.has(id) && (!tool || calls.get(id)!.name === tool))
-  const call = ids.length ? calls.get(ids[ids.length - 1]!)! : null
-  if (!call) return null
-  const { i: _, ...args } = call.args && typeof call.args === 'object' ? call.args : {} as Json
-  const text = typeof args.command === 'string' ? args.command
-    : typeof args.code === 'string' ? args.code
-      : Object.keys(args).length ? JSON.stringify(args, null, 2) : ''
-  return { tool: call.name || 'tool', ...(call.intent ? { description: String(call.intent) } : {}), ...(text ? body(text) : {}) }
+  return started.filter(id => calls.has(id)).map((id) => {
+    const call = calls.get(id)!
+    const { i: _, ...args } = call.args && typeof call.args === 'object' ? call.args : {} as Json
+    const text = typeof args.command === 'string' ? args.command
+      : typeof args.code === 'string' ? args.code
+        : Object.keys(args).length ? JSON.stringify(args, null, 2) : ''
+    return { call: id, detail: { tool: call.name || 'tool', ...(call.intent ? { description: String(call.intent) } : {}), ...(text ? body(text) : {}) } }
+  })
 }
 
 // ------------------------------------------------------------ Codex
@@ -202,21 +207,7 @@ export function codexPatchDetail(patch: string): PromptDetail {
   return { tool: 'apply_patch', file: files.join(', ') || undefined, added, removed, ...body(patch) }
 }
 
-export function pendingCodexTool(lines: string[]): PromptDetail | null {
-  const pending = new Map<string, Json>()
-  for (const line of lines) {
-    if (!line || !line.includes('response_item')) continue
-    let d: Json
-    try { d = JSON.parse(line) }
-    catch { continue }
-    const p = d.type === 'response_item' && d.payload
-    if (!p) continue
-    if (p.type === 'message' && p.role === 'user') pending.clear()
-    else if ((p.type === 'function_call' || p.type === 'custom_tool_call' || p.type === 'local_shell_call') && p.call_id) pending.set(p.call_id, p)
-    else if (/_output$/.test(p.type || '') && p.call_id) pending.delete(p.call_id)
-  }
-  const p = pending.values().next().value
-  if (!p) return null
+function codexCallDetail(p: Json): PromptDetail {
   if (p.type === 'custom_tool_call') {
     const input = String(p.input || '')
     if (p.name === 'apply_patch' || input.includes('*** Begin Patch')) return codexPatchDetail(input)
@@ -230,6 +221,22 @@ export function pendingCodexTool(lines: string[]): PromptDetail | null {
   const cmd = shellText(a.cmd ?? a.command)
   if (!cmd) return { tool: p.name || 'tool', ...body(JSON.stringify(a, null, 2)) }
   return { tool: p.name || 'shell', description: a.justification || undefined, ...body(cmd) }
+}
+
+export function pendingCodexCalls(lines: string[]): PendingCall[] {
+  const pending = new Map<string, Json>()
+  for (const line of lines) {
+    if (!line || !line.includes('response_item')) continue
+    let d: Json
+    try { d = JSON.parse(line) }
+    catch { continue }
+    const p = d.type === 'response_item' && d.payload
+    if (!p) continue
+    if (p.type === 'message' && p.role === 'user') pending.clear()
+    else if ((p.type === 'function_call' || p.type === 'custom_tool_call' || p.type === 'local_shell_call') && p.call_id) pending.set(p.call_id, p)
+    else if (/_output$/.test(p.type || '') && p.call_id) pending.delete(p.call_id)
+  }
+  return [...pending].map(([call, p]) => ({ call, detail: codexCallDetail(p) }))
 }
 
 // ------------------------------------------------------------ screen

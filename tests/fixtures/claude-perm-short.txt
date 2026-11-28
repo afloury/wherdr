@@ -1,0 +1,16 @@
+ — choose "switch to auto mode" below
+ Count listing lines containing "conf" in
+ system directories
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ ls -la /etc /usr /var /opt /srv /home
+ 2>/dev/null | grep -c conf
+╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌
+ Do you want to proceed?
+ ❯ 1. Yes
+   2. Yes, allow reading from /etc from this
+      project
+   3. Yes, and switch to auto mode · auto
+      mode handles these prompts for you
+   4. No
+ ↑ 3 more lines
+ Esc to cancel · Tab to amend

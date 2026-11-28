@@ -12,7 +12,7 @@ export const clearQuestion = (deps: Pick<CoreAdminDeps, 'call'>, terminal: strin
 
 // The task as it is once its question is answered (answered: no second wake for it).
 export const answeredTask = (t: Task): Task => (t.state === 'waiting' && t.waitKind === 'question'
-  ? { ...t, state: 'working', waiting: undefined, waitKind: undefined, question: undefined, answered: Date.now() }
+  ? { ...t, state: 'working', waiting: undefined, waitKind: undefined, waitAt: undefined, question: undefined, answered: Date.now() }
   : t)
 
 // text: sent to the asking agent first, as the user's message; none: the

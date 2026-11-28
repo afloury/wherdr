@@ -46,7 +46,7 @@ const VIEW_LABEL = { diagram: 'Diagram', readable: 'List', json: 'JSON' }
           <div v-if="types.length > 1" class="segmented" role="tablist" :aria-label="tl('Task type')" :style="{ '--segment-count': types.length }">
             <button v-for="k in types" :key="k" type="button" role="tab" :class="{ on: type === k }" :aria-selected="type === k" :data-type="k" @click="type = k">{{ k }}</button>
           </div>
-          <WorkflowChart v-if="type" :key="type" :workflow="proposed" :type="type" :changes="changes" />
+          <WorkflowChart v-if="type" :key="type" :workflow="proposed" :type="type" :changes="changes" :headline="headline" />
         </template>
         <ProposalChanges v-else-if="changes && view === 'readable'" :changes="changes" />
         <pre v-else class="review-diff" data-testid="proposal-diff"><span v-for="(d, i) in lines" :key="i" :class="d.k">{{ d.l }}

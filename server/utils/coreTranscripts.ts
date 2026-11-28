@@ -255,6 +255,7 @@ export function createCoreTranscripts(deps: CoreTranscriptDeps) {
   const unavailable: Record<string, unknown> = {
     chat: { available: false, reason: 'not_found' },
     search: { hits: [], limited: false, kind: null },
+    pendingTool: [],
     pendingAsk: [],
     pendingClaudeQuestions: [],
   }

@@ -505,7 +505,15 @@ the Workflow tab, one changed task type at a time, with the steps added (green),
 removed (red, dashed, back where they stood) and changed (cyan: each changed
 field before → after, such as holder, agent or model, how it ends, action, rounds
 or timeout) framed and named, a legend, and one line on what changes for that
-type's tasks (*For feature tasks: review changes its model; a new step shots*).
+type's tasks (*For feature tasks: review changes its model; a new step shots*),
+left out when it would only repeat the one-line change above. A per-program
+model (`prefs.models`) reads in plain words (*If the task runs Codex: gpt-6.1-sol
+(was: the workflow's model)*), marks the worker's step, which shows it under its
+default agent and model (*Claude · opus (default)*, then *If the task runs Codex:
+gpt-6.1-sol*, one line per program). A removed task type's steps show the
+agents it had (its own prefs, then the workflow's as they were), and a proposal
+that removes or adds types and changes a workflow-wide setting names each in its
+one-line change (*Type study-codex removed · If the task runs Codex: gpt-6.1-sol*).
 *List* shows the same change as a list (merge rule, guards; instructions as a
 text diff), *JSON* the raw diff. A proposal made before the workflow changed again is refused, and the
 review says so: ask the coordinator to propose again. The proposal's card in the coordinator's chat links to this review. [Alfred](alfred.md) can propose
@@ -1256,7 +1264,14 @@ Under them, *Full question*, folded: the agent's whole last message, drawn as in
 its conversation (Markdown, its `wherdr` blocks), scrolling inside the window
 when it is long (open when there is no summary). *Open the task* stays. A question answered anywhere (here, in the agent's conversation, a
 coordinator's `tell`) leaves *Tasks to review* and *Tasks to handle* at once,
-without waiting for the engine's next pass.
+without waiting for the engine's next pass; so does a question or permission
+prompt that goes from the agent's terminal by itself, within seconds.
+
+An agent's wait shows here (and in its notification) only once it needs you. A
+permission prompt shows after about 20 seconds, so one that goes by itself never
+alerts. A question its coordinator is woken for (its autopilot on) shows only if
+the coordinator has not answered it after about 3 minutes; with no coordinator,
+or its autopilot off, it shows at once. The coordinator sees every wait at once.
 
 Each item has a clock (**Snooze**: 1 hour, 4 hours, until tomorrow at 8:00) and an eye
 (**Dismiss**). Both act on the entry only, never on the task, its step or its agent. A

@@ -10,7 +10,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { keysFor, parseOmpPrompt, promptIdentity, screenChoices } from '../server/utils/choices'
-import { pendingOmpTool } from '../server/utils/promptDetail'
+import { pendingOmpCalls } from '../server/utils/promptDetail'
 import { viaPrompt } from '../shared/sendRoute'
 import type { Choices } from '../shared/types'
 
@@ -166,7 +166,7 @@ describe('messages sent to omp during the dialog', () => {
   })
 })
 
-describe('pendingOmpTool', () => {
+describe('pendingOmpCalls', () => {
   const j = (o: unknown) => JSON.stringify(o)
   const assistant = (...calls: [string, string, unknown][]) => j({ type: 'message', message: { role: 'assistant', content: calls.map(([id, name, args]) => ({ type: 'toolCall', id, name, arguments: args, intent: `run ${name}` })) } })
   const start = (id: string, name: string) => j({ type: 'custom', customType: 'tool_execution_start', data: { toolCallId: id, toolName: name } })
@@ -174,12 +174,14 @@ describe('pendingOmpTool', () => {
 
   it('full input of the started call with no result yet', () => {
     const code = Array.from({ length: 60 }, (_, i) => `print(${i + 1})`).join('\n')
-    expect(pendingOmpTool([assistant(['a', 'eval', { language: 'py', code }]), start('a', 'eval')])).toEqual({ tool: 'eval', description: 'run eval', command: code })
+    expect(pendingOmpCalls([assistant(['a', 'eval', { language: 'py', code }]), start('a', 'eval')])).toEqual([{ call: 'a', detail: { tool: 'eval', description: 'run eval', command: code } }])
   })
-  it('skips answered calls, and picks the one named on screen among parallel calls', () => {
+  it('every parallel call started and not answered, by id', () => {
     const lines = [assistant(['a', 'bash', { i: 'x', command: 'ls' }], ['b', 'mcp_demo_search', { query: 'q' }]), start('a', 'bash'), start('b', 'mcp_demo_search')]
-    expect(pendingOmpTool(lines, 'bash')).toEqual({ tool: 'bash', description: 'run bash', command: 'ls' })
-    expect(pendingOmpTool(lines)!.command).toBe('{\n  "query": "q"\n}')
-    expect(pendingOmpTool([...lines, result('a'), result('b')])).toBeNull()
+    expect(pendingOmpCalls(lines)).toEqual([
+      { call: 'a', detail: { tool: 'bash', description: 'run bash', command: 'ls' } },
+      { call: 'b', detail: { tool: 'mcp_demo_search', description: 'run mcp_demo_search', command: '{\n  "query": "q"\n}' } },
+    ])
+    expect(pendingOmpCalls([...lines, result('a'), result('b')])).toEqual([])
   })
 })
